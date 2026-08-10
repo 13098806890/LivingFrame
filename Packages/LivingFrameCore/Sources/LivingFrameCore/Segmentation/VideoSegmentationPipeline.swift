@@ -28,6 +28,7 @@ public struct VideoSegmentationPipeline {
         at url: URL,
         name: String = NSLocalizedString("素材", comment: "Default clip name"),
         maxDimension: CGFloat = 1280,
+        additionalRotation: CGFloat = 0,
         progress: ProgressHandler? = nil,
         isCancelled: @escaping () -> Bool = { false }
     ) async throws -> SegmentedClip {
@@ -73,9 +74,12 @@ public struct VideoSegmentationPipeline {
                 continue
             }
             let source = CIImage(cvPixelBuffer: pixelBuffer)
-            let oriented = preferredTransform.isIdentity
+            let transformApplied = preferredTransform.isIdentity
                 ? source
                 : source.transformed(by: preferredTransform)
+            let oriented = additionalRotation == 0
+                ? transformApplied
+                : transformApplied.transformed(by: CGAffineTransform(rotationAngle: additionalRotation))
             let scale = min(1.0, maxDimension / max(oriented.extent.width, oriented.extent.height))
             let input = scale < 1.0
                 ? oriented.transformed(by: CGAffineTransform(scaleX: scale, y: scale))

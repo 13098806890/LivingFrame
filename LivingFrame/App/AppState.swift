@@ -68,19 +68,20 @@ final class AppState: ObservableObject {
 
     // MARK: - 素材
 
-    func startSegmenting(url: URL, name: String) {
+    func startSegmenting(url: URL, name: String, additionalRotation: CGFloat = 0) {
         isSegmenting = true
         segmentationProgress = 0
         segmentingName = name
         segmentationError = nil
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        LogStore.log("startSegmenting: name=\(name) url=\(url.path) size=\(size)")
+        LogStore.log("startSegmenting: name=\(name) url=\(url.path) size=\(size) additionalRotation=\(additionalRotation)")
         Task.detached {
             do {
                 let clip = try await VideoSegmentationPipeline().segmentVideo(
                     at: url,
                     name: name,
-                    maxDimension: self.maxDimension
+                    maxDimension: self.maxDimension,
+                    additionalRotation: additionalRotation
                 ) { info in
                     Task { @MainActor in
                         self.segmentationProgress = info.fraction

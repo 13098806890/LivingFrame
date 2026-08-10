@@ -1,3 +1,5 @@
+import AVFoundation
+import ImageIO
 import LivingFrameCore
 import Photos
 import PhotosUI
@@ -93,14 +95,9 @@ struct LibraryView: View {
         Task {
             let types = item.supportedContentTypes
             LogStore.log("load: itemIdentifier=\(item.itemIdentifier ?? "nil") types=\(types.map(\.identifier))")
-            // 1. Live Photo：从 PHAsset 取视频轨（需相册读取权限）
-            if types.contains(where: { $0.conforms(to: .livePhoto) }) {
-                if await loadLivePhotoVideo(item: item) { return }
-                await MainActor.run {
-                    loadError = NSLocalizedString("无法读取所选素材", comment: "Load failure detail")
-                }
-                return
-            }
+            // 1. Live Photo：PHAsset 视频轨优先，PHLivePhoto 传输兜底
+            //    （iCloud 未下载的 Live Photo 常不报 live-photo 类型、itemIdentifier 为 nil）
+            if await loadLivePhoto(item: item) { return }
             // 2. 视频
             if types.contains(where: { $0.conforms(to: .movie) }),
                await loadMovie(item: item) { return }
@@ -113,9 +110,15 @@ struct LibraryView: View {
         }
     }
 
+    private func loadLivePhoto(item: PhotosPickerItem) async -> Bool {
+        if await loadLivePhotoVideo(item: item) { return true }
+        if await loadLivePhotoTransfer(item: item) { return true }
+        return false
+    }
+
     private func loadLivePhotoVideo(item: PhotosPickerItem) async -> Bool {
         guard let id = item.itemIdentifier else {
-            LogStore.log("loadLivePhotoVideo: 无 itemIdentifier")
+            LogStore.log("loadLivePhotoVideo: 无 itemIdentifier，尝试 PHLivePhoto 传输")
             return false
         }
         let status = await requestPhotoLibraryAccess()
@@ -126,9 +129,18 @@ struct LibraryView: View {
             return false
         }
         let resources = PHAssetResource.assetResources(for: asset)
-        LogStore.log("loadLivePhotoVideo: asset=\(asset.localIdentifier) mediaType=\(asset.mediaType.rawValue) resources=\(resources.map { "\($0.type.rawValue):\($0.originalFilename):\($0.value(forKey: "fileSize") ?? "?")" })")
+        LogStore.log("loadLivePhotoVideo: asset=\(asset.localIdentifier) isLivePhoto=\(asset.mediaSubtypes.contains(.photoLive)) mediaType=\(asset.mediaType.rawValue) resources=\(resources.map { "\($0.type.rawValue):\($0.originalFilename):\($0.value(forKey: "fileSize") ?? "?")" })")
+        // 仅处理真正的 Live Photo；普通视频/照片交给后续分支
+        guard asset.mediaSubtypes.contains(.photoLive) else {
+            LogStore.log("loadLivePhotoVideo: 非 Live Photo")
+            return false
+        }
         let options = PHVideoRequestOptions()
-        options.deliveryMode = .fastFormat
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.progressHandler = { progress, _, _, _ in
+            LogStore.log("loadLivePhotoVideo: iCloud 视频下载进度=\(Int(progress * 100))%")
+        }
         let result: (url: URL?, error: Error?)? = await withCheckedContinuation { continuation in
             PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, info in
                 continuation.resume(returning: (url: (avAsset as? AVURLAsset)?.url, error: info?[PHImageErrorKey] as? Error))
@@ -145,10 +157,118 @@ struct LibraryView: View {
             return false
         }
         LogStore.log("loadLivePhotoVideo: 已拷贝到 \(copy.path)")
+        // 以静态图 EXIF 朝向为基准，修正视频轨缺失/异常的旋转元数据（如 180°）
+        let rotation = await additionalRotation(videoURL: copy, stillOrientation: await stillOrientation(for: asset))
+        let name = resources.first?.originalFilename ?? copy.lastPathComponent
         await MainActor.run {
-            appState.startSegmenting(url: copy, name: copy.lastPathComponent)
+            appState.startSegmenting(url: copy, name: name, additionalRotation: rotation)
         }
         return true
+    }
+
+    /// 兜底路径：PHLivePhoto 传输 + 提取 pairedVideo（iCloud 素材 itemIdentifier/类型缺失时使用）
+    private func loadLivePhotoTransfer(item: PhotosPickerItem) async -> Bool {
+        let livePhoto: PHLivePhoto?
+        do {
+            livePhoto = try await item.loadTransferable(type: PHLivePhoto.self)
+        } catch {
+            LogStore.log("loadLivePhotoTransfer: PHLivePhoto 传输失败 error=\(error)")
+            return false
+        }
+        guard let livePhoto else {
+            LogStore.log("loadLivePhotoTransfer: 非 Live Photo")
+            return false
+        }
+        let resources = PHAssetResource.assetResources(for: livePhoto)
+        LogStore.log("loadLivePhotoTransfer: resources=\(resources.map { "\($0.type.rawValue):\($0.originalFilename):\($0.value(forKey: "fileSize") ?? "?")" })")
+        guard let videoResource = resources.first(where: { $0.type == .pairedVideo }) else {
+            LogStore.log("loadLivePhotoTransfer: 无 pairedVideo 资源")
+            return false
+        }
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mov")
+        let options = PHAssetResourceRequestOptions()
+        options.isNetworkAccessAllowed = true
+        let writeError: Error? = await withCheckedContinuation { continuation in
+            PHAssetResourceManager.default().writeData(
+                for: videoResource,
+                toFile: destination,
+                options: options
+            ) { error in
+                continuation.resume(returning: error)
+            }
+        }
+        guard writeError == nil else {
+            LogStore.log("loadLivePhotoTransfer: 视频写入失败 error=\(String(describing: writeError))")
+            return false
+        }
+        let size = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int) ?? 0
+        LogStore.log("loadLivePhotoTransfer: 视频已写入 \(destination.path) 大小=\(size) bytes")
+        // 以配套静态图 EXIF 朝向为基准，修正视频旋转（Live Photo 视频轨常缺旋转元数据）
+        var stillOrientation = CGImagePropertyOrientation.up
+        if let stillResource = resources.first(where: { $0.type == .photo || $0.type == .fullSizePhoto }) {
+            let stillURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(stillResource.uniformTypeIdentifier ?? "jpg")
+            let stillError: Error? = await withCheckedContinuation { continuation in
+                PHAssetResourceManager.default().writeData(for: stillResource, toFile: stillURL, options: options) { error in
+                    continuation.resume(returning: error)
+                }
+            }
+            if stillError == nil, let exif = exifOrientation(of: stillURL) {
+                stillOrientation = exif
+            }
+        }
+        let rotation = await additionalRotation(videoURL: destination, stillOrientation: stillOrientation)
+        await MainActor.run {
+            appState.startSegmenting(url: destination, name: videoResource.originalFilename, additionalRotation: rotation)
+        }
+        return true
+    }
+
+    /// 以静态图 EXIF 朝向为基准，计算视频需要追加的旋转（弧度）
+    private func additionalRotation(videoURL: URL, stillOrientation: CGImagePropertyOrientation) async -> Double {
+        let asset = AVURLAsset(url: videoURL)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let transform = try? await track.load(.preferredTransform) else {
+            return 0
+        }
+        let videoDegrees = atan2(transform.b, transform.a) * 180 / .pi
+        var delta = stillDegrees(for: stillOrientation) - videoDegrees
+        while delta > 180 { delta -= 360 }
+        while delta < -180 { delta += 360 }
+        LogStore.log("additionalRotation: stillEXIF=\(stillOrientation.rawValue) still=\(stillDegrees(for: stillOrientation))° videoTransform=\(videoDegrees)° → \(delta)°")
+        return delta * .pi / 180
+    }
+
+    /// EXIF 朝向 → 需要旋转的角度（度，顺时针为正）
+    private func stillDegrees(for orientation: CGImagePropertyOrientation) -> Double {
+        switch orientation {
+        case .up, .upMirrored: return 0
+        case .down, .downMirrored: return 180
+        case .left, .leftMirrored: return 270
+        case .right, .rightMirrored: return 90
+        @unknown default: return 0
+        }
+    }
+
+    /// 从 PHAsset 读静态图 EXIF 朝向
+    private func stillOrientation(for asset: PHAsset) async -> CGImagePropertyOrientation {
+        await withCheckedContinuation { continuation in
+            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: nil) { _, _, orientation, _ in
+                continuation.resume(returning: orientation)
+            }
+        }
+    }
+
+    /// 从图片文件读 EXIF 朝向
+    private func exifOrientation(of url: URL) -> CGImagePropertyOrientation? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let raw = props[kCGImagePropertyOrientation] as? UInt32,
+              let orientation = CGImagePropertyOrientation(rawValue: raw) else { return nil }
+        return orientation
     }
 
     private func requestPhotoLibraryAccess() async -> PHAuthorizationStatus {
