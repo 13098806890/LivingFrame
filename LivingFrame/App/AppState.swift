@@ -44,9 +44,19 @@ final class AppState: ObservableObject {
 
     // MARK: - 设置
 
-    @Published var defaultFormat: ExportFormat = .gif
-    @Published var exportFPS: Double = 15
-    @Published var maxDimension: Double = 1280
+    @Published var defaultFormat: ExportFormat = .gif {
+        didSet { UserDefaults.standard.set(defaultFormat.rawValue, forKey: settingDefaultFormatKey) }
+    }
+    @Published var exportFPS: Double = 15 {
+        didSet { UserDefaults.standard.set(exportFPS, forKey: settingExportFPSKey) }
+    }
+    @Published var maxDimension: Double = 1280 {
+        didSet { UserDefaults.standard.set(maxDimension, forKey: settingMaxDimensionKey) }
+    }
+
+    private let settingDefaultFormatKey = "setting.defaultFormat"
+    private let settingExportFPSKey = "setting.exportFPS"
+    private let settingMaxDimensionKey = "setting.maxDimension"
 
     // MARK: - 编辑交互
 
@@ -58,6 +68,17 @@ final class AppState: ObservableObject {
 
     init() {
         works = worksStore.loadWorks()
+        let defaults = UserDefaults.standard
+        if let raw = defaults.string(forKey: settingDefaultFormatKey),
+           let format = ExportFormat(rawValue: raw) {
+            defaultFormat = format
+        }
+        if defaults.object(forKey: settingExportFPSKey) != nil {
+            exportFPS = defaults.double(forKey: settingExportFPSKey)
+        }
+        if defaults.object(forKey: settingMaxDimensionKey) != nil {
+            maxDimension = defaults.double(forKey: settingMaxDimensionKey)
+        }
         var systemInfo = utsname()
         uname(&systemInfo)
         let machine = withUnsafeBytes(of: &systemInfo.machine) { raw in
@@ -68,20 +89,20 @@ final class AppState: ObservableObject {
 
     // MARK: - 素材
 
-    func startSegmenting(url: URL, name: String, additionalRotation: CGFloat = 0) {
+    func startSegmenting(url: URL, name: String, stillOrientation: CGImagePropertyOrientation = .up) {
         isSegmenting = true
         segmentationProgress = 0
         segmentingName = name
         segmentationError = nil
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        LogStore.log("startSegmenting: name=\(name) url=\(url.path) size=\(size) additionalRotation=\(additionalRotation)")
+        LogStore.log("startSegmenting: name=\(name) url=\(url.path) size=\(size) stillOrientation=\(stillOrientation.rawValue)")
         Task.detached {
             do {
                 let clip = try await VideoSegmentationPipeline().segmentVideo(
                     at: url,
                     name: name,
                     maxDimension: self.maxDimension,
-                    additionalRotation: additionalRotation
+                    stillOrientation: stillOrientation
                 ) { info in
                     Task { @MainActor in
                         self.segmentationProgress = info.fraction
@@ -379,7 +400,7 @@ final class AppState: ObservableObject {
         exportProgress = 0
         defer { isExporting = false }
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(composition.name)-\(Int(Date().timeIntervalSince1970)).\(format.fileExtension)")
+            .appendingPathComponent("LF-export-\(Int(Date().timeIntervalSince1970)).\(format.fileExtension)")
         switch format {
         case .gif:
             try await GIFExporter().export(composition, to: url, fps: fps) { [weak self] value in
@@ -431,6 +452,94 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - 素材保存
+
+    /// 素材保存结果提示（nil 表示无提示）
+    @Published var librarySaveResult: String?
+
+    /// 将素材按指定格式导出并存入相册（整段素材，背景填充白色）
+    func saveClipToLibrary(_ clip: SegmentedClip, format: ExportFormat) async {
+        LogStore.log("saveClipToLibrary: name=\(clip.name) format=\(format.rawValue) size=\(clip.width)x\(clip.height) duration=\(clip.duration)s")
+        librarySaveResult = nil
+        do {
+            let authorized = await requestAddOnlyAuthorization()
+            guard authorized else {
+                librarySaveResult = NSLocalizedString("需要相册权限才能保存，请在设置中开启", comment: "Save error")
+                return
+            }
+            let url = try await exportClip(clip, format: format)
+            if format != .livePhoto {
+                try await PHPhotoLibrary.shared().performChanges {
+                    let request = PHAssetCreationRequest.forAsset()
+                    if format == .gif {
+                        request.addResource(with: .photo, fileURL: url, options: nil)
+                    } else {
+                        request.addResource(with: .video, fileURL: url, options: nil)
+                    }
+                }
+            }
+            try? FileManager.default.removeItem(at: url)
+            LogStore.log("saveClipToLibrary: 已保存到相册")
+            librarySaveResult = NSLocalizedString("已保存到相册", comment: "Save success")
+        } catch {
+            LogStore.log("saveClipToLibrary 失败: \(error)")
+            librarySaveResult = error.localizedDescription
+        }
+    }
+
+    /// 用单个素材构造临时工程并导出
+    private func exportClip(_ clip: SegmentedClip, format: ExportFormat) async throws -> URL {
+        let canvas = CanvasSpec(width: CGFloat(clip.width), height: CGFloat(clip.height))
+        let duration = min(clip.duration, 3)
+        var comp = Composition(
+            name: clip.name,
+            canvas: canvas,
+            duration: duration,
+            fps: clip.fps,
+            background: format == .hevcAlpha
+                ? .clear
+                : BackgroundPreset(kind: .solid, topColor: "FFFFFF", bottomColor: "FFFFFF")
+        )
+        comp.elements = [CompositionElement(
+            kind: .clip(clipID: clip.id),
+            name: clip.name,
+            transform: ElementTransform(
+                position: CGPoint(x: canvas.width / 2, y: canvas.height / 2),
+                scale: 1,
+                rotation: 0
+            ),
+            zIndex: 1,
+            startTime: 0,
+            endTime: duration
+        )]
+        if clip.audioURL != nil {
+            comp.audioClips = [AudioClip(sourceID: clip.id, startTime: 0, duration: duration, volume: 1)]
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LF-export-\(Int(Date().timeIntervalSince1970)).\(format.fileExtension)")
+        switch format {
+        case .gif:
+            try await GIFExporter().export(comp, to: url, fps: comp.fps) { [weak self] value in
+                Task { @MainActor in self?.exportProgress = value }
+            }
+        case .hevcAlpha, .h264:
+            try await VideoExporter().export(
+                comp,
+                format: format,
+                sourceResolver: { [weak self] sourceID in
+                    self?.clips.first(where: { $0.id == sourceID })?.loadAudioURL()
+                },
+                to: url
+            ) { [weak self] value in
+                Task { @MainActor in self?.exportProgress = value }
+            }
+        case .livePhoto:
+            let output = try await LivePhotoExporter().export(comp, to: url)
+            try await saveLivePhoto(videoURL: output.videoURL, coverData: output.coverData)
+        }
+        return url
+    }
+
     // MARK: - 作品
 
     func saveCurrentToWorks() {
@@ -475,6 +584,15 @@ final class AppState: ObservableObject {
         FrameCache.shared.removeAll()
         clips.removeAll()
         composition = nil
+        // 清理导入拷贝与导出产生的临时文件（LF- 前缀标记）
+        let tmp = FileManager.default.temporaryDirectory
+        if let items = try? FileManager.default.contentsOfDirectory(
+            at: tmp, includingPropertiesForKeys: nil
+        ) {
+            for item in items where item.lastPathComponent.hasPrefix("LF-") {
+                try? FileManager.default.removeItem(at: item)
+            }
+        }
         syncAudioPreview()
     }
 

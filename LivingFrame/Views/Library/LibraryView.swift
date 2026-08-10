@@ -9,6 +9,8 @@ struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var loadError: String?
+    /// 待保存的素材（触发格式选择弹窗）
+    @State private var clipToSave: SegmentedClip?
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
@@ -52,6 +54,17 @@ struct LibraryView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(loadErrorMessage ?? "")
+            }
+            .alert(
+                "保存到相册",
+                isPresented: Binding(
+                    get: { appState.librarySaveResult != nil },
+                    set: { if !$0 { appState.librarySaveResult = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(appState.librarySaveResult ?? "")
             }
         }
     }
@@ -157,11 +170,11 @@ struct LibraryView: View {
             return false
         }
         LogStore.log("loadLivePhotoVideo: 已拷贝到 \(copy.path)")
-        // 以静态图 EXIF 朝向为基准，修正视频轨缺失/异常的旋转元数据（如 180°）
-        let rotation = await additionalRotation(videoURL: copy, stillOrientation: await stillOrientation(for: asset))
+        // 以静态图 EXIF 朝向传给抠图管线（视频轨无旋转元数据时用于 180° 修正）
+        let stillOrientation = await stillOrientation(for: asset)
         let name = resources.first?.originalFilename ?? copy.lastPathComponent
         await MainActor.run {
-            appState.startSegmenting(url: copy, name: name, additionalRotation: rotation)
+            appState.startSegmenting(url: copy, name: name, stillOrientation: stillOrientation)
         }
         return true
     }
@@ -205,12 +218,12 @@ struct LibraryView: View {
         }
         let size = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int) ?? 0
         LogStore.log("loadLivePhotoTransfer: 视频已写入 \(destination.path) 大小=\(size) bytes")
-        // 以配套静态图 EXIF 朝向为基准，修正视频旋转（Live Photo 视频轨常缺旋转元数据）
+        // 以配套静态图 EXIF 朝向传给抠图管线（视频轨无旋转元数据时用于 180° 修正）
         var stillOrientation = CGImagePropertyOrientation.up
         if let stillResource = resources.first(where: { $0.type == .photo || $0.type == .fullSizePhoto }) {
             let stillURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension(stillResource.uniformTypeIdentifier ?? "jpg")
+                .appendingPathExtension(stillResource.uniformTypeIdentifier)
             let stillError: Error? = await withCheckedContinuation { continuation in
                 PHAssetResourceManager.default().writeData(for: stillResource, toFile: stillURL, options: options) { error in
                     continuation.resume(returning: error)
@@ -220,37 +233,10 @@ struct LibraryView: View {
                 stillOrientation = exif
             }
         }
-        let rotation = await additionalRotation(videoURL: destination, stillOrientation: stillOrientation)
         await MainActor.run {
-            appState.startSegmenting(url: destination, name: videoResource.originalFilename, additionalRotation: rotation)
+            appState.startSegmenting(url: destination, name: videoResource.originalFilename, stillOrientation: stillOrientation)
         }
         return true
-    }
-
-    /// 以静态图 EXIF 朝向为基准，计算视频需要追加的旋转（弧度）
-    private func additionalRotation(videoURL: URL, stillOrientation: CGImagePropertyOrientation) async -> Double {
-        let asset = AVURLAsset(url: videoURL)
-        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
-              let transform = try? await track.load(.preferredTransform) else {
-            return 0
-        }
-        let videoDegrees = atan2(transform.b, transform.a) * 180 / .pi
-        var delta = stillDegrees(for: stillOrientation) - videoDegrees
-        while delta > 180 { delta -= 360 }
-        while delta < -180 { delta += 360 }
-        LogStore.log("additionalRotation: stillEXIF=\(stillOrientation.rawValue) still=\(stillDegrees(for: stillOrientation))° videoTransform=\(videoDegrees)° → \(delta)°")
-        return delta * .pi / 180
-    }
-
-    /// EXIF 朝向 → 需要旋转的角度（度，顺时针为正）
-    private func stillDegrees(for orientation: CGImagePropertyOrientation) -> Double {
-        switch orientation {
-        case .up, .upMirrored: return 0
-        case .down, .downMirrored: return 180
-        case .left, .leftMirrored: return 270
-        case .right, .rightMirrored: return 90
-        @unknown default: return 0
-        }
     }
 
     /// 从 PHAsset 读静态图 EXIF 朝向
@@ -316,7 +302,7 @@ struct LibraryView: View {
 
     private func copyToTemporaryFile(_ url: URL) async throws -> URL {
         let copy = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("LF-import-\(UUID().uuidString)")
             .appendingPathExtension(url.pathExtension)
         try FileManager.default.copyItem(at: url, to: copy)
         return copy
@@ -364,6 +350,32 @@ struct LibraryView: View {
                                     Label("添加到音轨", systemImage: "waveform")
                                 }
                             }
+                            Button {
+                                clipToSave = clip
+                            } label: {
+                                Label("保存到相册", systemImage: "square.and.arrow.down")
+                            }
+                        }
+                        .confirmationDialog(
+                            "保存到相册",
+                            isPresented: Binding(
+                                get: { clipToSave != nil },
+                                set: { if !$0 { clipToSave = nil } }
+                            ),
+                            titleVisibility: .visible
+                        ) {
+                            ForEach(ExportFormat.allCases) { format in
+                                Button(format.title) {
+                                    guard let clip = clipToSave else { return }
+                                    clipToSave = nil
+                                    Task { await appState.saveClipToLibrary(clip, format: format) }
+                                }
+                            }
+                            Button("取消", role: .cancel) {
+                                clipToSave = nil
+                            }
+                        } message: {
+                            Text("选择保存格式")
                         }
                     }
                 }
@@ -381,7 +393,8 @@ private struct ClipCell: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            ZStack(alignment: .bottomTrailing) {
+            ZStack {
+                CheckerboardView()
                 if let frame = clip.loadFrame(index: frameIndex) {
                     Image(decorative: frame, scale: 1)
                         .resizable()
@@ -389,6 +402,10 @@ private struct ClipCell: View {
                 } else {
                     Color.black
                 }
+            }
+            .frame(height: 120)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(alignment: .bottomTrailing) {
                 if clip.audioURL != nil {
                     Image(systemName: "waveform")
                         .font(.caption)
@@ -398,8 +415,6 @@ private struct ClipCell: View {
                         .padding(4)
                 }
             }
-            .frame(height: 120)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(LF.surface2, lineWidth: 1)
@@ -441,7 +456,7 @@ struct MovieFile: Transferable {
             SentTransferredFile(movie.url)
         } importing: { received in
             let copy = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
+                .appendingPathComponent("LF-import-\(UUID().uuidString)")
                 .appendingPathExtension(received.file.pathExtension)
             try FileManager.default.copyItem(at: received.file, to: copy)
             return MovieFile(url: copy)

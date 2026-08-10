@@ -53,20 +53,27 @@ struct ExportView: View {
 
                 if let exportedURL {
                     SectionCard(title: "完成") {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(exportedURL.lastPathComponent)
-                                    .font(.subheadline.weight(.medium))
-                                    .lineLimit(1)
-                                Label("导出成功", systemImage: "checkmark.circle.fill")
+                        VStack(alignment: .leading, spacing: 8) {
+                            if format == .livePhoto {
+                                Text("已存入系统相册，打开「照片」长按即可看到动态效果")
                                     .font(.caption)
-                                    .foregroundStyle(LF.gold)
+                                    .foregroundStyle(LF.textSecondary)
                             }
-                            Spacer()
-                            ShareLink(item: exportedURL) {
-                                Image(systemName: "square.and.arrow.up")
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(exportedURL.lastPathComponent)
+                                        .font(.subheadline.weight(.medium))
+                                        .lineLimit(1)
+                                    Label("导出成功", systemImage: "checkmark.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(LF.gold)
+                                }
+                                Spacer()
+                                ShareLink(item: exportedURL) {
+                                    Image(systemName: "square.and.arrow.up")
+                                }
+                                .buttonStyle(MagicButtonStyle())
                             }
-                            .buttonStyle(MagicButtonStyle())
                         }
                         Button {
                             saveToLibrary(url: exportedURL)

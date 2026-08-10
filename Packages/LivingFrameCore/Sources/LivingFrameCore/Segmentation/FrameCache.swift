@@ -36,11 +36,10 @@ public final class FrameCache {
     }
 
     public func removeAll() {
-        for id in registered.keys {
-            registered[id] = nil
-            try? FileManager.default.removeItem(at: rootURL.appendingPathComponent(id))
-        }
         registered.removeAll()
+        // 直接清空整个缓存目录（含未注册的残留目录）
+        try? FileManager.default.removeItem(at: rootURL)
+        try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
     }
 
     public var totalSizeBytes: Int64 {

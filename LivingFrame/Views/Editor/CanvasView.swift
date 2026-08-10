@@ -21,6 +21,11 @@ struct CanvasView: View {
                     Color.black
                 }
             }
+            .background {
+                if appState.composition?.background.kind == .clear {
+                    CheckerboardView()
+                }
+            }
             .aspectRatio(canvasAspect, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay {
