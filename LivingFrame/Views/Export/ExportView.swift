@@ -45,7 +45,7 @@ struct ExportView: View {
                     SectionCard(title: "导出中") {
                         ProgressView(value: appState.exportProgress)
                             .tint(LF.gold)
-                        Text(String(format: NSLocalizedString("percent", comment: "Progress"), Int(appState.exportProgress * 100)))
+                        Text(String(format: "%d%%", Int(appState.exportProgress * 100)))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(LF.textSecondary)
                     }

@@ -13,6 +13,7 @@ public struct OfflineAudioMixer {
         to destinationURL: URL
     ) async throws {
         let composition = AVMutableComposition()
+        LogStore.log("OfflineAudioMixer: start clips=\(clips.count) duration=\(duration)s")
         guard let track = composition.addMutableTrack(
             withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid
         ) else {
@@ -75,10 +76,12 @@ public struct OfflineAudioMixer {
             session.exportAsynchronously {
                 switch session.status {
                 case .completed:
+                    LogStore.log("OfflineAudioMixer: done")
                     continuation.resume()
                 case .cancelled:
                     continuation.resume(throwing: CancellationError())
                 default:
+                    LogStore.log("OfflineAudioMixer: failed status=\(session.status.rawValue) error=\(String(describing: session.error))")
                     continuation.resume(throwing: AudioError.exportFailed(session.error?.localizedDescription))
                 }
             }

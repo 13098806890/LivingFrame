@@ -12,7 +12,7 @@ struct TimelineView: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(LF.textSecondary)
                 Spacer()
-                Text(String(format: NSLocalizedString("dur.sec", comment: "Duration"), appState.composition?.duration ?? 0))
+                Text(String(format: "%.1f s", appState.composition?.duration ?? 0))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(LF.textSecondary)
             }
@@ -53,18 +53,16 @@ struct TimelineView: View {
         let scale = xScale(width)
         let startX = element.startTime * scale
         let barWidth = max((element.endTime - element.startTime) * scale, 20)
+        let isSelected = appState.isElementSelected(element.id)
         return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 5)
                 .fill(color(for: element))
                 .frame(width: barWidth, height: 34)
                 .overlay {
                     RoundedRectangle(cornerRadius: 5)
-                        .stroke(
-                            appState.selectedElementID == element.id ? LF.gold : .clear,
-                            lineWidth: 2
-                        )
+                        .stroke(isSelected ? LF.gold : .clear, lineWidth: 2)
                 }
-            if appState.selectedElementID == element.id {
+            if isSelected {
                 Label(element.name, systemImage: elementSymbol(element))
                     .font(.caption2)
                     .lineLimit(1)
@@ -74,8 +72,7 @@ struct TimelineView: View {
         .position(x: startX + barWidth / 2, y: 22)
         .gesture(dragElement(element, scale: scale))
         .onTapGesture {
-            appState.selectedElementID = element.id
-            appState.selectedAudioID = nil
+            appState.selectElement(element.id)
         }
     }
 
@@ -137,7 +134,7 @@ struct TimelineView: View {
         .gesture(dragAudio(clip, scale: scale))
         .onTapGesture {
             appState.selectedAudioID = clip.id
-            appState.selectedElementID = nil
+            appState.clearElementSelection()
         }
     }
 

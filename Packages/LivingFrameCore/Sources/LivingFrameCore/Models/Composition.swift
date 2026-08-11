@@ -79,17 +79,21 @@ public struct BackgroundPreset: Codable, Equatable {
         case clear
         case solid
         case gradient
+        case image
     }
 
     public var kind: Kind
     /// hex 颜色，如 "1A1F38"
     public var topColor: String
     public var bottomColor: String
+    /// 图片背景文件名（存于 Documents/Library/Backgrounds/，含预置图片）
+    public var imageFileName: String?
 
-    public init(kind: Kind, topColor: String, bottomColor: String) {
+    public init(kind: Kind, topColor: String, bottomColor: String, imageFileName: String? = nil) {
         self.kind = kind
         self.topColor = topColor
         self.bottomColor = bottomColor
+        self.imageFileName = imageFileName
     }
 
     public static let clear = BackgroundPreset(kind: .clear, topColor: "000000", bottomColor: "000000")

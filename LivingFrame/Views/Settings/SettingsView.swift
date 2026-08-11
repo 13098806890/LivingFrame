@@ -23,25 +23,34 @@ struct SettingsView: View {
 
                     SectionCard(title: "抠图") {
                         Picker("处理分辨率", selection: $appState.maxDimension) {
+                            Text("480p（最快）").tag(854.0)
                             Text("720p（快）").tag(1280.0)
                             Text("1080p（慢，更精细）").tag(1920.0)
                         }
-                        Text("分辨率越高越精细，处理时间越长。素材越多，磁盘占用越大。")
+                        Picker("处理帧率", selection: $appState.processingFPS) {
+                            Text("10 fps（最快）").tag(10.0)
+                            Text("15 fps（快）").tag(15.0)
+                            Text("30 fps（流畅）").tag(30.0)
+                        }
+                        Text("分辨率越高、帧率越高，抠图越精细，处理时间越长。素材越多，磁盘占用越大。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                     }
 
                     SectionCard(title: "存储") {
                         HStack {
-                            Text("素材缓存")
+                            Text("素材占用")
                             Spacer()
                             Text(appState.cacheSizeText)
                                 .foregroundStyle(LF.textSecondary)
                         }
+                        Text("清理临时文件不会删除任何素材（含文件夹内外的所有抠图结果）。")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
                         Button(role: .destructive) {
                             appState.clearCache()
                         } label: {
-                            Label("清空缓存", systemImage: "trash")
+                            Label("清理临时文件", systemImage: "trash")
                         }
                     }
 
@@ -51,8 +60,8 @@ struct SettingsView: View {
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
                             HStack(spacing: 10) {
-                                ShareLink(item: LogStore.read()) {
-                                    Label("导出日志", systemImage: "square.and.arrow.up")
+                                ShareLink(item: LogStore.logURL) {
+                                    Label("导出日志 (txt)", systemImage: "square.and.arrow.up")
                                         .font(.caption.weight(.semibold))
                                         .frame(maxWidth: .infinity)
                                 }

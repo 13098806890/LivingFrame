@@ -14,12 +14,45 @@ final class AppState: ObservableObject {
     @Published var segmentingName = ""
     /// 抠图失败原因（nil 表示无错误）
     @Published var segmentationError: String?
+    /// 素材文件夹（按创建时间倒序）
+    @Published var folders: [LibraryFolder] = []
 
     // MARK: - 工程
 
     @Published var composition: Composition?
-    @Published var selectedElementID: UUID?
+    /// 画布上选中的元素（支持多选，primary 为最后点选的）
+    @Published var selectedElementIDs: Set<UUID> = []
+    @Published var lastSelectedElementID: UUID?
     @Published var selectedAudioID: UUID?
+
+    /// 检查器主对象：单选时是该元素，多选时返回 nil
+    var primarySelectedID: UUID? {
+        selectedElementIDs.count == 1 ? selectedElementIDs.first : nil
+    }
+
+    func isElementSelected(_ id: UUID) -> Bool {
+        selectedElementIDs.contains(id)
+    }
+
+    /// 点选元素；additive 为 true 时追加多选（长按），否则单选
+    func selectElement(_ id: UUID, additive: Bool = false) {
+        if additive {
+            if selectedElementIDs.contains(id) {
+                selectedElementIDs.remove(id)
+            } else {
+                selectedElementIDs.insert(id)
+            }
+        } else {
+            selectedElementIDs = [id]
+        }
+        lastSelectedElementID = id
+        selectedAudioID = nil
+    }
+
+    func clearElementSelection() {
+        selectedElementIDs.removeAll()
+        lastSelectedElementID = nil
+    }
 
     // MARK: - 播放
 
@@ -38,7 +71,6 @@ final class AppState: ObservableObject {
 
     // MARK: - Sheet 状态
 
-    @Published var showTemplatePicker = false
     @Published var showEffectPicker = false
     @Published var showExportView = false
 
@@ -53,10 +85,15 @@ final class AppState: ObservableObject {
     @Published var maxDimension: Double = 1280 {
         didSet { UserDefaults.standard.set(maxDimension, forKey: settingMaxDimensionKey) }
     }
+    /// 抠图处理帧率（低于源帧率时抽帧处理，帧数减少处理更快）
+    @Published var processingFPS: Double = 30 {
+        didSet { UserDefaults.standard.set(processingFPS, forKey: settingProcessingFPSKey) }
+    }
 
     private let settingDefaultFormatKey = "setting.defaultFormat"
     private let settingExportFPSKey = "setting.exportFPS"
     private let settingMaxDimensionKey = "setting.maxDimension"
+    private let settingProcessingFPSKey = "setting.processingFPS"
 
     // MARK: - 编辑交互
 
@@ -64,10 +101,15 @@ final class AppState: ObservableObject {
     var dragAnchor: CGPoint?
 
     private let worksStore = WorksStore()
+    private let folderStore = LibraryFolderStore()
     private let audioEngine = AudioPreviewEngine()
 
     init() {
         works = worksStore.loadWorks()
+        // 恢复持久化的素材与文件夹
+        FrameCache.shared.reload()
+        clips = FrameCache.shared.allClips()
+        folders = folderStore.load()
         let defaults = UserDefaults.standard
         if let raw = defaults.string(forKey: settingDefaultFormatKey),
            let format = ExportFormat(rawValue: raw) {
@@ -79,76 +121,68 @@ final class AppState: ObservableObject {
         if defaults.object(forKey: settingMaxDimensionKey) != nil {
             maxDimension = defaults.double(forKey: settingMaxDimensionKey)
         }
+        if defaults.object(forKey: settingProcessingFPSKey) != nil {
+            processingFPS = defaults.double(forKey: settingProcessingFPSKey)
+        }
         var systemInfo = utsname()
         uname(&systemInfo)
         let machine = withUnsafeBytes(of: &systemInfo.machine) { raw in
             String(cString: raw.bindMemory(to: CChar.self).baseAddress!)
         }
-        LogStore.log("启动: device=\(machine) system=\(UIDevice.current.systemName) \(UIDevice.current.systemVersion) app=\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "?")")
+        LogStore.log("launch: device=\(machine) system=\(UIDevice.current.systemName) \(UIDevice.current.systemVersion) app=\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "?")")
     }
 
     // MARK: - 素材
 
-    func startSegmenting(url: URL, name: String, stillOrientation: CGImagePropertyOrientation = .up) {
+    func startSegmenting(url: URL, name: String, stillOrientation: CGImagePropertyOrientation = .up) async {
         isSegmenting = true
         segmentationProgress = 0
         segmentingName = name
         segmentationError = nil
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         LogStore.log("startSegmenting: name=\(name) url=\(url.path) size=\(size) stillOrientation=\(stillOrientation.rawValue)")
-        Task.detached {
-            do {
-                let clip = try await VideoSegmentationPipeline().segmentVideo(
-                    at: url,
-                    name: name,
-                    maxDimension: self.maxDimension,
-                    stillOrientation: stillOrientation
-                ) { info in
-                    Task { @MainActor in
-                        self.segmentationProgress = info.fraction
-                    }
-                }
-                await MainActor.run {
-                    self.addClip(clip)
-                    self.isSegmenting = false
-                }
-            } catch {
-                LogStore.log("startSegmenting 失败: \(error)")
-                await MainActor.run {
-                    self.isSegmenting = false
-                    self.segmentationProgress = 0
-                    self.segmentationError = error.localizedDescription
-                }
+        do {
+            let clip = try await VideoSegmentationPipeline().segmentVideo(
+                at: url,
+                name: name,
+                maxDimension: maxDimension,
+                maxFPS: processingFPS,
+                stillOrientation: stillOrientation
+            ) { [weak self] info in
+                Task { @MainActor in self?.segmentationProgress = info.fraction }
             }
+            addClip(clip)
+            isSegmenting = false
+        } catch {
+            LogStore.log("startSegmenting failed: \(error)")
+            isSegmenting = false
+            segmentationProgress = 0
+            segmentationError = error.localizedDescription
         }
     }
 
-    func startPhotoSegmenting(cgImage: CGImage, name: String) {
+    func startPhotoSegmenting(cgImage: CGImage, name: String) async {
         isSegmenting = true
         segmentationProgress = 0
         segmentingName = name
         segmentationError = nil
-        LogStore.log("startPhotoSegmenting: name=\(name) 输入尺寸=\(cgImage.width)x\(cgImage.height)")
         let maxDimension = maxDimension
-        Task.detached {
-            do {
-                let clip = try VideoSegmentationPipeline().segmentPhoto(
+        LogStore.log("startPhotoSegmenting: name=\(name) input=\(cgImage.width)x\(cgImage.height)")
+        do {
+            let clip = try await Task.detached(priority: .userInitiated) {
+                try VideoSegmentationPipeline().segmentPhoto(
                     from: cgImage,
                     name: name,
                     maxDimension: maxDimension
                 )
-                await MainActor.run {
-                    self.addClip(clip)
-                    self.isSegmenting = false
-                }
-            } catch {
-                LogStore.log("startPhotoSegmenting 失败: \(error)")
-                await MainActor.run {
-                    self.isSegmenting = false
-                    self.segmentationProgress = 0
-                    self.segmentationError = error.localizedDescription
-                }
-            }
+            }.value
+            addClip(clip)
+            isSegmenting = false
+        } catch {
+            LogStore.log("startPhotoSegmenting failed: \(error)")
+            isSegmenting = false
+            segmentationProgress = 0
+            segmentationError = error.localizedDescription
         }
     }
 
@@ -157,6 +191,7 @@ final class AppState: ObservableObject {
         clips.remove(atOffsets: offsets)
         for clip in removed {
             FrameCache.shared.removeClip(id: clip.id)
+            removeClipReferences(from: clip.id)
             guard var comp = composition else { continue }
             comp.elements.removeAll { element in
                 if case .clip(let clipID) = element.kind { return clipID == clip.id }
@@ -166,6 +201,136 @@ final class AppState: ObservableObject {
             composition = comp
         }
         syncAudioPreview()
+    }
+
+    /// 删除单个素材（磁盘 + 文件夹 + 工程引用）
+    func deleteClip(_ clipID: String) {
+        clips.removeAll { $0.id == clipID }
+        FrameCache.shared.removeClip(id: clipID)
+        removeClipReferences(from: clipID)
+        if var comp = composition {
+            comp.elements.removeAll { element in
+                if case .clip(let id) = element.kind { return id == clipID }
+                return false
+            }
+            comp.audioClips.removeAll { $0.sourceID == clipID }
+            composition = comp
+        }
+        syncAudioPreview()
+    }
+
+    /// 从所有文件夹中移除素材引用并持久化
+    private func removeClipReferences(from clipID: String) {
+        var changed = false
+        for i in folders.indices where folders[i].clipIDs.contains(clipID) {
+            folders[i].clipIDs.removeAll { $0 == clipID }
+            changed = true
+        }
+        if changed { folderStore.save(folders) }
+    }
+
+    // MARK: - 文件夹
+
+    /// 新建文件夹（parentID 为 nil 时创建在根层级）
+    func createFolder(named name: String, inParent parentID: String? = nil) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !folders.contains(where: { $0.name == trimmed && $0.parentID == parentID }) else { return }
+        folders.insert(LibraryFolder(name: trimmed, parentID: parentID), at: 0)
+        folderStore.save(folders)
+    }
+
+    /// 删除文件夹：连同所有子孙文件夹一起删除（素材保留在素材库）
+    func deleteFolder(_ folder: LibraryFolder) {
+        let ids = folderAndDescendants(of: folder.id)
+        folders.removeAll { ids.contains($0.id) }
+        folderStore.save(folders)
+    }
+
+    /// 根层级文件夹
+    func rootFolders() -> [LibraryFolder] {
+        folders.filter { $0.parentID == nil }
+    }
+
+    /// 指定文件夹的子文件夹
+    func childFolders(of folderID: String) -> [LibraryFolder] {
+        folders.filter { $0.parentID == folderID }
+    }
+
+    /// 是否有子文件夹
+    func hasChildFolders(_ folderID: String) -> Bool {
+        folders.contains { $0.parentID == folderID }
+    }
+
+    /// 收集文件夹本身及所有子孙 ID
+    private func folderAndDescendants(of folderID: String) -> Set<String> {
+        var result: Set<String> = [folderID]
+        var queue = [folderID]
+        while let current = queue.popLast() {
+            for folder in folders where folder.parentID == current && !result.contains(folder.id) {
+                result.insert(folder.id)
+                queue.append(folder.id)
+            }
+        }
+        return result
+    }
+
+    /// 将素材移入/移出文件夹（folderID 为 nil 表示移出）
+    func moveClip(_ clipID: String, toFolder folderID: String?) {
+        var changed = false
+        for i in folders.indices {
+            if folders[i].clipIDs.contains(clipID) {
+                folders[i].clipIDs.removeAll { $0 == clipID }
+                changed = true
+            }
+            if let folderID, folders[i].id == folderID, !folders[i].clipIDs.contains(clipID) {
+                folders[i].clipIDs.append(clipID)
+                changed = true
+            }
+        }
+        if changed { folderStore.save(folders) }
+    }
+
+    /// 设置素材边缘效果（持久化到 clip.json）
+    func setClipEdgeStyle(_ clipID: String, _ style: ClipEdgeStyle) {
+        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
+        clips[index].edgeStyle = style
+        FrameCache.shared.register(clips[index])
+    }
+
+    /// 设置素材贴纸风格（持久化到 clip.json）
+    func setClipStickerStyle(_ clipID: String, _ style: StickerStyle) {
+        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
+        clips[index].stickerStyle = style
+        FrameCache.shared.register(clips[index])
+    }
+
+    // MARK: - 背景
+
+    /// 设置背景为纯色
+    func setBackground(color hex: String) {
+        guard var comp = composition ?? defaultComposition() else { return }
+        comp.background = BackgroundPreset(kind: .solid, topColor: hex, bottomColor: hex)
+        composition = comp
+    }
+
+    /// 设置背景为预置图片
+    func setBackground(preset fileName: String) {
+        guard var comp = composition ?? defaultComposition() else { return }
+        comp.background = BackgroundPreset(
+            kind: .image, topColor: "FFFFFF", bottomColor: "FFFFFF", imageFileName: fileName
+        )
+        composition = comp
+    }
+
+    /// 设置背景为相册图片（写入 Backgrounds 目录后引用）
+    func setBackground(imageData: Data) {
+        guard let fileName = BackgroundStore.shared.saveUserImage(imageData) else { return }
+        guard var comp = composition ?? defaultComposition() else { return }
+        comp.background = BackgroundPreset(
+            kind: .image, topColor: "FFFFFF", bottomColor: "FFFFFF", imageFileName: fileName
+        )
+        composition = comp
     }
 
     private func addClip(_ clip: SegmentedClip) {
@@ -188,21 +353,56 @@ final class AppState: ObservableObject {
             endTime: comp.duration
         )
         comp.elements.append(element)
-        comp.duration = max(comp.duration, clip.duration)
+        // 素材时长异常（fps 为 0 时可能为 Inf）时封顶，避免画布/导出崩溃
+        let clipDuration = clip.duration.isFinite ? clip.duration : 3
+        comp.duration = max(comp.duration, min(clipDuration, 300))
         composition = comp
-        selectedElementID = element.id
+        selectElement(element.id)
         syncAudioPreview()
     }
 
     private func defaultComposition() -> Composition? {
         let comp = Composition(
             name: NSLocalizedString("我的动态照片", comment: "Default composition name"),
-            canvas: CanvasSpec(width: 1080, height: 1440),
+            canvas: CanvasSpec(width: 1080, height: 1920),
             duration: 3,
             fps: 30
         )
         composition = comp
         return comp
+    }
+
+    // MARK: - 画布比例
+
+    /// 创建指定比例的画布工程
+    func createComposition(aspect: CanvasAspect) {
+        let size = aspect.canvasSize
+        let comp = Composition(
+            name: NSLocalizedString("我的动态照片", comment: "Default composition name"),
+            canvas: CanvasSpec(width: size.width, height: size.height),
+            duration: 3,
+            fps: 30
+        )
+        composition = comp
+    }
+
+    /// 修改画布比例：元素位置按比例换算，保持相对布局
+    func setCanvasAspect(_ aspect: CanvasAspect) {
+        guard var comp = composition else { return }
+        let oldSize = comp.canvasRect.size
+        let newSize = aspect.canvasSize
+        guard oldSize.width > 0, oldSize.height > 0 else { return }
+        let sx = newSize.width / oldSize.width
+        let sy = newSize.height / oldSize.height
+        for index in comp.elements.indices {
+            comp.elements[index].transform.position = CGPoint(
+                x: comp.elements[index].transform.position.x * sx,
+                y: comp.elements[index].transform.position.y * sy
+            )
+            comp.elements[index].transform.scale *= min(sx, sy)
+        }
+        comp.canvas = CanvasSpec(width: newSize.width, height: newSize.height)
+        composition = comp
     }
 
     // MARK: - 元素
@@ -211,14 +411,38 @@ final class AppState: ObservableObject {
         guard var comp = composition,
               let index = comp.elements.firstIndex(where: { $0.id == id }) else { return }
         mutate(&comp.elements[index])
+        comp.elements[index].transform = sanitizedTransform(comp.elements[index].transform)
         composition = comp
+    }
+
+    /// 消毒变换值，防止 NaN/Inf 写入导致崩溃
+    private func sanitizedTransform(_ transform: ElementTransform) -> ElementTransform {
+        var t = transform
+        var changed = false
+        if !t.position.x.isFinite || !t.position.y.isFinite {
+            t.position = .zero
+            changed = true
+        }
+        if !t.scale.isFinite || t.scale <= 0 {
+            t.scale = 1
+            changed = true
+        }
+        if !t.rotation.isFinite {
+            t.rotation = 0
+            changed = true
+        }
+        if changed {
+            LogStore.log("updateElement: 检测到非有限变换值，已重置 \(transform)")
+        }
+        return t
     }
 
     func deleteElement(_ id: UUID) {
         guard var comp = composition else { return }
         comp.elements.removeAll { $0.id == id }
         composition = comp
-        if selectedElementID == id { selectedElementID = nil }
+        selectedElementIDs.remove(id)
+        if lastSelectedElementID == id { lastSelectedElementID = nil }
     }
 
     func moveElementZ(_ id: UUID, up: Bool) {
@@ -232,6 +456,12 @@ final class AppState: ObservableObject {
 
     /// 添加一个素材元素（从素材库）
     func addElementFromClip(_ clip: SegmentedClip) {
+        addElementFromClipID(clip.id)
+    }
+
+    /// 按 ID 添加素材元素
+    func addElementFromClipID(_ clipID: String) {
+        guard let clip = clips.first(where: { $0.id == clipID }) else { return }
         guard var comp = composition ?? defaultComposition() else { return }
         let scale = min(
             0.8 * comp.canvas.width / CGFloat(clip.width),
@@ -251,7 +481,7 @@ final class AppState: ObservableObject {
         )
         comp.elements.append(element)
         composition = comp
-        selectedElementID = element.id
+        selectElement(element.id)
     }
 
     // MARK: - 音轨
@@ -308,70 +538,19 @@ final class AppState: ObservableObject {
     }
 
     func seek(to time: Double) {
-        currentTime = min(max(time, 0), composition?.duration ?? 0)
+        let duration = composition?.duration ?? 0
+        let clamped = duration.isFinite ? min(max(time, 0), duration) : max(time, 0)
+        currentTime = clamped.isFinite ? clamped : 0
     }
 
     func tick() {
-        guard isPlaying, let comp = composition else { return }
+        guard isPlaying, let comp = composition, comp.fps > 0, comp.duration.isFinite else { return }
         let next = currentTime + 1.0 / comp.fps
         if next >= comp.duration {
             currentTime = 0
         } else {
             currentTime = next
         }
-    }
-
-    // MARK: - 模板
-
-    func applyTemplate(_ template: MagicTemplate) {
-        guard var comp = composition ?? defaultComposition() else { return }
-        comp.templateID = template.id
-        comp.name = template.name
-        if let canvas = template.canvasPreset { comp.canvas = canvas }
-        if let background = template.background { comp.background = background }
-        // 重建装饰层
-        comp.elements.removeAll { element in
-            switch element.kind {
-            case .decoration, .effect: true
-            case .clip: false
-            }
-        }
-        for decoration in template.decorations {
-            comp.elements.append(CompositionElement(
-                kind: .decoration(decorationID: decoration.decorationID),
-                name: decoration.decorationID,
-                transform: decoration.transform,
-                zIndex: decoration.zIndex,
-                startTime: 0,
-                endTime: comp.duration
-            ))
-        }
-        // 人物元素按预设摆放
-        let personIndices = comp.elements.indices.filter { index in
-            if case .clip = comp.elements[index].kind { return true }
-            return false
-        }
-        for (offset, index) in personIndices.enumerated() {
-            if template.elementLayouts.indices.contains(offset) {
-                comp.elements[index].transform = template.elementLayouts[offset].transform
-                comp.elements[index].zIndex = template.elementLayouts[offset].zIndex
-            }
-        }
-        // 特效
-        for effectID in template.effectPresets {
-            comp.elements.append(CompositionElement(
-                kind: .effect(effectID: effectID),
-                name: effectID,
-                transform: ElementTransform(
-                    position: CGPoint(x: comp.canvas.width / 2, y: comp.canvas.height / 2),
-                    scale: 1, rotation: 0
-                ),
-                zIndex: 60,
-                startTime: 0,
-                endTime: comp.duration
-            ))
-        }
-        composition = comp
     }
 
     func addEffect(_ effectID: String) {
@@ -389,7 +568,7 @@ final class AppState: ObservableObject {
         )
         comp.elements.append(element)
         composition = comp
-        selectedElementID = element.id
+        selectElement(element.id)
     }
 
     // MARK: - 导出
@@ -399,6 +578,8 @@ final class AppState: ObservableObject {
         isExporting = true
         exportProgress = 0
         defer { isExporting = false }
+        let start = Date()
+        LogStore.log("export: start format=\(format.rawValue) fps=\(fps) duration=\(composition.duration)s elements=\(composition.elements.count) audioClips=\(composition.audioClips.count)")
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("LF-export-\(Int(Date().timeIntervalSince1970)).\(format.fileExtension)")
         switch format {
@@ -426,6 +607,8 @@ final class AppState: ObservableObject {
             try await saveLivePhoto(videoURL: output.videoURL, coverData: output.coverData)
         }
         exportedURL = url
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        LogStore.log("export: done elapsed=\(Int(Date().timeIntervalSince(start)))s size=\(size) bytes")
         savePosterForWidget()
         return url
     }
@@ -450,94 +633,6 @@ final class AppState: ObservableObject {
             request.addResource(with: .photo, data: coverData, options: nil)
             request.addResource(with: .pairedVideo, fileURL: videoURL, options: nil)
         }
-    }
-
-    // MARK: - 素材保存
-
-    /// 素材保存结果提示（nil 表示无提示）
-    @Published var librarySaveResult: String?
-
-    /// 将素材按指定格式导出并存入相册（整段素材，背景填充白色）
-    func saveClipToLibrary(_ clip: SegmentedClip, format: ExportFormat) async {
-        LogStore.log("saveClipToLibrary: name=\(clip.name) format=\(format.rawValue) size=\(clip.width)x\(clip.height) duration=\(clip.duration)s")
-        librarySaveResult = nil
-        do {
-            let authorized = await requestAddOnlyAuthorization()
-            guard authorized else {
-                librarySaveResult = NSLocalizedString("需要相册权限才能保存，请在设置中开启", comment: "Save error")
-                return
-            }
-            let url = try await exportClip(clip, format: format)
-            if format != .livePhoto {
-                try await PHPhotoLibrary.shared().performChanges {
-                    let request = PHAssetCreationRequest.forAsset()
-                    if format == .gif {
-                        request.addResource(with: .photo, fileURL: url, options: nil)
-                    } else {
-                        request.addResource(with: .video, fileURL: url, options: nil)
-                    }
-                }
-            }
-            try? FileManager.default.removeItem(at: url)
-            LogStore.log("saveClipToLibrary: 已保存到相册")
-            librarySaveResult = NSLocalizedString("已保存到相册", comment: "Save success")
-        } catch {
-            LogStore.log("saveClipToLibrary 失败: \(error)")
-            librarySaveResult = error.localizedDescription
-        }
-    }
-
-    /// 用单个素材构造临时工程并导出
-    private func exportClip(_ clip: SegmentedClip, format: ExportFormat) async throws -> URL {
-        let canvas = CanvasSpec(width: CGFloat(clip.width), height: CGFloat(clip.height))
-        let duration = min(clip.duration, 3)
-        var comp = Composition(
-            name: clip.name,
-            canvas: canvas,
-            duration: duration,
-            fps: clip.fps,
-            background: format == .hevcAlpha
-                ? .clear
-                : BackgroundPreset(kind: .solid, topColor: "FFFFFF", bottomColor: "FFFFFF")
-        )
-        comp.elements = [CompositionElement(
-            kind: .clip(clipID: clip.id),
-            name: clip.name,
-            transform: ElementTransform(
-                position: CGPoint(x: canvas.width / 2, y: canvas.height / 2),
-                scale: 1,
-                rotation: 0
-            ),
-            zIndex: 1,
-            startTime: 0,
-            endTime: duration
-        )]
-        if clip.audioURL != nil {
-            comp.audioClips = [AudioClip(sourceID: clip.id, startTime: 0, duration: duration, volume: 1)]
-        }
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("LF-export-\(Int(Date().timeIntervalSince1970)).\(format.fileExtension)")
-        switch format {
-        case .gif:
-            try await GIFExporter().export(comp, to: url, fps: comp.fps) { [weak self] value in
-                Task { @MainActor in self?.exportProgress = value }
-            }
-        case .hevcAlpha, .h264:
-            try await VideoExporter().export(
-                comp,
-                format: format,
-                sourceResolver: { [weak self] sourceID in
-                    self?.clips.first(where: { $0.id == sourceID })?.loadAudioURL()
-                },
-                to: url
-            ) { [weak self] value in
-                Task { @MainActor in self?.exportProgress = value }
-            }
-        case .livePhoto:
-            let output = try await LivePhotoExporter().export(comp, to: url)
-            try await saveLivePhoto(videoURL: output.videoURL, coverData: output.coverData)
-        }
-        return url
     }
 
     // MARK: - 作品
@@ -580,11 +675,8 @@ final class AppState: ObservableObject {
 
     // MARK: - 缓存
 
+    /// 清理临时文件：素材（含文件夹内外的所有抠图结果）一律保留，只删导入/导出产生的临时文件
     func clearCache() {
-        FrameCache.shared.removeAll()
-        clips.removeAll()
-        composition = nil
-        // 清理导入拷贝与导出产生的临时文件（LF- 前缀标记）
         let tmp = FileManager.default.temporaryDirectory
         if let items = try? FileManager.default.contentsOfDirectory(
             at: tmp, includingPropertiesForKeys: nil
@@ -593,7 +685,7 @@ final class AppState: ObservableObject {
                 try? FileManager.default.removeItem(at: item)
             }
         }
-        syncAudioPreview()
+        LogStore.log("clearCache: 已清理临时文件，素材全部保留")
     }
 
     var cacheSizeText: String {

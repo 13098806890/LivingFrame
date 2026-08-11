@@ -8,7 +8,7 @@ public enum LogStore {
     public static var logURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Logs", isDirectory: true)
-            .appendingPathComponent("livingframe.log")
+            .appendingPathComponent("livingframe.txt")
     }
 
     public static func log(_ message: String, file: String = #fileID, line: Int = #line) {

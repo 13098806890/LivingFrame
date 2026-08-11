@@ -42,13 +42,14 @@ public struct VideoSegmentationPipeline {
         at url: URL,
         name: String = NSLocalizedString("素材", comment: "Default clip name"),
         maxDimension: CGFloat = 1280,
+        maxFPS: Double = 30,
         stillOrientation: CGImagePropertyOrientation = .up,
         progress: ProgressHandler? = nil,
         isCancelled: @escaping () -> Bool = { false }
     ) async throws -> SegmentedClip {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
-            LogStore.log("segmentVideo: 无视频轨 \(url.lastPathComponent)")
+            LogStore.log("segmentVideo: no video track \(url.lastPathComponent)")
             throw SegmentationError.noVideoTrack
         }
         let duration = try await asset.load(.duration)
@@ -56,7 +57,12 @@ public struct VideoSegmentationPipeline {
         // AVAssetReader 输出的是未旋转的原始像素，需应用 preferredTransform 恢复拍摄方向
         let preferredTransform = try await track.load(.preferredTransform)
         let naturalSize = try await track.load(.naturalSize)
-        LogStore.log("segmentVideo 输入: name=\(url.lastPathComponent) size=\(Int(naturalSize.width))x\(Int(naturalSize.height)) duration=\(duration.seconds)s fps=\(frameRate) transform=\(preferredTransform) stillOrientation=\(stillOrientation.rawValue) 推导方向=\(preferredTransform.isIdentity ? (stillOrientation == .down ? "down(180°)" : "无") : "\(Self.orientation(from: preferredTransform).rawValue)")" )
+        // 源帧率异常（0/NaN）时按 30fps 兜底，避免抽帧计算产生 NaN
+        let safeFrameRate = frameRate.isFinite && frameRate > 0 ? Double(frameRate) : 30
+        // 抽帧步长：目标帧率低于源帧率时，隔 N 帧处理 1 帧
+        let frameStep = max(1, Int((safeFrameRate / maxFPS).rounded()))
+        let outputFPS = max(1, safeFrameRate / Double(frameStep))
+        LogStore.log("segmentVideo input: name=\(url.lastPathComponent) size=\(Int(naturalSize.width))x\(Int(naturalSize.height)) duration=\(duration.seconds)s fps=\(safeFrameRate) step=\(frameStep) outputFPS=\(outputFPS) transform=\(preferredTransform) stillOrientation=\(stillOrientation.rawValue) derivedOrientation=\(preferredTransform.isIdentity ? (stillOrientation == .down ? "down(180°)" : "none") : "\(Self.orientation(from: preferredTransform).rawValue)")" )
 
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
@@ -69,10 +75,11 @@ public struct VideoSegmentationPipeline {
 
         let clipID = UUID().uuidString
         let folder = try FrameCache.shared.makeClipFolder(id: clipID)
-        let totalFrames = max(1, Int((duration.seconds * Double(frameRate)).rounded(.up)))
+        let totalFrames = max(1, Int((duration.seconds * outputFPS).rounded(.up)))
 
         let segmenter = VisionPersonSegmenter()
         var index = 0
+        var sampleIndex = 0
         var firstSize: (width: Int, height: Int)?
         var skippedNoSubject = 0
         var skippedNoImage = 0
@@ -80,24 +87,30 @@ public struct VideoSegmentationPipeline {
         while let sample = output.copyNextSampleBuffer() {
             if isCancelled() {
                 reader.cancelReading()
-                LogStore.log("segmentVideo: 用户取消")
+                LogStore.log("segmentVideo: user cancelled")
                 throw SegmentationError.cancelled
             }
+            let process = sampleIndex % frameStep == 0
+            sampleIndex += 1
+            guard process else { continue }
             guard let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else {
                 skippedNoImage += 1
                 continue
             }
             let source = CIImage(cvPixelBuffer: pixelBuffer)
-            // 方向修正：视频带旋转元数据 → 转换为 CI 原生方向（oriented 内部处理坐标系）；
-            // 无旋转元数据 → 仅当静态图 EXIF 为 180° 时修正（90°/270° 的照片方向不能代表视频像素）
+            // 方向修正：优先用视频轨旋转元数据；若变换不含旋转（identity、仅平移或浮点误差导致
+            // 推导为 up/down），则以静态图 EXIF 方向为准——Live Photo 的静态图与视频来自同一次
+            // 拍摄，方向一致；普通视频不传 stillOrientation（.up）不受影响
+            let derived = Self.orientation(from: preferredTransform)
             let oriented: CIImage
-            if preferredTransform.isIdentity {
-                oriented = stillOrientation == .down
-                    ? source.oriented(.down)
-                    : source
+            if derived == .up || derived == .down {
+                oriented = stillOrientation == .up
+                    ? source
+                    : source.oriented(stillOrientation)
             } else {
-                oriented = source.oriented(Self.orientation(from: preferredTransform))
+                oriented = source.oriented(derived)
             }
+            LogStore.log("segmentVideo: frame \(index) derived=\(derived.rawValue) still=\(stillOrientation.rawValue) using=\(oriented.extent.width)x\(oriented.extent.height)")
             let scale = min(1.0, maxDimension / max(oriented.extent.width, oriented.extent.height))
             let input = scale < 1.0
                 ? oriented.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
@@ -126,17 +139,17 @@ public struct VideoSegmentationPipeline {
 
         reader.cancelReading()
 
-        LogStore.log("segmentVideo 输出: 成功帧=\(index) 无人物跳过=\(skippedNoSubject) 无图像跳过=\(skippedNoImage) 帧尺寸=\(firstSize?.width ?? 0)x\(firstSize?.height ?? 0)")
+        LogStore.log("segmentVideo output: okFrames=\(index) skippedNoSubject=\(skippedNoSubject) skippedNoImage=\(skippedNoImage) frameSize=\(firstSize?.width ?? 0)x\(firstSize?.height ?? 0)")
 
         guard index > 0, let firstSize else {
-            LogStore.log("segmentVideo 失败: 有效帧为 0")
+            LogStore.log("segmentVideo failed: 0 valid frames")
             throw SegmentationError.noFrames
         }
 
         var clip = SegmentedClip(
             id: clipID,
             name: name,
-            fps: Double(frameRate),
+            fps: outputFPS,
             frameCount: index,
             width: firstSize.width,
             height: firstSize.height,
@@ -149,7 +162,7 @@ public struct VideoSegmentationPipeline {
             clip.audioURL = audioURL
         }
 
-        LogStore.log("segmentVideo 完成: clip=\(clipID) name=\(name) frames=\(clip.frameCount) fps=\(clip.fps) size=\(clip.width)x\(clip.height) duration=\(clip.duration)s audio=\(clip.audioURL != nil)")
+        LogStore.log("segmentVideo done: clip=\(clipID) name=\(name) frames=\(clip.frameCount) fps=\(clip.fps) size=\(clip.width)x\(clip.height) duration=\(clip.duration)s audio=\(clip.audioURL != nil)")
         LogStore.trimIfNeeded()
         FrameCache.shared.register(clip)
         return clip
@@ -185,7 +198,7 @@ public struct VideoSegmentationPipeline {
             height: segmented.height,
             folderURL: folder
         )
-        LogStore.log("segmentPhoto 完成: clip=\(clipID) name=\(name) 输入=\(sourceImage.extent.width)x\(sourceImage.extent.height) 输出=\(segmented.width)x\(segmented.height)")
+        LogStore.log("segmentPhoto done: clip=\(clipID) name=\(name) input=\(sourceImage.extent.width)x\(sourceImage.extent.height) output=\(segmented.width)x\(segmented.height)")
         LogStore.trimIfNeeded()
         FrameCache.shared.register(clip)
         return clip

@@ -1,7 +1,14 @@
 import AVFoundation
+import CoreImage
 import Foundation
 
 /// 视频导出：HEVC-alpha（带透明，首选）/ H.264 回退，可混入音轨
+///
+/// 实现：AVAssetWriter 只写视频轨（单输入），音频用 OfflineAudioMixer 混音后，
+/// 经 AVMutableComposition + AVAssetExportSession(passthrough) 合并。
+/// 原因：多输入 writer（video+audio）在本机实测会触发 VideoToolbox 假死
+/// （isReadyForMoreMediaData 永久 false，status 保持 .writing，卡点随机），
+/// 而单视频轨写入稳定且 remux(passthrough) 已验证保留 HEVC-alpha 透明通道。
 public struct VideoExporter {
     public init() {}
 
@@ -16,6 +23,59 @@ public struct VideoExporter {
         let width = max(2, Int(composition.canvas.width))
         let height = max(2, Int(composition.canvas.height))
         try? FileManager.default.removeItem(at: url)
+        let start = Date()
+        let frameCount = max(1, Int(composition.duration * composition.fps))
+        let hasAudio = !composition.audioClips.isEmpty
+        LogStore.log("VideoExporter: start codec=\(format.rawValue) size=\(width)x\(height) frames=\(frameCount) audio=\(hasAudio) url=\(url.path)")
+
+        // 1. 视频轨（进度 0~0.95）
+        try await writeVideoTrack(
+            composition, format: format, to: url,
+            frameCount: frameCount, progress: progress, isCancelled: isCancelled
+        )
+        LogStore.log("VideoExporter: video track done elapsed=\(Int(Date().timeIntervalSince(start)))s")
+
+        // 2. 混音 + 合并音轨（进度 0.95~1.0），失败不阻断视频导出
+        if hasAudio {
+            let mixedURL = url.deletingPathExtension().appendingPathExtension("mix.m4a")
+            do {
+                progress(0.95)
+                LogStore.log("VideoExporter: start audio mix")
+                try await OfflineAudioMixer().mix(
+                    composition.audioClips,
+                    duration: composition.duration,
+                    sourceResolver: sourceResolver,
+                    to: mixedURL
+                )
+                LogStore.log("VideoExporter: audio mix done, remuxing")
+                try await remux(videoURL: url, audioURL: mixedURL, to: url)
+                LogStore.log("VideoExporter: remux done")
+            } catch {
+                // 音频失败不阻断视频导出
+                LogStore.log("VideoExporter: audio mix/remux failed (keeping silent video) error=\(error)")
+            }
+            try? FileManager.default.removeItem(at: mixedURL)
+        }
+        progress(1.0)
+
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        LogStore.log("VideoExporter: done elapsed=\(Int(Date().timeIntervalSince(start)))s size=\(size) bytes")
+        logAlphaStatus(of: url, tag: "VideoExporter")
+    }
+
+    // MARK: - 视频轨
+
+    private func writeVideoTrack(
+        _ composition: Composition,
+        format: ExportFormat,
+        to url: URL,
+        frameCount: Int,
+        progress: @escaping (Double) -> Void,
+        isCancelled: @escaping () -> Bool
+    ) async throws {
+        let width = max(2, Int(composition.canvas.width))
+        let height = max(2, Int(composition.canvas.height))
+        let start = Date()
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let codec: AVVideoCodecType = format == .h264 ? .h264 : .hevcWithAlpha
@@ -29,6 +89,7 @@ public struct VideoExporter {
         ]
         let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         videoInput.expectsMediaDataInRealTime = false
+        videoInput.mediaTimeScale = 600
         guard writer.canAdd(videoInput) else { throw ExportError.renderFailed }
         writer.add(videoInput)
 
@@ -41,31 +102,36 @@ public struct VideoExporter {
             ]
         )
 
-        // 音频轨（如需）
-        let hasAudio = !composition.audioClips.isEmpty
-        var audioInput: AVAssetWriterInput?
-        if hasAudio {
-            let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: [
-                AVFormatIDKey: kAudioFormatMPEG4AAC,
-                AVSampleRateKey: 44_100,
-                AVNumberOfChannelsKey: 2,
-                AVEncoderBitRateKey: 128_000
-            ])
-            audio.expectsMediaDataInRealTime = false
-            if writer.canAdd(audio) {
-                writer.add(audio)
-                audioInput = audio
-            }
+        guard writer.startWriting() else {
+            LogStore.log("VideoExporter: startWriting failed status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
+            throw ExportError.renderFailed
         }
-
-        guard writer.startWriting() else { throw ExportError.renderFailed }
         writer.startSession(atSourceTime: .zero)
 
-        // 1. 渲染视频帧
-        let renderer = CompositionRenderer()
-        let frameCount = max(1, Int(composition.duration * composition.fps))
+        // 导出用软件渲染，避免 CIContext GPU 工作与 VideoToolbox 编码器争用导致 writer 卡死
+        let renderer = CompositionRenderer(context: CIContext(options: [
+            .workingColorSpace: NSNull(),
+            .outputColorSpace: NSNull(),
+            .useSoftwareRenderer: true
+        ]))
         for index in 0..<frameCount {
+            let stallStart = Date()
+            var lastStallLog = Date()
             while !videoInput.isReadyForMoreMediaData {
+                if writer.status == .failed {
+                    LogStore.log("VideoExporter: writer failed mid-way index=\(index)/\(frameCount) error=\(String(describing: writer.error))")
+                    throw ExportError.renderFailed
+                }
+                if Date().timeIntervalSince(stallStart) > 15 {
+                    LogStore.log("VideoExporter: ❌ writer stalled 15s, aborting index=\(index)/\(frameCount) status=\(writer.status.rawValue)")
+                    videoInput.markAsFinished()
+                    await writer.finishWriting()
+                    throw ExportError.renderFailed
+                }
+                if Date().timeIntervalSince(lastStallLog) > 5 {
+                    LogStore.log("VideoExporter: ⚠️ isReadyForMoreMediaData waiting > 5s index=\(index) status=\(writer.status.rawValue)")
+                    lastStallLog = Date()
+                }
                 try await Task.sleep(nanoseconds: 3_000_000)
             }
             if isCancelled() || Task.isCancelled {
@@ -73,57 +139,121 @@ public struct VideoExporter {
                 await writer.finishWriting()
                 throw ExportError.cancelled
             }
-            guard let pool = adaptor.pixelBufferPool else { throw ExportError.renderFailed }
+            let renderStart = Date()
+            guard let pool = adaptor.pixelBufferPool else {
+                LogStore.log("VideoExporter: pixelBufferPool is nil index=\(index) status=\(writer.status.rawValue)")
+                throw ExportError.renderFailed
+            }
             var pixelBuffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
             guard let buffer = pixelBuffer else { throw ExportError.renderFailed }
             renderer.render(composition, at: Double(index) / composition.fps, into: buffer)
-            let time = CMTime(value: CMTimeValue(index), timescale: CMTimeScale(composition.fps))
-            guard adaptor.append(buffer, withPresentationTime: time) else { throw ExportError.renderFailed }
-            progress(Double(index + 1) / Double(frameCount + 1))
+            let renderCost = Date().timeIntervalSince(renderStart)
+            if renderCost > 2 {
+                LogStore.log("VideoExporter: ⚠️ frame \(index) render slow cost=\(Int(renderCost))s")
+            }
+            let time = CMTime(seconds: Double(index) / composition.fps, preferredTimescale: 600)
+            guard adaptor.append(buffer, withPresentationTime: time) else {
+                LogStore.log("VideoExporter: append failed index=\(index)/\(frameCount) status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
+                throw ExportError.renderFailed
+            }
+            let fraction = Double(index + 1) / Double(frameCount) * 0.95
+            if index % 20 == 0 || index == frameCount - 1 {
+                LogStore.log("VideoExporter: video frame \(index + 1)/\(frameCount) elapsed=\(Int(Date().timeIntervalSince(start)))s")
+            }
+            progress(fraction)
         }
         videoInput.markAsFinished()
 
-        // 2. 离线混音并写入音频轨
-        if let audioInput {
-            let mixedURL = url.deletingPathExtension().appendingPathExtension("mix.m4a")
-            do {
-                try await OfflineAudioMixer().mix(
-                    composition.audioClips,
-                    duration: composition.duration,
-                    sourceResolver: sourceResolver,
-                    to: mixedURL
-                )
-                try await appendAudio(from: mixedURL, to: audioInput)
-            } catch {
-                // 音频失败不阻断视频导出
-            }
-            try? FileManager.default.removeItem(at: mixedURL)
-            audioInput.markAsFinished()
-        }
-
         await writer.finishWriting()
-        guard writer.status == .completed else { throw ExportError.renderFailed }
+        guard writer.status == .completed else {
+            LogStore.log("VideoExporter: finishWriting failed status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
+            throw ExportError.renderFailed
+        }
     }
 
-    private func appendAudio(from url: URL, to input: AVAssetWriterInput) async throws {
-        let asset = AVURLAsset(url: url)
-        let reader = try AVAssetReader(asset: asset)
-        guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return }
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM
-        ])
-        output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else { return }
-        reader.add(output)
-        guard reader.startReading() else { return }
+    // MARK: - 音视频合并
 
-        while let sample = output.copyNextSampleBuffer() {
-            while !input.isReadyForMoreMediaData {
-                try await Task.sleep(nanoseconds: 3_000_000)
-            }
-            if !input.append(sample) { break }
+    /// 将纯视频轨与混音文件合并为最终视频（passthrough 不重编码，保留 alpha 通道）
+    private func remux(videoURL: URL, audioURL: URL, to outputURL: URL) async throws {
+        let composition = AVMutableComposition()
+        let videoAsset = AVURLAsset(url: videoURL)
+        guard let videoTrack = try await videoAsset.loadTracks(withMediaType: .video).first,
+              let targetVideo = composition.addMutableTrack(
+                  withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid
+              ) else {
+            throw ExportError.renderFailed
         }
-        reader.cancelReading()
+        let duration = try await videoAsset.load(.duration)
+        let videoRange = CMTimeRange(start: .zero, duration: duration)
+        try targetVideo.insertTimeRange(videoRange, of: videoTrack, at: .zero)
+
+        let audioAsset = AVURLAsset(url: audioURL)
+        if let audioTrack = try await audioAsset.loadTracks(withMediaType: .audio).first,
+           let targetAudio = composition.addMutableTrack(
+               withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid
+           ) {
+            try? targetAudio.insertTimeRange(videoRange, of: audioTrack, at: .zero)
+        }
+
+        guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough) else {
+            throw ExportError.renderFailed
+        }
+        let tempURL = outputURL.deletingPathExtension().appendingPathExtension("remux.mov")
+        try? FileManager.default.removeItem(at: tempURL)
+        session.outputURL = tempURL
+        session.outputFileType = .mov
+        session.shouldOptimizeForNetworkUse = false
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            // 60s 超时保护，防止 AVAssetExportSession 挂起
+            let timeout = DispatchWorkItem {
+                session.cancelExport()
+                continuation.resume(throwing: ExportError.renderFailed)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: timeout)
+            session.exportAsynchronously {
+                timeout.cancel()
+                switch session.status {
+                case .completed:
+                    continuation.resume()
+                case .cancelled:
+                    continuation.resume(throwing: CancellationError())
+                default:
+                    LogStore.log("VideoExporter: remux failed status=\(session.status.rawValue) error=\(String(describing: session.error))")
+                    continuation.resume(throwing: ExportError.renderFailed)
+                }
+            }
+        }
+
+        try? FileManager.default.removeItem(at: outputURL)
+        try FileManager.default.moveItem(at: tempURL, to: outputURL)
+    }
+
+    // MARK: - 校验
+
+    /// 读回导出文件，记录视频轨是否带 alpha 通道
+    private func logAlphaStatus(of url: URL, tag: String) {
+        Task {
+            let asset = AVURLAsset(url: url)
+            guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return }
+            var codes: [String] = []
+            var alphaModes: [String] = []
+            for formatDescription in track.formatDescriptions {
+                let desc = formatDescription as! CMFormatDescription
+                codes.append(fourCC(CMFormatDescriptionGetMediaSubType(desc)))
+                let alpha = CMFormatDescriptionGetExtension(
+                    desc, extensionKey: kCMFormatDescriptionExtension_AlphaChannelMode as CFString
+                )
+                alphaModes.append(String(describing: alpha))
+            }
+            LogStore.log("\(tag): alpha check subtype=\(codes.joined(separator: ",")) alphaMode=\(alphaModes.joined(separator: ","))")
+        }
+    }
+
+    private func fourCC(_ code: FourCharCode) -> String {
+        String(format: "%c%c%c%c",
+               Int((code >> 24) & 0xFF), Int((code >> 16) & 0xFF),
+               Int((code >> 8) & 0xFF), Int(code & 0xFF))
     }
 }

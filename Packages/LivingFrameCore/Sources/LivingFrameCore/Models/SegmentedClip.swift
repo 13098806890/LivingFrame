@@ -10,13 +10,19 @@ public struct SegmentedClip: Identifiable {
     public let frameCount: Int
     public let width: Int
     public let height: Int
+    /// 创建时间（持久化恢复时用于排序）
+    public var createdAt: Date = Date()
     /// PNG 帧序列目录（00000.png, 00001.png ...）
     public let folderURL: URL
     /// 提取出的 m4a 音频（无音频轨时为 nil）
     public var audioURL: URL?
+    /// 边缘效果（渲染时应用）
+    public var edgeStyle: ClipEdgeStyle = .none
+    /// 贴纸风格（渲染时应用）
+    public var stickerStyle: StickerStyle = .none
 
     public var duration: TimeInterval {
-        TimeInterval(frameCount) / fps
+        fps > 0 ? TimeInterval(frameCount) / fps : 1
     }
 
     public func frameURL(index: Int) -> URL {

@@ -5,27 +5,41 @@ import Photos
 import PhotosUI
 import SwiftUI
 
+/// 素材库浏览范围
+enum LibraryScope: Hashable {
+    case all
+    case unfiled
+    case folder(String)
+}
+
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var loadError: String?
-    /// 待保存的素材（触发格式选择弹窗）
-    @State private var clipToSave: SegmentedClip?
+    /// iCloud 素材下载进度（nil 表示进度未知）
+    @State private var isDownloading = false
+    @State private var downloadProgress: Double?
+    @State private var showNewFolderAlert = false
+    @State private var newFolderName = ""
+    /// 当前拖拽悬停的目标文件夹（用于高亮）
+    @State private var dragOverFolderID: String?
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    pickerSection
-                    if appState.isSegmenting {
-                        segmentationCard
-                    }
-                    clipsSection
+            VStack(spacing: 16) {
+                pickerSection
+                foldersSection
+                if isDownloading {
+                    downloadCard
                 }
-                .padding()
+                if appState.isSegmenting {
+                    segmentationCard
+                }
+                clipsSection
             }
+            .padding(.horizontal)
             .navigationTitle("素材库")
             .magicBackground()
             .toolbar {
@@ -41,6 +55,18 @@ struct LibraryView: View {
                     }
                 }
             }
+            .alert("新建文件夹", isPresented: $showNewFolderAlert) {
+                TextField("文件夹名称", text: $newFolderName)
+                Button("创建") {
+                    appState.createFolder(named: newFolderName)
+                    newFolderName = ""
+                }
+                Button("取消", role: .cancel) {
+                    newFolderName = ""
+                }
+            } message: {
+                Text("把抠好的素材分门别类收纳")
+            }
             .alert(
                 NSLocalizedString(
                     loadError != nil ? "导入失败" : "抠图失败",
@@ -54,17 +80,6 @@ struct LibraryView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(loadErrorMessage ?? "")
-            }
-            .alert(
-                "保存到相册",
-                isPresented: Binding(
-                    get: { appState.librarySaveResult != nil },
-                    set: { if !$0 { appState.librarySaveResult = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(appState.librarySaveResult ?? "")
             }
         }
     }
@@ -94,9 +109,34 @@ struct LibraryView: View {
         }
         .buttonStyle(.plain)
         .onChange(of: pickerItems) { _, items in
-            guard let item = items.first else { return }
+            guard !items.isEmpty else { return }
             pickerItems.removeAll()
-            load(item)
+            Task {
+                isDownloading = true
+                downloadProgress = nil
+                defer { isDownloading = false }
+                // 1. 并行下载所有选中素材（iCloud 下载可多线程加速）
+                var sources: [ImportSource] = []
+                await withTaskGroup(of: ImportSource?.self) { group in
+                    for item in items {
+                        group.addTask { await load(item) }
+                    }
+                    for await source in group {
+                        if let source { sources.append(source) }
+                    }
+                }
+                // 2. 串行抠图：一次一个素材，进度条不互相干扰，抠完一张显示一张
+                for source in sources {
+                    switch source {
+                    case .video(let url, let name, let stillOrientation):
+                        await appState.startSegmenting(
+                            url: url, name: name, stillOrientation: stillOrientation
+                        )
+                    case .photo(let cgImage, let name):
+                        await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
+                    }
+                }
+            }
         }
     }
 
@@ -104,55 +144,61 @@ struct LibraryView: View {
         loadError ?? appState.segmentationError
     }
 
-    private func load(_ item: PhotosPickerItem) {
-        Task {
-            let types = item.supportedContentTypes
-            LogStore.log("load: itemIdentifier=\(item.itemIdentifier ?? "nil") types=\(types.map(\.identifier))")
-            // 1. Live Photo：PHAsset 视频轨优先，PHLivePhoto 传输兜底
-            //    （iCloud 未下载的 Live Photo 常不报 live-photo 类型、itemIdentifier 为 nil）
-            if await loadLivePhoto(item: item) { return }
-            // 2. 视频
-            if types.contains(where: { $0.conforms(to: .movie) }),
-               await loadMovie(item: item) { return }
-            // 3. 普通照片：单帧抠图
-            if types.contains(where: { $0.conforms(to: .image) }),
-               await loadPhoto(item: item) { return }
-            await MainActor.run {
-                loadError = NSLocalizedString("无法读取所选素材", comment: "Load failure detail")
-            }
+    /// 下载完成的待抠图素材（下载与抠图分离：下载并行，抠图串行）
+    private enum ImportSource {
+        case video(url: URL, name: String, stillOrientation: CGImagePropertyOrientation)
+        case photo(cgImage: CGImage, name: String)
+    }
+
+    private func load(_ item: PhotosPickerItem) async -> ImportSource? {
+        let types = item.supportedContentTypes
+        LogStore.log("load: itemIdentifier=\(item.itemIdentifier ?? "nil") types=\(types.map(\.identifier))")
+        // 1. Live Photo：PHAsset 视频轨优先，PHLivePhoto 传输兜底
+        //    （iCloud 未下载的 Live Photo 常不报 live-photo 类型、itemIdentifier 为 nil）
+        if let source = await loadLivePhoto(item: item) { return source }
+        // 2. 视频
+        if types.contains(where: { $0.conforms(to: .movie) }),
+           let source = await loadMovie(item: item) { return source }
+        // 3. 普通照片：单帧抠图
+        if types.contains(where: { $0.conforms(to: .image) }),
+           let source = await loadPhoto(item: item) { return source }
+        await MainActor.run {
+            loadError = NSLocalizedString("无法读取所选素材", comment: "Load failure detail")
         }
+        return nil
     }
 
-    private func loadLivePhoto(item: PhotosPickerItem) async -> Bool {
-        if await loadLivePhotoVideo(item: item) { return true }
-        if await loadLivePhotoTransfer(item: item) { return true }
-        return false
+    private func loadLivePhoto(item: PhotosPickerItem) async -> ImportSource? {
+        if let source = await loadLivePhotoVideo(item: item) { return source }
+        if let source = await loadLivePhotoTransfer(item: item) { return source }
+        return nil
     }
 
-    private func loadLivePhotoVideo(item: PhotosPickerItem) async -> Bool {
+    private func loadLivePhotoVideo(item: PhotosPickerItem) async -> ImportSource? {
         guard let id = item.itemIdentifier else {
-            LogStore.log("loadLivePhotoVideo: 无 itemIdentifier，尝试 PHLivePhoto 传输")
-            return false
+            LogStore.log("loadLivePhotoVideo: no itemIdentifier, trying PHLivePhoto transfer")
+            return nil
         }
         let status = await requestPhotoLibraryAccess()
-        LogStore.log("loadLivePhotoVideo: 相册权限=\(status.rawValue)")
+        LogStore.log("loadLivePhotoVideo: photo library permission=\(status.rawValue)")
         guard status == .authorized || status == .limited,
               let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject else {
-            LogStore.log("loadLivePhotoVideo: PHAsset 获取失败")
-            return false
+            LogStore.log("loadLivePhotoVideo: PHAsset fetch failed")
+            return nil
         }
         let resources = PHAssetResource.assetResources(for: asset)
         LogStore.log("loadLivePhotoVideo: asset=\(asset.localIdentifier) isLivePhoto=\(asset.mediaSubtypes.contains(.photoLive)) mediaType=\(asset.mediaType.rawValue) resources=\(resources.map { "\($0.type.rawValue):\($0.originalFilename):\($0.value(forKey: "fileSize") ?? "?")" })")
         // 仅处理真正的 Live Photo；普通视频/照片交给后续分支
         guard asset.mediaSubtypes.contains(.photoLive) else {
-            LogStore.log("loadLivePhotoVideo: 非 Live Photo")
-            return false
+            LogStore.log("loadLivePhotoVideo: not a Live Photo")
+            return nil
         }
         let options = PHVideoRequestOptions()
         options.deliveryMode = .highQualityFormat
         options.isNetworkAccessAllowed = true
         options.progressHandler = { progress, _, _, _ in
-            LogStore.log("loadLivePhotoVideo: iCloud 视频下载进度=\(Int(progress * 100))%")
+            LogStore.log("loadLivePhotoVideo: iCloud video download progress=\(Int(progress * 100))%")
+            Task { @MainActor in self.downloadProgress = progress }
         }
         let result: (url: URL?, error: Error?)? = await withCheckedContinuation { continuation in
             PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, info in
@@ -160,49 +206,50 @@ struct LibraryView: View {
             }
         }
         guard let result, let url = result.url else {
-            LogStore.log("loadLivePhotoVideo: requestAVAsset 失败 error=\(String(describing: result?.error))")
-            return false
+            LogStore.log("loadLivePhotoVideo: requestAVAsset failed error=\(String(describing: result?.error))")
+            return nil
         }
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        LogStore.log("loadLivePhotoVideo: 视频 URL=\(url.path) 大小=\(size) bytes")
+        LogStore.log("loadLivePhotoVideo: video URL=\(url.path) size=\(size) bytes")
         guard let copy = try? await copyToTemporaryFile(url) else {
-            LogStore.log("loadLivePhotoVideo: 拷贝到临时目录失败")
-            return false
+            LogStore.log("loadLivePhotoVideo: copy to temp failed")
+            return nil
         }
-        LogStore.log("loadLivePhotoVideo: 已拷贝到 \(copy.path)")
-        // 以静态图 EXIF 朝向传给抠图管线（视频轨无旋转元数据时用于 180° 修正）
+        LogStore.log("loadLivePhotoVideo: copied to \(copy.path)")
+        // 以静态图 EXIF 朝向传给抠图管线（视频轨无旋转元数据时用于方向修正）
         let stillOrientation = await stillOrientation(for: asset)
         let name = resources.first?.originalFilename ?? copy.lastPathComponent
-        await MainActor.run {
-            appState.startSegmenting(url: copy, name: name, stillOrientation: stillOrientation)
-        }
-        return true
+        return .video(url: copy, name: name, stillOrientation: stillOrientation)
     }
 
     /// 兜底路径：PHLivePhoto 传输 + 提取 pairedVideo（iCloud 素材 itemIdentifier/类型缺失时使用）
-    private func loadLivePhotoTransfer(item: PhotosPickerItem) async -> Bool {
+    private func loadLivePhotoTransfer(item: PhotosPickerItem) async -> ImportSource? {
         let livePhoto: PHLivePhoto?
         do {
             livePhoto = try await item.loadTransferable(type: PHLivePhoto.self)
         } catch {
-            LogStore.log("loadLivePhotoTransfer: PHLivePhoto 传输失败 error=\(error)")
-            return false
+            LogStore.log("loadLivePhotoTransfer: PHLivePhoto transfer failed error=\(error)")
+            return nil
         }
         guard let livePhoto else {
-            LogStore.log("loadLivePhotoTransfer: 非 Live Photo")
-            return false
+            LogStore.log("loadLivePhotoTransfer: not a Live Photo")
+            return nil
         }
         let resources = PHAssetResource.assetResources(for: livePhoto)
         LogStore.log("loadLivePhotoTransfer: resources=\(resources.map { "\($0.type.rawValue):\($0.originalFilename):\($0.value(forKey: "fileSize") ?? "?")" })")
         guard let videoResource = resources.first(where: { $0.type == .pairedVideo }) else {
-            LogStore.log("loadLivePhotoTransfer: 无 pairedVideo 资源")
-            return false
+            LogStore.log("loadLivePhotoTransfer: no pairedVideo resource")
+            return nil
         }
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("mov")
         let options = PHAssetResourceRequestOptions()
         options.isNetworkAccessAllowed = true
+        options.progressHandler = { progress in
+            LogStore.log("loadLivePhotoTransfer: iCloud video download progress=\(Int(progress * 100))%")
+            Task { @MainActor in self.downloadProgress = progress }
+        }
         let writeError: Error? = await withCheckedContinuation { continuation in
             PHAssetResourceManager.default().writeData(
                 for: videoResource,
@@ -213,12 +260,12 @@ struct LibraryView: View {
             }
         }
         guard writeError == nil else {
-            LogStore.log("loadLivePhotoTransfer: 视频写入失败 error=\(String(describing: writeError))")
-            return false
+            LogStore.log("loadLivePhotoTransfer: video write failed error=\(String(describing: writeError))")
+            return nil
         }
         let size = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int) ?? 0
-        LogStore.log("loadLivePhotoTransfer: 视频已写入 \(destination.path) 大小=\(size) bytes")
-        // 以配套静态图 EXIF 朝向传给抠图管线（视频轨无旋转元数据时用于 180° 修正）
+        LogStore.log("loadLivePhotoTransfer: video written \(destination.path) size=\(size) bytes")
+        // 以配套静态图 EXIF 朝向传给抠图管线（视频轨无旋转元数据时用于方向修正）
         var stillOrientation = CGImagePropertyOrientation.up
         if let stillResource = resources.first(where: { $0.type == .photo || $0.type == .fullSizePhoto }) {
             let stillURL = FileManager.default.temporaryDirectory
@@ -233,16 +280,18 @@ struct LibraryView: View {
                 stillOrientation = exif
             }
         }
-        await MainActor.run {
-            appState.startSegmenting(url: destination, name: videoResource.originalFilename, stillOrientation: stillOrientation)
-        }
-        return true
+        return .video(url: destination, name: videoResource.originalFilename, stillOrientation: stillOrientation)
     }
 
     /// 从 PHAsset 读静态图 EXIF 朝向
     private func stillOrientation(for asset: PHAsset) async -> CGImagePropertyOrientation {
-        await withCheckedContinuation { continuation in
-            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: nil) { _, _, orientation, _ in
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.progressHandler = { progress, _, _, _ in
+            Task { @MainActor in self.downloadProgress = progress }
+        }
+        return await withCheckedContinuation { continuation in
+            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { _, _, orientation, _ in
                 continuation.resume(returning: orientation)
             }
         }
@@ -267,37 +316,31 @@ struct LibraryView: View {
         }
     }
 
-    private func loadMovie(item: PhotosPickerItem) async -> Bool {
+    private func loadMovie(item: PhotosPickerItem) async -> ImportSource? {
         guard let movie = try? await item.loadTransferable(type: MovieFile.self) else {
-            LogStore.log("loadMovie: MovieFile 加载失败")
-            return false
+            LogStore.log("loadMovie: MovieFile load failed")
+            return nil
         }
         let size = (try? FileManager.default.attributesOfItem(atPath: movie.url.path)[.size] as? Int) ?? 0
-        LogStore.log("loadMovie: URL=\(movie.url.path) 大小=\(size) bytes")
-        await MainActor.run {
-            appState.startSegmenting(url: movie.url, name: movie.url.lastPathComponent)
-        }
-        return true
+        LogStore.log("loadMovie: URL=\(movie.url.path) size=\(size) bytes")
+        return .video(url: movie.url, name: movie.url.lastPathComponent, stillOrientation: .up)
     }
 
-    private func loadPhoto(item: PhotosPickerItem) async -> Bool {
+    private func loadPhoto(item: PhotosPickerItem) async -> ImportSource? {
         guard let data = try? await item.loadTransferable(type: Data.self) else {
-            LogStore.log("loadPhoto: Data 加载失败")
-            return false
+            LogStore.log("loadPhoto: Data load failed")
+            return nil
         }
         guard let image = UIImage(data: data),
               let fixed = image.fixedOrientation() else {
-            LogStore.log("loadPhoto: UIImage 解码失败 data=\(data.count) bytes")
-            return false
+            LogStore.log("loadPhoto: UIImage decode failed data=\(data.count) bytes")
+            return nil
         }
-        LogStore.log("loadPhoto: data=\(data.count) bytes 尺寸=\(image.size.width)x\(image.size.height) orientation=\(image.imageOrientation.rawValue)")
-        await MainActor.run {
-            appState.startPhotoSegmenting(
-                cgImage: fixed,
-                name: NSLocalizedString("照片", comment: "Photo clip name")
-            )
-        }
-        return true
+        LogStore.log("loadPhoto: data=\(data.count) bytes size=\(image.size.width)x\(image.size.height) orientation=\(image.imageOrientation.rawValue)")
+        return .photo(
+            cgImage: fixed,
+            name: NSLocalizedString("照片", comment: "Photo clip name")
+        )
     }
 
     private func copyToTemporaryFile(_ url: URL) async throws -> URL {
@@ -308,6 +351,113 @@ struct LibraryView: View {
         return copy
     }
 
+    // MARK: - 文件夹
+
+    /// 文件夹栏：最左侧「新建」固定不动，右侧已有文件夹可横向滑动
+    private var foldersSection: some View {
+        SectionCard(title: nil) {
+            HStack(spacing: 10) {
+                // 新建（图标按钮，固定位置，不随滚动）
+                Button {
+                    showNewFolderAlert = true
+                } label: {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.title3)
+                        .frame(width: 46, height: 46)
+                        .background(LF.surface2.opacity(0.5), in: Circle())
+                        .overlay {
+                            Circle()
+                                .strokeBorder(LF.surface2, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                        }
+                        .foregroundStyle(LF.textPrimary)
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+
+                // 已有文件夹（可横向滑动）
+                if appState.rootFolders().isEmpty {
+                    Text(NSLocalizedString("还没有文件夹", comment: "No folders"))
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(appState.rootFolders()) { folder in
+                                NavigationLink {
+                                    FolderDetailView(folder: folder)
+                                } label: {
+                                    HStack(spacing: 7) {
+                                        Image(systemName: "folder.fill")
+                                            .font(.title3)
+                                            .foregroundStyle(dragOverFolderID == folder.id ? .black : LF.gold)
+                                        Text(folder.name)
+                                            .lineLimit(1)
+                                        Text("\(folder.clipIDs.count)")
+                                            .font(.caption.monospacedDigit())
+                                            .foregroundStyle(dragOverFolderID == folder.id ? .black.opacity(0.6) : LF.textSecondary)
+                                        if appState.hasChildFolders(folder.id) {
+                                            Image(systemName: "chevron.right")
+                                                .font(.caption2)
+                                                .foregroundStyle(dragOverFolderID == folder.id ? .black.opacity(0.5) : LF.textSecondary)
+                                        }
+                                    }
+                                    .font(.subheadline.weight(.semibold))
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        dragOverFolderID == folder.id ? LF.gold : LF.surface2,
+                                        in: Capsule()
+                                    )
+                                    .foregroundStyle(dragOverFolderID == folder.id ? .black : LF.textPrimary)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        appState.deleteFolder(folder)
+                                    } label: {
+                                        Label(NSLocalizedString("删除文件夹", comment: "Delete folder"), systemImage: "trash")
+                                    }
+                                }
+                                // 拖拽素材到此文件夹
+                                .dropDestination(for: String.self) { clipIDs, _ in
+                                    for clipID in clipIDs {
+                                        appState.moveClip(clipID, toFolder: folder.id)
+                                    }
+                                    dragOverFolderID = nil
+                                    return true
+                                } isTargeted: { targeted in
+                                    dragOverFolderID = targeted ? folder.id : nil
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 下载 / 保存进度
+
+    private var downloadCard: some View {
+        SectionCard(title: "正在下载") {
+            HStack {
+                if let downloadProgress {
+                    ProgressView(value: downloadProgress)
+                        .tint(LF.gold)
+                    Text(String(format: "%d%%", Int(downloadProgress * 100)))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(LF.textSecondary)
+                } else {
+                    ProgressView()
+                        .tint(LF.gold)
+                    Text("从 iCloud 下载中…")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+            }
+        }
+    }
+
     // MARK: - 抠图进度
 
     private var segmentationCard: some View {
@@ -315,7 +465,7 @@ struct LibraryView: View {
             HStack {
                 ProgressView(value: appState.segmentationProgress)
                     .tint(LF.gold)
-                Text(String(format: NSLocalizedString("percent", comment: "Progress"), Int(appState.segmentationProgress * 100)))
+                Text(String(format: "%d%%", Int(appState.segmentationProgress * 100)))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(LF.textSecondary)
             }
@@ -329,73 +479,81 @@ struct LibraryView: View {
     // MARK: - 素材网格
 
     private var clipsSection: some View {
-        SectionCard(title: "已抠素材") {
+        SectionCard(title: NSLocalizedString("全部素材", comment: "All clips")) {
             if appState.clips.isEmpty {
                 EmptyStateView(
-                    icon: "wand.and.stars",
+                    icon: "folder",
                     title: "还没有素材",
-                    message:                     "选择视频、Live Photo 或照片，\n人物会被自动抠出来"
+                    message: "选择视频、Live Photo 或照片，\n人物会被自动抠出来"
                 )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
             } else {
-                LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(appState.clips) { clip in
-                        ClipCell(clip: clip) {
-                            appState.addElementFromClip(clip)
-                        }
-                        .contextMenu {
-                            if clip.audioURL != nil {
-                                Button {
-                                    appState.addAudioClip(from: clip)
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(appState.clips) { clip in
+                            ClipCell(clip: clip)
+                            // 长按拖动到文件夹
+                            .draggable(clip.id)
+                            .contextMenu {
+                                Menu {
+                                    ForEach(ClipEdgeStyle.allCases) { style in
+
+                                        Button {
+                                            appState.setClipEdgeStyle(clip.id, style)
+                                        } label: {
+                                            if clip.edgeStyle == style {
+                                                Label(style.title, systemImage: "checkmark")
+                                            } else {
+                                                Text(style.title)
+                                            }
+                                        }
+                                    }
                                 } label: {
-                                    Label("添加到音轨", systemImage: "waveform")
+                                    Label("添加边缘", systemImage: "square.dashed")
+                                }
+                                Menu("移动到文件夹") {
+                                    if isClipFiled(clip.id) {
+                                        Button("移出文件夹") {
+                                            appState.moveClip(clip.id, toFolder: nil)
+                                        }
+                                    }
+                                    ForEach(appState.folders) { folder in
+                                        Button(folder.name) {
+                                            appState.moveClip(clip.id, toFolder: folder.id)
+                                        }
+                                    }
+                                }
+                                Button(role: .destructive) {
+                                    appState.deleteClip(clip.id)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
                                 }
                             }
-                            Button {
-                                clipToSave = clip
-                            } label: {
-                                Label("保存到相册", systemImage: "square.and.arrow.down")
-                            }
-                        }
-                        .confirmationDialog(
-                            "保存到相册",
-                            isPresented: Binding(
-                                get: { clipToSave != nil },
-                                set: { if !$0 { clipToSave = nil } }
-                            ),
-                            titleVisibility: .visible
-                        ) {
-                            ForEach(ExportFormat.allCases) { format in
-                                Button(format.title) {
-                                    guard let clip = clipToSave else { return }
-                                    clipToSave = nil
-                                    Task { await appState.saveClipToLibrary(clip, format: format) }
-                                }
-                            }
-                            Button("取消", role: .cancel) {
-                                clipToSave = nil
-                            }
-                        } message: {
-                            Text("选择保存格式")
                         }
                     }
                 }
+                .scrollIndicators(.hidden)
             }
         }
     }
+
+    private func isClipFiled(_ clipID: String) -> Bool {
+        appState.folders.contains { $0.clipIDs.contains(clipID) }
+    }
 }
 
-private struct ClipCell: View {
+struct ClipCell: View {
     let clip: SegmentedClip
-    let onAdd: () -> Void
 
     @State private var frameIndex = 0
-    private let timer = Timer.publish(every: 1.0 / 30, on: .main, in: .common).autoconnect()
+    private let timer = Timer.publish(every: 1.0 / 15, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 6) {
             ZStack {
                 CheckerboardView()
-                if let frame = clip.loadFrame(index: frameIndex) {
+                if let frame = FrameCache.shared.cachedThumbnail(for: clip, index: frameIndex, maxPixelSize: 480) {
                     Image(decorative: frame, scale: 1)
                         .resizable()
                         .scaledToFill()
@@ -408,6 +566,16 @@ private struct ClipCell: View {
             .overlay(alignment: .bottomTrailing) {
                 if clip.audioURL != nil {
                     Image(systemName: "waveform")
+                        .font(.caption)
+                        .foregroundStyle(LF.gold)
+                        .padding(6)
+                        .background(.black.opacity(0.55), in: Circle())
+                        .padding(4)
+                }
+            }
+            .overlay(alignment: .bottomLeading) {
+                if clip.edgeStyle != .none {
+                    Image(systemName: "square.dashed")
                         .font(.caption)
                         .foregroundStyle(LF.gold)
                         .padding(6)
@@ -428,21 +596,15 @@ private struct ClipCell: View {
                 Text(clip.name)
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
-                Text(String(format: NSLocalizedString("clip.meta", comment: "Clip metadata"), clip.duration, clip.frameCount))
+                Text("\(clip.width)×\(clip.height) · \(Int(clip.fps.rounded()))fps · \(clip.frameCount)帧")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+                    .lineLimit(1)
+                Text(ByteCountFormatter.string(fromByteCount: FrameCache.shared.clipSizeBytes(clip), countStyle: .file))
                     .font(.caption2)
                     .foregroundStyle(LF.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                onAdd()
-            } label: {
-                Label("加入画布", systemImage: "plus.circle")
-                    .font(.caption.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .tint(LF.gold)
         }
     }
 }
