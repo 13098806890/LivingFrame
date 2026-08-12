@@ -269,19 +269,17 @@ public struct CompositionRenderer {
         case .solid:
             styled = expanded
         case .dashed:
-            // 线段（虚线）：与实线完全相同的膨胀环，沿环方向开细缝切成段。
-            // 缝沿径向（垂直轮廓）且很细（6°），段沿轮廓方向、端部垂直轮廓，
-            // 间隔约 30%——这是"去掉实线中的一部分"的正确几何。
-            let center = CGPoint(x: image.extent.midX, y: image.extent.midY)
-            let sector = SectorPattern.image(
+            // 线段（虚线）：与实线完全相同的膨胀环，用 45° 菱形网格把环切成均匀段。
+            // 菱形网格无中心、无方向性（避免放射/蚊香），段在轮廓上均匀分布，
+            // 线宽=间隔（约 30%）。
+            let grid = DiamondGridPattern.image(
                 width: Int(expanded.extent.width),
                 height: Int(expanded.extent.height),
-                center: center,
-                segmentDegrees: 20,
-                gapDegrees: 6
+                spacing: 18,
+                lineWidth: 5
             )
-            if let sector {
-                let pattern = CIImage(cgImage: sector).cropped(to: expanded.extent)
+            if let grid {
+                let pattern = CIImage(cgImage: grid).cropped(to: expanded.extent)
                 styled = expanded.applyingFilter("CIMultiplyBlendMode", parameters: [
                     kCIInputBackgroundImageKey: pattern
                 ])
@@ -313,8 +311,7 @@ public struct CompositionRenderer {
         return image.composited(over: tinted(shifted, color: CIColor(hex: "000000")))
     }
 
-    /// 用 alpha 掩码染色：纯色 × 掩码（RGB 置为颜色，alpha 完全来自掩码）。
-    /// 不使用 CIColorMatrix（其在部分系统上 alpha 处理不可靠，会把透明区域染成不透明）
+    /// 用 alpha 掩码染色：纯色 × 掩码（RGB 置为颜色，alpha 来自掩码）
     private func tinted(_ mask: CIImage, color: CIColor) -> CIImage {
         let solid = CIImage(color: color).cropped(to: mask.extent)
         let clear = CIImage.clear.cropped(to: mask.extent)
@@ -440,16 +437,16 @@ extension CIColor {
 
 // MARK: - 虚线切缝图案
 
-/// 沿描边环开细缝用的图案：白底 + 从中心辐射的黑色窄缝（垂直轮廓方向）。
-/// 缝很细（如 6°）不会产生放射感，切出的段沿轮廓方向、端部垂直轮廓。
-private enum SectorPattern {
+/// 45° 菱形网格图案：双向 45° 斜线（线宽 = 间隔），把描边环切成均匀菱形段。
+/// 无中心、无方向性，避免放射感与蚊香效果。
+private enum DiamondGridPattern {
     static let lock = NSLock()
     static var cache: [String: CGImage] = [:]
 
     static func image(
-        width: Int, height: Int, center: CGPoint, segmentDegrees: CGFloat, gapDegrees: CGFloat
+        width: Int, height: Int, spacing: CGFloat, lineWidth: CGFloat
     ) -> CGImage? {
-        let key = "\(width)-\(height)-\(Int(segmentDegrees))-\(Int(gapDegrees))"
+        let key = "\(width)-\(height)-\(Int(spacing))-\(Int(lineWidth))"
         lock.lock()
         if let cached = cache[key] {
             lock.unlock()
@@ -457,8 +454,7 @@ private enum SectorPattern {
         }
         lock.unlock()
         guard let drawn = draw(
-            width: width, height: height, center: center,
-            segmentDegrees: segmentDegrees, gapDegrees: gapDegrees
+            width: width, height: height, spacing: spacing, lineWidth: lineWidth
         ) else { return nil }
         lock.lock()
         cache[key] = drawn
@@ -466,10 +462,9 @@ private enum SectorPattern {
         return drawn
     }
 
-    /// 白底 + 黑色窄缝（从中心辐射，角度宽 = gapDegrees，周期 = segmentDegrees）
+    /// 白底 + 双向 45° 黑色斜线（线宽 = 间隔）
     private static func draw(
-        width: Int, height: Int, center: CGPoint,
-        segmentDegrees: CGFloat, gapDegrees: CGFloat
+        width: Int, height: Int, spacing: CGFloat, lineWidth: CGFloat
     ) -> CGImage? {
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
         guard let ctx = CGContext(
@@ -479,20 +474,20 @@ private enum SectorPattern {
         ) else { return nil }
         ctx.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
         ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        let maxR = hypot(CGFloat(width), CGFloat(height))
-        ctx.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
-        var angle: CGFloat = 0
-        while angle < 360 {
-            let start = angle * .pi / 180
-            let end = (angle + gapDegrees) * .pi / 180
-            let path = CGMutablePath()
-            path.move(to: center)
-            path.addArc(center: center, radius: maxR, startAngle: start, endAngle: end, clockwise: false)
-            path.closeSubpath()
-            ctx.addPath(path)
-            angle += segmentDegrees
+        ctx.setStrokeColor(red: 0, green: 0, blue: 0, alpha: 1)
+        ctx.setLineWidth(lineWidth)
+        let diagonal = sqrt(CGFloat(width * width + height * height))
+        // 方向一：正斜线
+        for offset in stride(from: -diagonal, through: diagonal, by: spacing) {
+            ctx.move(to: CGPoint(x: CGFloat(width) + offset, y: 0))
+            ctx.addLine(to: CGPoint(x: offset, y: CGFloat(height)))
         }
-        ctx.fillPath()
+        // 方向二：反斜线
+        for offset in stride(from: -diagonal, through: diagonal, by: spacing) {
+            ctx.move(to: CGPoint(x: offset, y: 0))
+            ctx.addLine(to: CGPoint(x: CGFloat(width) + offset, y: CGFloat(height)))
+        }
+        ctx.strokePath()
         return ctx.makeImage()
     }
 }
