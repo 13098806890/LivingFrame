@@ -12,7 +12,8 @@ public final class FrameCache {
     /// 预览帧解码缓存（避免每帧重复磁盘解码导致素材库卡顿）
     private let frameLock = NSLock()
     private var frameCache: [String: CGImage] = [:]
-    private let frameCacheMax = 24
+    /// 多个素材循环播放时缓存须覆盖各素材最近几帧，太小会导致频繁清空重解码
+    private let frameCacheMax = 128
     /// 素材占用空间缓存（clipID → bytes）
     private var clipSizes: [String: Int64] = [:]
 
@@ -93,6 +94,9 @@ public final class FrameCache {
                 folderURL: dir,
                 audioURL: audioURL,
                 edgeStyle: manifest.edgeStyle ?? .none,
+                edgeLineStyle: manifest.edgeLineStyle ?? .solid,
+                edgeThickness: manifest.edgeThickness ?? .medium,
+                edgeColorHex: manifest.edgeColorHex ?? "FFFFFF",
                 stickerStyle: manifest.stickerStyle ?? .none
             )
         }
@@ -170,6 +174,9 @@ public final class FrameCache {
             createdAt: clip.createdAt,
             audioFilename: clip.audioURL?.lastPathComponent,
             edgeStyle: clip.edgeStyle,
+            edgeLineStyle: clip.edgeLineStyle,
+            edgeThickness: clip.edgeThickness,
+            edgeColorHex: clip.edgeColorHex,
             stickerStyle: clip.stickerStyle
         )
         guard let data = try? JSONEncoder().encode(manifest) else { return }
@@ -188,6 +195,9 @@ private struct ClipManifest: Codable {
     let createdAt: Date
     let audioFilename: String?
     let edgeStyle: ClipEdgeStyle?
+    let edgeLineStyle: EdgeLineStyle?
+    let edgeThickness: EdgeThickness?
+    let edgeColorHex: String?
     let stickerStyle: StickerStyle?
 }
 

@@ -130,13 +130,13 @@ struct AssetCell: View {
     let clip: SegmentedClip
 
     @State private var frameIndex = 0
-    private let timer = Timer.publish(every: 1.0 / 15, on: .main, in: .common).autoconnect()
+    private let timer = Timer.publish(every: 1.0 / 10, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 4) {
             ZStack {
                 CheckerboardView()
-                if let frame = FrameCache.shared.cachedThumbnail(for: clip, index: frameIndex, maxPixelSize: 360) {
+                if let frame = FrameCache.shared.cachedThumbnail(for: clip, index: frameIndex, maxPixelSize: 320) {
                     Image(decorative: frame, scale: 1)
                         .resizable()
                         .scaledToFill()

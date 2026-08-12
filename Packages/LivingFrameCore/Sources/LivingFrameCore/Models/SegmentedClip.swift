@@ -18,6 +18,12 @@ public struct SegmentedClip: Identifiable {
     public var audioURL: URL?
     /// 边缘效果（渲染时应用）
     public var edgeStyle: ClipEdgeStyle = .none
+    /// 描边线条样式
+    public var edgeLineStyle: EdgeLineStyle = .solid
+    /// 描边粗细
+    public var edgeThickness: EdgeThickness = .medium
+    /// 描边颜色（hex）
+    public var edgeColorHex: String = "FFFFFF"
     /// 贴纸风格（渲染时应用）
     public var stickerStyle: StickerStyle = .none
 

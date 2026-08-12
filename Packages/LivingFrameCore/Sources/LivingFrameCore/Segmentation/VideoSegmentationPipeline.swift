@@ -83,6 +83,8 @@ public struct VideoSegmentationPipeline {
         var firstSize: (width: Int, height: Int)?
         var skippedNoSubject = 0
         var skippedNoImage = 0
+        /// 上一帧分割结果（时域补全用，只存原始帧避免累计拖影）
+        var prevMaskedImage: CIImage?
 
         while let sample = output.copyNextSampleBuffer() {
             if isCancelled() {
@@ -119,10 +121,24 @@ public struct VideoSegmentationPipeline {
 
             do {
                 let segmented = try segmenter.segmentedImage(from: cgImage)
+                let current = CIImage(cgImage: segmented)
+                // 时域补全：与上一帧原始分割结果做并集（通道取最大）。
+                // 逐帧独立分割会偶发漏检（如腿部某帧缺失），并集让漏检帧用上一帧补全。
+                // 只与上一帧并集，不累计，避免人物移动产生拖影。
+                let output: CIImage
+                if let prev = prevMaskedImage {
+                    output = current.applyingFilter("CIMaximumCompositing", parameters: [
+                        kCIInputBackgroundImageKey: prev
+                    ])
+                } else {
+                    output = current
+                }
+                prevMaskedImage = current
+                guard let outCG = context.createCGImage(output, from: output.extent.integral) else { continue }
                 let frameURL = folder.appendingPathComponent(String(format: "%05d.png", index))
-                guard writePNG(segmented, to: frameURL) else { continue }
+                guard writePNG(outCG, to: frameURL) else { continue }
                 if firstSize == nil {
-                    firstSize = (segmented.width, segmented.height)
+                    firstSize = (outCG.width, outCG.height)
                 }
                 index += 1
                 progress?(ProgressInfo(

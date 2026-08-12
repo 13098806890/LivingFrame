@@ -84,15 +84,16 @@ struct ElementInspectorView: View {
                 slider(
                     label: "旋转",
                     value: Binding(
-                        get: { Double(element.transform.rotation) * 180 / Double.pi },
+                        // 画布 y 向上：rotation 正值=逆时针；滑块按常规约定正值=顺时针，故取反
+                        get: { -Double(element.transform.rotation) * 180 / Double.pi },
                         set: { value in
                             appState.updateElement(element.id) {
-                                $0.transform.rotation = CGFloat(value * Double.pi / 180)
+                                $0.transform.rotation = -CGFloat(value * Double.pi / 180)
                             }
                         }
                     ),
                     range: -180...180,
-                    text: "\(safeDegrees(element.transform.rotation))°"
+                    text: "\(safeDegrees(-element.transform.rotation))°"
                 )
             }
 
@@ -137,14 +138,21 @@ struct ElementInspectorView: View {
 
     // MARK: - 边缘效果
 
+    /// 描边可选颜色
+    private let edgeColors: [(name: String, hex: String)] = [
+        ("白", "FFFFFF"), ("黑", "000000"), ("金", "E8C05C"),
+        ("红", "E74C3C"), ("粉", "FF9FF3"), ("蓝", "54A0FF"),
+        ("绿", "1DD1A1"), ("紫", "8B7CF6")
+    ]
+
     private func edgePicker(_ clip: SegmentedClip) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("边缘效果")
+            Text("边缘")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(ClipEdgeStyle.allCases) { style in
+                    ForEach(ClipEdgeStyle.displayCases) { style in
                         Button {
                             appState.setClipEdgeStyle(clip.id, style)
                         } label: {
@@ -157,6 +165,61 @@ struct ElementInspectorView: View {
                                     in: Capsule()
                                 )
                                 .foregroundStyle(clip.edgeStyle == style ? .black : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            // 描边组合：线条样式 → 粗细 → 颜色
+            if clip.edgeStyle.isOutline {
+                HStack(spacing: 8) {
+                    ForEach(EdgeLineStyle.allCases) { lineStyle in
+                        Button {
+                            appState.setClipEdgeLineStyle(clip.id, lineStyle)
+                        } label: {
+                            Text(lineStyle.title)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    clip.edgeLineStyle == lineStyle ? LF.gold : LF.surface2,
+                                    in: Capsule()
+                                )
+                                .foregroundStyle(clip.edgeLineStyle == lineStyle ? .black : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    ForEach(EdgeThickness.allCases) { thickness in
+                        Button {
+                            appState.setClipEdgeThickness(clip.id, thickness)
+                        } label: {
+                            Text(thickness.title)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    clip.edgeThickness == thickness ? LF.gold : LF.surface2,
+                                    in: Capsule()
+                                )
+                                .foregroundStyle(clip.edgeThickness == thickness ? .black : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                HStack(spacing: 10) {
+                    ForEach(edgeColors, id: \.hex) { color in
+                        Button {
+                            appState.setClipEdgeColor(clip.id, color.hex)
+                        } label: {
+                            Circle()
+                                .fill(Color(hex: color.hex))
+                                .frame(width: 22, height: 22)
+                                .overlay {
+                                    Circle().stroke(
+                                        clip.edgeColorHex == color.hex ? LF.gold : LF.surface2,
+                                        lineWidth: clip.edgeColorHex == color.hex ? 2.5 : 1
+                                    )
+                                }
                         }
                         .buttonStyle(.plain)
                     }

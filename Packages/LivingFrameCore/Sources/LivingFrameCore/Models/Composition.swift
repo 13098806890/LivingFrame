@@ -74,12 +74,52 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
 
 // MARK: - Background
 
+/// 背景线条图案样式
+public enum BackgroundPattern: String, Codable, CaseIterable, Identifiable {
+    case horizontal
+    case diagonal
+    case grid
+    case mosaic
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .horizontal: NSLocalizedString("横线", comment: "Background pattern")
+        case .diagonal: NSLocalizedString("斜线", comment: "Background pattern")
+        case .grid: NSLocalizedString("网格", comment: "Background pattern")
+        case .mosaic: NSLocalizedString("马赛克", comment: "Background pattern")
+        }
+    }
+}
+
+/// 背景线条图案参数（代码绘制，可调样式/粗细/颜色/间距）
+public struct BackgroundPatternStyle: Codable, Equatable {
+    public var pattern: BackgroundPattern
+    public var lineWidth: CGFloat
+    public var colorHex: String
+    public var spacing: CGFloat
+
+    public init(
+        pattern: BackgroundPattern = .horizontal,
+        lineWidth: CGFloat = 2,
+        colorHex: String = "B8BDC9",
+        spacing: CGFloat = 72
+    ) {
+        self.pattern = pattern
+        self.lineWidth = lineWidth
+        self.colorHex = colorHex
+        self.spacing = spacing
+    }
+}
+
 public struct BackgroundPreset: Codable, Equatable {
     public enum Kind: String, Codable {
         case clear
         case solid
         case gradient
         case image
+        case pattern
     }
 
     public var kind: Kind
@@ -88,12 +128,21 @@ public struct BackgroundPreset: Codable, Equatable {
     public var bottomColor: String
     /// 图片背景文件名（存于 Documents/Library/Backgrounds/，含预置图片）
     public var imageFileName: String?
+    /// 线条图案背景参数（kind == .pattern 时使用）
+    public var patternStyle: BackgroundPatternStyle?
 
-    public init(kind: Kind, topColor: String, bottomColor: String, imageFileName: String? = nil) {
+    public init(
+        kind: Kind,
+        topColor: String,
+        bottomColor: String,
+        imageFileName: String? = nil,
+        patternStyle: BackgroundPatternStyle? = nil
+    ) {
         self.kind = kind
         self.topColor = topColor
         self.bottomColor = bottomColor
         self.imageFileName = imageFileName
+        self.patternStyle = patternStyle
     }
 
     public static let clear = BackgroundPreset(kind: .clear, topColor: "000000", bottomColor: "000000")
@@ -113,6 +162,8 @@ public struct Composition: Identifiable, Codable, Equatable {
     public var audioClips: [AudioClip]
     public var background: BackgroundPreset
     public var templateID: String?
+    /// 裁剪区域（画布坐标系，nil = 全画布）；元素可超出画布，最终输出只保留该区域
+    public var cropRect: CGRect?
 
     public init(
         id: UUID = UUID(),
@@ -123,7 +174,8 @@ public struct Composition: Identifiable, Codable, Equatable {
         elements: [CompositionElement] = [],
         audioClips: [AudioClip] = [],
         background: BackgroundPreset = .dark,
-        templateID: String? = nil
+        templateID: String? = nil,
+        cropRect: CGRect? = nil
     ) {
         self.id = id
         self.name = name
@@ -134,10 +186,16 @@ public struct Composition: Identifiable, Codable, Equatable {
         self.audioClips = audioClips
         self.background = background
         self.templateID = templateID
+        self.cropRect = cropRect
     }
 
     public var canvasRect: CGRect {
         CGRect(x: 0, y: 0, width: canvas.width, height: canvas.height)
+    }
+
+    /// 实际输出区域（裁剪后）
+    public var renderRect: CGRect {
+        cropRect ?? canvasRect
     }
 
     /// 根据时长更新所有元素的 endTime 上限，保证不超出

@@ -20,8 +20,9 @@ public struct VideoExporter {
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { false }
     ) async throws {
-        let width = max(2, Int(composition.canvas.width))
-        let height = max(2, Int(composition.canvas.height))
+        let renderSize = composition.renderRect.size
+        let width = max(2, Int(renderSize.width))
+        let height = max(2, Int(renderSize.height))
         try? FileManager.default.removeItem(at: url)
         let start = Date()
         let frameCount = max(1, Int(composition.duration * composition.fps))
@@ -73,8 +74,9 @@ public struct VideoExporter {
         progress: @escaping (Double) -> Void,
         isCancelled: @escaping () -> Bool
     ) async throws {
-        let width = max(2, Int(composition.canvas.width))
-        let height = max(2, Int(composition.canvas.height))
+        let renderSize = composition.renderRect.size
+        let width = max(2, Int(renderSize.width))
+        let height = max(2, Int(renderSize.height))
         let start = Date()
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
@@ -147,7 +149,10 @@ public struct VideoExporter {
             var pixelBuffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
             guard let buffer = pixelBuffer else { throw ExportError.renderFailed }
-            renderer.render(composition, at: Double(index) / composition.fps, into: buffer)
+            let renderOK = renderer.render(composition, at: Double(index) / composition.fps, into: buffer)
+            if !renderOK && index < 3 {
+                LogStore.log("VideoExporter: render(into:) 失败 index=\(index)")
+            }
             let renderCost = Date().timeIntervalSince(renderStart)
             if renderCost > 2 {
                 LogStore.log("VideoExporter: ⚠️ frame \(index) render slow cost=\(Int(renderCost))s")

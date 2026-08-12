@@ -8,8 +8,12 @@ struct CanvasView: View {
     @State private var viewportSize: CGSize = .zero
     /// 预览渲染器：按视口尺寸解码/渲染，不改变导出分辨率
     @State private var renderer = CompositionRenderer(frameMaxPixelSize: 900)
-    /// 手势起始快照（拖动/缩放/旋转共用）
-    @State private var gestureStartTransforms: [UUID: ElementTransform] = [:]
+/// 手势起始快照（拖动/缩放/旋转共用）
+@State private var gestureStartTransforms: [UUID: ElementTransform] = [:]
+/// 双指手势活跃中（防止同时触发拖动）
+@State private var isPinching = false
+/// 裁剪模式下的临时裁剪框（画布坐标系）
+@State private var cropRect: CGRect?
 
     var body: some View {
         VStack(spacing: 8) {
@@ -22,7 +26,11 @@ struct CanvasView: View {
                 } else {
                     Color.black
                 }
-                selectionOverlay
+                if appState.isCropping {
+                    cropOverlay
+                } else {
+                    selectionOverlay
+                }
             }
             .background {
                 if appState.composition?.background.kind == .clear {
@@ -56,6 +64,9 @@ struct CanvasView: View {
             .simultaneousGesture(magnifyGesture)
             .simultaneousGesture(rotateGesture)
 
+            if appState.isCropping {
+                cropToolbar
+            }
             playbackBar
         }
         .onAppear {
@@ -67,23 +78,34 @@ struct CanvasView: View {
         .onChange(of: appState.currentTime) { _, _ in
             render()
         }
+        .onChange(of: appState.clipStyleVersion) { _, _ in
+            render()
+        }
+        .onChange(of: appState.isCropping) { _, cropping in
+            if cropping {
+                cropRect = appState.composition?.renderRect
+            }
+        }
     }
 
     private var canvasAspect: CGFloat {
         guard let comp = appState.composition else { return 9 / 16 }
-        return comp.canvas.width / comp.canvas.height
+        let rect = comp.renderRect
+        return rect.width / rect.height
     }
 
     // MARK: - 点选
 
     private func handleTap(at location: CGPoint) {
-        guard let comp = appState.composition else { return }
+        guard let comp = appState.composition, !appState.isCropping else { return }
         let geometry = viewportGeometry(for: comp)
-        // 从顶层往下命中
+        let time = appState.currentTime
+        // 从顶层往下命中（忽略不可见元素）
         let hit = comp.elements
             .sorted { $0.zIndex > $1.zIndex }
             .first { element in
-                elementFrame(element, in: comp, geometry: geometry).contains(location)
+                guard element.isVisible(at: time) else { return false }
+                return rotatedHitTest(element: element, in: comp, geometry: geometry, at: location)
             }
         if let hit {
             appState.selectElement(hit.id)
@@ -92,20 +114,40 @@ struct CanvasView: View {
         }
     }
 
+    /// 旋转变换后的点-元素命中测试
+    private func rotatedHitTest(element: CompositionElement, in comp: Composition, geometry: ViewportGeometry, at point: CGPoint) -> Bool {
+        let frame = elementFrame(element, in: comp, geometry: geometry)
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        let rotation = element.transform.rotation
+        if rotation == 0 {
+            return frame.contains(point)
+        }
+        // 把点击点反向绕中心旋转，再测试轴对称矩形
+        let dx = point.x - center.x
+        let dy = point.y - center.y
+        let cosR = cos(rotation)
+        let sinR = sin(rotation)
+        let localX = dx * cosR + dy * sinR
+        let localY = -dx * sinR + dy * cosR
+        return abs(localX) <= frame.width / 2 && abs(localY) <= frame.height / 2
+    }
+
     // MARK: - 拖动（移动全部选中素材）
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 2)
+        DragGesture(minimumDistance: 8)
             .onChanged { value in
-                guard !appState.selectedElementIDs.isEmpty,
+                guard !appState.isCropping,
+                      !appState.selectedElementIDs.isEmpty,
+                      !isPinching,
                       let comp = appState.composition else { return }
                 let scale = canvasToViewportScale(comp)
                 if gestureStartTransforms.isEmpty {
                     snapshotTransforms(comp)
                 }
                 guard let snaps = gestureStartTransforms.snapshot else { return }
-                let dx = value.translation.width * scale
-                let dy = value.translation.height * scale
+                let dx = value.translation.width / scale
+                let dy = value.translation.height / scale
                 for id in appState.selectedElementIDs {
                     guard let start = snaps[id] else { continue }
                     appState.updateElement(id) { element in
@@ -126,7 +168,8 @@ struct CanvasView: View {
     private var magnifyGesture: some Gesture {
         MagnificationGesture()
             .onChanged { value in
-                guard !appState.selectedElementIDs.isEmpty else { return }
+                guard !appState.isCropping, !appState.selectedElementIDs.isEmpty else { return }
+                isPinching = true
                 if gestureStartTransforms.isEmpty {
                     snapshotTransforms(appState.composition)
                 }
@@ -140,6 +183,7 @@ struct CanvasView: View {
             }
             .onEnded { _ in
                 gestureStartTransforms = [:]
+                isPinching = false
             }
     }
 
@@ -148,7 +192,8 @@ struct CanvasView: View {
     private var rotateGesture: some Gesture {
         RotationGesture()
             .onChanged { value in
-                guard !appState.selectedElementIDs.isEmpty else { return }
+                guard !appState.isCropping, !appState.selectedElementIDs.isEmpty else { return }
+                isPinching = true
                 if gestureStartTransforms.isEmpty {
                     snapshotTransforms(appState.composition)
                 }
@@ -156,12 +201,14 @@ struct CanvasView: View {
                 for id in appState.selectedElementIDs {
                     guard let start = snaps[id] else { continue }
                     appState.updateElement(id) { element in
-                        element.transform.rotation = start.rotation + Double(value.radians)
+                        // RotationGesture 正值=顺时针（屏幕 y 向下），画布 y 向上需取反
+                        element.transform.rotation = start.rotation - Double(value.radians)
                     }
                 }
             }
             .onEnded { _ in
                 gestureStartTransforms = [:]
+                isPinching = false
             }
     }
 
@@ -179,26 +226,22 @@ struct CanvasView: View {
     // MARK: - 选中框
 
     private var selectionOverlay: some View {
-        GeometryReader { geo in
-            let geometry = viewportGeometry(for: appState.composition)
+        GeometryReader { _ in
             ZStack {
                 ForEach(selectedElements) { element in
-                    let frame = elementFrame(element, in: appState.composition, geometry: geometry)
+                    let frame = elementFrame(element, in: appState.composition, geometry: viewportGeometry(for: appState.composition))
+                    let center = CGPoint(x: frame.midX, y: frame.midY)
+                    // 画布 rotation 正值=逆时针；SwiftUI rotationEffect 屏幕坐标系正值=顺时针，需取反
+                    let rotation = -element.transform.rotation
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke(LF.gold, lineWidth: 1.5)
+                        .stroke(Color.white.opacity(0.95), lineWidth: 1.5)
+                        .shadow(color: .black.opacity(0.5), radius: 1)
                         .frame(width: frame.width, height: frame.height)
-                        .position(x: frame.midX, y: frame.midY)
-                        .rotationEffect(.radians(element.transform.rotation))
-                    ForEach(cornerPoints(of: frame), id: \.self) { point in
-                        Circle()
-                            .fill(LF.gold)
-                            .frame(width: 8, height: 8)
-                            .position(point)
-                    }
+                        .rotationEffect(.radians(rotation))
+                        .position(center)
                 }
             }
             .allowsHitTesting(false)
-            .frame(width: geo.size.width, height: geo.size.height)
         }
         .allowsHitTesting(false)
     }
@@ -217,20 +260,121 @@ struct CanvasView: View {
         ]
     }
 
+    // MARK: - 裁剪
+
+    private var cropToolbar: some View {
+        HStack(spacing: 10) {
+            Button("取消") {
+                appState.isCropping = false
+            }
+            .buttonStyle(MagicButtonStyle(prominent: false))
+            Button("重置") {
+                cropRect = appState.composition?.canvasRect
+            }
+            .buttonStyle(MagicButtonStyle(prominent: false))
+            Button("完成") {
+                if let cropRect {
+                    appState.setCropRect(cropRect)
+                }
+                appState.isCropping = false
+            }
+            .buttonStyle(MagicButtonStyle())
+        }
+    }
+
+    /// 裁剪框叠加层：外部压暗 + 金色边框 + 四角拖拽手柄
+    private var cropOverlay: some View {
+        GeometryReader { geo in
+            let viewport = geo.size
+            if let cropRect, let comp = appState.composition {
+                // 裁剪框在视口中的位置
+                let g = viewportGeometry(for: comp)
+                let frame = CGRect(
+                    x: g.offsetX + (cropRect.minX - g.rect.minX) * g.scale,
+                    y: g.offsetY + (g.rect.maxY - cropRect.maxY) * g.scale,
+                    width: cropRect.width * g.scale,
+                    height: cropRect.height * g.scale
+                )
+                ZStack {
+                    // 外部压暗（不拦截手势）
+                    Path { path in
+                        path.addRect(CGRect(origin: .zero, size: viewport))
+                        path.addRect(frame)
+                    }
+                    .fill(LF.background.opacity(0.6), style: FillStyle(eoFill: true))
+                    .allowsHitTesting(false)
+                    // 边框
+                    RoundedRectangle(cornerRadius: 2)
+                        .stroke(LF.gold, lineWidth: 1.5)
+                        .frame(width: frame.width, height: frame.height)
+                        .position(x: frame.midX, y: frame.midY)
+                        .allowsHitTesting(false)
+                    // 四角手柄（可拖拽）
+                    ForEach(cornerPoints(of: frame), id: \.self) { point in
+                        Circle()
+                            .fill(LF.gold)
+                            .frame(width: 22, height: 22)
+                            .overlay {
+                                Circle().stroke(.black.opacity(0.4), lineWidth: 1)
+                            }
+                            .position(point)
+                            .gesture(cropHandleGesture(corner: point, frame: frame, geometry: g, viewport: viewport))
+                    }
+                }
+            }
+        }
+    }
+
+    /// 拖动裁剪框角点（视口坐标 → 画布坐标，夹取到画布范围内，最小 50×50）
+    private func cropHandleGesture(
+        corner: CGPoint, frame: CGRect, geometry: ViewportGeometry, viewport: CGSize
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                guard let comp = appState.composition, let rect = cropRect else { return }
+                // 屏幕位移 → 画布位移（画布 y 向上，屏幕 y 向下：dy 取反）
+                let dx = value.translation.width / geometry.scale
+                let dy = -value.translation.height / geometry.scale
+                let canvas = comp.canvasRect
+                let minSize: CGFloat = 50
+                var minX = rect.minX
+                var minY = rect.minY
+                var maxX = rect.maxX
+                var maxY = rect.maxY
+                if corner.x == frame.minX {
+                    minX = min(max(rect.minX + dx, canvas.minX), rect.maxX - minSize)
+                }
+                if corner.x == frame.maxX {
+                    maxX = max(min(rect.maxX + dx, canvas.maxX), rect.minX + minSize)
+                }
+                if corner.y == frame.minY {
+                    // 屏幕上边（画布 maxY）
+                    maxY = max(min(rect.maxY + dy, canvas.maxY), rect.minY + minSize)
+                }
+                if corner.y == frame.maxY {
+                    // 屏幕下边（画布 minY）
+                    minY = min(max(rect.minY + dy, canvas.minY), rect.maxY - minSize)
+                }
+                cropRect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+            }
+    }
+
     // MARK: - 坐标换算
 
+    /// 视口显示的区域（裁剪后），元素坐标按该区域映射到屏幕
     private func viewportGeometry(for comp: Composition?) -> ViewportGeometry {
         guard let comp, viewportSize.width > 0, viewportSize.height > 0 else {
-            return ViewportGeometry(scale: 1, offsetX: 0, offsetY: 0, canvasHeight: 1)
+            return ViewportGeometry(scale: 1, offsetX: 0, offsetY: 0, rect: CGRect(x: 0, y: 0, width: 1, height: 1))
         }
-        let aspect = comp.canvas.width / comp.canvas.height
+        let rect = comp.renderRect
+        let aspect = rect.width / rect.height
         let displayWidth = min(viewportSize.width, viewportSize.height * aspect)
         let displayHeight = displayWidth / aspect
         return ViewportGeometry(
-            scale: displayWidth / comp.canvas.width,
+            scale: displayWidth / rect.width,
             offsetX: (viewportSize.width - displayWidth) / 2,
             offsetY: (viewportSize.height - displayHeight) / 2,
-            canvasHeight: comp.canvas.height
+            rect: rect
         )
     }
 
@@ -238,14 +382,14 @@ struct CanvasView: View {
         viewportGeometry(for: comp).scale
     }
 
-    /// 元素在视口中的框（canvas 坐标 → 视口，y 翻转；忽略旋转用于命中与框选）
+    /// 元素在视口中的框（画布坐标 → 视口，y 翻转；忽略旋转用于命中与框选）
     private func elementFrame(_ element: CompositionElement, in comp: Composition?, geometry: ViewportGeometry) -> CGRect {
         guard let comp else { return .zero }
         let size = elementContentSize(element, in: comp)
         let w = size.width * element.transform.scale * geometry.scale
         let h = size.height * element.transform.scale * geometry.scale
-        let cx = geometry.offsetX + element.transform.position.x * geometry.scale
-        let cy = geometry.offsetY + (geometry.canvasHeight - element.transform.position.y) * geometry.scale
+        let cx = geometry.offsetX + (element.transform.position.x - geometry.rect.minX) * geometry.scale
+        let cy = geometry.offsetY + (geometry.rect.maxY - element.transform.position.y) * geometry.scale
         return CGRect(x: cx - w / 2, y: cy - h / 2, width: w, height: h)
     }
 
@@ -276,6 +420,8 @@ struct CanvasView: View {
         let time = min(appState.currentTime, comp.duration)
         if let cg = renderer.render(comp, at: time) {
             previewImage = UIImage(cgImage: cg)
+        } else {
+            LogStore.log("CanvasView.render: renderer returned nil elements=\(comp.elements.count) time=\(time)")
         }
     }
 
@@ -314,7 +460,8 @@ private struct ViewportGeometry {
     let scale: CGFloat
     let offsetX: CGFloat
     let offsetY: CGFloat
-    let canvasHeight: CGFloat
+    /// 视口当前显示的区域（画布坐标系，裁剪后）
+    let rect: CGRect
 }
 
 private extension Dictionary where Key == UUID, Value == ElementTransform {

@@ -28,8 +28,9 @@ public struct LivePhotoExporter {
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { false }
     ) async throws -> Output {
-        let width = max(2, Int(composition.canvas.width))
-        let height = max(2, Int(composition.canvas.height))
+        let renderSize = composition.renderRect.size
+        let width = max(2, Int(renderSize.width))
+        let height = max(2, Int(renderSize.height))
         let duration = min(3, composition.duration)
         let frameCount = max(1, Int((duration * composition.fps).rounded(.up)))
         try? FileManager.default.removeItem(at: url)

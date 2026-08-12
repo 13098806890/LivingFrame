@@ -20,10 +20,14 @@ final class AppState: ObservableObject {
     // MARK: - 工程
 
     @Published var composition: Composition?
+    /// 素材属性（边缘/风格等）变更版本号，用于触发画布重渲染
+    @Published var clipStyleVersion = 0
     /// 画布上选中的元素（支持多选，primary 为最后点选的）
     @Published var selectedElementIDs: Set<UUID> = []
     @Published var lastSelectedElementID: UUID?
     @Published var selectedAudioID: UUID?
+    /// 是否处于裁剪模式（画布显示裁剪框）
+    @Published var isCropping = false
 
     /// 检查器主对象：单选时是该元素，多选时返回 nil
     var primarySelectedID: UUID? {
@@ -296,6 +300,31 @@ final class AppState: ObservableObject {
         guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
         clips[index].edgeStyle = style
         FrameCache.shared.register(clips[index])
+        clipStyleVersion += 1
+    }
+
+    /// 设置描边颜色（持久化到 clip.json）
+    func setClipEdgeColor(_ clipID: String, _ hex: String) {
+        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
+        clips[index].edgeColorHex = hex
+        FrameCache.shared.register(clips[index])
+        clipStyleVersion += 1
+    }
+
+    /// 设置描边线条样式（持久化到 clip.json）
+    func setClipEdgeLineStyle(_ clipID: String, _ lineStyle: EdgeLineStyle) {
+        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
+        clips[index].edgeLineStyle = lineStyle
+        FrameCache.shared.register(clips[index])
+        clipStyleVersion += 1
+    }
+
+    /// 设置描边粗细（持久化到 clip.json）
+    func setClipEdgeThickness(_ clipID: String, _ thickness: EdgeThickness) {
+        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
+        clips[index].edgeThickness = thickness
+        FrameCache.shared.register(clips[index])
+        clipStyleVersion += 1
     }
 
     /// 设置素材贴纸风格（持久化到 clip.json）
@@ -303,6 +332,7 @@ final class AppState: ObservableObject {
         guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
         clips[index].stickerStyle = style
         FrameCache.shared.register(clips[index])
+        clipStyleVersion += 1
     }
 
     // MARK: - 背景
@@ -329,6 +359,15 @@ final class AppState: ObservableObject {
         guard var comp = composition ?? defaultComposition() else { return }
         comp.background = BackgroundPreset(
             kind: .image, topColor: "FFFFFF", bottomColor: "FFFFFF", imageFileName: fileName
+        )
+        composition = comp
+    }
+
+    /// 设置背景为代码绘制的线条图案
+    func setBackgroundPattern(_ style: BackgroundPatternStyle) {
+        guard var comp = composition ?? defaultComposition() else { return }
+        comp.background = BackgroundPreset(
+            kind: .pattern, topColor: "FFFFFF", bottomColor: "FFFFFF", patternStyle: style
         )
         composition = comp
     }
@@ -364,7 +403,7 @@ final class AppState: ObservableObject {
     private func defaultComposition() -> Composition? {
         let comp = Composition(
             name: NSLocalizedString("我的动态照片", comment: "Default composition name"),
-            canvas: CanvasSpec(width: 1080, height: 1920),
+            canvas: CanvasSpec(width: 1920, height: 1080),
             duration: 3,
             fps: 30
         )
@@ -386,6 +425,13 @@ final class AppState: ObservableObject {
         composition = comp
     }
 
+    /// 确保有一个默认工程（直接添加素材/背景时调用）
+    func ensureComposition() {
+        if composition == nil {
+            _ = defaultComposition()
+        }
+    }
+
     /// 修改画布比例：元素位置按比例换算，保持相对布局
     func setCanvasAspect(_ aspect: CanvasAspect) {
         guard var comp = composition else { return }
@@ -402,6 +448,24 @@ final class AppState: ObservableObject {
             comp.elements[index].transform.scale *= min(sx, sy)
         }
         comp.canvas = CanvasSpec(width: newSize.width, height: newSize.height)
+        comp.cropRect = nil
+        composition = comp
+    }
+
+    // MARK: - 裁剪
+
+    /// 应用裁剪区域（画布坐标系；元素可超出画布，输出只保留该区域）
+    func setCropRect(_ rect: CGRect) {
+        guard var comp = composition else { return }
+        guard rect.width >= 50, rect.height >= 50 else { return }
+        comp.cropRect = rect
+        composition = comp
+    }
+
+    /// 取消裁剪（恢复全画布）
+    func resetCrop() {
+        guard var comp = composition, comp.cropRect != nil else { return }
+        comp.cropRect = nil
         composition = comp
     }
 
@@ -420,7 +484,7 @@ final class AppState: ObservableObject {
         var t = transform
         var changed = false
         if !t.position.x.isFinite || !t.position.y.isFinite {
-            t.position = .zero
+            t.position = CGPoint(x: composition?.canvas.width ?? 540, y: composition?.canvas.height ?? 960)
             changed = true
         }
         if !t.scale.isFinite || t.scale <= 0 {
@@ -432,7 +496,7 @@ final class AppState: ObservableObject {
             changed = true
         }
         if changed {
-            LogStore.log("updateElement: 检测到非有限变换值，已重置 \(transform)")
+            LogStore.log("updateElement: 检测到非有限变换值，已重置")
         }
         return t
     }
@@ -463,19 +527,32 @@ final class AppState: ObservableObject {
     func addElementFromClipID(_ clipID: String) {
         guard let clip = clips.first(where: { $0.id == clipID }) else { return }
         guard var comp = composition ?? defaultComposition() else { return }
-        let scale = min(
-            0.8 * comp.canvas.width / CGFloat(clip.width),
-            0.8 * comp.canvas.height / CGFloat(clip.height)
-        )
+        // 素材尺寸异常时给默认缩放，避免产生 Inf 变换导致渲染失败
+        let scale: CGFloat
+        if clip.width > 0, clip.height > 0 {
+            scale = min(
+                0.8 * comp.canvas.width / CGFloat(clip.width),
+                0.8 * comp.canvas.height / CGFloat(clip.height)
+            )
+        } else {
+            scale = 0.5
+        }
+        // 每个元素附加小幅偏移，避免多选时全部叠在画布中心
+        let offset = CGFloat(comp.elements.count) * 30
+        let clipDuration = clip.duration.isFinite ? clip.duration : 3
+        comp.duration = max(comp.duration, min(clipDuration, 300))
         let element = CompositionElement(
             kind: .clip(clipID: clip.id),
             name: clip.name,
             transform: ElementTransform(
-                position: CGPoint(x: comp.canvas.width / 2, y: comp.canvas.height / 2),
-                scale: scale,
+                position: CGPoint(
+                    x: comp.canvas.width / 2 + offset,
+                    y: comp.canvas.height / 2
+                ),
+                scale: scale.isFinite ? scale : 0.5,
                 rotation: 0
             ),
-            zIndex: max(comp.elements.count, 1),
+            zIndex: comp.elements.count,  // 0,1,2,... 不会重复
             startTime: 0,
             endTime: comp.duration
         )
@@ -658,7 +735,18 @@ final class AppState: ObservableObject {
     }
 
     func reopen(_ work: WorkItem) {
-        composition = work.composition
+        var comp = work.composition
+        // 消毒历史工程中的非法变换值（NaN/Inf 会导致渲染失败）
+        var sanitized = false
+        for index in comp.elements.indices {
+            let before = comp.elements[index].transform
+            comp.elements[index].transform = sanitizedTransform(before)
+            if comp.elements[index].transform != before { sanitized = true }
+        }
+        if sanitized {
+            LogStore.log("reopen: 已修复工程中的非法变换值")
+        }
+        composition = comp
         // 重新注册仍存在的缓存素材
         for clip in clips {
             FrameCache.shared.register(clip)

@@ -137,6 +137,13 @@ struct FolderDetailView: View {
         }
     }
 
+    /// 描边可选颜色
+    private var edgeColorOptions: [(name: String, hex: String)] {
+        [("白色", "FFFFFF"), ("黑色", "000000"), ("金色", "E8C05C"),
+         ("红色", "E74C3C"), ("粉色", "FF9FF3"), ("蓝色", "54A0FF"),
+         ("绿色", "1DD1A1"), ("紫色", "8B7CF6")]
+    }
+
     private var clipsSection: some View {
         SectionCard(title: "素材管理") {
             if folderClips.isEmpty {
@@ -149,22 +156,63 @@ struct FolderDetailView: View {
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(folderClips) { clip in
                         ClipCell(clip: clip)
-                        .contextMenu {
-                            Menu {
-                                ForEach(ClipEdgeStyle.allCases) { style in
-                                    Button {
-                                        appState.setClipEdgeStyle(clip.id, style)
-                                    } label: {
-                                        if clip.edgeStyle == style {
-                                            Label(style.title, systemImage: "checkmark")
-                                        } else {
-                                            Text(style.title)
+                            .contextMenu {
+                                Menu {
+                                    ForEach(ClipEdgeStyle.displayCases) { style in
+                                        Button {
+                                            appState.setClipEdgeStyle(clip.id, style)
+                                        } label: {
+                                            if clip.edgeStyle == style {
+                                                Label(style.title, systemImage: "checkmark")
+                                            } else {
+                                                Text(style.title)
+                                            }
                                         }
                                     }
+                                    if clip.edgeStyle.isOutline {
+                                        Menu("线条样式") {
+                                            ForEach(EdgeLineStyle.allCases) { line in
+                                                Button {
+                                                    appState.setClipEdgeLineStyle(clip.id, line)
+                                                } label: {
+                                                    if clip.edgeLineStyle == line {
+                                                        Label(line.title, systemImage: "checkmark")
+                                                    } else {
+                                                        Text(line.title)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Menu("粗细") {
+                                            ForEach(EdgeThickness.allCases) { thickness in
+                                                Button {
+                                                    appState.setClipEdgeThickness(clip.id, thickness)
+                                                } label: {
+                                                    if clip.edgeThickness == thickness {
+                                                        Label(thickness.title, systemImage: "checkmark")
+                                                    } else {
+                                                        Text(thickness.title)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Menu("描边颜色") {
+                                            ForEach(edgeColorOptions, id: \.hex) { color in
+                                                Button {
+                                                    appState.setClipEdgeColor(clip.id, color.hex)
+                                                } label: {
+                                                    if clip.edgeColorHex == color.hex {
+                                                        Label(color.name, systemImage: "checkmark")
+                                                    } else {
+                                                        Text(color.name)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    Label("添加边缘", systemImage: "square.dashed")
                                 }
-                            } label: {
-                                Label("添加边缘", systemImage: "square.dashed")
-                            }
                             Menu("移动到文件夹") {
                                 ForEach(appState.folders) { target in
                                     if target.id != folder.id {

@@ -95,10 +95,11 @@ struct TimelineView: View {
     private func dragElement(_ element: CompositionElement, scale: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
-                guard let comp = appState.composition else { return }
+                guard let comp = appState.composition,
+                      let current = comp.elements.first(where: { $0.id == element.id }) else { return }
                 let delta = value.translation.width / scale
-                let duration = element.endTime - element.startTime
-                let newStart = min(max(element.startTime + delta, 0), comp.duration - duration)
+                let duration = current.endTime - current.startTime
+                let newStart = min(max(current.startTime + delta, 0), comp.duration - duration)
                 appState.updateElement(element.id) { element in
                     element.startTime = newStart
                     element.endTime = newStart + duration
@@ -141,9 +142,10 @@ struct TimelineView: View {
     private func dragAudio(_ clip: AudioClip, scale: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
-                guard let comp = appState.composition else { return }
+                guard let comp = appState.composition,
+                      let current = comp.audioClips.first(where: { $0.id == clip.id }) else { return }
                 let delta = value.translation.width / scale
-                let newStart = min(max(clip.startTime + delta, 0), comp.duration - clip.duration)
+                let newStart = min(max(current.startTime + delta, 0), comp.duration - current.duration)
                 appState.updateAudio(clip.id) { clip in
                     clip.startTime = newStart
                 }

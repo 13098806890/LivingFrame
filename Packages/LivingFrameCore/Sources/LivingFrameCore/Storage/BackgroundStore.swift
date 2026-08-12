@@ -15,7 +15,11 @@ public struct BackgroundStore {
         ("preset-ember", NSLocalizedString("余烬", comment: "Preset background")),
         ("preset-blossom", NSLocalizedString("花影", comment: "Preset background")),
         ("preset-wizard", NSLocalizedString("魔法", comment: "Preset background")),
-        ("preset-sunset", NSLocalizedString("暮色", comment: "Preset background"))
+        ("preset-sunset", NSLocalizedString("暮色", comment: "Preset background")),
+        ("preset-lines", NSLocalizedString("横线", comment: "Preset background")),
+        ("preset-grid", NSLocalizedString("网格", comment: "Preset background")),
+        ("preset-diagonal", NSLocalizedString("斜线", comment: "Preset background")),
+        ("preset-mosaic", NSLocalizedString("马赛克", comment: "Preset background"))
     ]
 
     private init() {
@@ -86,10 +90,79 @@ public struct BackgroundStore {
             drawWizard(context, width: width, height: height)
         case "preset-sunset":
             drawSunset(context, width: width, height: height)
+        case "preset-lines":
+            drawLines(context, width: width, height: height)
+        case "preset-grid":
+            drawGrid(context, width: width, height: height)
+        case "preset-diagonal":
+            drawDiagonal(context, width: width, height: height)
+        case "preset-mosaic":
+            drawMosaic(context, width: width, height: height)
         default:
             drawStarfield(context, width: width, height: height)
         }
         return context.makeImage()
+    }
+
+    private func drawDiagonal(_ context: CGContext, width: Int, height: Int) {
+        fill(context, gradient: [(0.96, 0.96, 0.98), (0.90, 0.90, 0.95)])
+        context.setStrokeColor(red: 0.72, green: 0.72, blue: 0.78, alpha: 1)
+        context.setLineWidth(2)
+        let spacing: CGFloat = 72
+        let diagonal = sqrt(CGFloat(width * width + height * height))
+        for offset in stride(from: -diagonal, through: diagonal, by: spacing) {
+            context.move(to: CGPoint(x: CGFloat(width) + offset, y: 0))
+            context.addLine(to: CGPoint(x: offset, y: CGFloat(height)))
+        }
+        context.strokePath()
+    }
+
+    private func drawMosaic(_ context: CGContext, width: Int, height: Int) {
+        fill(context, gradient: [(0.97, 0.97, 0.99), (0.92, 0.92, 0.96)])
+        let cell: CGFloat = 96
+        var row = 0
+        var y: CGFloat = 0
+        while y < CGFloat(height) {
+            var x: CGFloat = (row % 2 == 0) ? 0 : -cell / 2
+            while x < CGFloat(width) {
+                let rect = CGRect(x: x, y: y, width: cell, height: cell)
+                if (Int(x / cell) + row) % 2 == 0 {
+                    context.setFillColor(red: 0.85, green: 0.85, blue: 0.90, alpha: 1)
+                } else {
+                    context.setFillColor(red: 0.97, green: 0.97, blue: 0.99, alpha: 1)
+                }
+                context.fill(rect)
+                x += cell
+            }
+            row += 1
+            y += cell
+        }
+    }
+
+    private func drawLines(_ context: CGContext, width: Int, height: Int) {
+        fill(context, gradient: [(0.96, 0.96, 0.98), (0.90, 0.90, 0.95)])
+        context.setStrokeColor(red: 0.72, green: 0.72, blue: 0.78, alpha: 1)
+        context.setLineWidth(2)
+        for y in stride(from: 0, through: height, by: 72) {
+            context.move(to: CGPoint(x: 0, y: y))
+            context.addLine(to: CGPoint(x: width, y: y))
+        }
+        context.strokePath()
+    }
+
+    private func drawGrid(_ context: CGContext, width: Int, height: Int) {
+        fill(context, gradient: [(0.96, 0.96, 0.98), (0.90, 0.90, 0.95)])
+        context.setStrokeColor(red: 0.72, green: 0.72, blue: 0.78, alpha: 1)
+        context.setLineWidth(1)
+        for x in stride(from: 0, through: width, by: 72) {
+            context.move(to: CGPoint(x: x, y: 0))
+            context.addLine(to: CGPoint(x: x, y: height))
+        }
+        for y in stride(from: 0, through: height, by: 72) {
+            context.move(to: CGPoint(x: 0, y: y))
+            context.addLine(to: CGPoint(x: width, y: y))
+        }
+        context.strokePath()
     }
 
     private func drawStarfield(_ context: CGContext, width: Int, height: Int) {

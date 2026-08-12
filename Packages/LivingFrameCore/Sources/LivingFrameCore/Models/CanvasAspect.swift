@@ -37,11 +37,13 @@ public enum CanvasAspect: String, CaseIterable, Identifiable {
         guard size.width > 0, size.height > 0 else { return .portrait9x16 }
         let ratio = size.width / size.height
         switch ratio {
-        case 0.5...0.62: return .portrait9x16
-        case 0.62...0.72: return .portrait4x5
-        case 0.72...0.85: return .portrait3x4
-        case 0.9...1.1: return .square1x1
-        default: return .landscape16x9
+        case 0.53...0.59: return .portrait9x16   // 0.5625
+        case 0.72...0.82: return .portrait4x5     // 0.80
+        case 0.66...0.72: return .portrait3x4     // 0.75
+        case 0.9...1.1: return .square1x1          // 1.0
+        default:
+            if ratio > 1.1 { return .landscape16x9 }
+            return .portrait9x16
         }
     }
 }

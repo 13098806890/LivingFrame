@@ -112,11 +112,10 @@ struct LibraryView: View {
             guard !items.isEmpty else { return }
             pickerItems.removeAll()
             Task {
-                isDownloading = true
-                downloadProgress = nil
-                defer { isDownloading = false }
                 // 1. 并行下载所有选中素材（iCloud 下载可多线程加速）
                 var sources: [ImportSource] = []
+                isDownloading = true
+                downloadProgress = nil
                 await withTaskGroup(of: ImportSource?.self) { group in
                     for item in items {
                         group.addTask { await load(item) }
@@ -125,6 +124,8 @@ struct LibraryView: View {
                         if let source { sources.append(source) }
                     }
                 }
+                // 下载完成即隐藏下载进度条（抠图阶段由「正在抠图」卡片展示）
+                isDownloading = false
                 // 2. 串行抠图：一次一个素材，进度条不互相干扰，抠完一张显示一张
                 for source in sources {
                     switch source {
@@ -497,8 +498,7 @@ struct LibraryView: View {
                             .draggable(clip.id)
                             .contextMenu {
                                 Menu {
-                                    ForEach(ClipEdgeStyle.allCases) { style in
-
+                                    ForEach(ClipEdgeStyle.displayCases) { style in
                                         Button {
                                             appState.setClipEdgeStyle(clip.id, style)
                                         } label: {
@@ -506,6 +506,47 @@ struct LibraryView: View {
                                                 Label(style.title, systemImage: "checkmark")
                                             } else {
                                                 Text(style.title)
+                                            }
+                                        }
+                                    }
+                                    if clip.edgeStyle.isOutline {
+                                        Menu("线条样式") {
+                                            ForEach(EdgeLineStyle.allCases) { line in
+                                                Button {
+                                                    appState.setClipEdgeLineStyle(clip.id, line)
+                                                } label: {
+                                                    if clip.edgeLineStyle == line {
+                                                        Label(line.title, systemImage: "checkmark")
+                                                    } else {
+                                                        Text(line.title)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Menu("粗细") {
+                                            ForEach(EdgeThickness.allCases) { thickness in
+                                                Button {
+                                                    appState.setClipEdgeThickness(clip.id, thickness)
+                                                } label: {
+                                                    if clip.edgeThickness == thickness {
+                                                        Label(thickness.title, systemImage: "checkmark")
+                                                    } else {
+                                                        Text(thickness.title)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Menu("描边颜色") {
+                                            ForEach(edgeColorOptions, id: \.hex) { color in
+                                                Button {
+                                                    appState.setClipEdgeColor(clip.id, color.hex)
+                                                } label: {
+                                                    if clip.edgeColorHex == color.hex {
+                                                        Label(color.name, systemImage: "checkmark")
+                                                    } else {
+                                                        Text(color.name)
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -538,6 +579,13 @@ struct LibraryView: View {
         }
     }
 
+    /// 描边可选颜色
+    private var edgeColorOptions: [(name: String, hex: String)] {
+        [("白色", "FFFFFF"), ("黑色", "000000"), ("金色", "E8C05C"),
+         ("红色", "E74C3C"), ("粉色", "FF9FF3"), ("蓝色", "54A0FF"),
+         ("绿色", "1DD1A1"), ("紫色", "8B7CF6")]
+    }
+
     private func isClipFiled(_ clipID: String) -> Bool {
         appState.folders.contains { $0.clipIDs.contains(clipID) }
     }
@@ -547,13 +595,13 @@ struct ClipCell: View {
     let clip: SegmentedClip
 
     @State private var frameIndex = 0
-    private let timer = Timer.publish(every: 1.0 / 15, on: .main, in: .common).autoconnect()
+    private let timer = Timer.publish(every: 1.0 / 10, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 6) {
             ZStack {
                 CheckerboardView()
-                if let frame = FrameCache.shared.cachedThumbnail(for: clip, index: frameIndex, maxPixelSize: 480) {
+                if let frame = FrameCache.shared.cachedThumbnail(for: clip, index: frameIndex, maxPixelSize: 320) {
                     Image(decorative: frame, scale: 1)
                         .resizable()
                         .scaledToFill()
