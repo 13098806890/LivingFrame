@@ -84,6 +84,16 @@ public final class FrameCache {
             guard let data = try? Data(contentsOf: manifestURL(for: id)),
                   let manifest = try? JSONDecoder().decode(ClipManifest.self, from: data) else { continue }
             let audioURL = manifest.audioFilename.map { dir.appendingPathComponent($0) }
+            // 旧版本边缘样式迁移：blackOutline/goldOutline 映射颜色，outlineDashed/Dotted 映射线型
+            var edgeStyle = manifest.edgeStyle ?? .none
+            var edgeColor = manifest.edgeColorHex ?? "FFFFFF"
+            var edgeLine = manifest.edgeLineStyle ?? .solid
+            switch edgeStyle {
+            case .blackOutline: edgeColor = "000000"
+            case .goldOutline: edgeColor = "E8C05C"
+            case .outlineDashed, .outlineDotted: edgeLine = .dashed
+            default: break
+            }
             registered[id] = SegmentedClip(
                 id: manifest.id,
                 name: manifest.name,
@@ -93,10 +103,10 @@ public final class FrameCache {
                 height: manifest.height,
                 folderURL: dir,
                 audioURL: audioURL,
-                edgeStyle: manifest.edgeStyle ?? .none,
-                edgeLineStyle: manifest.edgeLineStyle ?? .solid,
+                edgeStyle: edgeStyle,
+                edgeLineStyle: edgeLine,
                 edgeThickness: manifest.edgeThickness ?? .medium,
-                edgeColorHex: manifest.edgeColorHex ?? "FFFFFF",
+                edgeColorHex: edgeColor,
                 stickerStyle: manifest.stickerStyle ?? .none
             )
         }

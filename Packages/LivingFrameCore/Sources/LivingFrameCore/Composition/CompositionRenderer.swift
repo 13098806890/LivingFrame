@@ -70,25 +70,27 @@ public struct CompositionRenderer {
     }
 
     private func backgroundCIImage(_ preset: BackgroundPreset, in rect: CGRect) -> CIImage {
+        let base: CIImage
         switch preset.kind {
         case .clear:
-            return CIImage.clear.cropped(to: rect)
+            base = CIImage.clear.cropped(to: rect)
         case .solid:
-            return CIImage(color: CIColor(hex: preset.topColor)).cropped(to: rect)
+            base = CIImage(color: CIColor(hex: preset.topColor)).cropped(to: rect)
         case .gradient:
             let gradient = CIFilter.linearGradient()
             gradient.color0 = CIColor(hex: preset.topColor)
             gradient.color1 = CIColor(hex: preset.bottomColor)
             gradient.point0 = CGPoint(x: rect.midX, y: rect.maxY)
             gradient.point1 = CGPoint(x: rect.midX, y: rect.minY)
-            return gradient.outputImage?.cropped(to: rect) ?? CIImage.clear.cropped(to: rect)
+            base = gradient.outputImage?.cropped(to: rect) ?? CIImage.clear.cropped(to: rect)
         case .image:
             guard let fileName = preset.imageFileName,
                   let cgImage = BackgroundStore.shared.loadImage(named: fileName) else {
-                return CIImage(color: CIColor(hex: preset.topColor)).cropped(to: rect)
+                base = CIImage(color: CIColor(hex: preset.topColor)).cropped(to: rect)
+                break
             }
             // 必须裁剪到画布：背景 extent 与画布一致，避免合成/渲染未覆盖区域被填黑
-            return CIImage(cgImage: cgImage)
+            base = CIImage(cgImage: cgImage)
                 .transformed(by: aspectFillTransform(cgImageSize: CGSize(
                     width: cgImage.width, height: cgImage.height
                 ), target: rect))
@@ -100,10 +102,22 @@ public struct CompositionRenderer {
                       height: Int(rect.height),
                       style: style
                   ) else {
-                return CIImage(color: CIColor(hex: "FFFFFF")).cropped(to: rect)
+                base = CIImage(color: CIColor(hex: "FFFFFF")).cropped(to: rect)
+                break
             }
-            return CIImage(cgImage: cgImage).cropped(to: rect)
+            base = CIImage(cgImage: cgImage).cropped(to: rect)
         }
+        // 叠加层：在底层背景上叠加透明底线条/网格图案图层
+        if let overlay = preset.patternOverlay,
+           let overlayCG = LinePattern.image(
+               width: Int(rect.width),
+               height: Int(rect.height),
+               style: overlay,
+               transparentBackground: true
+           ) {
+            return CIImage(cgImage: overlayCG).cropped(to: rect).composited(over: base)
+        }
+        return base
     }
 
     /// 图片背景铺满画布（等比缩放裁切，不拉伸变形）
@@ -133,16 +147,44 @@ public struct CompositionRenderer {
                 fixScale = clip.width > 0 && Int(frame.extent.width) > 0
                     ? CGFloat(clip.width) / frame.extent.width
                     : 1
-                source = applyStickerStyle(
-                    clip.stickerStyle,
-                    to: applyEdgeStyle(
-                        clip.edgeStyle,
+                // 元素级背景图案垫在底层（先画背景，再叠加人物及其边缘/风格）
+                var content: CIImage
+                if clip.stickerStyle == .customOutline {
+                    // 自定义描边：线型×粗细×颜色参数直接渲染，不叠加旧边缘层
+                    content = outlined(
+                        frame,
+                        radius: clip.edgeThickness.radius / fixScale,
+                        color: CIColor(hex: clip.edgeColorHex),
                         lineStyle: clip.edgeLineStyle,
-                        thickness: clip.edgeThickness,
-                        colorHex: clip.edgeColorHex,
-                        to: frame
+                        fixScale: fixScale,
+                        clipID: clip.id,
+                        frameIndex: min(max(Int((time * clip.fps).rounded()), 0), max(clip.frameCount - 1, 0))
                     )
-                )
+                } else {
+                    content = applyStickerStyle(
+                        clip.stickerStyle,
+                        to: applyEdgeStyle(
+                            clip.edgeStyle,
+                            lineStyle: clip.edgeLineStyle,
+                            thickness: clip.edgeThickness,
+                            colorHex: clip.edgeColorHex,
+                            fixScale: fixScale,
+                            clipID: clip.id,
+                            frameIndex: min(max(Int((time * clip.fps).rounded()), 0), max(clip.frameCount - 1, 0)),
+                            to: frame
+                        )
+                    )
+                }
+                if let pattern = element.backgroundPattern,
+                   let patternCG = LinePattern.image(
+                       width: Int(frame.extent.width),
+                       height: Int(frame.extent.height),
+                       style: pattern,
+                       transparentBackground: true
+                   ) {
+                    content = content.composited(over: CIImage(cgImage: patternCG).cropped(to: frame.extent))
+                }
+                source = content
             } else {
                 LogStore.log("placedImage: clip 帧获取失败 clipID=\(clipID) time=\(time) registered=\(FrameCache.shared.clip(id: clipID) != nil)")
                 source = nil
@@ -197,8 +239,14 @@ public struct CompositionRenderer {
         lineStyle: EdgeLineStyle,
         thickness: EdgeThickness,
         colorHex: String,
+        fixScale: CGFloat = 1,
+        clipID: String = "",
+        frameIndex: Int = 0,
         to image: CIImage
     ) -> CIImage {
+        // fixScale：预览帧是缩略图时，描边几何（像素绝对值）除以该因子，
+        // 保证预览与导出（全分辨率）的描边粗细/虚线几何一致
+        let s = max(fixScale, 0.001)
         let color = CIColor(hex: colorHex)
         switch style {
         case .none:
@@ -206,14 +254,14 @@ public struct CompositionRenderer {
         case .outline, .whiteOutline, .blackOutline, .goldOutline,
              .outlineSolid, .outlineDashed, .outlineDotted:
             // 组合描边：样式 × 粗细 × 颜色
-            return outlined(image, radius: thickness.radius, color: color, lineStyle: lineStyle)
+            return outlined(image, radius: thickness.radius / s, color: color, lineStyle: lineStyle, fixScale: s, clipID: clipID, frameIndex: frameIndex)
         case .glow:
-            return glow(image, color: CIColor(hex: "E8C05C"))
+            return glow(image, color: CIColor(hex: "E8C05C"), fixScale: s)
         case .shadow:
-            return shadow(image)
+            return shadow(image, fixScale: s)
         case .comic:
-            let white = outlineLayer(image, radius: 9, color: CIColor(hex: "FFFFFF"), lineStyle: .solid)
-            let black = outlineLayer(image, radius: 3, color: CIColor(hex: "000000"), lineStyle: .solid)
+            let white = outlineLayer(image, radius: 9 / s, color: CIColor(hex: "FFFFFF"), lineStyle: .solid, fixScale: s)
+            let black = outlineLayer(image, radius: 3 / s, color: CIColor(hex: "000000"), lineStyle: .solid, fixScale: s)
             return image.composited(over: black.composited(over: white))
         }
     }
@@ -244,8 +292,21 @@ public struct CompositionRenderer {
             let white = outlineLayer(image, radius: whiteRadius, color: CIColor(hex: "FFFFFF"), lineStyle: .solid)
             return image.composited(over: white.composited(over: black))
         case .smooth:
-            // 平滑贴纸：轻微边缘羽化
-            return blurred(image, radius: max(1, min(base * 0.012, 6)))
+            // 平滑贴纸：仅羽化边缘（边缘带变半透明过渡，内部保持清晰不模糊）。
+            // 用模糊后的 alpha 作掩码：内部 alpha≈1 → 原图；边缘 0<alpha<1 → 半透明；外部 → 透明
+            let radius = max(1, min(base * 0.012, 6))
+            let blurred = image
+                .clampedToExtent()
+                .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: radius])
+                .cropped(to: image.extent)
+            let clear = CIImage.clear.cropped(to: image.extent)
+            return image.applyingFilter("CIBlendWithAlphaMask", parameters: [
+                kCIInputMaskImageKey: blurred,
+                kCIInputBackgroundImageKey: clear
+            ])
+        case .customOutline:
+            // 自定义描边在主渲染循环直接调用 outlined()（需要边缘参数），此处不会执行
+            return image
         }
     }
 
@@ -257,32 +318,34 @@ public struct CompositionRenderer {
     }
 
     /// 描边：人物在上，描边层垫在下层
-    private func outlined(_ image: CIImage, radius: CGFloat, color: CIColor, lineStyle: EdgeLineStyle) -> CIImage {
-        image.composited(over: outlineLayer(image, radius: radius, color: color, lineStyle: lineStyle))
+    private func outlined(_ image: CIImage, radius: CGFloat, color: CIColor, lineStyle: EdgeLineStyle, fixScale: CGFloat = 1, clipID: String = "", frameIndex: Int = 0) -> CIImage {
+        image.composited(over: outlineLayer(image, radius: radius, color: color, lineStyle: lineStyle, fixScale: fixScale, clipID: clipID, frameIndex: frameIndex))
     }
 
     /// 生成描边层：整图形态学膨胀（alpha 同步外扩）→ 按样式裁切（实线/线段）→ 染成纯色
-    private func outlineLayer(_ image: CIImage, radius: CGFloat, color: CIColor, lineStyle: EdgeLineStyle) -> CIImage {
+    private func outlineLayer(_ image: CIImage, radius: CGFloat, color: CIColor, lineStyle: EdgeLineStyle, fixScale: CGFloat = 1, clipID: String = "", frameIndex: Int = 0) -> CIImage {
         let expanded = image.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: radius])
         let styled: CIImage
         switch lineStyle {
         case .solid:
             styled = expanded
         case .dashed:
-            // 线段（虚线）：与实线完全相同的膨胀环，用 45° 菱形网格把环切成均匀段。
-            // 菱形网格无中心、无方向性（避免放射/蚊香），段在轮廓上均匀分布，
-            // 线宽=间隔（约 30%）。
-            let grid = DiamondGridPattern.image(
-                width: Int(expanded.extent.width),
-                height: Int(expanded.extent.height),
-                spacing: 18,
-                lineWidth: 5
-            )
-            if let grid {
-                let pattern = CIImage(cgImage: grid).cropped(to: expanded.extent)
-                styled = expanded.applyingFilter("CIMultiplyBlendMode", parameters: [
-                    kCIInputBackgroundImageKey: pattern
-                ])
+            // 线段（虚线）：沿人物外轮廓跟踪 + 等弧长分段——
+            // 空隙沿轮廓曲线方向，段与段之间保持曲线的走势（像素级实现）
+            // 掩码按帧缓存：播放/拖动时同帧重复渲染直接命中，不会卡
+            let cacheKey = "\(clipID)-\(frameIndex)-\(Int(radius))-\(Int(18 / fixScale))-\(Int(8 / fixScale))"
+            if let cached = DashedMaskCache.mask(key: cacheKey) {
+                styled = CIImage(cgImage: cached).cropped(to: expanded.extent)
+            } else if let dashed = dashedAlongContour(
+                expanded,
+                segmentLength: 18 / fixScale,
+                gapLength: 8 / fixScale,
+                cutRadius: radius + 2
+            ) {
+                if let cg = context.createCGImage(dashed, from: dashed.extent) {
+                    DashedMaskCache.store(key: cacheKey, image: cg)
+                }
+                styled = dashed
             } else {
                 styled = expanded
             }
@@ -290,36 +353,151 @@ public struct CompositionRenderer {
         return tinted(styled, color: color)
     }
 
-    /// 柔光：人物在上，光晕层（膨胀+模糊+染色）垫在下层
-    private func glow(_ image: CIImage, color: CIColor) -> CIImage {
-        let expanded = image.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: 10])
+    /// 调试：在素材上绘制矩形虚线，验证基础虚线绘制（后续切换为人物轮廓）
+    private func dashedAlongContour(
+        _ expanded: CIImage, segmentLength: CGFloat, gapLength: CGFloat, cutRadius: CGFloat
+    ) -> CIImage? {
+        let extent = expanded.extent
+        let width = Int(extent.width)
+        let height = Int(extent.height)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: 0, space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        // 矩形虚线（帧内 15% 边距）
+        let rect = CGRect(
+            x: CGFloat(width) * 0.15, y: CGFloat(height) * 0.15,
+            width: CGFloat(width) * 0.7, height: CGFloat(height) * 0.7
+        )
+        ctx.setStrokeColor(red: 1, green: 1, blue: 1, alpha: 1)
+        ctx.setLineWidth(cutRadius * 2)
+        ctx.setLineDash(phase: 0, lengths: [segmentLength, gapLength])
+        ctx.addPath(CGPath(rect: rect, transform: nil))
+        ctx.strokePath()
+        guard let dashCG = ctx.makeImage() else { return nil }
+        let dashCI = CIImage(cgImage: dashCG)
+        // 描边层 = expanded × 虚线掩码（虚线处保留、空隙透明）
+        let clear = CIImage.clear.cropped(to: extent)
+        return expanded.applyingFilter("CIBlendWithAlphaMask", parameters: [
+            kCIInputMaskImageKey: dashCI,
+            kCIInputBackgroundImageKey: clear
+        ])
+    }
+
+    /// 折线上弧长 arc 处的点
+    private func pointOnPolyline(_ polyline: [CGPoint], cumulative: [CGFloat], arc: CGFloat) -> CGPoint {
+        guard polyline.count > 1 else { return polyline.first ?? .zero }
+        var low = 0
+        var high = cumulative.count - 1
+        while low < high {
+            let mid = (low + high) / 2
+            if cumulative[mid] < arc { low = mid + 1 } else { high = mid }
+        }
+        guard low > 0 else { return polyline[0] }
+        let segStart = polyline[low - 1]
+        let segEnd = polyline[low]
+        let segLen = cumulative[low] - cumulative[low - 1]
+        let t = segLen > 0 ? (arc - cumulative[low - 1]) / segLen : 0
+        return CGPoint(
+            x: segStart.x + (segEnd.x - segStart.x) * t,
+            y: segStart.y + (segEnd.y - segStart.y) * t
+        )
+    }
+
+    /// Douglas-Peucker 折线简化
+    private func simplifyPolyline(_ points: [CGPoint], epsilon: CGFloat) -> [CGPoint] {
+        guard points.count > 2 else { return points }
+        // 先降采样避免递归过深
+        var sampled = points
+        if sampled.count > 4000 {
+            let step = max(1, sampled.count / 4000)
+            sampled = stride(from: 0, to: sampled.count, by: step).map { sampled[$0] }
+        }
+        func perpendicularDistance(_ p: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat {
+            let abx = b.x - a.x
+            let aby = b.y - a.y
+            let lengthSq = abx * abx + aby * aby
+            guard lengthSq > 0 else { return hypot(p.x - a.x, p.y - a.y) }
+            let t = max(0, min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / lengthSq))
+            let proj = CGPoint(x: a.x + abx * t, y: a.y + aby * t)
+            return hypot(p.x - proj.x, p.y - proj.y)
+        }
+        func dp(_ range: Range<Int>) -> [CGPoint] {
+            let a = sampled[range.lowerBound]
+            let b = sampled[range.upperBound - 1]
+            var maxDist: CGFloat = 0
+            var maxIndex = -1
+            for i in (range.lowerBound + 1)..<(range.upperBound - 1) {
+                let d = perpendicularDistance(sampled[i], a, b)
+                if d > maxDist {
+                    maxDist = d
+                    maxIndex = i
+                }
+            }
+            if maxDist > epsilon && maxIndex > 0 {
+                return dp(range.lowerBound..<(maxIndex + 1)).dropLast() + dp(maxIndex..<range.upperBound)
+            }
+            return [a, b]
+        }
+        return dp(0..<sampled.count)
+    }
+
+    /// 柔光：人物在上，光晕层（膨胀+模糊+染色）垫在下层（光晕不裁剪，避免贴边被截断）
+    private func glow(_ image: CIImage, color: CIColor, fixScale: CGFloat = 1) -> CIImage {
+        let expanded = image.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: 10 / fixScale])
         let blurred = expanded
             .clampedToExtent()
-            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 16])
-            .cropped(to: image.extent)
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 16 / fixScale])
         return image.composited(over: tinted(blurred, color: color))
     }
 
-    /// 投影：alpha 遮罩模糊后偏移染色（右下方向）
-    private func shadow(_ image: CIImage) -> CIImage {
+    /// 投影：先偏移后模糊（对称、不裁剪，避免贴边时阴影被截断）
+    private func shadow(_ image: CIImage, fixScale: CGFloat = 1) -> CIImage {
         let mask = image.applyingFilter("CIMaskToAlpha")
-        let blurred = mask
+        let shifted = mask.transformed(by: CGAffineTransform(
+            translationX: 14 / fixScale, y: -14 / fixScale
+        ))
+        let blurred = shifted
             .clampedToExtent()
-            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 10])
-            .cropped(to: image.extent)
-        let shifted = blurred.transformed(by: CGAffineTransform(translationX: 14, y: -14))
-        return image.composited(over: tinted(shifted, color: CIColor(hex: "000000")))
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 10 / fixScale])
+        return image.composited(over: tinted(blurred, color: CIColor(hex: "000000")))
     }
 
-    /// 用 alpha 掩码染色：纯色 × 掩码（RGB 置为颜色，alpha 来自掩码）
+    /// 用 alpha 掩码染色：纯色 × 人物 alpha（CIBlendWithAlphaMask 使用掩码的
+    /// alpha 通道作混合系数，人物外 alpha=0 严格透明，不依赖颜色亮度）
     private func tinted(_ mask: CIImage, color: CIColor) -> CIImage {
         let solid = CIImage(color: color).cropped(to: mask.extent)
         let clear = CIImage.clear.cropped(to: mask.extent)
-        let alpha = mask.applyingFilter("CIMaskToAlpha")
-        return solid.applyingFilter("CIBlendWithMask", parameters: [
-            kCIInputMaskImageKey: alpha,
+        return solid.applyingFilter("CIBlendWithAlphaMask", parameters: [
+            kCIInputMaskImageKey: mask,
             kCIInputBackgroundImageKey: clear
         ])
+    }
+}
+
+// MARK: - 虚线掩码缓存
+
+/// 虚线掩码按帧缓存（key = clipID-帧索引-半径-段长-空隙），播放/拖动时同帧直接命中
+private enum DashedMaskCache {
+    static let lock = NSLock()
+    static var cache: [String: CGImage] = [:]
+    static let maxCount = 96
+
+    static func mask(key: String) -> CGImage? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cache[key]
+    }
+
+    static func store(key: String, image: CGImage) {
+        lock.lock()
+        defer { lock.unlock() }
+        cache[key] = image
+        if cache.count > maxCount {
+            cache.removeAll()
+        }
     }
 }
 
@@ -330,70 +508,78 @@ private enum LinePattern {
     static let lock = NSLock()
     static var cache: [String: CGImage] = [:]
 
-    static func image(width: Int, height: Int, style: BackgroundPatternStyle) -> CGImage? {
-        let key = "\(width)-\(height)-\(style.pattern.rawValue)-\(Int(style.lineWidth))-\(style.colorHex)-\(Int(style.spacing))"
+    static func image(width: Int, height: Int, style: BackgroundPatternStyle, transparentBackground: Bool = false) -> CGImage? {
+        let key = "\(width)-\(height)-\(style.pattern.rawValue)-\(Int(style.lineWidth))-\(style.colorHex)-\(Int(style.spacing))-\(Int(style.angle))-\(transparentBackground ? 1 : 0)"
         lock.lock()
         if let cached = cache[key] {
             lock.unlock()
             return cached
         }
         lock.unlock()
-        guard let drawn = draw(width: width, height: height, style: style) else { return nil }
+        guard let drawn = draw(width: width, height: height, style: style, transparentBackground: transparentBackground) else { return nil }
         lock.lock()
         cache[key] = drawn
         lock.unlock()
         return drawn
     }
 
-    private static func draw(width: Int, height: Int, style: BackgroundPatternStyle) -> CGImage? {
+    private static func draw(width: Int, height: Int, style: BackgroundPatternStyle, transparentBackground: Bool) -> CGImage? {
+        // spacing 异常（0/负数）时回退默认值，避免 stride-by-zero 死循环
+        let spacing = style.spacing >= 8 ? style.spacing : 72
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
         guard let ctx = CGContext(
             data: nil, width: width, height: height, bitsPerComponent: 8,
             bytesPerRow: 0, space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
-        // 浅色底
-        ctx.setFillColor(red: 0.96, green: 0.96, blue: 0.98, alpha: 1)
-        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        if !transparentBackground {
+            // 浅色底（背景图案模式）
+            ctx.setFillColor(red: 0.96, green: 0.96, blue: 0.98, alpha: 1)
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
         let lineColor = style.colorHex.hexComponents()
         ctx.setStrokeColor(red: lineColor.r, green: lineColor.g, blue: lineColor.b, alpha: 1)
         ctx.setLineWidth(style.lineWidth)
 
         switch style.pattern {
         case .horizontal:
-            for y in stride(from: 0, through: height, by: Int(style.spacing)) {
-                ctx.move(to: CGPoint(x: 0, y: y))
-                ctx.addLine(to: CGPoint(x: width, y: y))
-            }
-        case .diagonal:
-            let diagonal = sqrt(CGFloat(width * width + height * height))
-            for offset in stride(from: -diagonal, through: diagonal, by: style.spacing) {
-                ctx.move(to: CGPoint(x: CGFloat(width) + offset, y: 0))
-                ctx.addLine(to: CGPoint(x: offset, y: CGFloat(height)))
-            }
-        case .grid:
-            for x in stride(from: 0, through: width, by: Int(style.spacing)) {
-                ctx.move(to: CGPoint(x: x, y: 0))
-                ctx.addLine(to: CGPoint(x: x, y: height))
-            }
-            for y in stride(from: 0, through: height, by: Int(style.spacing)) {
-                ctx.move(to: CGPoint(x: 0, y: y))
-                ctx.addLine(to: CGPoint(x: width, y: y))
+            // 线条：按角度绘制平行线族（0 = 横线，45 = 斜线，90 = 竖线…）
+            let rad = style.angle * .pi / 180
+            let dirX = cos(rad)
+            let dirY = sin(rad)
+            let nX = -dirY
+            let nY = dirX
+            let diag = hypot(CGFloat(width), CGFloat(height))
+            var offset: CGFloat = -diag
+            while offset <= diag {
+                let px = CGFloat(width) / 2 + nX * offset
+                let py = CGFloat(height) / 2 + nY * offset
+                ctx.move(to: CGPoint(x: px - dirX * diag, y: py - dirY * diag))
+                ctx.addLine(to: CGPoint(x: px + dirX * diag, y: py + dirY * diag))
+                offset += spacing
             }
         case .mosaic:
-            // 深浅交替方块（以线条色为深色）
-            let cell = style.spacing
+            // 实心方块与空心方块（仅边框线）间隔的标准棋盘格（无错位、不重叠）。
+            // 方块边长由粗细档位（lineWidth）决定
+            let cell = max(style.lineWidth, 8)
+            ctx.setStrokeColor(red: lineColor.r, green: lineColor.g, blue: lineColor.b, alpha: 1)
+            ctx.setLineWidth(2)
             var row = 0
             var y: CGFloat = 0
             while y < CGFloat(height) {
-                var x: CGFloat = (row % 2 == 0) ? 0 : -cell / 2
+                var col = 0
+                var x: CGFloat = 0
                 while x < CGFloat(width) {
-                    if (Int(x / cell) + row) % 2 == 0 {
+                    let rect = CGRect(x: x, y: y, width: cell, height: cell)
+                    if (col + row) % 2 == 0 {
+                        // 实心方块
                         ctx.setFillColor(red: lineColor.r, green: lineColor.g, blue: lineColor.b, alpha: 1)
+                        ctx.fill(rect)
                     } else {
-                        ctx.setFillColor(red: 0.97, green: 0.97, blue: 0.99, alpha: 1)
+                        // 空心方块：只画边框线
+                        ctx.stroke(rect)
                     }
-                    ctx.fill(CGRect(x: x, y: y, width: cell, height: cell))
+                    col += 1
                     x += cell
                 }
                 row += 1
@@ -406,12 +592,14 @@ private enum LinePattern {
 }
 
 extension String {
-    /// hex 颜色字符串拆分为 RGB 分量
+    /// hex 颜色字符串拆分为 RGB 分量；非法输入回退为中灰
     fileprivate func hexComponents() -> (r: CGFloat, g: CGFloat, b: CGFloat) {
-        var value: UInt64 = 0
         var hex = trimmingCharacters(in: .whitespacesAndNewlines)
         hex = hex.replacingOccurrences(of: "#", with: "")
-        Scanner(string: hex).scanHexInt64(&value)
+        var value: UInt64 = 0
+        guard hex.count == 6, Scanner(string: hex).scanHexInt64(&value) else {
+            return (0.5, 0.5, 0.5)
+        }
         return (
             CGFloat((value >> 16) & 0xFF) / 255,
             CGFloat((value >> 8) & 0xFF) / 255,
@@ -423,11 +611,15 @@ extension String {
 // MARK: - Color
 
 extension CIColor {
+    /// 解析 6 位 hex 颜色；非法输入回退为白色，避免静默变黑
     convenience init(hex: String) {
-        var value: UInt64 = 0
         var hexString = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         hexString = hexString.replacingOccurrences(of: "#", with: "")
-        Scanner(string: hexString).scanHexInt64(&value)
+        var value: UInt64 = 0
+        guard hexString.count == 6, Scanner(string: hexString).scanHexInt64(&value) else {
+            self.init(red: 1, green: 1, blue: 1, alpha: 1)
+            return
+        }
         let r = CGFloat((value >> 16) & 0xFF) / 255
         let g = CGFloat((value >> 8) & 0xFF) / 255
         let b = CGFloat(value & 0xFF) / 255
@@ -435,59 +627,3 @@ extension CIColor {
     }
 }
 
-// MARK: - 虚线切缝图案
-
-/// 45° 菱形网格图案：双向 45° 斜线（线宽 = 间隔），把描边环切成均匀菱形段。
-/// 无中心、无方向性，避免放射感与蚊香效果。
-private enum DiamondGridPattern {
-    static let lock = NSLock()
-    static var cache: [String: CGImage] = [:]
-
-    static func image(
-        width: Int, height: Int, spacing: CGFloat, lineWidth: CGFloat
-    ) -> CGImage? {
-        let key = "\(width)-\(height)-\(Int(spacing))-\(Int(lineWidth))"
-        lock.lock()
-        if let cached = cache[key] {
-            lock.unlock()
-            return cached
-        }
-        lock.unlock()
-        guard let drawn = draw(
-            width: width, height: height, spacing: spacing, lineWidth: lineWidth
-        ) else { return nil }
-        lock.lock()
-        cache[key] = drawn
-        lock.unlock()
-        return drawn
-    }
-
-    /// 白底 + 双向 45° 黑色斜线（线宽 = 间隔）
-    private static func draw(
-        width: Int, height: Int, spacing: CGFloat, lineWidth: CGFloat
-    ) -> CGImage? {
-        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
-        guard let ctx = CGContext(
-            data: nil, width: width, height: height, bitsPerComponent: 8,
-            bytesPerRow: 0, space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        ctx.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
-        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        ctx.setStrokeColor(red: 0, green: 0, blue: 0, alpha: 1)
-        ctx.setLineWidth(lineWidth)
-        let diagonal = sqrt(CGFloat(width * width + height * height))
-        // 方向一：正斜线
-        for offset in stride(from: -diagonal, through: diagonal, by: spacing) {
-            ctx.move(to: CGPoint(x: CGFloat(width) + offset, y: 0))
-            ctx.addLine(to: CGPoint(x: offset, y: CGFloat(height)))
-        }
-        // 方向二：反斜线
-        for offset in stride(from: -diagonal, through: diagonal, by: spacing) {
-            ctx.move(to: CGPoint(x: offset, y: 0))
-            ctx.addLine(to: CGPoint(x: CGFloat(width) + offset, y: CGFloat(height)))
-        }
-        ctx.strokePath()
-        return ctx.makeImage()
-    }
-}

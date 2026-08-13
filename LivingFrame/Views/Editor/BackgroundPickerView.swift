@@ -23,10 +23,9 @@ struct BackgroundPickerView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     aspectSection
-                    presetSection
-                    patternSection
-                    albumSection
                     colorSection
+                    presetSection
+                    albumSection
                 }
                 .padding()
             }
@@ -40,100 +39,6 @@ struct BackgroundPickerView: View {
             }
         }
         .presentationDetents([.medium, .large])
-    }
-
-    // MARK: - 线条图案（代码绘制：样式/粗细/颜色）
-
-    /// 线条图案可选颜色
-    private let patternColors: [(name: String, hex: String)] = [
-        ("灰", "B8BDC9"), ("黑", "000000"), ("金", "E8C05C"),
-        ("红", "E74C3C"), ("蓝", "54A0FF"), ("绿", "1DD1A1"),
-        ("紫", "8B7CF6"), ("粉", "FF9FF3")
-    ]
-
-    /// 线条粗细
-    private let patternWidths: [(title: String, width: CGFloat)] = [
-        ("细", 1), ("中", 2), ("粗", 4)
-    ]
-
-    /// 当前生效的图案参数（用于选中态判断）
-    private var currentPattern: BackgroundPatternStyle? {
-        guard let bg = appState.composition?.background, bg.kind == .pattern else { return nil }
-        return bg.patternStyle
-    }
-
-    private var patternSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("线条图案")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(LF.textSecondary)
-                .textCase(.uppercase)
-                .tracking(1.2)
-            // 样式
-            HStack(spacing: 8) {
-                ForEach(BackgroundPattern.allCases) { pattern in
-                    Button {
-                        applyPattern { $0.pattern = pattern }
-                    } label: {
-                        Text(pattern.title)
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(
-                                currentPattern?.pattern == pattern ? LF.gold : LF.surface2,
-                                in: Capsule()
-                            )
-                            .foregroundStyle(currentPattern?.pattern == pattern ? .black : LF.textPrimary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            // 粗细
-            HStack(spacing: 8) {
-                ForEach(patternWidths, id: \.width) { width in
-                    Button {
-                        applyPattern { $0.lineWidth = width.width }
-                    } label: {
-                        Text(width.title)
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                abs((currentPattern?.lineWidth ?? 0) - width.width) < 0.1 ? LF.gold : LF.surface2,
-                                in: Capsule()
-                            )
-                            .foregroundStyle(abs((currentPattern?.lineWidth ?? 0) - width.width) < 0.1 ? .black : LF.textPrimary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            // 颜色
-            HStack(spacing: 10) {
-                ForEach(patternColors, id: \.hex) { color in
-                    Button {
-                        applyPattern { $0.colorHex = color.hex }
-                    } label: {
-                        Circle()
-                            .fill(Color(hex: color.hex))
-                            .frame(width: 22, height: 22)
-                            .overlay {
-                                Circle().stroke(
-                                    currentPattern?.colorHex == color.hex ? LF.gold : LF.surface2,
-                                    lineWidth: currentPattern?.colorHex == color.hex ? 2.5 : 1
-                                )
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    /// 修改图案参数并应用（保留未修改的参数）
-    private func applyPattern(_ mutate: (inout BackgroundPatternStyle) -> Void) {
-        var style = currentPattern ?? BackgroundPatternStyle()
-        mutate(&style)
-        appState.setBackgroundPattern(style)
     }
 
     private var presetSection: some View {

@@ -34,9 +34,9 @@ public enum EdgeThickness: String, Codable, CaseIterable, Identifiable {
     /// 描边半径（像素）
     public var radius: CGFloat {
         switch self {
-        case .thin: 3
-        case .medium: 6
-        case .thick: 10
+        case .thin: 18
+        case .medium: 36
+        case .thick: 60
         }
     }
 }
@@ -78,5 +78,5 @@ public enum ClipEdgeStyle: String, Codable, CaseIterable, Identifiable {
     }
 
     /// UI 展示的风格（不含旧兼容 case）
-    public static let displayCases: [ClipEdgeStyle] = [.none, .outline, .glow, .shadow, .comic]
+    public static let displayCases: [ClipEdgeStyle] = [.none, .outline, .comic]
 }

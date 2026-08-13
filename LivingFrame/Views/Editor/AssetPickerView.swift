@@ -5,21 +5,29 @@ import SwiftUI
 struct AssetPickerView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    @State private var scope: LibraryScope = .all
     @State private var selectedIDs: Set<String> = []
+    /// 当前浏览的文件夹（nil = 全部素材），按钮直接切换，不依赖 NavigationLink
+    @State private var folderID: String?
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 10)]
+
+    private var currentFolder: LibraryFolder? {
+        appState.folders.first { $0.id == folderID }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
                     folderBar
+                    if let folder = currentFolder, !appState.childFolders(of: folder.id).isEmpty {
+                        childFolderBar(folder)
+                    }
                     clipsGrid
                 }
                 .padding()
             }
-            .navigationTitle("选择素材")
+            .navigationTitle(currentFolder?.name ?? "选择素材")
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {
@@ -43,44 +51,63 @@ struct AssetPickerView: View {
         .presentationDetents([.medium, .large])
     }
 
+    /// 顶层：全部素材 + 根文件夹
     private var folderBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chip("全部素材", scope: .all)
-                ForEach(appState.folders) { folder in
-                    chip(folder.name, scope: .folder(folder.id))
+                folderChip(title: "全部素材", id: nil)
+                ForEach(appState.rootFolders()) { folder in
+                    folderChip(title: folder.name, id: folder.id)
                 }
             }
         }
     }
 
-    private func chip(_ title: String, scope: LibraryScope) -> some View {
+    /// 文件夹内的子文件夹（点击切换浏览）
+    private func childFolderBar(_ folder: LibraryFolder) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(appState.childFolders(of: folder.id)) { child in
+                    folderChip(title: child.name, id: child.id)
+                }
+            }
+        }
+    }
+
+    private func folderChip(title: String, id: String?) -> some View {
         Button {
-            self.scope = scope
+            folderID = id
+            selectedIDs.removeAll()
         } label: {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(self.scope == scope ? LF.gold : LF.surface2, in: Capsule())
-                .foregroundStyle(self.scope == scope ? .black : LF.textPrimary)
+            HStack(spacing: 6) {
+                if id != nil {
+                    Image(systemName: "folder.fill")
+                        .foregroundStyle(LF.gold)
+                }
+                Text(title)
+                    .lineLimit(1)
+                if let id,
+                   let folder = appState.folders.first(where: { $0.id == id }) {
+                    Text("\(folder.clipIDs.count)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(LF.textSecondary)
+                }
+            }
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(minHeight: 48)
+            .contentShape(Capsule())
+            .background(folderID == id ? LF.gold : LF.surface2, in: Capsule())
+            .foregroundStyle(folderID == id ? .black : LF.textPrimary)
         }
         .buttonStyle(.plain)
     }
 
     private var scopedClips: [SegmentedClip] {
-        switch scope {
-        case .all:
-            return appState.clips
-        case .unfiled:
-            let filedIDs = Set(appState.folders.flatMap(\.clipIDs))
-            return appState.clips.filter { !filedIDs.contains($0.id) }
-        case .folder(let folderID):
-            guard let folder = appState.folders.first(where: { $0.id == folderID }) else { return [] }
-            return folder.clipIDs.compactMap { clipID in
-                appState.clips.first(where: { $0.id == clipID })
-            }
-        }
+        guard let folderID else { return appState.clips }
+        let ids = appState.clipIDs(includingChildrenOf: folderID)
+        return appState.clips.filter { ids.contains($0.id) }
     }
 
     private var clipsGrid: some View {

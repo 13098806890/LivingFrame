@@ -48,6 +48,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     /// 时间轴出现/消失（秒）
     public var startTime: TimeInterval
     public var endTime: TimeInterval
+    /// 元素级背景图案（垫在元素内容下层，nil = 无）
+    public var backgroundPattern: BackgroundPatternStyle?
 
     public init(
         id: UUID = UUID(),
@@ -56,7 +58,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         transform: ElementTransform = ElementTransform(),
         zIndex: Int = 0,
         startTime: TimeInterval = 0,
-        endTime: TimeInterval = .greatestFiniteMagnitude
+        endTime: TimeInterval = .greatestFiniteMagnitude,
+        backgroundPattern: BackgroundPatternStyle? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -65,6 +68,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         self.zIndex = zIndex
         self.startTime = startTime
         self.endTime = endTime
+        self.backgroundPattern = backgroundPattern
     }
 
     public func isVisible(at time: TimeInterval) -> Bool {
@@ -76,9 +80,9 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
 
 /// 背景线条图案样式
 public enum BackgroundPattern: String, Codable, CaseIterable, Identifiable {
+    /// 线条（角度任意：0 = 横线，45 = 斜线，90 = 竖线）
     case horizontal
-    case diagonal
-    case grid
+    /// 马赛克（实心/空心方块棋盘格）
     case mosaic
 
     public var id: String { rawValue }
@@ -86,30 +90,32 @@ public enum BackgroundPattern: String, Codable, CaseIterable, Identifiable {
     public var title: String {
         switch self {
         case .horizontal: NSLocalizedString("横线", comment: "Background pattern")
-        case .diagonal: NSLocalizedString("斜线", comment: "Background pattern")
-        case .grid: NSLocalizedString("网格", comment: "Background pattern")
         case .mosaic: NSLocalizedString("马赛克", comment: "Background pattern")
         }
     }
 }
 
-/// 背景线条图案参数（代码绘制，可调样式/粗细/颜色/间距）
+/// 背景线条图案参数（代码绘制，可调样式/粗细/颜色/间距/角度）
 public struct BackgroundPatternStyle: Codable, Equatable {
     public var pattern: BackgroundPattern
     public var lineWidth: CGFloat
     public var colorHex: String
     public var spacing: CGFloat
+    /// 线条角度（度，0 = 横线，90 = 竖线，45 = 斜线）
+    public var angle: CGFloat
 
     public init(
         pattern: BackgroundPattern = .horizontal,
-        lineWidth: CGFloat = 2,
+        lineWidth: CGFloat = 4,
         colorHex: String = "B8BDC9",
-        spacing: CGFloat = 72
+        spacing: CGFloat = 48,
+        angle: CGFloat = 0
     ) {
         self.pattern = pattern
         self.lineWidth = lineWidth
         self.colorHex = colorHex
         self.spacing = spacing
+        self.angle = angle
     }
 }
 
@@ -128,21 +134,25 @@ public struct BackgroundPreset: Codable, Equatable {
     public var bottomColor: String
     /// 图片背景文件名（存于 Documents/Library/Backgrounds/，含预置图片）
     public var imageFileName: String?
-    /// 线条图案背景参数（kind == .pattern 时使用）
+    /// 线条图案参数（kind == .pattern 时使用）
     public var patternStyle: BackgroundPatternStyle?
+    /// 叠加在底层背景上的线条/网格图案图层（透明底线条）
+    public var patternOverlay: BackgroundPatternStyle?
 
     public init(
         kind: Kind,
         topColor: String,
         bottomColor: String,
         imageFileName: String? = nil,
-        patternStyle: BackgroundPatternStyle? = nil
+        patternStyle: BackgroundPatternStyle? = nil,
+        patternOverlay: BackgroundPatternStyle? = nil
     ) {
         self.kind = kind
         self.topColor = topColor
         self.bottomColor = bottomColor
         self.imageFileName = imageFileName
         self.patternStyle = patternStyle
+        self.patternOverlay = patternOverlay
     }
 
     public static let clear = BackgroundPreset(kind: .clear, topColor: "000000", bottomColor: "000000")
@@ -173,7 +183,7 @@ public struct Composition: Identifiable, Codable, Equatable {
         fps: Double = 30,
         elements: [CompositionElement] = [],
         audioClips: [AudioClip] = [],
-        background: BackgroundPreset = .dark,
+        background: BackgroundPreset = BackgroundPreset(kind: .solid, topColor: "FFFFFF", bottomColor: "FFFFFF"),
         templateID: String? = nil,
         cropRect: CGRect? = nil
     ) {

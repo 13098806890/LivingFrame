@@ -6,21 +6,255 @@ struct ElementInspectorView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
+        // 底部属性面板：高度受限（外部 frame），内容多时内部滚动
         SectionCard(title: "检查器") {
-            if let id = appState.primarySelectedID,
-               let element = appState.composition?.elements.first(where: { $0.id == id }) {
-                elementInspector(element)
-            } else if appState.selectedElementIDs.count > 1 {
-                multiSelectionSummary
-            } else if let id = appState.selectedAudioID,
-                      let clip = appState.composition?.audioClips.first(where: { $0.id == id }) {
-                audioInspector(clip)
-            } else {
-                Text("点击画布或时间轴上的元素进行编辑")
-                    .font(.caption)
-                    .foregroundStyle(LF.textSecondary)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 10) {
+                    if appState.selectedBackground {
+                        backgroundInspector
+                    } else if let id = appState.primarySelectedID,
+                              let element = appState.composition?.elements.first(where: { $0.id == id }) {
+                        elementInspector(element)
+                    } else if appState.selectedElementIDs.count > 1 {
+                        multiSelectionSummary
+                    } else if let id = appState.selectedAudioID,
+                              let clip = appState.composition?.audioClips.first(where: { $0.id == id }) {
+                        audioInspector(clip)
+                    } else {
+                        Text("点击画布或时间轴上的元素进行编辑")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                    }
+                }
             }
         }
+    }
+
+    // MARK: - 背景检查器
+
+    /// 纯色背景
+    private let bgColors: [(name: String, hex: String)] = [
+        ("白色", "FFFFFF"), ("微信背景色", "EDEDED"), ("黑色", "000000")
+    ]
+
+    private var backgroundInspector: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("背景")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("画布空白处取消选中后返回")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+            }
+            // 画幅比例
+            HStack(spacing: 8) {
+                Text("比例")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+                ForEach(CanvasAspect.allCases) { aspect in
+                    Button {
+                        appState.setCanvasAspect(aspect)
+                    } label: {
+                        Text(aspect.title)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(
+                                appState.composition?.canvasRect.size == aspect.canvasSize ? LF.gold : LF.surface2,
+                                in: Capsule()
+                            )
+                            .foregroundStyle(appState.composition?.canvasRect.size == aspect.canvasSize ? .black : LF.textPrimary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            // 纯色
+            HStack(spacing: 10) {
+                ForEach(bgColors, id: \.hex) { color in
+                    Button {
+                        appState.setBackground(color: color.hex)
+                    } label: {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(hex: color.hex))
+                            .frame(width: 44, height: 44)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(
+                                        isBgColor(color.hex) ? LF.gold : LF.surface2,
+                                        lineWidth: isBgColor(color.hex) ? 2.5 : 1
+                                    )
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            // 图案叠加（横线/斜线/网格/马赛克）
+            Text("图案叠加")
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
+            HStack(spacing: 8) {
+                Button {
+                    appState.setBackgroundPattern(nil)
+                } label: {
+                    Text("无")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            bgOverlay == nil ? LF.gold : LF.surface2,
+                            in: Capsule()
+                        )
+                        .foregroundStyle(bgOverlay == nil ? .black : LF.textPrimary)
+                }
+                .buttonStyle(.plain)
+                ForEach(linePatterns) { pattern in
+                    Button {
+                        var style = bgOverlay ?? BackgroundPatternStyle()
+                        style.pattern = pattern
+                        // 切换图案时重置默认参数，避免继承旧图案的异常值
+                        if pattern == .mosaic {
+                            style.lineWidth = 48
+                            style.spacing = 48
+                            style.angle = 0
+                        } else {
+                            style.lineWidth = 4
+                            style.spacing = 36
+                            style.angle = 0
+                        }
+                        appState.setBackgroundPattern(style)
+                    } label: {
+                        Text(pattern.title)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(
+                                bgOverlay?.pattern == pattern ? LF.gold : LF.surface2,
+                                in: Capsule()
+                            )
+                            .foregroundStyle(bgOverlay?.pattern == pattern ? .black : LF.textPrimary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if bgOverlay != nil {
+                // 粗细（横线=线宽，马赛克=方块大小）
+                HStack(spacing: 8) {
+                    ForEach(patternOptions(bgOverlay?.pattern).widths, id: \.0) { option in
+                        Button {
+                            var style = bgOverlay ?? BackgroundPatternStyle()
+                            style.lineWidth = option.1
+                            appState.setBackgroundPattern(style)
+                        } label: {
+                            Text(option.0)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    abs((bgOverlay?.lineWidth ?? 0) - option.1) < 0.1 ? LF.gold : LF.surface2,
+                                    in: Capsule()
+                                )
+                                .foregroundStyle(abs((bgOverlay?.lineWidth ?? 0) - option.1) < 0.1 ? .black : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                // 疏密度（仅横线）
+                if bgOverlay?.pattern != .mosaic {
+                    HStack(spacing: 8) {
+                        ForEach(patternOptions(bgOverlay?.pattern).spacing, id: \.0) { option in
+                            Button {
+                                var style = bgOverlay ?? BackgroundPatternStyle()
+                                style.spacing = option.1
+                                appState.setBackgroundPattern(style)
+                        } label: {
+                            Text(option.0)
+                                .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        abs((bgOverlay?.spacing ?? 0) - option.1) < 1 ? LF.gold : LF.surface2,
+                                        in: Capsule()
+                                    )
+                                    .foregroundStyle(abs((bgOverlay?.spacing ?? 0) - option.1) < 1 ? .black : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                }
+                HStack(spacing: 10) {
+                    ForEach(edgeColors, id: \.hex) { color in
+                        Button {
+                            var style = bgOverlay ?? BackgroundPatternStyle()
+                            style.colorHex = color.hex
+                            appState.setBackgroundPattern(style)
+                        } label: {
+                            Circle()
+                                .fill(Color(hex: color.hex))
+                                .frame(width: 22, height: 22)
+                                .overlay {
+                                    Circle().stroke(
+                                        bgOverlay?.colorHex == color.hex ? LF.gold : LF.surface2,
+                                        lineWidth: bgOverlay?.colorHex == color.hex ? 2.5 : 1
+                                    )
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                // 角度（仅横线，0 = 横线，90 = 竖线，45/135 = 斜线）
+                if bgOverlay?.pattern != .mosaic {
+                    HStack(spacing: 8) {
+                        Text("角度")
+                            .font(.caption2)
+                            .foregroundStyle(LF.textSecondary)
+                        Slider(
+                            value: Binding(
+                                get: { bgOverlay?.angle ?? 0 },
+                                set: { value in
+                                    var style = bgOverlay ?? BackgroundPatternStyle()
+                                    style.angle = value
+                                    appState.setBackgroundPattern(style)
+                                }
+                            ),
+                            in: 0...180
+                        )
+                        .tint(LF.gold)
+                        Text("\(Int(bgOverlay?.angle ?? 0))°")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(LF.textSecondary)
+                            .frame(width: 32, alignment: .trailing)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 可选线条图案：横线（角度任意）+ 马赛克
+    private let linePatterns: [BackgroundPattern] = [.horizontal, .mosaic]
+
+    /// 图案参数档位：横线=线宽+疏密度；马赛克=方块大小
+    private func patternOptions(_ pattern: BackgroundPattern?) -> (
+        widths: [(String, CGFloat)],
+        spacing: [(String, CGFloat)]
+    ) {
+        if pattern == .mosaic {
+            return ([("小", 32), ("中", 48), ("大", 64)], [])
+        }
+        return (
+            [("细", 2), ("中", 4), ("粗", 8)],
+            [("疏", 48), ("中", 36), ("密", 24)]
+        )
+    }
+
+    /// 当前背景图案叠加层
+    private var bgOverlay: BackgroundPatternStyle? {
+        appState.composition?.background.patternOverlay
+    }
+
+    private func isBgColor(_ hex: String) -> Bool {
+        guard let bg = appState.composition?.background, case .solid = bg.kind else { return false }
+        return bg.topColor == hex
     }
 
     /// 多选时：数量 + 批量操作
@@ -100,9 +334,155 @@ struct ElementInspectorView: View {
             if case .clip(let clipID) = element.kind,
                let clip = appState.clips.first(where: { $0.id == clipID }) {
                 stickerStylePicker(clip)
-                edgePicker(clip)
+            }
+            elementBackgroundPicker(element)
+        }
+    }
+
+    // MARK: - 元素背景图案
+
+    private func elementBackgroundPicker(_ element: CompositionElement) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("背景")
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
+            // 图案类型（无 = 关闭）
+            HStack(spacing: 8) {
+                Button {
+                    appState.setElementBackground(element.id, nil)
+                } label: {
+                    Text("无")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            element.backgroundPattern == nil ? LF.gold : LF.surface2,
+                            in: Capsule()
+                        )
+                        .foregroundStyle(element.backgroundPattern == nil ? .black : LF.textPrimary)
+                }
+                .buttonStyle(.plain)
+                ForEach(linePatterns) { pattern in
+                    Button {
+                        var style = element.backgroundPattern ?? BackgroundPatternStyle()
+                        style.pattern = pattern
+                        // 切换图案时重置默认参数，避免继承旧图案的异常值
+                        if pattern == .mosaic {
+                            style.lineWidth = 48
+                            style.spacing = 48
+                            style.angle = 0
+                        } else {
+                            style.lineWidth = 4
+                            style.spacing = 36
+                            style.angle = 0
+                        }
+                        appState.setElementBackground(element.id, style)
+                    } label: {
+                        Text(pattern.title)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(
+                                element.backgroundPattern?.pattern == pattern ? LF.gold : LF.surface2,
+                                in: Capsule()
+                            )
+                            .foregroundStyle(element.backgroundPattern?.pattern == pattern ? .black : LF.textPrimary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if element.backgroundPattern != nil {
+                // 粗细（横线=线宽，马赛克=方块大小）
+                HStack(spacing: 8) {
+                    ForEach(patternOptions(element.backgroundPattern?.pattern).widths, id: \.0) { option in
+                        Button {
+                            var style = element.backgroundPattern ?? BackgroundPatternStyle()
+                            style.lineWidth = option.1
+                            appState.setElementBackground(element.id, style)
+                        } label: {
+                            Text(option.0)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    abs((element.backgroundPattern?.lineWidth ?? 0) - option.1) < 0.1 ? LF.gold : LF.surface2,
+                                    in: Capsule()
+                                )
+                                .foregroundStyle(abs((element.backgroundPattern?.lineWidth ?? 0) - option.1) < 0.1 ? .black : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                // 疏密度（仅横线）
+                if element.backgroundPattern?.pattern != .mosaic {
+                    HStack(spacing: 8) {
+                        ForEach(patternOptions(element.backgroundPattern?.pattern).spacing, id: \.0) { option in
+                            Button {
+                                var style = element.backgroundPattern ?? BackgroundPatternStyle()
+                                style.spacing = option.1
+                                appState.setElementBackground(element.id, style)
+                            } label: {
+                                Text(option.0)
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        abs((element.backgroundPattern?.spacing ?? 0) - option.1) < 1 ? LF.gold : LF.surface2,
+                                        in: Capsule()
+                                    )
+                                    .foregroundStyle(abs((element.backgroundPattern?.spacing ?? 0) - option.1) < 1 ? .black : LF.textPrimary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                HStack(spacing: 10) {
+                    ForEach(edgeColors, id: \.hex) { color in
+                        Button {
+                            var style = element.backgroundPattern ?? BackgroundPatternStyle()
+                            style.colorHex = color.hex
+                            appState.setElementBackground(element.id, style)
+                        } label: {
+                            Circle()
+                                .fill(Color(hex: color.hex))
+                                .frame(width: 22, height: 22)
+                                .overlay {
+                                    Circle().stroke(
+                                        element.backgroundPattern?.colorHex == color.hex ? LF.gold : LF.surface2,
+                                        lineWidth: element.backgroundPattern?.colorHex == color.hex ? 2.5 : 1
+                                    )
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                // 角度（仅横线，0 = 横线，90 = 竖线，45/135 = 斜线）
+                if element.backgroundPattern?.pattern != .mosaic {
+                    HStack(spacing: 8) {
+                        Text("角度")
+                            .font(.caption2)
+                            .foregroundStyle(LF.textSecondary)
+                        Slider(
+                            value: Binding(
+                                get: { element.backgroundPattern?.angle ?? 0 },
+                                set: { value in
+                                    var style = element.backgroundPattern ?? BackgroundPatternStyle()
+                                    style.angle = value
+                                    appState.setElementBackground(element.id, style)
+                                }
+                            ),
+                            in: 0...180
+                        )
+                        .tint(LF.gold)
+                        Text("\(Int(element.backgroundPattern?.angle ?? 0))°")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(LF.textSecondary)
+                            .frame(width: 32, alignment: .trailing)
+                    }
+                }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - 贴纸风格
@@ -132,46 +512,8 @@ struct ElementInspectorView: View {
                     }
                 }
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: - 边缘效果
-
-    /// 描边可选颜色
-    private let edgeColors: [(name: String, hex: String)] = [
-        ("白", "FFFFFF"), ("黑", "000000"), ("金", "E8C05C"),
-        ("红", "E74C3C"), ("粉", "FF9FF3"), ("蓝", "54A0FF"),
-        ("绿", "1DD1A1"), ("紫", "8B7CF6")
-    ]
-
-    private func edgePicker(_ clip: SegmentedClip) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("边缘")
-                .font(.caption2)
-                .foregroundStyle(LF.textSecondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(ClipEdgeStyle.displayCases) { style in
-                        Button {
-                            appState.setClipEdgeStyle(clip.id, style)
-                        } label: {
-                            Text(style.title)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(
-                                    clip.edgeStyle == style ? LF.gold : LF.surface2,
-                                    in: Capsule()
-                                )
-                                .foregroundStyle(clip.edgeStyle == style ? .black : LF.textPrimary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            // 描边组合：线条样式 → 粗细 → 颜色
-            if clip.edgeStyle.isOutline {
+            // 自定义描边参数：线条样式 → 粗细 → 颜色（风格=自定义描边时）
+            if clip.stickerStyle == .customOutline {
                 HStack(spacing: 8) {
                     ForEach(EdgeLineStyle.allCases) { lineStyle in
                         Button {
@@ -216,8 +558,8 @@ struct ElementInspectorView: View {
                                 .frame(width: 22, height: 22)
                                 .overlay {
                                     Circle().stroke(
-                                        clip.edgeColorHex == color.hex ? LF.gold : LF.surface2,
-                                        lineWidth: clip.edgeColorHex == color.hex ? 2.5 : 1
+                                        clip.edgeColorHex.uppercased() == color.hex ? LF.gold : LF.surface2,
+                                        lineWidth: clip.edgeColorHex.uppercased() == color.hex ? 2.5 : 1
                                     )
                                 }
                         }
@@ -228,6 +570,13 @@ struct ElementInspectorView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    /// 描边可选颜色
+    private let edgeColors: [(name: String, hex: String)] = [
+        ("白", "FFFFFF"), ("黑", "000000"), ("灰", "B8BDC9"), ("金", "E8C05C"),
+        ("红", "E74C3C"), ("粉", "FF9FF3"), ("蓝", "54A0FF"),
+        ("绿", "1DD1A1"), ("紫", "8B7CF6")
+    ]
 
     // MARK: - 音频段
 

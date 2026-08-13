@@ -110,7 +110,8 @@ struct CanvasView: View {
         if let hit {
             appState.selectElement(hit.id)
         } else {
-            appState.clearElementSelection()
+            // 点空白处 = 选中背景对象（检查器可编辑背景纯色/图案）
+            appState.selectBackground()
         }
     }
 

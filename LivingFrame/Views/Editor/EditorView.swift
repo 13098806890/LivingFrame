@@ -10,23 +10,29 @@ struct EditorView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 12) {
-                    Spacer(minLength: 8)
-                    // 画布固定高度，不被下方内容压缩；内容多时向下滚动
-                    CanvasView()
-                        .frame(height: 420)
-                        .padding(.horizontal, 12)
-                    TimelineView()
-                        .padding(.horizontal, 12)
-                    ElementInspectorView()
-                        .padding(.horizontal, 12)
+            VStack(spacing: 0) {
+                // 画布区：占满剩余空间，画布在内部居中缩放（任何比例完整可见）
+                CanvasView()
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // 时间轴（固定紧凑高度）
+                TimelineView()
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+
+                // 底部控制区：工具行 + 属性面板
+                VStack(spacing: 8) {
                     toolbar
                         .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
+                    if hasSelection {
+                        ElementInspectorView()
+                            .padding(.horizontal, 12)
+                            .frame(maxHeight: 210)
+                    }
                 }
+                .padding(.vertical, 10)
             }
-            .scrollIndicators(.hidden)
             .navigationTitle("")
             .magicBackground()
             .onReceive(timer) { _ in
@@ -34,6 +40,7 @@ struct EditorView: View {
             }
             .onAppear {
                 appState.ensureComposition()
+                appState.selectBackground()
             }
             .sheet(isPresented: $appState.showExportView) {
                 ExportView()
@@ -50,31 +57,38 @@ struct EditorView: View {
         }
     }
 
+    /// 有选中对象（背景/元素/音频）时显示属性面板
+    private var hasSelection: Bool {
+        appState.selectedBackground
+            || !appState.selectedElementIDs.isEmpty
+            || appState.selectedAudioID != nil
+    }
+
     private var toolbar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                toolbarButton("素材", systemImage: "photo.on.rectangle.angled", prominent: false) {
-                    showAssetPicker = true
-                }
-            toolbarButton("背景", systemImage: "paintbrush.pointed", prominent: false) {
+        HStack(spacing: 6) {
+            toolbarButton("photo.on.rectangle.angled", prominent: false) {
+                showAssetPicker = true
+            }
+            toolbarButton("photo", prominent: false) {
                 showBackgroundPicker = true
             }
-            toolbarButton("裁剪", systemImage: "crop", prominent: false) {
+            toolbarButton("crop", prominent: false) {
                 appState.isCropping = true
             }
-                toolbarButton("导出", systemImage: "square.and.arrow.up", prominent: true) {
-                    appState.showExportView = true
-                }
+            toolbarButton("square.and.arrow.up", prominent: true) {
+                appState.showExportView = true
             }
         }
     }
 
     private func toolbarButton(
-        _ title: String, systemImage: String, prominent: Bool, action: @escaping () -> Void
+        _ systemImage: String, prominent: Bool, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
+            Image(systemName: systemImage)
+                .font(.callout)
                 .frame(maxWidth: .infinity)
+                .frame(height: 26)
         }
         .buttonStyle(MagicButtonStyle(prominent: prominent))
     }

@@ -5,13 +5,6 @@ import Photos
 import PhotosUI
 import SwiftUI
 
-/// 素材库浏览范围
-enum LibraryScope: Hashable {
-    case all
-    case unfiled
-    case folder(String)
-}
-
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
     @State private var pickerItems: [PhotosPickerItem] = []
@@ -23,6 +16,19 @@ struct LibraryView: View {
     @State private var newFolderName = ""
     /// 当前拖拽悬停的目标文件夹（用于高亮）
     @State private var dragOverFolderID: String?
+    /// 单击素材弹出的操作菜单（nil = 不显示）
+    @State private var menuClip: SegmentedClip?
+    /// 提取方式选择弹窗（静态贴纸 / 动态贴纸）
+    @State private var pendingExtract: PendingExtract?
+
+    /// 待用户确认提取方式的素材（视频/Live 均先询问）
+    private struct PendingExtract: Identifiable {
+        let id = UUID()
+        let name: String
+        let source: ImportSource
+        /// true = 动态贴纸，false = 静态贴纸，nil = 取消
+        var resume: (Bool?) -> Void
+    }
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
@@ -81,6 +87,35 @@ struct LibraryView: View {
             } message: {
                 Text(loadErrorMessage ?? "")
             }
+            .confirmationDialog(
+                "提取方式",
+                isPresented: Binding(
+                    get: { pendingExtract != nil },
+                    set: { if !$0 { pendingExtract = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("动态贴纸（跟随画面变化）") {
+                    pendingExtract?.resume(true)
+                }
+                Button("静态贴纸（单张）") {
+                    pendingExtract?.resume(false)
+                }
+                Button("取消", role: .cancel) {
+                    pendingExtract?.resume(nil)
+                }
+            } message: {
+                Text(pendingExtract.map { "「\($0.name)」是视频/Live Photo，选择提取方式" } ?? "")
+            }
+            .overlay {
+                if let clip = menuClip {
+                    ClipMenuView(clip: clip, excludeFolderID: nil) {
+                        menuClip = nil
+                    }
+                    .environmentObject(appState)
+                    .transition(.opacity)
+                }
+            }
         }
     }
 
@@ -126,13 +161,32 @@ struct LibraryView: View {
                 }
                 // 下载完成即隐藏下载进度条（抠图阶段由「正在抠图」卡片展示）
                 isDownloading = false
-                // 2. 串行抠图：一次一个素材，进度条不互相干扰，抠完一张显示一张
+                // 2. 串行提取：视频/Live 先询问 静态/动态，照片直接静态
                 for source in sources {
                     switch source {
-                    case .video(let url, let name, let stillOrientation):
-                        await appState.startSegmenting(
-                            url: url, name: name, stillOrientation: stillOrientation
-                        )
+                    case .video(let url, let name, let stillOrientation, let stillURL):
+                        // 视频类（Live Photo / 普通视频）：询问提取方式
+                        let kind: ExtractKind? = await withCheckedContinuation { continuation in
+                            pendingExtract = PendingExtract(name: name, source: source) { extractLive in
+                                guard let extractLive else {
+                                    continuation.resume(returning: nil)
+                                    return
+                                }
+                                continuation.resume(returning: extractLive ? .live : .static)
+                            }
+                        }
+                        pendingExtract = nil
+                        guard let kind else { continue }
+                        switch kind {
+                        case .live:
+                            await appState.startSegmenting(
+                                url: url, name: name, stillOrientation: stillOrientation
+                            )
+                        case .static:
+                            if let cgImage = await firstFrame(of: url, stillURL: stillURL) {
+                                await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
+                            }
+                        }
                     case .photo(let cgImage, let name):
                         await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
                     }
@@ -141,13 +195,19 @@ struct LibraryView: View {
         }
     }
 
+    private enum ExtractKind {
+        case live
+        case `static`
+    }
+
     private var loadErrorMessage: String? {
         loadError ?? appState.segmentationError
     }
 
     /// 下载完成的待抠图素材（下载与抠图分离：下载并行，抠图串行）
+    /// stillURL：Live Photo 的配套静态图（可选，非 Live 为 nil）
     private enum ImportSource {
-        case video(url: URL, name: String, stillOrientation: CGImagePropertyOrientation)
+        case video(url: URL, name: String, stillOrientation: CGImagePropertyOrientation, stillURL: URL?)
         case photo(cgImage: CGImage, name: String)
     }
 
@@ -220,7 +280,40 @@ struct LibraryView: View {
         // 以静态图 EXIF 朝向传给抠图管线（视频轨无旋转元数据时用于方向修正）
         let stillOrientation = await stillOrientation(for: asset)
         let name = resources.first?.originalFilename ?? copy.lastPathComponent
-        return .video(url: copy, name: name, stillOrientation: stillOrientation)
+        // 配套静态图（Live Photo 静态贴纸提取源）：请求原图数据存临时文件
+        let stillURL = await liveStillImageURL(for: asset)
+        LogStore.log("loadLivePhotoVideo: stillURL=\(stillURL?.path ?? "nil")")
+        return .video(url: copy, name: name, stillOrientation: stillOrientation, stillURL: stillURL)
+    }
+
+    /// 下载 Live Photo 配套静态图到临时文件（静态贴纸提取源）
+    private func liveStillImageURL(for asset: PHAsset) async -> URL? {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.progressHandler = { progress, _, _, _ in
+            LogStore.log("loadLivePhotoVideo: iCloud still download progress=\(Int(progress * 100))%")
+            Task { @MainActor in self.downloadProgress = progress }
+        }
+        let result: (data: Data?, error: Error?)? = await withCheckedContinuation { continuation in
+            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+                continuation.resume(returning: (data: data, error: info?[PHImageErrorKey] as? Error))
+            }
+        }
+        guard let data = result?.data, result?.error == nil else {
+            LogStore.log("liveStillImageURL: failed error=\(String(describing: result?.error))")
+            return nil
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LF-still-\(UUID().uuidString)")
+            .appendingPathExtension("jpg")
+        do {
+            try data.write(to: url)
+            return url
+        } catch {
+            LogStore.log("liveStillImageURL: write failed error=\(error)")
+            return nil
+        }
     }
 
     /// 兜底路径：PHLivePhoto 传输 + 提取 pairedVideo（iCloud 素材 itemIdentifier/类型缺失时使用）
@@ -268,20 +361,24 @@ struct LibraryView: View {
         LogStore.log("loadLivePhotoTransfer: video written \(destination.path) size=\(size) bytes")
         // 以配套静态图 EXIF 朝向传给抠图管线（视频轨无旋转元数据时用于方向修正）
         var stillOrientation = CGImagePropertyOrientation.up
+        var stillURL: URL? = nil
         if let stillResource = resources.first(where: { $0.type == .photo || $0.type == .fullSizePhoto }) {
-            let stillURL = FileManager.default.temporaryDirectory
+            let stillURLTmp = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension(stillResource.uniformTypeIdentifier)
             let stillError: Error? = await withCheckedContinuation { continuation in
-                PHAssetResourceManager.default().writeData(for: stillResource, toFile: stillURL, options: options) { error in
+                PHAssetResourceManager.default().writeData(for: stillResource, toFile: stillURLTmp, options: options) { error in
                     continuation.resume(returning: error)
                 }
             }
-            if stillError == nil, let exif = exifOrientation(of: stillURL) {
-                stillOrientation = exif
+            if stillError == nil {
+                stillURL = stillURLTmp
+                if let exif = exifOrientation(of: stillURLTmp) {
+                    stillOrientation = exif
+                }
             }
         }
-        return .video(url: destination, name: videoResource.originalFilename, stillOrientation: stillOrientation)
+        return .video(url: destination, name: videoResource.originalFilename, stillOrientation: stillOrientation, stillURL: stillURL)
     }
 
     /// 从 PHAsset 读静态图 EXIF 朝向
@@ -324,7 +421,7 @@ struct LibraryView: View {
         }
         let size = (try? FileManager.default.attributesOfItem(atPath: movie.url.path)[.size] as? Int) ?? 0
         LogStore.log("loadMovie: URL=\(movie.url.path) size=\(size) bytes")
-        return .video(url: movie.url, name: movie.url.lastPathComponent, stillOrientation: .up)
+        return .video(url: movie.url, name: movie.url.lastPathComponent, stillOrientation: .up, stillURL: nil)
     }
 
     private func loadPhoto(item: PhotosPickerItem) async -> ImportSource? {
@@ -350,6 +447,31 @@ struct LibraryView: View {
             .appendingPathExtension(url.pathExtension)
         try FileManager.default.copyItem(at: url, to: copy)
         return copy
+    }
+
+    /// 静态贴纸源图：Live Photo 用配套静态图，普通视频取首帧
+    private func firstFrame(of videoURL: URL, stillURL: URL?) async -> CGImage? {
+        if let stillURL {
+            // 用 fixedOrientation() 应用 EXIF 朝向，避免竖拍照片被旋转
+            guard let fixed = UIImage(contentsOfFile: stillURL.path)?.fixedOrientation() else {
+                LogStore.log("firstFrame: still image decode failed")
+                return nil
+            }
+            return fixed
+        }
+        let asset = AVURLAsset(url: videoURL)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        do {
+            let (image, _) = try await generator.image(at: .zero)
+            LogStore.log("firstFrame: video first frame \(image.width)x\(image.height)")
+            return image
+        } catch {
+            LogStore.log("firstFrame: video first frame failed error=\(error)")
+            return nil
+        }
     }
 
     // MARK: - 文件夹
@@ -389,12 +511,12 @@ struct LibraryView: View {
                                 } label: {
                                     HStack(spacing: 7) {
                                         Image(systemName: "folder.fill")
-                                            .font(.title3)
+                                            .font(.title2)
                                             .foregroundStyle(dragOverFolderID == folder.id ? .black : LF.gold)
                                         Text(folder.name)
                                             .lineLimit(1)
                                         Text("\(folder.clipIDs.count)")
-                                            .font(.caption.monospacedDigit())
+                                            .font(.subheadline.monospacedDigit())
                                             .foregroundStyle(dragOverFolderID == folder.id ? .black.opacity(0.6) : LF.textSecondary)
                                         if appState.hasChildFolders(folder.id) {
                                             Image(systemName: "chevron.right")
@@ -403,8 +525,10 @@ struct LibraryView: View {
                                         }
                                     }
                                     .font(.subheadline.weight(.semibold))
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .frame(minHeight: 56)
+                                    .contentShape(Capsule())
                                     .background(
                                         dragOverFolderID == folder.id ? LF.gold : LF.surface2,
                                         in: Capsule()
@@ -493,83 +617,15 @@ struct LibraryView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(appState.clips) { clip in
-                            ClipCell(clip: clip)
-                            // 长按拖动到文件夹
-                            .draggable(clip.id)
-                            .contextMenu {
-                                Menu {
-                                    ForEach(ClipEdgeStyle.displayCases) { style in
-                                        Button {
-                                            appState.setClipEdgeStyle(clip.id, style)
-                                        } label: {
-                                            if clip.edgeStyle == style {
-                                                Label(style.title, systemImage: "checkmark")
-                                            } else {
-                                                Text(style.title)
-                                            }
-                                        }
-                                    }
-                                    if clip.edgeStyle.isOutline {
-                                        Menu("线条样式") {
-                                            ForEach(EdgeLineStyle.allCases) { line in
-                                                Button {
-                                                    appState.setClipEdgeLineStyle(clip.id, line)
-                                                } label: {
-                                                    if clip.edgeLineStyle == line {
-                                                        Label(line.title, systemImage: "checkmark")
-                                                    } else {
-                                                        Text(line.title)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Menu("粗细") {
-                                            ForEach(EdgeThickness.allCases) { thickness in
-                                                Button {
-                                                    appState.setClipEdgeThickness(clip.id, thickness)
-                                                } label: {
-                                                    if clip.edgeThickness == thickness {
-                                                        Label(thickness.title, systemImage: "checkmark")
-                                                    } else {
-                                                        Text(thickness.title)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Menu("描边颜色") {
-                                            ForEach(edgeColorOptions, id: \.hex) { color in
-                                                Button {
-                                                    appState.setClipEdgeColor(clip.id, color.hex)
-                                                } label: {
-                                                    if clip.edgeColorHex == color.hex {
-                                                        Label(color.name, systemImage: "checkmark")
-                                                    } else {
-                                                        Text(color.name)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    Label("添加边缘", systemImage: "square.dashed")
-                                }
-                                Menu("移动到文件夹") {
-                                    if isClipFiled(clip.id) {
-                                        Button("移出文件夹") {
-                                            appState.moveClip(clip.id, toFolder: nil)
-                                        }
-                                    }
-                                    ForEach(appState.folders) { folder in
-                                        Button(folder.name) {
-                                            appState.moveClip(clip.id, toFolder: folder.id)
-                                        }
-                                    }
-                                }
-                                Button(role: .destructive) {
-                                    appState.deleteClip(clip.id)
-                                } label: {
-                                    Label("删除", systemImage: "trash")
-                                }
+                            // 单击 = 弹出操作菜单；长按 = 拖拽到文件夹（原生 draggable 手势）
+                            Button {
+                                menuClip = clip
+                            } label: {
+                                ClipCell(clip: clip)
+                            }
+                            .buttonStyle(.plain)
+                            .draggable(clip.id) {
+                                ClipDragPreview(clip: clip)
                             }
                         }
                     }
@@ -654,6 +710,181 @@ struct ClipCell: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// 素材操作菜单浮层：单击素材时弹出（边缘样式 / 描边参数 / 移动到文件夹 / 删除）
+/// excludeFolderID：文件夹详情页传入当前文件夹，菜单里不再显示
+struct ClipMenuView: View {
+    @EnvironmentObject private var appState: AppState
+    let clip: SegmentedClip
+    let excludeFolderID: String?
+    let onClose: () -> Void
+
+    private let colors: [(name: String, hex: String)] = [
+        ("白", "FFFFFF"), ("黑", "000000"), ("灰", "B8BDC9"), ("金", "E8C05C"),
+        ("红", "E74C3C"), ("粉", "FF9FF3"), ("蓝", "54A0FF"),
+        ("绿", "1DD1A1"), ("紫", "8B7CF6")
+    ]
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+                .onTapGesture { onClose() }
+            VStack(spacing: 12) {
+                // 边缘样式
+                HStack(spacing: 8) {
+                    ForEach(ClipEdgeStyle.displayCases) { style in
+                        Button {
+                            appState.setClipEdgeStyle(clip.id, style)
+                            onClose()
+                        } label: {
+                            Text(style.title)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(clip.edgeStyle == style ? LF.gold : LF.surface2, in: Capsule())
+                                .foregroundStyle(clip.edgeStyle == style ? .black : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                // 描边参数（线条 / 粗细 / 颜色）
+                if clip.edgeStyle.isOutline {
+                    HStack(spacing: 8) {
+                        ForEach(EdgeLineStyle.allCases) { line in
+                            Button {
+                                appState.setClipEdgeLineStyle(clip.id, line)
+                            } label: {
+                                Text(line.title)
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(clip.edgeLineStyle == line ? LF.gold : LF.surface2, in: Capsule())
+                                    .foregroundStyle(clip.edgeLineStyle == line ? .black : LF.textPrimary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        ForEach(EdgeThickness.allCases) { thickness in
+                            Button {
+                                appState.setClipEdgeThickness(clip.id, thickness)
+                            } label: {
+                                Text(thickness.title)
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(clip.edgeThickness == thickness ? LF.gold : LF.surface2, in: Capsule())
+                                    .foregroundStyle(clip.edgeThickness == thickness ? .black : LF.textPrimary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    HStack(spacing: 10) {
+                        ForEach(colors, id: \.hex) { color in
+                            Button {
+                                appState.setClipEdgeColor(clip.id, color.hex)
+                            } label: {
+                                Circle()
+                                    .fill(Color(hex: color.hex))
+                                    .frame(width: 24, height: 24)
+                                    .overlay {
+                                        Circle().stroke(
+                                            clip.edgeColorHex.uppercased() == color.hex ? LF.gold : LF.surface2,
+                                            lineWidth: clip.edgeColorHex.uppercased() == color.hex ? 2.5 : 1
+                                        )
+                                    }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                Divider()
+                // 移动到文件夹
+                VStack(spacing: 6) {
+                    ForEach(appState.folders.filter { $0.id != excludeFolderID }) { folder in
+                        Button {
+                            appState.moveClip(clip.id, toFolder: folder.id)
+                            onClose()
+                        } label: {
+                            HStack {
+                                Image(systemName: "folder.fill")
+                                    .foregroundStyle(LF.gold)
+                                Text(folder.name)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(folder.clipIDs.count)")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(LF.textSecondary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(LF.surface2.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if appState.folders.contains(where: { $0.clipIDs.contains(clip.id) }) {
+                        Button {
+                            appState.moveClip(clip.id, toFolder: nil)
+                            onClose()
+                        } label: {
+                            HStack {
+                                Image(systemName: "folder.badge.minus")
+                                Text("移出文件夹")
+                            }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(LF.textPrimary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(LF.surface2.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Divider()
+                Button(role: .destructive) {
+                    appState.deleteClip(clip.id)
+                    onClose()
+                } label: {
+                    Label("删除素材", systemImage: "trash")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(16)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(LF.surface2, lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
+            .padding(.horizontal, 36)
+        }
+    }
+}
+
+/// 拖拽预览：小尺寸素材缩略图（长按拖到文件夹时用）
+struct ClipDragPreview: View {
+    let clip: SegmentedClip
+
+    var body: some View {
+        Group {
+            if let frame = FrameCache.shared.cachedThumbnail(for: clip, index: 0, maxPixelSize: 88) {
+                Image(decorative: frame, scale: 1)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Color.gray
+            }
+        }
+        .frame(width: 44, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(LF.gold, lineWidth: 1.5)
+        }
+        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
     }
 }
 

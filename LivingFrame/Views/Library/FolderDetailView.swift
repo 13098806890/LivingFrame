@@ -12,6 +12,8 @@ struct FolderDetailView: View {
     @State private var showAddClips = false
     @State private var showNewFolderAlert = false
     @State private var newFolderName = ""
+    /// 单击素材弹出的操作菜单
+    @State private var menuClip: SegmentedClip?
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
@@ -75,6 +77,15 @@ struct FolderDetailView: View {
         .sheet(isPresented: $showAddClips) {
             FolderAddClipsView(folder: folder)
                 .environmentObject(appState)
+        }
+        .overlay {
+            if let clip = menuClip {
+                ClipMenuView(clip: clip, excludeFolderID: folder.id) {
+                    menuClip = nil
+                }
+                .environmentObject(appState)
+                .transition(.opacity)
+            }
         }
     }
 
@@ -155,81 +166,14 @@ struct FolderDetailView: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(folderClips) { clip in
-                        ClipCell(clip: clip)
-                            .contextMenu {
-                                Menu {
-                                    ForEach(ClipEdgeStyle.displayCases) { style in
-                                        Button {
-                                            appState.setClipEdgeStyle(clip.id, style)
-                                        } label: {
-                                            if clip.edgeStyle == style {
-                                                Label(style.title, systemImage: "checkmark")
-                                            } else {
-                                                Text(style.title)
-                                            }
-                                        }
-                                    }
-                                    if clip.edgeStyle.isOutline {
-                                        Menu("线条样式") {
-                                            ForEach(EdgeLineStyle.allCases) { line in
-                                                Button {
-                                                    appState.setClipEdgeLineStyle(clip.id, line)
-                                                } label: {
-                                                    if clip.edgeLineStyle == line {
-                                                        Label(line.title, systemImage: "checkmark")
-                                                    } else {
-                                                        Text(line.title)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Menu("粗细") {
-                                            ForEach(EdgeThickness.allCases) { thickness in
-                                                Button {
-                                                    appState.setClipEdgeThickness(clip.id, thickness)
-                                                } label: {
-                                                    if clip.edgeThickness == thickness {
-                                                        Label(thickness.title, systemImage: "checkmark")
-                                                    } else {
-                                                        Text(thickness.title)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Menu("描边颜色") {
-                                            ForEach(edgeColorOptions, id: \.hex) { color in
-                                                Button {
-                                                    appState.setClipEdgeColor(clip.id, color.hex)
-                                                } label: {
-                                                    if clip.edgeColorHex == color.hex {
-                                                        Label(color.name, systemImage: "checkmark")
-                                                    } else {
-                                                        Text(color.name)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    Label("添加边缘", systemImage: "square.dashed")
-                                }
-                            Menu("移动到文件夹") {
-                                ForEach(appState.folders) { target in
-                                    if target.id != folder.id {
-                                        Button(target.name) {
-                                            appState.moveClip(clip.id, toFolder: target.id)
-                                        }
-                                    }
-                                }
-                                Button("移出文件夹") {
-                                    appState.moveClip(clip.id, toFolder: nil)
-                                }
-                            }
-                            Button(role: .destructive) {
-                                appState.deleteClip(clip.id)
-                            } label: {
-                                Label("删除", systemImage: "trash")
-                            }
+                        Button {
+                            menuClip = clip
+                        } label: {
+                            ClipCell(clip: clip)
+                        }
+                        .buttonStyle(.plain)
+                        .draggable(clip.id) {
+                            ClipDragPreview(clip: clip)
                         }
                     }
                 }

@@ -26,6 +26,8 @@ final class AppState: ObservableObject {
     @Published var selectedElementIDs: Set<UUID> = []
     @Published var lastSelectedElementID: UUID?
     @Published var selectedAudioID: UUID?
+    /// 是否选中背景对象（点击画布空白处选中，检查器可编辑背景图案）
+    @Published var selectedBackground = false
     /// 是否处于裁剪模式（画布显示裁剪框）
     @Published var isCropping = false
 
@@ -51,11 +53,21 @@ final class AppState: ObservableObject {
         }
         lastSelectedElementID = id
         selectedAudioID = nil
+        selectedBackground = false
+    }
+
+    /// 选中背景对象（点击画布空白处）
+    func selectBackground() {
+        selectedBackground = true
+        selectedElementIDs.removeAll()
+        lastSelectedElementID = nil
+        selectedAudioID = nil
     }
 
     func clearElementSelection() {
         selectedElementIDs.removeAll()
         lastSelectedElementID = nil
+        selectedBackground = false
     }
 
     // MARK: - 播放
@@ -266,6 +278,17 @@ final class AppState: ObservableObject {
         folders.contains { $0.parentID == folderID }
     }
 
+    /// 指定文件夹及其所有子孙文件夹的素材 ID 集合（编辑页按文件夹选素材时用）
+    func clipIDs(includingChildrenOf folderID: String) -> Set<String> {
+        var ids: Set<String> = []
+        for id in folderAndDescendants(of: folderID) {
+            if let folder = folders.first(where: { $0.id == id }) {
+                ids.formUnion(folder.clipIDs)
+            }
+        }
+        return ids
+    }
+
     /// 收集文件夹本身及所有子孙 ID
     private func folderAndDescendants(of folderID: String) -> Set<String> {
         var result: Set<String> = [folderID]
@@ -363,40 +386,24 @@ final class AppState: ObservableObject {
         composition = comp
     }
 
-    /// 设置背景为代码绘制的线条图案
-    func setBackgroundPattern(_ style: BackgroundPatternStyle) {
+    /// 在底层背景上叠加线条图案图层（保留当前底色/图片；nil = 清除叠加层）
+    func setBackgroundPattern(_ style: BackgroundPatternStyle?) {
         guard var comp = composition ?? defaultComposition() else { return }
-        comp.background = BackgroundPreset(
-            kind: .pattern, topColor: "FFFFFF", bottomColor: "FFFFFF", patternStyle: style
-        )
+        comp.background.patternOverlay = style
+        composition = comp
+    }
+
+    /// 设置元素级背景图案（垫在元素内容下层）
+    func setElementBackground(_ elementID: UUID, _ style: BackgroundPatternStyle?) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }) else { return }
+        comp.elements[index].backgroundPattern = style
         composition = comp
     }
 
     private func addClip(_ clip: SegmentedClip) {
+        // 提取后只进入素材库，不自动加入画布（用户在编辑页自行添加）
         clips.insert(clip, at: 0)
-        guard var comp = composition ?? defaultComposition() else { return }
-        let scale = min(
-            0.8 * comp.canvas.width / CGFloat(clip.width),
-            0.8 * comp.canvas.height / CGFloat(clip.height)
-        )
-        let element = CompositionElement(
-            kind: .clip(clipID: clip.id),
-            name: clip.name,
-            transform: ElementTransform(
-                position: CGPoint(x: comp.canvas.width / 2, y: comp.canvas.height / 2),
-                scale: scale,
-                rotation: 0
-            ),
-            zIndex: max(comp.elements.count, 1),
-            startTime: 0,
-            endTime: comp.duration
-        )
-        comp.elements.append(element)
-        // 素材时长异常（fps 为 0 时可能为 Inf）时封顶，避免画布/导出崩溃
-        let clipDuration = clip.duration.isFinite ? clip.duration : 3
-        comp.duration = max(comp.duration, min(clipDuration, 300))
-        composition = comp
-        selectElement(element.id)
         syncAudioPreview()
     }
 
