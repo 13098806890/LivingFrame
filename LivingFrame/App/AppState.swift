@@ -36,6 +36,12 @@ final class AppState: ObservableObject {
         selectedElementIDs.count == 1 ? selectedElementIDs.first : nil
     }
 
+    /// 当前主选元素（工具行/检查器聚焦用）
+    var primarySelectedElement: CompositionElement? {
+        guard let id = primarySelectedID else { return nil }
+        return composition?.elements.first { $0.id == id }
+    }
+
     func isElementSelected(_ id: UUID) -> Bool {
         selectedElementIDs.contains(id)
     }
@@ -74,6 +80,10 @@ final class AppState: ObservableObject {
 
     @Published var currentTime: Double = 0
     @Published var isPlaying = false
+    /// 倒序播放
+    @Published var isReversed = false
+    /// 循环播放（默认开）
+    @Published var isLooping = true
 
     // MARK: - 导出
 
@@ -358,6 +368,14 @@ final class AppState: ObservableObject {
         clipStyleVersion += 1
     }
 
+    /// 设置素材的排除帧（帧选择功能），持久化到 clip.json
+    func setExcludedFrames(_ clipID: String, _ excluded: Set<Int>) {
+        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
+        clips[index].excludedFrames = excluded
+        FrameCache.shared.register(clips[index])
+        clipStyleVersion += 1
+    }
+
     // MARK: - 背景
 
     /// 设置背景为纯色
@@ -525,6 +543,46 @@ final class AppState: ObservableObject {
         composition = comp
     }
 
+    /// 添加文字元素（默认文本"双击编辑文字"，画布中央）
+    @discardableResult
+    func addTextElement() -> UUID? {
+        guard var comp = composition ?? defaultComposition() else { return nil }
+        let text = TextElement()
+        comp.texts.append(text)
+        let element = CompositionElement(
+            kind: .text(textID: text.id.uuidString),
+            name: "文字",
+            transform: ElementTransform(
+                position: CGPoint(x: comp.canvas.width / 2, y: comp.canvas.height / 2),
+                scale: 1,
+                rotation: 0
+            ),
+            zIndex: comp.elements.count,
+            startTime: 0,
+            endTime: comp.duration
+        )
+        comp.elements.append(element)
+        composition = comp
+        selectElement(element.id)
+        return text.id
+    }
+
+    /// 更新文字内容/样式（渲染触发重绘）
+    func updateText(_ textID: UUID, _ mutate: (inout TextElement) -> Void) {
+        guard var comp = composition,
+              let index = comp.texts.firstIndex(where: { $0.id == textID }) else { return }
+        mutate(&comp.texts[index])
+        composition = comp
+    }
+
+    /// 设置元素滤镜（nil = 原图）
+    func setElementFilter(_ elementID: UUID, _ filter: ElementFilter?) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }) else { return }
+        comp.elements[index].filter = filter
+        composition = comp
+    }
+
     /// 添加一个素材元素（从素材库）
     func addElementFromClip(_ clip: SegmentedClip) {
         addElementFromClipID(clip.id)
@@ -560,8 +618,10 @@ final class AppState: ObservableObject {
                 rotation: 0
             ),
             zIndex: comp.elements.count,  // 0,1,2,... 不会重复
+            // 视频编辑逻辑：素材时长 = 素材自身时长（不循环铺满），
+            // 在时间轴上拖动/拖边缘控制出现和消失时间
             startTime: 0,
-            endTime: comp.duration
+            endTime: min(clipDuration, comp.duration)
         )
         comp.elements.append(element)
         composition = comp
@@ -611,7 +671,7 @@ final class AppState: ObservableObject {
     // MARK: - 播放
 
     func play() {
-        guard let comp = composition, !comp.elements.isEmpty else { return }
+        guard composition != nil else { return }
         isPlaying = true
         audioEngine.play(from: currentTime)
     }
@@ -629,12 +689,39 @@ final class AppState: ObservableObject {
 
     func tick() {
         guard isPlaying, let comp = composition, comp.fps > 0, comp.duration.isFinite else { return }
-        let next = currentTime + 1.0 / comp.fps
-        if next >= comp.duration {
-            currentTime = 0
+        let step = 1.0 / comp.fps
+        if isReversed {
+            let next = currentTime - step
+            if next <= 0 {
+                if isLooping {
+                    currentTime = comp.duration - step
+                } else {
+                    currentTime = 0
+                    isPlaying = false
+                }
+            } else {
+                currentTime = next
+            }
         } else {
-            currentTime = next
+            let next = currentTime + step
+            if next >= comp.duration {
+                if isLooping {
+                    currentTime = 0
+                } else {
+                    currentTime = comp.duration
+                    isPlaying = false
+                }
+            } else {
+                currentTime = next
+            }
         }
+    }
+
+    /// 设置播放帧率（帧条/速度滑块，1~30）
+    func setPlaybackFPS(_ fps: Double) {
+        guard var comp = composition else { return }
+        comp.fps = min(max(fps, 1), 30)
+        composition = comp
     }
 
     func addEffect(_ effectID: String) {

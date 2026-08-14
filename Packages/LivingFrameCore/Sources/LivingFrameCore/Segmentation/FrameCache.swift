@@ -107,7 +107,8 @@ public final class FrameCache {
                 edgeLineStyle: edgeLine,
                 edgeThickness: manifest.edgeThickness ?? .medium,
                 edgeColorHex: edgeColor,
-                stickerStyle: manifest.stickerStyle ?? .none
+                stickerStyle: manifest.stickerStyle ?? .none,
+                excludedFrames: manifest.excludedFrames.map { Set($0) } ?? []
             )
         }
     }
@@ -187,7 +188,8 @@ public final class FrameCache {
             edgeLineStyle: clip.edgeLineStyle,
             edgeThickness: clip.edgeThickness,
             edgeColorHex: clip.edgeColorHex,
-            stickerStyle: clip.stickerStyle
+            stickerStyle: clip.stickerStyle,
+            excludedFrames: clip.excludedFrames.isEmpty ? nil : Array(clip.excludedFrames).sorted()
         )
         guard let data = try? JSONEncoder().encode(manifest) else { return }
         try? data.write(to: manifestURL(for: clip.id))
@@ -209,6 +211,8 @@ private struct ClipManifest: Codable {
     let edgeThickness: EdgeThickness?
     let edgeColorHex: String?
     let stickerStyle: StickerStyle?
+    /// 排除的帧索引（nil = 无排除）
+    let excludedFrames: [Int]?
 }
 
 /// 将 CGImage 写入 PNG 文件（跨平台，不依赖 UIKit）

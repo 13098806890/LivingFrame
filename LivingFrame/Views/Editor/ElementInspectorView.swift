@@ -303,41 +303,102 @@ struct ElementInspectorView: View {
                 .buttonStyle(.plain)
             }
 
-            HStack(spacing: 16) {
-                slider(
-                    label: "缩放",
-                    value: Binding(
-                        get: { element.transform.scale },
-                        set: { value in
-                            appState.updateElement(element.id) { $0.transform.scale = value }
-                        }
-                    ),
-                    range: 0.1...3,
-                    text: String(format: "%.0f%%", element.transform.scale * 100)
-                )
-                slider(
-                    label: "旋转",
-                    value: Binding(
-                        // 画布 y 向上：rotation 正值=逆时针；滑块按常规约定正值=顺时针，故取反
-                        get: { -Double(element.transform.rotation) * 180 / Double.pi },
-                        set: { value in
-                            appState.updateElement(element.id) {
-                                $0.transform.rotation = -CGFloat(value * Double.pi / 180)
-                            }
-                        }
-                    ),
-                    range: -180...180,
-                    text: "\(safeDegrees(-element.transform.rotation))°"
-                )
-            }
-
             if case .clip(let clipID) = element.kind,
                let clip = appState.clips.first(where: { $0.id == clipID }) {
                 stickerStylePicker(clip)
             }
+            if case .text(let textID) = element.kind,
+               let text = appState.composition?.texts.first(where: { $0.id.uuidString == textID }) {
+                textEditor(text)
+            }
+            filterPicker(element)
             elementBackgroundPicker(element)
         }
     }
+
+    // MARK: - 滤镜
+
+    private func filterPicker(_ element: CompositionElement) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("滤镜")
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ElementFilter.allCases) { filter in
+                        Button {
+                            appState.setElementFilter(element.id, filter == .none ? nil : filter)
+                        } label: {
+                            Text(filter.title)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(
+                                    (element.filter ?? .none) == filter ? LF.gold : LF.surface2,
+                                    in: Capsule()
+                                )
+                                .foregroundStyle((element.filter ?? .none) == filter ? .black : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 文字编辑
+
+    private func textEditor(_ text: TextElement) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("文字")
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
+            TextField("输入文字", text: Binding(
+                get: { text.text },
+                set: { newValue in
+                    appState.updateText(text.id) { $0.text = newValue }
+                }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .font(.subheadline)
+            HStack(spacing: 12) {
+                slider(
+                    label: "字号",
+                    value: Binding(
+                        get: { Double(text.fontSize) },
+                        set: { value in
+                            appState.updateText(text.id) { $0.fontSize = CGFloat(value) }
+                        }
+                    ),
+                    range: 24...300,
+                    text: "\(Int(text.fontSize))"
+                )
+            }
+            HStack(spacing: 10) {
+                ForEach(textColors, id: \.hex) { color in
+                    Button {
+                        appState.updateText(text.id) { $0.colorHex = color.hex }
+                    } label: {
+                        Circle()
+                            .fill(Color(hex: color.hex))
+                            .frame(width: 24, height: 24)
+                            .overlay {
+                                Circle().stroke(
+                                    text.colorHex.uppercased() == color.hex ? LF.gold : LF.surface2,
+                                    lineWidth: text.colorHex.uppercased() == color.hex ? 2.5 : 1
+                                )
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private let textColors: [(name: String, hex: String)] = [
+        ("白", "FFFFFF"), ("黑", "000000"), ("金", "E8C05C"), ("红", "E74C3C"),
+        ("粉", "FF9FF3"), ("蓝", "54A0FF"), ("绿", "1DD1A1"), ("紫", "8B7CF6")
+    ]
 
     // MARK: - 元素背景图案
 
@@ -512,25 +573,9 @@ struct ElementInspectorView: View {
                     }
                 }
             }
-            // 自定义描边参数：线条样式 → 粗细 → 颜色（风格=自定义描边时）
+            // 自定义描边参数：粗细 → 颜色（风格=自定义描边时）
             if clip.stickerStyle == .customOutline {
                 HStack(spacing: 8) {
-                    ForEach(EdgeLineStyle.allCases) { lineStyle in
-                        Button {
-                            appState.setClipEdgeLineStyle(clip.id, lineStyle)
-                        } label: {
-                            Text(lineStyle.title)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(
-                                    clip.edgeLineStyle == lineStyle ? LF.gold : LF.surface2,
-                                    in: Capsule()
-                                )
-                                .foregroundStyle(clip.edgeLineStyle == lineStyle ? .black : LF.textPrimary)
-                        }
-                        .buttonStyle(.plain)
-                    }
                     ForEach(EdgeThickness.allCases) { thickness in
                         Button {
                             appState.setClipEdgeThickness(clip.id, thickness)

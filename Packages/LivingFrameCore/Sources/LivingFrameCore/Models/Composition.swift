@@ -36,6 +36,65 @@ public enum ElementKind: Codable, Equatable {
     case clip(clipID: String)
     case decoration(decorationID: String)
     case effect(effectID: String)
+    case text(textID: String)
+}
+
+/// 文字元素（画布上的文字，渲染为透明底图片后走通用变换）
+public struct TextElement: Identifiable, Codable, Equatable {
+    public var id: UUID
+    public var text: String
+    /// 字号（画布坐标单位）
+    public var fontSize: CGFloat
+    /// 颜色 hex
+    public var colorHex: String
+    /// 字体名称（nil = 系统默认）
+    public var fontName: String?
+
+    public init(
+        id: UUID = UUID(),
+        text: String = "双击编辑文字",
+        fontSize: CGFloat = 96,
+        colorHex: String = "FFFFFF",
+        fontName: String? = nil
+    ) {
+        self.id = id
+        self.text = text
+        self.fontSize = fontSize
+        self.colorHex = colorHex
+        self.fontName = fontName
+    }
+}
+
+/// 元素滤镜（CIFilter 预设，作用于元素内容）
+public enum ElementFilter: String, Codable, Equatable, CaseIterable, Identifiable {
+    case none
+    case mono
+    case warm
+    case cool
+    case retro
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .none: NSLocalizedString("原图", comment: "Element filter")
+        case .mono: NSLocalizedString("黑白", comment: "Element filter")
+        case .warm: NSLocalizedString("暖色", comment: "Element filter")
+        case .cool: NSLocalizedString("冷色", comment: "Element filter")
+        case .retro: NSLocalizedString("复古", comment: "Element filter")
+        }
+    }
+
+    /// 对应 CIFilter 名（none 不应用）
+    public var filterName: String? {
+        switch self {
+        case .none: nil
+        case .mono: "CIPhotoEffectMono"
+        case .warm: "CIPhotoEffectTransfer"
+        case .cool: "CIPhotoEffectProcess"
+        case .retro: "CIPhotoEffectInstant"
+        }
+    }
 }
 
 public struct CompositionElement: Identifiable, Codable, Equatable {
@@ -50,6 +109,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     public var endTime: TimeInterval
     /// 元素级背景图案（垫在元素内容下层，nil = 无）
     public var backgroundPattern: BackgroundPatternStyle?
+    /// 滤镜（作用于元素内容，nil = 原图）
+    public var filter: ElementFilter?
 
     public init(
         id: UUID = UUID(),
@@ -59,7 +120,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         zIndex: Int = 0,
         startTime: TimeInterval = 0,
         endTime: TimeInterval = .greatestFiniteMagnitude,
-        backgroundPattern: BackgroundPatternStyle? = nil
+        backgroundPattern: BackgroundPatternStyle? = nil,
+        filter: ElementFilter? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -69,10 +131,43 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         self.startTime = startTime
         self.endTime = endTime
         self.backgroundPattern = backgroundPattern
+        self.filter = filter
     }
 
     public func isVisible(at time: TimeInterval) -> Bool {
         time >= startTime && time < endTime
+    }
+
+    // MARK: - 解码兼容（filter 为新字段）
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, name, transform, zIndex, startTime, endTime, backgroundPattern, filter
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(ElementKind.self, forKey: .kind)
+        name = try container.decode(String.self, forKey: .name)
+        transform = try container.decode(ElementTransform.self, forKey: .transform)
+        zIndex = try container.decodeIfPresent(Int.self, forKey: .zIndex) ?? 0
+        startTime = try container.decodeIfPresent(TimeInterval.self, forKey: .startTime) ?? 0
+        endTime = try container.decodeIfPresent(TimeInterval.self, forKey: .endTime) ?? .greatestFiniteMagnitude
+        backgroundPattern = try container.decodeIfPresent(BackgroundPatternStyle.self, forKey: .backgroundPattern)
+        filter = try container.decodeIfPresent(ElementFilter.self, forKey: .filter)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(name, forKey: .name)
+        try container.encode(transform, forKey: .transform)
+        try container.encode(zIndex, forKey: .zIndex)
+        try container.encode(startTime, forKey: .startTime)
+        try container.encode(endTime, forKey: .endTime)
+        try container.encode(backgroundPattern, forKey: .backgroundPattern)
+        try container.encode(filter, forKey: .filter)
     }
 }
 
@@ -174,6 +269,8 @@ public struct Composition: Identifiable, Codable, Equatable {
     public var templateID: String?
     /// 裁剪区域（画布坐标系，nil = 全画布）；元素可超出画布，最终输出只保留该区域
     public var cropRect: CGRect?
+    /// 文字元素库（元素 kind == .text 引用）
+    public var texts: [TextElement]
 
     public init(
         id: UUID = UUID(),
@@ -185,7 +282,8 @@ public struct Composition: Identifiable, Codable, Equatable {
         audioClips: [AudioClip] = [],
         background: BackgroundPreset = BackgroundPreset(kind: .solid, topColor: "FFFFFF", bottomColor: "FFFFFF"),
         templateID: String? = nil,
-        cropRect: CGRect? = nil
+        cropRect: CGRect? = nil,
+        texts: [TextElement] = []
     ) {
         self.id = id
         self.name = name
@@ -197,10 +295,48 @@ public struct Composition: Identifiable, Codable, Equatable {
         self.background = background
         self.templateID = templateID
         self.cropRect = cropRect
+        self.texts = texts
     }
 
     public var canvasRect: CGRect {
         CGRect(x: 0, y: 0, width: canvas.width, height: canvas.height)
+    }
+
+    // MARK: - 解码兼容（texts/filter 为新字段，旧工程 JSON 无此 key）
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, canvas, duration, fps, elements, audioClips, background, templateID, cropRect, texts
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        canvas = try container.decode(CanvasSpec.self, forKey: .canvas)
+        duration = try container.decode(TimeInterval.self, forKey: .duration)
+        fps = try container.decodeIfPresent(Double.self, forKey: .fps) ?? 30
+        elements = try container.decodeIfPresent([CompositionElement].self, forKey: .elements) ?? []
+        audioClips = try container.decodeIfPresent([AudioClip].self, forKey: .audioClips) ?? []
+        background = try container.decodeIfPresent(BackgroundPreset.self, forKey: .background)
+            ?? BackgroundPreset(kind: .solid, topColor: "FFFFFF", bottomColor: "FFFFFF")
+        templateID = try container.decodeIfPresent(String.self, forKey: .templateID)
+        cropRect = try container.decodeIfPresent(CGRect.self, forKey: .cropRect)
+        texts = try container.decodeIfPresent([TextElement].self, forKey: .texts) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(canvas, forKey: .canvas)
+        try container.encode(duration, forKey: .duration)
+        try container.encode(fps, forKey: .fps)
+        try container.encode(elements, forKey: .elements)
+        try container.encode(audioClips, forKey: .audioClips)
+        try container.encode(background, forKey: .background)
+        try container.encode(templateID, forKey: .templateID)
+        try container.encode(cropRect, forKey: .cropRect)
+        try container.encode(texts, forKey: .texts)
     }
 
     /// 实际输出区域（裁剪后）

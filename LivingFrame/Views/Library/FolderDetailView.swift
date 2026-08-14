@@ -14,6 +14,8 @@ struct FolderDetailView: View {
     @State private var newFolderName = ""
     /// 单击素材弹出的操作菜单
     @State private var menuClip: SegmentedClip?
+    /// 帧编辑（"编辑帧"入口）
+    @State private var frameEditClip: SegmentedClip?
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
@@ -80,12 +82,18 @@ struct FolderDetailView: View {
         }
         .overlay {
             if let clip = menuClip {
-                ClipMenuView(clip: clip, excludeFolderID: folder.id) {
-                    menuClip = nil
-                }
+                ClipMenuView(
+                    clip: clip,
+                    onClose: { menuClip = nil },
+                    onEditFrames: { frameEditClip = clip }
+                )
                 .environmentObject(appState)
                 .transition(.opacity)
             }
+        }
+        .sheet(item: $frameEditClip) { clip in
+            FrameGridView(clipID: clip.id)
+                .environmentObject(appState)
         }
     }
 
@@ -166,15 +174,13 @@ struct FolderDetailView: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(folderClips) { clip in
-                        Button {
-                            menuClip = clip
-                        } label: {
-                            ClipCell(clip: clip)
-                        }
-                        .buttonStyle(.plain)
-                        .draggable(clip.id) {
-                            ClipDragPreview(clip: clip)
-                        }
+                        ClipCell(clip: clip)
+                            .onTapGesture {
+                                menuClip = clip
+                            }
+                            .draggable(clip.id) {
+                                ClipDragPreview(clip: clip)
+                            }
                     }
                 }
             }

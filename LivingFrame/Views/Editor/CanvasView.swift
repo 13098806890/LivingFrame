@@ -67,7 +67,6 @@ struct CanvasView: View {
             if appState.isCropping {
                 cropToolbar
             }
-            playbackBar
         }
         .onAppear {
             render()
@@ -394,11 +393,20 @@ struct CanvasView: View {
         return CGRect(x: cx - w / 2, y: cy - h / 2, width: w, height: h)
     }
 
-    /// 元素内容尺寸（clip 用素材尺寸，装饰/特效用画布比例估算）
+    /// 元素内容尺寸（clip 用素材尺寸，文字用排版估算，装饰/特效用画布比例估算）
     private func elementContentSize(_ element: CompositionElement, in comp: Composition) -> CGSize {
         if case .clip(let clipID) = element.kind,
            let clip = appState.clips.first(where: { $0.id == clipID }) {
             return CGSize(width: CGFloat(clip.width), height: CGFloat(clip.height))
+        }
+        if case .text(let textID) = element.kind,
+           let text = comp.texts.first(where: { $0.id.uuidString == textID }) {
+            // 单行估算：宽 ≈ 字符数 × 0.6 × 字号（上限画布宽），高 ≈ 1.2 × 字号
+            let charWidth = CGFloat(text.text.count) * text.fontSize * 0.6
+            return CGSize(
+                width: min(charWidth, comp.canvas.width),
+                height: text.fontSize * 1.2
+            )
         }
         return CGSize(width: comp.canvas.width * 0.3, height: comp.canvas.height * 0.3)
     }

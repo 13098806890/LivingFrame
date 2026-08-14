@@ -18,6 +18,8 @@ struct LibraryView: View {
     @State private var dragOverFolderID: String?
     /// 单击素材弹出的操作菜单（nil = 不显示）
     @State private var menuClip: SegmentedClip?
+    /// 帧编辑（素材库"编辑帧"）
+    @State private var frameEditClip: SegmentedClip?
     /// 提取方式选择弹窗（静态贴纸 / 动态贴纸）
     @State private var pendingExtract: PendingExtract?
 
@@ -109,12 +111,18 @@ struct LibraryView: View {
             }
             .overlay {
                 if let clip = menuClip {
-                    ClipMenuView(clip: clip, excludeFolderID: nil) {
-                        menuClip = nil
-                    }
+                    ClipMenuView(
+                        clip: clip,
+                        onClose: { menuClip = nil },
+                        onEditFrames: { frameEditClip = clip }
+                    )
                     .environmentObject(appState)
                     .transition(.opacity)
                 }
+            }
+            .sheet(item: $frameEditClip) { clip in
+                FrameGridView(clipID: clip.id)
+                    .environmentObject(appState)
             }
         }
     }
@@ -617,16 +625,14 @@ struct LibraryView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(appState.clips) { clip in
-                            // 单击 = 弹出操作菜单；长按 = 拖拽到文件夹（原生 draggable 手势）
-                            Button {
-                                menuClip = clip
-                            } label: {
-                                ClipCell(clip: clip)
-                            }
-                            .buttonStyle(.plain)
-                            .draggable(clip.id) {
-                                ClipDragPreview(clip: clip)
-                            }
+                            // 单击 = 弹出操作菜单；长按（系统手势仲裁） = 拖拽到文件夹
+                            ClipCell(clip: clip)
+                                .onTapGesture {
+                                    menuClip = clip
+                                }
+                                .draggable(clip.id) {
+                                    ClipDragPreview(clip: clip)
+                                }
                         }
                     }
                 }
@@ -714,18 +720,24 @@ struct ClipCell: View {
 }
 
 /// 素材操作菜单浮层：单击素材时弹出（边缘样式 / 描边参数 / 移动到文件夹 / 删除）
-/// excludeFolderID：文件夹详情页传入当前文件夹，菜单里不再显示
+/// 文件夹列表：素材已在的文件夹显示减号（点击移出），不在的显示加号（点击加入）
 struct ClipMenuView: View {
     @EnvironmentObject private var appState: AppState
     let clip: SegmentedClip
-    let excludeFolderID: String?
     let onClose: () -> Void
+    /// 编辑帧入口回调（素材库弹出帧编辑页）
+    var onEditFrames: () -> Void = {}
 
     private let colors: [(name: String, hex: String)] = [
         ("白", "FFFFFF"), ("黑", "000000"), ("灰", "B8BDC9"), ("金", "E8C05C"),
         ("红", "E74C3C"), ("粉", "FF9FF3"), ("蓝", "54A0FF"),
         ("绿", "1DD1A1"), ("紫", "8B7CF6")
     ]
+
+    /// 素材是否已在指定文件夹
+    private func isFiled(_ folderID: String) -> Bool {
+        appState.folders.contains { $0.id == folderID && $0.clipIDs.contains(clip.id) }
+    }
 
     var body: some View {
         ZStack {
@@ -800,12 +812,34 @@ struct ClipMenuView: View {
                     }
                 }
                 Divider()
-                // 移动到文件夹
+                // 编辑帧（取舍帧序）
+                Button {
+                    onEditFrames()
+                    onClose()
+                } label: {
+                    HStack {
+                        Image(systemName: "square.grid.3x3")
+                            .foregroundStyle(LF.gold)
+                        Text("编辑帧")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LF.textPrimary)
+                        Spacer()
+                        Text("取舍帧，加速播放")
+                            .font(.caption2)
+                            .foregroundStyle(LF.textSecondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(LF.surface2.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                Divider()
+                // 移动到文件夹（加减号切换）
                 VStack(spacing: 6) {
-                    ForEach(appState.folders.filter { $0.id != excludeFolderID }) { folder in
+                    ForEach(appState.folders) { folder in
+                        let filed = isFiled(folder.id)
                         Button {
-                            appState.moveClip(clip.id, toFolder: folder.id)
-                            onClose()
+                            appState.moveClip(clip.id, toFolder: filed ? nil : folder.id)
                         } label: {
                             HStack {
                                 Image(systemName: "folder.fill")
@@ -816,24 +850,10 @@ struct ClipMenuView: View {
                                 Text("\(folder.clipIDs.count)")
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(LF.textSecondary)
+                                Image(systemName: filed ? "minus.circle.fill" : "plus.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(filed ? Color.red : LF.gold)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(LF.surface2.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    if appState.folders.contains(where: { $0.clipIDs.contains(clip.id) }) {
-                        Button {
-                            appState.moveClip(clip.id, toFolder: nil)
-                            onClose()
-                        } label: {
-                            HStack {
-                                Image(systemName: "folder.badge.minus")
-                                Text("移出文件夹")
-                            }
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(LF.textPrimary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .background(LF.surface2.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))

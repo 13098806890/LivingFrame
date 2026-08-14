@@ -1,5 +1,6 @@
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import CoreText
 import Foundation
 
 /// 统一渲染管线：预览与导出共用，保证所见即所得
@@ -59,7 +60,7 @@ public struct CompositionRenderer {
                 LogStore.log("renderCIImage: 跳过非法变换元素 id=\(element.id) transform=\(t)")
                 continue
             }
-            if let placed = placedImage(for: element, at: time, canvas: canvas) {
+            if let placed = placedImage(for: element, at: time, canvas: canvas, composition: composition) {
                 image = placed.composited(over: image)
             } else {
                 LogStore.log("renderCIImage: 元素渲染失败 kind=\(element.kind) time=\(time)")
@@ -134,7 +135,7 @@ public struct CompositionRenderer {
         return transform
     }
 
-    private func placedImage(for element: CompositionElement, at time: TimeInterval, canvas: CGRect) -> CIImage? {
+    private func placedImage(for element: CompositionElement, at time: TimeInterval, canvas: CGRect, composition: Composition) -> CIImage? {
         let source: CIImage?
         var fixScale: CGFloat = 1
         switch element.kind {
@@ -193,9 +194,22 @@ public struct CompositionRenderer {
             source = decorationRenderer.image(for: decorationID, canvas: canvas)
         case .effect(let effectID):
             source = decorationRenderer.image(for: effectID, canvas: canvas)
+        case .text(let textID):
+            if let text = composition.texts.first(where: { $0.id.uuidString == textID }) {
+                source = textImage(text, maxWidth: canvas.width)
+            } else {
+                source = nil
+            }
         }
 
-        guard let ci = source else { return nil }
+        guard let raw = source else { return nil }
+        // 滤镜（作用于元素内容，保持 extent 不变）
+        let ci: CIImage
+        if let filter = element.filter, let name = filter.filterName {
+            ci = raw.applyingFilter(name, parameters: [:]).cropped(to: raw.extent)
+        } else {
+            ci = raw
+        }
         // CGAffineTransform 链为右乘：新变换先应用。
         // 目标应用顺序：平移到元素中心(-mid) → 缩放 → 旋转 → 平移到目标位置(position)。
         // 因此矩阵必须从"最后应用"的变换开始构造。
@@ -211,17 +225,56 @@ public struct CompositionRenderer {
         return ci.transformed(by: transform)
     }
 
+    /// 文字元素渲染：CoreText 排版（自动换行）→ 透明底 CGContext 绘制 → CIImage
+    private func textImage(_ text: TextElement, maxWidth: CGFloat) -> CIImage? {
+        let font = CTFontCreateWithName((text.fontName ?? "HelveticaNeue-Bold") as CFString, text.fontSize, nil)
+        let components = text.colorHex.hexComponents()
+        let color = CGColor(red: components.r, green: components.g, blue: components.b, alpha: 1)
+        let attributed = NSAttributedString(string: text.text, attributes: [
+            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): color
+        ])
+        let framesetter = CTFramesetterCreateWithAttributedString(attributed)
+        let size = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRange(),
+            nil,
+            CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+            nil
+        )
+        let width = max(Int(ceil(size.width)), 1)
+        let height = max(Int(ceil(size.height)), 1)
+        guard let ctx = CGContext(
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        // CoreText 默认 y-up，翻转绘制为像素坐标（与 CGImage 一致）
+        ctx.textMatrix = .identity
+        ctx.translateBy(x: 0, y: CGFloat(height))
+        ctx.scaleBy(x: 1, y: -1)
+        let path = CGPath(rect: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)), transform: nil)
+        let frame = CTFramesetterCreateFrame(framesetter, CFRange(), path, nil)
+        CTFrameDraw(frame, ctx)
+        guard let cg = ctx.makeImage() else { return nil }
+        return CIImage(cgImage: cg)
+    }
     private func clipFrameImage(clipID: String, at time: TimeInterval) -> CIImage? {
         guard let clip = FrameCache.shared.clip(id: clipID) else { return nil }
-        guard time.isFinite, clip.fps.isFinite, clip.fps > 0, clip.frameCount > 0 else {
-            // fps 异常时尝试第 0 帧（静态图）
-            if let frame = FrameCache.shared.cachedFrame(for: clip, index: 0) {
+        let active = clip.activeFrameIndices
+        guard !active.isEmpty else { return nil }
+        guard time.isFinite, clip.fps.isFinite, clip.fps > 0 else {
+            if let frame = FrameCache.shared.cachedFrame(for: clip, index: active[0]) {
                 return CIImage(cgImage: frame)
             }
             return nil
         }
+        // 按 activeFrameIndices 顺序播放（视频编辑逻辑：素材播完即结束，不循环）
         let rawIndex = Int((time * clip.fps).rounded())
-        let index = min(max(rawIndex, 0), clip.frameCount - 1)
+        // 超出素材时长（排除帧后）→ 素材已结束，不再渲染（元素消失）
+        guard rawIndex >= 0, rawIndex < active.count else { return nil }
+        let index = active[rawIndex]
         let frame: CGImage?
         if let frameMaxPixelSize {
             frame = FrameCache.shared.cachedThumbnail(for: clip, index: index, maxPixelSize: frameMaxPixelSize)

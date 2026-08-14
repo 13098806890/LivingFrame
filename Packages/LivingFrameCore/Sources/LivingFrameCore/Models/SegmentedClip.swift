@@ -26,9 +26,17 @@ public struct SegmentedClip: Identifiable {
     public var edgeColorHex: String = "FFFFFF"
     /// 贴纸风格（渲染时应用）
     public var stickerStyle: StickerStyle = .none
+    /// 被排除的帧索引（不参与播放，用于"帧选择"功能）
+    public var excludedFrames: Set<Int> = []
 
     public var duration: TimeInterval {
         fps > 0 ? TimeInterval(frameCount) / fps : 1
+    }
+
+    /// 参与播放的帧索引（升序，排除 excludedFrames 后）
+    public var activeFrameIndices: [Int] {
+        let active = (0..<frameCount).filter { !excludedFrames.contains($0) }
+        return active.isEmpty ? Array(0..<frameCount) : active
     }
 
     public func frameURL(index: Int) -> URL {
