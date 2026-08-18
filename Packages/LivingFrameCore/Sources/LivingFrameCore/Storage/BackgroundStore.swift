@@ -8,6 +8,12 @@ public struct BackgroundStore {
     public static let shared = BackgroundStore()
 
     public let rootURL: URL
+    /// 解码后的背景图内存缓存：渲染每帧都会 loadImage，避免反复解码 JPEG
+    private static let imageCache: NSCache<NSString, CGImage> = {
+        let cache = NSCache<NSString, CGImage>()
+        cache.countLimit = 16
+        return cache
+    }()
     /// 预置背景列表（文件名 → 显示名）
     public let presets: [(fileName: String, title: String)] = [
         ("preset-starfield", NSLocalizedString("星空", comment: "Preset background")),
@@ -42,11 +48,15 @@ public struct BackgroundStore {
         return fileName
     }
 
-    /// 加载背景图（图片不存在时返回 nil）
+    /// 加载背景图（图片不存在时返回 nil）；带内存缓存（NSCache 线程安全）
     public func loadImage(named name: String) -> CGImage? {
+        let key = name as NSString
+        if let cached = Self.imageCache.object(forKey: key) { return cached }
         let url = fileURL(named: name)
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        Self.imageCache.setObject(image, forKey: key)
+        return image
     }
 
     // MARK: - 预置图片（程序化生成）

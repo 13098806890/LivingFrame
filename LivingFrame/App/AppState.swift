@@ -95,6 +95,11 @@ final class AppState: ObservableObject {
 
     @Published var works: [WorkItem] = []
 
+    // MARK: - Tab
+
+    /// 当前主 Tab（作品页"重新编辑"后自动切回编辑页）
+    @Published var selectedTab: AppTab = .library
+
     // MARK: - Sheet 状态
 
     @Published var showEffectPicker = false
@@ -344,14 +349,6 @@ final class AppState: ObservableObject {
         clipStyleVersion += 1
     }
 
-    /// 设置描边线条样式（持久化到 clip.json）
-    func setClipEdgeLineStyle(_ clipID: String, _ lineStyle: EdgeLineStyle) {
-        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
-        clips[index].edgeLineStyle = lineStyle
-        FrameCache.shared.register(clips[index])
-        clipStyleVersion += 1
-    }
-
     /// 设置描边粗细（持久化到 clip.json）
     func setClipEdgeThickness(_ clipID: String, _ thickness: EdgeThickness) {
         guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
@@ -429,7 +426,7 @@ final class AppState: ObservableObject {
         let comp = Composition(
             name: NSLocalizedString("我的动态照片", comment: "Default composition name"),
             canvas: CanvasSpec(width: 1920, height: 1080),
-            duration: 3,
+            duration: 0,
             fps: 30
         )
         composition = comp
@@ -444,7 +441,7 @@ final class AppState: ObservableObject {
         let comp = Composition(
             name: NSLocalizedString("我的动态照片", comment: "Default composition name"),
             canvas: CanvasSpec(width: size.width, height: size.height),
-            duration: 3,
+            duration: 0,
             fps: 30
         )
         composition = comp
@@ -502,6 +499,23 @@ final class AppState: ObservableObject {
         mutate(&comp.elements[index])
         comp.elements[index].transform = sanitizedTransform(comp.elements[index].transform)
         composition = comp
+        recomputeDuration()
+    }
+
+    /// 时长跟随内容：总时长 = 所有元素结束时间 / 音频结束时间的最大者（自由放置，可重叠）
+    private func recomputeDuration() {
+        guard var comp = composition else { return }
+        var maxEnd: TimeInterval = 0
+        for e in comp.elements {
+            if e.endTime.isFinite { maxEnd = max(maxEnd, e.endTime) }
+        }
+        for a in comp.audioClips {
+            maxEnd = max(maxEnd, a.startTime + a.duration)
+        }
+        if comp.duration != maxEnd {
+            comp.duration = maxEnd
+            composition = comp
+        }
     }
 
     /// 消毒变换值，防止 NaN/Inf 写入导致崩溃
@@ -604,8 +618,6 @@ final class AppState: ObservableObject {
         }
         // 每个元素附加小幅偏移，避免多选时全部叠在画布中心
         let offset = CGFloat(comp.elements.count) * 30
-        let clipDuration = clip.duration.isFinite ? clip.duration : 3
-        comp.duration = max(comp.duration, min(clipDuration, 300))
         let element = CompositionElement(
             kind: .clip(clipID: clip.id),
             name: clip.name,
@@ -618,14 +630,35 @@ final class AppState: ObservableObject {
                 rotation: 0
             ),
             zIndex: comp.elements.count,  // 0,1,2,... 不会重复
-            // 视频编辑逻辑：素材时长 = 素材自身时长（不循环铺满），
-            // 在时间轴上拖动/拖边缘控制出现和消失时间
+            // 时间轴 = 素材播放时长（按倍速折算），起始时间为 0，
+            // 之后可在时间轴上拖动起始/结束位置调整整体播放时间
             startTime: 0,
-            endTime: min(clipDuration, comp.duration)
+            endTime: clip.effectiveDuration.isFinite ? clip.effectiveDuration : 1
         )
         comp.elements.append(element)
         composition = comp
         selectElement(element.id)
+        recomputeDuration()
+    }
+
+    /// 设置素材播放倍速（随时间轴素材的"自身时长÷倍速"自动重算时长）
+    func setClipPlaybackSpeed(_ clipID: String, _ speed: Double) {
+        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
+        guard clips[index].playbackSpeed != speed else { return }
+        clips[index].playbackSpeed = speed
+        FrameCache.shared.register(clips[index])
+        // 引用该素材的元素结束时间 = 起始时间 + 素材有效时长
+        if var comp = composition {
+            for i in comp.elements.indices {
+                if case .clip(let cid) = comp.elements[i].kind, cid == clipID,
+                   let clip = clips.first(where: { $0.id == cid }) {
+                    comp.elements[i].endTime = comp.elements[i].startTime + clip.effectiveDuration
+                }
+            }
+            composition = comp
+        }
+        clipStyleVersion += 1
+        recomputeDuration()
     }
 
     // MARK: - 音轨
@@ -642,14 +675,27 @@ final class AppState: ObservableObject {
         composition = comp
         selectedAudioID = audio.id
         syncAudioPreview()
+        recomputeDuration()
     }
 
     func updateAudio(_ id: UUID, _ mutate: (inout AudioClip) -> Void) {
         guard var comp = composition,
               let index = comp.audioClips.firstIndex(where: { $0.id == id }) else { return }
+        let oldVolume = comp.audioClips[index].volume
         mutate(&comp.audioClips[index])
         composition = comp
-        syncAudioPreview()
+        if isPlaying {
+            if comp.audioClips[index].volume != oldVolume {
+                // 播放中调音量：实时生效，不重建引擎（重建会打断当前播放）
+                audioEngine.updateVolume(comp.audioClips[index].volume, for: id)
+            } else {
+                // 淡入淡出/时长等结构变化：重建引擎并从当前位置续播
+                syncAudioPreview()
+                audioEngine.play(from: currentTime)
+            }
+        } else {
+            syncAudioPreview()
+        }
     }
 
     func deleteAudio(_ id: UUID) {
@@ -658,6 +704,7 @@ final class AppState: ObservableObject {
         composition = comp
         if selectedAudioID == id { selectedAudioID = nil }
         syncAudioPreview()
+        recomputeDuration()
     }
 
     private func syncAudioPreview() {
@@ -689,7 +736,9 @@ final class AppState: ObservableObject {
 
     func tick() {
         guard isPlaying, let comp = composition, comp.fps > 0, comp.duration.isFinite else { return }
-        let step = 1.0 / comp.fps
+        // 时间轴以真实时间 1x 前进（编辑页播放时钟 20Hz，每 tick 前进 1/20s）。
+        // 素材的快慢由各自 playbackSpeed 在渲染时折算，不再全局改 fps。
+        let step = 0.05
         if isReversed {
             let next = currentTime - step
             if next <= 0 {
@@ -717,13 +766,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// 设置播放帧率（帧条/速度滑块，1~30）
-    func setPlaybackFPS(_ fps: Double) {
-        guard var comp = composition else { return }
-        comp.fps = min(max(fps, 1), 30)
-        composition = comp
-    }
-
     func addEffect(_ effectID: String) {
         guard var comp = composition ?? defaultComposition() else { return }
         let element = CompositionElement(
@@ -740,6 +782,27 @@ final class AppState: ObservableObject {
         comp.elements.append(element)
         composition = comp
         selectElement(element.id)
+    }
+
+    /// 添加动图贴纸：默认播放一次（烟花 9 帧 × 0.1s = 0.9s），
+    /// 之后可在时间轴上拖动结束时间拉长（帧循环补满，不减速）
+    func addSticker(_ stickerID: String) {
+        guard var comp = composition ?? defaultComposition() else { return }
+        let element = CompositionElement(
+            kind: .decoration(decorationID: stickerID),
+            name: NSLocalizedString("烟花", comment: "Sticker name"),
+            transform: ElementTransform(
+                position: CGPoint(x: comp.canvas.width / 2, y: comp.canvas.height / 2),
+                scale: 1, rotation: 0
+            ),
+            zIndex: 60,
+            startTime: 0,
+            endTime: 0.9
+        )
+        comp.elements.append(element)
+        composition = comp
+        selectElement(element.id)
+        recomputeDuration()
     }
 
     // MARK: - 导出
@@ -886,4 +949,9 @@ enum AppStateError: LocalizedError {
         case .photoLibraryDenied: NSLocalizedString("需要相册权限才能保存 Live Photo，请在设置中开启", comment: "Export error")
         }
     }
+}
+
+/// 主 Tab 枚举
+enum AppTab: Hashable {
+    case library, editor, works, settings
 }

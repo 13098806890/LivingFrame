@@ -38,9 +38,14 @@ public struct OfflineAudioMixer {
             }
         }
 
-        // 音量包络（淡入淡出）
+        // 音量包络：基础音量整段生效（无淡入淡出时也按 clip.volume 输出），
+        // 再叠加淡入/淡出 ramp（ramp 在时间上后设，覆盖基础音量的淡入起点）
         let parameters = AVMutableAudioMixInputParameters(track: track)
         for clip in clips {
+            parameters.setVolume(
+                clip.volume,
+                at: CMTime(seconds: clip.startTime, preferredTimescale: 600)
+            )
             if clip.fadeIn > 0 {
                 parameters.setVolumeRamp(
                     fromStartVolume: 0, toEndVolume: clip.volume,

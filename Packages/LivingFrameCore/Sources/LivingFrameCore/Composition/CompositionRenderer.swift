@@ -140,8 +140,10 @@ public struct CompositionRenderer {
         var fixScale: CGFloat = 1
         switch element.kind {
         case .clip(let clipID):
-            if let frame = clipFrameImage(clipID: clipID, at: time),
-               let clip = FrameCache.shared.clip(id: clipID) {
+            if let clip = FrameCache.shared.clip(id: clipID) {
+                // 素材内时间：从元素起始时间起算，再按素材倍速折算播放位置
+                let playTime = max(0, time - element.startTime) * clip.playbackSpeed
+                if let frame = clipFrameImage(clipID: clipID, at: playTime) {
                 // 预览用缩略图（尺寸 < 素材实际像素）。不把源图放大回全尺寸——
                 // 放大插值会在人物边缘产生半透明残留像素（贴边时形成"阴影线"）。
                 // 改为把归一化因子并入元素缩放，源图始终一次缩放到位。
@@ -158,8 +160,7 @@ public struct CompositionRenderer {
                         color: CIColor(hex: clip.edgeColorHex),
                         lineStyle: clip.edgeLineStyle,
                         fixScale: fixScale,
-                        clipID: clip.id,
-                        frameIndex: min(max(Int((time * clip.fps).rounded()), 0), max(clip.frameCount - 1, 0))
+                        clipID: clip.id
                     )
                 } else {
                     content = applyStickerStyle(
@@ -171,7 +172,6 @@ public struct CompositionRenderer {
                             colorHex: clip.edgeColorHex,
                             fixScale: fixScale,
                             clipID: clip.id,
-                            frameIndex: min(max(Int((time * clip.fps).rounded()), 0), max(clip.frameCount - 1, 0)),
                             to: frame
                         )
                     )
@@ -186,14 +186,28 @@ public struct CompositionRenderer {
                     content = content.composited(over: CIImage(cgImage: patternCG).cropped(to: frame.extent))
                 }
                 source = content
+                } else {
+                    LogStore.log("placedImage: clip 帧获取失败 clipID=\(clipID) time=\(time) registered=\(FrameCache.shared.clip(id: clipID) != nil)")
+                    source = nil
+                }
             } else {
-                LogStore.log("placedImage: clip 帧获取失败 clipID=\(clipID) time=\(time) registered=\(FrameCache.shared.clip(id: clipID) != nil)")
+                LogStore.log("placedImage: clip 未注册 clipID=\(clipID)")
                 source = nil
             }
         case .decoration(let decorationID):
-            source = decorationRenderer.image(for: decorationID, canvas: canvas)
+            source = decorationRenderer.image(
+                for: decorationID,
+                canvas: canvas,
+                at: max(0, time - element.startTime),
+                duration: element.endTime - element.startTime
+            )
         case .effect(let effectID):
-            source = decorationRenderer.image(for: effectID, canvas: canvas)
+            source = decorationRenderer.image(
+                for: effectID,
+                canvas: canvas,
+                at: max(0, time - element.startTime),
+                duration: element.endTime - element.startTime
+            )
         case .text(let textID):
             if let text = composition.texts.first(where: { $0.id.uuidString == textID }) {
                 source = textImage(text, maxWidth: canvas.width)
@@ -375,126 +389,11 @@ public struct CompositionRenderer {
         image.composited(over: outlineLayer(image, radius: radius, color: color, lineStyle: lineStyle, fixScale: fixScale, clipID: clipID, frameIndex: frameIndex))
     }
 
-    /// 生成描边层：整图形态学膨胀（alpha 同步外扩）→ 按样式裁切（实线/线段）→ 染成纯色
+    /// 生成描边层：整图形态学膨胀（alpha 同步外扩）→ 染成纯色。
+    /// 统一用实线算法（线段未实现的调试代码已移除）
     private func outlineLayer(_ image: CIImage, radius: CGFloat, color: CIColor, lineStyle: EdgeLineStyle, fixScale: CGFloat = 1, clipID: String = "", frameIndex: Int = 0) -> CIImage {
         let expanded = image.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: radius])
-        let styled: CIImage
-        switch lineStyle {
-        case .solid:
-            styled = expanded
-        case .dashed:
-            // 线段（虚线）：沿人物外轮廓跟踪 + 等弧长分段——
-            // 空隙沿轮廓曲线方向，段与段之间保持曲线的走势（像素级实现）
-            // 掩码按帧缓存：播放/拖动时同帧重复渲染直接命中，不会卡
-            let cacheKey = "\(clipID)-\(frameIndex)-\(Int(radius))-\(Int(18 / fixScale))-\(Int(8 / fixScale))"
-            if let cached = DashedMaskCache.mask(key: cacheKey) {
-                styled = CIImage(cgImage: cached).cropped(to: expanded.extent)
-            } else if let dashed = dashedAlongContour(
-                expanded,
-                segmentLength: 18 / fixScale,
-                gapLength: 8 / fixScale,
-                cutRadius: radius + 2
-            ) {
-                if let cg = context.createCGImage(dashed, from: dashed.extent) {
-                    DashedMaskCache.store(key: cacheKey, image: cg)
-                }
-                styled = dashed
-            } else {
-                styled = expanded
-            }
-        }
-        return tinted(styled, color: color)
-    }
-
-    /// 调试：在素材上绘制矩形虚线，验证基础虚线绘制（后续切换为人物轮廓）
-    private func dashedAlongContour(
-        _ expanded: CIImage, segmentLength: CGFloat, gapLength: CGFloat, cutRadius: CGFloat
-    ) -> CIImage? {
-        let extent = expanded.extent
-        let width = Int(extent.width)
-        let height = Int(extent.height)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let ctx = CGContext(
-            data: nil, width: width, height: height, bitsPerComponent: 8,
-            bytesPerRow: 0, space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        // 矩形虚线（帧内 15% 边距）
-        let rect = CGRect(
-            x: CGFloat(width) * 0.15, y: CGFloat(height) * 0.15,
-            width: CGFloat(width) * 0.7, height: CGFloat(height) * 0.7
-        )
-        ctx.setStrokeColor(red: 1, green: 1, blue: 1, alpha: 1)
-        ctx.setLineWidth(cutRadius * 2)
-        ctx.setLineDash(phase: 0, lengths: [segmentLength, gapLength])
-        ctx.addPath(CGPath(rect: rect, transform: nil))
-        ctx.strokePath()
-        guard let dashCG = ctx.makeImage() else { return nil }
-        let dashCI = CIImage(cgImage: dashCG)
-        // 描边层 = expanded × 虚线掩码（虚线处保留、空隙透明）
-        let clear = CIImage.clear.cropped(to: extent)
-        return expanded.applyingFilter("CIBlendWithAlphaMask", parameters: [
-            kCIInputMaskImageKey: dashCI,
-            kCIInputBackgroundImageKey: clear
-        ])
-    }
-
-    /// 折线上弧长 arc 处的点
-    private func pointOnPolyline(_ polyline: [CGPoint], cumulative: [CGFloat], arc: CGFloat) -> CGPoint {
-        guard polyline.count > 1 else { return polyline.first ?? .zero }
-        var low = 0
-        var high = cumulative.count - 1
-        while low < high {
-            let mid = (low + high) / 2
-            if cumulative[mid] < arc { low = mid + 1 } else { high = mid }
-        }
-        guard low > 0 else { return polyline[0] }
-        let segStart = polyline[low - 1]
-        let segEnd = polyline[low]
-        let segLen = cumulative[low] - cumulative[low - 1]
-        let t = segLen > 0 ? (arc - cumulative[low - 1]) / segLen : 0
-        return CGPoint(
-            x: segStart.x + (segEnd.x - segStart.x) * t,
-            y: segStart.y + (segEnd.y - segStart.y) * t
-        )
-    }
-
-    /// Douglas-Peucker 折线简化
-    private func simplifyPolyline(_ points: [CGPoint], epsilon: CGFloat) -> [CGPoint] {
-        guard points.count > 2 else { return points }
-        // 先降采样避免递归过深
-        var sampled = points
-        if sampled.count > 4000 {
-            let step = max(1, sampled.count / 4000)
-            sampled = stride(from: 0, to: sampled.count, by: step).map { sampled[$0] }
-        }
-        func perpendicularDistance(_ p: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat {
-            let abx = b.x - a.x
-            let aby = b.y - a.y
-            let lengthSq = abx * abx + aby * aby
-            guard lengthSq > 0 else { return hypot(p.x - a.x, p.y - a.y) }
-            let t = max(0, min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / lengthSq))
-            let proj = CGPoint(x: a.x + abx * t, y: a.y + aby * t)
-            return hypot(p.x - proj.x, p.y - proj.y)
-        }
-        func dp(_ range: Range<Int>) -> [CGPoint] {
-            let a = sampled[range.lowerBound]
-            let b = sampled[range.upperBound - 1]
-            var maxDist: CGFloat = 0
-            var maxIndex = -1
-            for i in (range.lowerBound + 1)..<(range.upperBound - 1) {
-                let d = perpendicularDistance(sampled[i], a, b)
-                if d > maxDist {
-                    maxDist = d
-                    maxIndex = i
-                }
-            }
-            if maxDist > epsilon && maxIndex > 0 {
-                return dp(range.lowerBound..<(maxIndex + 1)).dropLast() + dp(maxIndex..<range.upperBound)
-            }
-            return [a, b]
-        }
-        return dp(0..<sampled.count)
+        return tinted(expanded, color: color)
     }
 
     /// 柔光：人物在上，光晕层（膨胀+模糊+染色）垫在下层（光晕不裁剪，避免贴边被截断）
@@ -527,30 +426,6 @@ public struct CompositionRenderer {
             kCIInputMaskImageKey: mask,
             kCIInputBackgroundImageKey: clear
         ])
-    }
-}
-
-// MARK: - 虚线掩码缓存
-
-/// 虚线掩码按帧缓存（key = clipID-帧索引-半径-段长-空隙），播放/拖动时同帧直接命中
-private enum DashedMaskCache {
-    static let lock = NSLock()
-    static var cache: [String: CGImage] = [:]
-    static let maxCount = 96
-
-    static func mask(key: String) -> CGImage? {
-        lock.lock()
-        defer { lock.unlock() }
-        return cache[key]
-    }
-
-    static func store(key: String, image: CGImage) {
-        lock.lock()
-        defer { lock.unlock() }
-        cache[key] = image
-        if cache.count > maxCount {
-            cache.removeAll()
-        }
     }
 }
 

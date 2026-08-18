@@ -55,8 +55,15 @@ public final class AudioPreviewEngine {
         }
     }
 
-    public func setVolume(_ volume: Float, for clipID: UUID) {
+    /// 播放中实时调整某条音轨音量：不重建引擎（重建会打断播放），
+    /// 同时更新内部 clips 快照，保证下次 play() 使用最新音量
+    public func updateVolume(_ volume: Float, for clipID: UUID) {
         nodes[clipID]?.volume = volume
+        if let index = clips.firstIndex(where: { $0.id == clipID }) {
+            var updated = clips[index]
+            updated.volume = volume
+            clips[index] = updated
+        }
     }
 
     public func stop() {

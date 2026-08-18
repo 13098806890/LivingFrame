@@ -12,6 +12,8 @@ public final class FrameCache {
     /// 预览帧解码缓存（避免每帧重复磁盘解码导致素材库卡顿）
     private let frameLock = NSLock()
     private var frameCache: [String: CGImage] = [:]
+    /// LRU 淘汰顺序（队首 = 最久未使用）。整表清空会导致多素材循环播放时频繁重解码
+    private var frameOrder: [String] = []
     /// 多个素材循环播放时缓存须覆盖各素材最近几帧，太小会导致频繁清空重解码
     private let frameCacheMax = 128
     /// 素材占用空间缓存（clipID → bytes）
@@ -38,18 +40,12 @@ public final class FrameCache {
         registered[id]
     }
 
-    /// 带缓存的帧解码（预览/渲染共用，超出容量整体清空）
+    /// 带缓存的帧解码（预览/渲染共用，超出容量淘汰最久未使用）
     public func cachedFrame(for clip: SegmentedClip, index: Int) -> CGImage? {
         let key = "\(clip.id):\(index)"
         frameLock.lock()
         defer { frameLock.unlock() }
-        if let image = frameCache[key] { return image }
-        guard let image = clip.loadFrame(index: index) else { return nil }
-        frameCache[key] = image
-        if frameCache.count > frameCacheMax {
-            frameCache.removeAll()
-        }
-        return image
+        return hitOrLoad(key: key) { clip.loadFrame(index: index) }
     }
 
     /// 低分辨率缩略帧解码（素材库/选择器预览用，直接按目标尺寸解码，省去全尺寸解码）
@@ -57,20 +53,39 @@ public final class FrameCache {
         let key = "\(clip.id):\(index):thumb\(Int(maxPixelSize))"
         frameLock.lock()
         defer { frameLock.unlock() }
-        if let image = frameCache[key] { return image }
-        let url = clip.frameURL(index: index) as CFURL
-        guard let source = CGImageSourceCreateWithURL(url, nil) else { return nil }
-        let options = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
-            kCGImageSourceCreateThumbnailWithTransform: true
-        ] as CFDictionary
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
+        return hitOrLoad(key: key) {
+            let url = clip.frameURL(index: index) as CFURL
+            guard let source = CGImageSourceCreateWithURL(url, nil) else { return nil }
+            let options = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+                kCGImageSourceCreateThumbnailWithTransform: true
+            ] as CFDictionary
+            return CGImageSourceCreateThumbnailAtIndex(source, 0, options)
+        }
+    }
+
+    /// 命中返回并标记最近使用；未命中则加载入缓存（超容量淘汰最久未使用的一条）
+    private func hitOrLoad(key: String, load: () -> CGImage?) -> CGImage? {
+        if let image = frameCache[key] {
+            touch(key)
+            return image
+        }
+        guard let image = load() else { return nil }
         frameCache[key] = image
-        if frameCache.count > frameCacheMax {
-            frameCache.removeAll()
+        frameOrder.append(key)
+        if frameOrder.count > frameCacheMax {
+            let evicted = frameOrder.removeFirst()
+            frameCache.removeValue(forKey: evicted)
         }
         return image
+    }
+
+    private func touch(_ key: String) {
+        if let index = frameOrder.firstIndex(of: key) {
+            frameOrder.remove(at: index)
+            frameOrder.append(key)
+        }
     }
 
     /// 重新扫描磁盘，恢复所有素材注册（启动时调用）
@@ -108,6 +123,7 @@ public final class FrameCache {
                 edgeThickness: manifest.edgeThickness ?? .medium,
                 edgeColorHex: edgeColor,
                 stickerStyle: manifest.stickerStyle ?? .none,
+                playbackSpeed: manifest.playbackSpeed ?? 1,
                 excludedFrames: manifest.excludedFrames.map { Set($0) } ?? []
             )
         }
@@ -120,6 +136,12 @@ public final class FrameCache {
     public func removeClip(id: String) {
         registered[id] = nil
         clipSizes[id] = nil
+        // 清理该素材的解码缓存，避免残留占用内存
+        frameLock.lock()
+        let prefix = id + ":"
+        frameCache = frameCache.filter { !$0.key.hasPrefix(prefix) }
+        frameOrder.removeAll { $0.hasPrefix(prefix) }
+        frameLock.unlock()
         try? FileManager.default.removeItem(at: rootURL.appendingPathComponent(id))
     }
 
@@ -147,6 +169,11 @@ public final class FrameCache {
 
     public func removeAll() {
         registered.removeAll()
+        frameLock.lock()
+        frameCache.removeAll()
+        frameOrder.removeAll()
+        frameLock.unlock()
+        clipSizes.removeAll()
         // 直接清空整个素材目录（含未注册的残留目录）
         try? FileManager.default.removeItem(at: rootURL)
         try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
@@ -189,6 +216,7 @@ public final class FrameCache {
             edgeThickness: clip.edgeThickness,
             edgeColorHex: clip.edgeColorHex,
             stickerStyle: clip.stickerStyle,
+            playbackSpeed: clip.playbackSpeed,
             excludedFrames: clip.excludedFrames.isEmpty ? nil : Array(clip.excludedFrames).sorted()
         )
         guard let data = try? JSONEncoder().encode(manifest) else { return }
@@ -211,6 +239,8 @@ private struct ClipManifest: Codable {
     let edgeThickness: EdgeThickness?
     let edgeColorHex: String?
     let stickerStyle: StickerStyle?
+    /// 播放倍速（nil = 1x）
+    let playbackSpeed: Double?
     /// 排除的帧索引（nil = 无排除）
     let excludedFrames: [Int]?
 }

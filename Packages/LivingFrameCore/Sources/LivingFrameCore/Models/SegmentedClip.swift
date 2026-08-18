@@ -26,11 +26,19 @@ public struct SegmentedClip: Identifiable {
     public var edgeColorHex: String = "FFFFFF"
     /// 贴纸风格（渲染时应用）
     public var stickerStyle: StickerStyle = .none
+    /// 播放倍速（1 = 正常；>1 快放，<1 慢放）
+    public var playbackSpeed: Double = 1
     /// 被排除的帧索引（不参与播放，用于"帧选择"功能）
     public var excludedFrames: Set<Int> = []
 
     public var duration: TimeInterval {
         fps > 0 ? TimeInterval(frameCount) / fps : 1
+    }
+
+    /// 素材在时间轴上的有效时长（按倍速折算）：
+    /// 1x 就是自身时长，2x 只占一半时间，0.5x 占两倍时间
+    public var effectiveDuration: TimeInterval {
+        duration / max(playbackSpeed, 0.01)
     }
 
     /// 参与播放的帧索引（升序，排除 excludedFrames 后）

@@ -80,6 +80,7 @@ private struct WorkCell: View {
         .contextMenu {
             Button {
                 appState.reopen(work)
+                appState.selectedTab = .editor
             } label: {
                 Label("重新编辑", systemImage: "pencil")
             }
@@ -97,6 +98,7 @@ private struct WorkCell: View {
         }
         .onTapGesture {
             appState.reopen(work)
+            appState.selectedTab = .editor
         }
     }
 }

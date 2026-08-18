@@ -7,7 +7,11 @@ extension Color {
         var value: UInt64 = 0
         var hexString = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         hexString = hexString.replacingOccurrences(of: "#", with: "")
-        Scanner(string: hexString).scanHexInt64(&value)
+        guard hexString.count == 6, Scanner(string: hexString).scanHexInt64(&value) else {
+            // 非法输入回退为中灰，避免静默变黑
+            self.init(red: 0.5, green: 0.5, blue: 0.5)
+            return
+        }
         let r = Double((value >> 16) & 0xFF) / 255
         let g = Double((value >> 8) & 0xFF) / 255
         let b = Double(value & 0xFF) / 255

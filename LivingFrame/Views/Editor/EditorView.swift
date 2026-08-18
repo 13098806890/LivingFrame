@@ -15,7 +15,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    var title: LocalizedStringKey {
         switch self {
         case .asset: "素材"
         case .canvas: "画布"
@@ -53,13 +53,14 @@ struct EditorView: View {
     @State private var showBackgroundPicker = false
     /// 工具 sheet（点击工具栏弹出，遮住编辑页）
     @State private var toolSheet: EditorTool?
-
-    private let timer = Timer.publish(every: 1.0 / 20, on: .main, in: .common).autoconnect()
+    /// 播放时钟：仅播放时运行（暂停时无 20Hz tick 开销）
+    @State private var playbackTimer: Timer?
 
     var body: some View {
         VStack(spacing: 0) {
-            // ① 大画布（顶到最上面，占满剩余空间，位置固定）
+            // ① 大画布（顶到最上边，忽略顶部安全区，位置固定）
             CanvasView()
+                .ignoresSafeArea(.container, edges: .top)
                 .padding(.horizontal, 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -72,10 +73,20 @@ struct EditorView: View {
             bottomArea
         }
         .magicBackground()
-        .onReceive(timer) { _ in appState.tick() }
         .onAppear {
             appState.ensureComposition()
             appState.selectBackground()
+            if appState.isPlaying { startPlaybackTimer() }
+        }
+        .onDisappear {
+            stopPlaybackTimer()
+        }
+        .onChange(of: appState.isPlaying) { _, playing in
+            if playing {
+                startPlaybackTimer()
+            } else {
+                stopPlaybackTimer()
+            }
         }
         .overlay(alignment: .top) {
             // 自定义顶部栏（浮在画布上方，不占布局空间）
@@ -172,6 +183,24 @@ struct EditorView: View {
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(LF.textSecondary)
                 Spacer()
+                // 反转播放
+                Button { appState.isReversed.toggle() } label: {
+                    Image(systemName: "arrow.right.arrow.left")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 28, height: 28)
+                        .background(appState.isReversed ? LF.gold.opacity(0.3) : .clear, in: Circle())
+                        .foregroundStyle(appState.isReversed ? LF.gold : LF.textSecondary)
+                }
+                .buttonStyle(.plain)
+                // 循环播放
+                Button { appState.isLooping.toggle() } label: {
+                    Image(systemName: appState.isLooping ? "repeat" : "repeat.1")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 28, height: 28)
+                        .background(appState.isLooping ? LF.gold.opacity(0.3) : .clear, in: Circle())
+                        .foregroundStyle(appState.isLooping ? LF.gold : LF.textSecondary)
+                }
+                .buttonStyle(.plain)
             }
             // 双轨时间轴（元素轨 + 音频轨，可拖动起点/终点）
             TimelineView()
@@ -188,24 +217,24 @@ struct EditorView: View {
 
     private var bottomArea: some View {
         VStack(spacing: 4) {
-            if hasSelection {
-                // 选中状态：工具栏 + 属性面板（所有原有功能完整保留）
-                editorToolbar
-                    .padding(.horizontal, 4)
-
-                ElementInspectorView()
-                    .padding(.horizontal, 12)
-                    .frame(maxHeight: 210)
-            } else {
-                // 默认：工具栏 + 速度条
-                editorToolbar
-                    .padding(.horizontal, 4)
-
-                speedControl
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 6)
+            editorToolbar
+                .padding(.horizontal, 4)
+            // 检查器：固定预留高度（内部滚动），选中与否画布/时间轴高度不变
+            Group {
+                if hasSelection {
+                    ElementInspectorView()
+                        .padding(.horizontal, 12)
+                } else {
+                    Text("点击画布或时间轴上的元素进行编辑")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                        .frame(maxWidth: .infinity)
+                }
             }
+            .frame(maxHeight: 200)
+            Spacer(minLength: 0)
         }
+        .frame(height: 252)
     }
 
     // MARK: - 工具栏（ImgPlay 式：图标+文字，横排可滚动）
@@ -254,53 +283,22 @@ struct EditorView: View {
             toolSheet = tool
         }
     }
-    // MARK: - 速度条（兔子/滑块/乌龟 + 反转/循环）
 
-    private var speedControl: some View {
-        HStack(spacing: 8) {
-            // 反转
-            Button { appState.isReversed.toggle() } label: {
-                Image(systemName: "arrow.right.arrow.left")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 28, height: 28)
-                    .background(appState.isReversed ? LF.gold.opacity(0.3) : .clear, in: Circle())
-                    .foregroundStyle(appState.isReversed ? LF.gold : LF.textSecondary)
-            }
-            .buttonStyle(.plain)
+    // MARK: - 播放时钟（仅播放时运行）
 
-            // 乌龟（慢，对应左侧低 fps）
-            Image(systemName: "tortoise.fill")
-                .font(.caption)
-                .foregroundStyle(LF.gold)
-
-            // 速度滑块（左慢右快：1~30 fps）
-            Slider(
-                value: Binding(
-                    get: { appState.composition?.fps ?? 15 },
-                    set: { appState.setPlaybackFPS($0) }
-                ),
-                in: 1...30,
-                step: 1
-            )
-            .tint(LF.gold)
-
-            // 兔子（快，对应右侧高 fps）
-            Image(systemName: "hare.fill")
-                .font(.caption)
-                .foregroundStyle(LF.gold)
-
-            // 循环
-            Button { appState.isLooping.toggle() } label: {
-                Image(systemName: appState.isLooping ? "repeat" : "repeat.1")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 28, height: 28)
-                    .background(appState.isLooping ? LF.gold.opacity(0.3) : .clear, in: Circle())
-                    .foregroundStyle(appState.isLooping ? LF.gold : LF.textSecondary)
-            }
-            .buttonStyle(.plain)
+    private func startPlaybackTimer() {
+        stopPlaybackTimer()
+        let timer = Timer(timeInterval: 1.0 / 20, repeats: true) { [weak appState] _ in
+            appState?.tick()
         }
+        RunLoop.main.add(timer, forMode: .common)
+        playbackTimer = timer
     }
 
+    private func stopPlaybackTimer() {
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+    }
     // MARK: - 工具面板（sheet 弹出，遮住编辑页）
 
     private func toolPanel(_ tool: EditorTool) -> some View {
@@ -576,7 +574,26 @@ struct EditorView: View {
             Text("内置贴纸")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
-            Text("手绘风动画贴纸即将上线（蜡笔画、涂鸦等）")
+            HStack(spacing: 10) {
+                // 烟花动图贴纸
+                Button {
+                    appState.addSticker("sticker-firework")
+                    toolSheet = nil
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.title2)
+                        Text("烟花")
+                            .font(.caption2)
+                    }
+                    .frame(width: 64, height: 64)
+                    .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(LF.gold)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            Text("其他贴纸即将上线")
                 .font(.caption)
                 .foregroundStyle(LF.textSecondary)
                 .padding(.vertical, 20)

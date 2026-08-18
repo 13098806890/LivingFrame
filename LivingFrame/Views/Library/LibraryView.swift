@@ -1,9 +1,27 @@
 import AVFoundation
+import Combine
 import ImageIO
 import LivingFrameCore
 import Photos
 import PhotosUI
 import SwiftUI
+
+/// 素材格子动画共用时钟：整个 App 只有一个 10Hz ticker，
+/// 取代"每个格子一个 Timer"（素材多时主线程压力大、缓存抖动）
+final class ClipTicker: ObservableObject {
+    static let shared = ClipTicker()
+
+    @Published private(set) var tick = 0
+    private var cancellable: AnyCancellable?
+
+    private init() {
+        cancellable = Timer.publish(every: 1.0 / 10, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.tick &+= 1
+            }
+    }
+}
 
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
@@ -640,24 +658,18 @@ struct LibraryView: View {
             }
         }
     }
-
-    /// 描边可选颜色
-    private var edgeColorOptions: [(name: String, hex: String)] {
-        [("白色", "FFFFFF"), ("黑色", "000000"), ("金色", "E8C05C"),
-         ("红色", "E74C3C"), ("粉色", "FF9FF3"), ("蓝色", "54A0FF"),
-         ("绿色", "1DD1A1"), ("紫色", "8B7CF6")]
-    }
-
-    private func isClipFiled(_ clipID: String) -> Bool {
-        appState.folders.contains { $0.clipIDs.contains(clipID) }
-    }
 }
 
 struct ClipCell: View {
     let clip: SegmentedClip
 
-    @State private var frameIndex = 0
-    private let timer = Timer.publish(every: 1.0 / 10, on: .main, in: .common).autoconnect()
+    @ObservedObject private var ticker = ClipTicker.shared
+
+    /// 由共享时钟推导的当前帧索引（10fps 动画预览，不占用独立 Timer）
+    private var frameIndex: Int {
+        guard clip.frameCount > 1 else { return 0 }
+        return ticker.tick % clip.frameCount
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -696,10 +708,6 @@ struct ClipCell: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(LF.surface2, lineWidth: 1)
-            }
-            .onReceive(timer) { _ in
-                guard clip.frameCount > 1 else { return }
-                frameIndex = (frameIndex + 1) % clip.frameCount
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -762,22 +770,9 @@ struct ClipMenuView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                // 描边参数（线条 / 粗细 / 颜色）
+                // 描边参数（粗细 / 颜色）
                 if clip.edgeStyle.isOutline {
                     HStack(spacing: 8) {
-                        ForEach(EdgeLineStyle.allCases) { line in
-                            Button {
-                                appState.setClipEdgeLineStyle(clip.id, line)
-                            } label: {
-                                Text(line.title)
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(clip.edgeLineStyle == line ? LF.gold : LF.surface2, in: Capsule())
-                                    .foregroundStyle(clip.edgeLineStyle == line ? .black : LF.textPrimary)
-                            }
-                            .buttonStyle(.plain)
-                        }
                         ForEach(EdgeThickness.allCases) { thickness in
                             Button {
                                 appState.setClipEdgeThickness(clip.id, thickness)

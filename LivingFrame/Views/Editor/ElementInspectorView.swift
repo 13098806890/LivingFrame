@@ -167,9 +167,9 @@ struct ElementInspectorView: View {
                                 var style = bgOverlay ?? BackgroundPatternStyle()
                                 style.spacing = option.1
                                 appState.setBackgroundPattern(style)
-                        } label: {
-                            Text(option.0)
-                                .font(.caption.weight(.semibold))
+                            } label: {
+                                Text(option.0)
+                                    .font(.caption.weight(.semibold))
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 5)
                                     .background(
@@ -177,10 +177,10 @@ struct ElementInspectorView: View {
                                         in: Capsule()
                                     )
                                     .foregroundStyle(abs((bgOverlay?.spacing ?? 0) - option.1) < 1 ? .black : LF.textPrimary)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
-                }
                 }
                 HStack(spacing: 10) {
                     ForEach(edgeColors, id: \.hex) { color in
@@ -306,6 +306,7 @@ struct ElementInspectorView: View {
             if case .clip(let clipID) = element.kind,
                let clip = appState.clips.first(where: { $0.id == clipID }) {
                 stickerStylePicker(clip)
+                speedPicker(clip)
             }
             if case .text(let textID) = element.kind,
                let text = appState.composition?.texts.first(where: { $0.id.uuidString == textID }) {
@@ -623,6 +624,41 @@ struct ElementInspectorView: View {
         ("绿", "1DD1A1"), ("紫", "8B7CF6")
     ]
 
+    // MARK: - 播放倍速
+
+    /// 素材播放倍速档位（0.5~2x，简单分数，帧对齐友好）
+    private let speedOptions: [Double] = [0.5, 0.8, 1, 1.5, 2]
+
+    private func speedPicker(_ clip: SegmentedClip) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("倍速")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+                Text("时间轴时长 = 素材时长 ÷ 倍速")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary.opacity(0.6))
+            }
+            HStack(spacing: 8) {
+                ForEach(speedOptions, id: \.self) { speed in
+                    let isCurrent = abs(clip.playbackSpeed - speed) < 0.001
+                    Button {
+                        appState.setClipPlaybackSpeed(clip.id, speed)
+                    } label: {
+                        Text("\(speed == speed.rounded() ? String(Int(speed)) : String(format: "%.1f", speed))x")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(isCurrent ? LF.gold : LF.surface2, in: Capsule())
+                            .foregroundStyle(isCurrent ? .black : LF.textPrimary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     // MARK: - 音频段
 
     private func audioInspector(_ clip: AudioClip) -> some View {
@@ -673,12 +709,6 @@ struct ElementInspectorView: View {
                 )
             }
         }
-    }
-
-    /// 防 NaN 的角度显示
-    private func safeDegrees(_ rotation: CGFloat) -> Int {
-        let degrees = rotation * 180 / .pi
-        return degrees.isFinite ? Int(degrees.rounded()) : 0
     }
 
     /// 防 NaN 的百分比显示

@@ -1,3 +1,4 @@
+import Combine
 import LivingFrameCore
 import SwiftUI
 
@@ -156,8 +157,13 @@ struct AssetPickerView: View {
 struct AssetCell: View {
     let clip: SegmentedClip
 
-    @State private var frameIndex = 0
-    private let timer = Timer.publish(every: 1.0 / 10, on: .main, in: .common).autoconnect()
+    @ObservedObject private var ticker = ClipTicker.shared
+
+    /// 由共享时钟推导的当前帧索引（10fps 动画预览，不占用独立 Timer）
+    private var frameIndex: Int {
+        guard clip.frameCount > 1 else { return 0 }
+        return ticker.tick % clip.frameCount
+    }
 
     var body: some View {
         VStack(spacing: 4) {
@@ -173,10 +179,6 @@ struct AssetCell: View {
             }
             .frame(height: 90)
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .onReceive(timer) { _ in
-                guard clip.frameCount > 1 else { return }
-                frameIndex = (frameIndex + 1) % clip.frameCount
-            }
 
             Text(clip.name)
                 .font(.caption2)

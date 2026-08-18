@@ -19,7 +19,7 @@ struct TimelineView: View {
 
     private var rows: Int {
         guard let comp = appState.composition else { return 0 }
-        return comp.elements.count + (comp.audioClips.isEmpty ? 0 : 1)
+        return comp.elements.count + comp.audioClips.count
     }
 
     private var totalHeight: CGFloat {
@@ -64,10 +64,10 @@ struct TimelineView: View {
                             elementRow(element, spp: spp)
                                 .position(x: rowX(element, spp: spp), y: rulerHeight + rowCenterY(i))
                         }
-                        // 音频行
-                        if let audio = comp.audioClips.first {
+                        // 音频行（每条音轨一行，元素行之下依次排开）
+                        ForEach(Array(comp.audioClips.enumerated()), id: \.element.id) { i, audio in
                             audioRow(audio, spp: spp)
-                                .position(x: audioX(audio, spp: spp), y: rulerHeight + rowCenterY(comp.elements.count))
+                                .position(x: audioX(audio, spp: spp), y: rulerHeight + rowCenterY(comp.elements.count + i))
                         }
                         // 播放头（可拖动定位）
                         playhead(spp: spp, height: totalHeight)

@@ -12,7 +12,10 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "LivingFrameCore"
+            name: "LivingFrameCore",
+            resources: [
+                .process("Resources")
+            ]
         )
     ]
 )

@@ -112,7 +112,10 @@ public struct VideoSegmentationPipeline {
             } else {
                 oriented = source.oriented(derived)
             }
-            LogStore.log("segmentVideo: frame \(index) derived=\(derived.rawValue) still=\(stillOrientation.rawValue) using=\(oriented.extent.width)x\(oriented.extent.height)")
+            // 逐帧日志开销大（1~3 分钟抠图会写几千行），只抽样记录
+            if index % 30 == 0 {
+                LogStore.log("segmentVideo: frame \(index) derived=\(derived.rawValue) still=\(stillOrientation.rawValue) using=\(oriented.extent.width)x\(oriented.extent.height)")
+            }
             let scale = min(1.0, maxDimension / max(oriented.extent.width, oriented.extent.height))
             let input = scale < 1.0
                 ? oriented.transformed(by: CGAffineTransform(scaleX: scale, y: scale))

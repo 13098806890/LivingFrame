@@ -8,12 +8,17 @@ struct CanvasView: View {
     @State private var viewportSize: CGSize = .zero
     /// 预览渲染器：按视口尺寸解码/渲染，不改变导出分辨率
     @State private var renderer = CompositionRenderer(frameMaxPixelSize: 900)
-/// 手势起始快照（拖动/缩放/旋转共用）
-@State private var gestureStartTransforms: [UUID: ElementTransform] = [:]
-/// 双指手势活跃中（防止同时触发拖动）
-@State private var isPinching = false
-/// 裁剪模式下的临时裁剪框（画布坐标系）
-@State private var cropRect: CGRect?
+    /// 手势起始快照（拖动/缩放/旋转共用）
+    @State private var gestureStartTransforms: [UUID: ElementTransform] = [:]
+    /// 双指手势活跃中（防止同时触发拖动）
+    @State private var isPinching = false
+    /// 裁剪模式下的临时裁剪框（画布坐标系）
+    @State private var cropRect: CGRect?
+    /// 渲染版本号：异步渲染完成时只有最新版本才写入，避免旧帧覆盖新帧
+    @State private var renderVersion = 0
+    /// 预览渲染串行队列：CI 渲染在后台执行，避免 20Hz tick 主线程卡顿；
+    /// 串行 + 版本号让积压的旧渲染直接跳过
+    private static let renderQueue = DispatchQueue(label: "com.livingframe.canvas-render", qos: .userInteractive)
 
     var body: some View {
         VStack(spacing: 8) {
@@ -422,46 +427,26 @@ struct CanvasView: View {
     }
 
     private func render() {
+        renderVersion += 1
+        let version = renderVersion
         guard let comp = appState.composition else {
             previewImage = nil
             return
         }
         let time = min(appState.currentTime, comp.duration)
-        if let cg = renderer.render(comp, at: time) {
-            previewImage = UIImage(cgImage: cg)
-        } else {
-            LogStore.log("CanvasView.render: renderer returned nil elements=\(comp.elements.count) time=\(time)")
-        }
-    }
-
-    private var playbackBar: some View {
-        HStack(spacing: 12) {
-            Button {
-                appState.isPlaying ? appState.pause() : appState.play()
-            } label: {
-                Image(systemName: appState.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.title3)
-                    .foregroundStyle(LF.gold)
+        let renderer = renderer
+        Self.renderQueue.async { [renderer] in
+            // 队列里积压的旧版本直接跳过，不浪费渲染
+            guard version == self.renderVersion else { return }
+            guard let cg = renderer.render(comp, at: time) else {
+                LogStore.log("CanvasView.render: renderer returned nil elements=\(comp.elements.count) time=\(time)")
+                return
             }
-
-            Slider(
-                value: Binding(
-                    get: { appState.currentTime },
-                    set: { appState.seek(to: $0) }
-                ),
-                in: 0...max(appState.composition?.duration ?? 1, 0.1)
-            )
-            .tint(LF.gold)
-
-            Text(timeText)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(LF.textSecondary)
+            DispatchQueue.main.async {
+                guard version == self.renderVersion else { return }
+                self.previewImage = UIImage(cgImage: cg)
+            }
         }
-    }
-
-    private var timeText: String {
-        let total = appState.composition?.duration ?? 0
-        return String(format: NSLocalizedString("time.progress", comment: "Playback time"), appState.currentTime, total)
     }
 }
 

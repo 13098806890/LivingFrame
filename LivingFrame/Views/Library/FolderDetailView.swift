@@ -156,13 +156,6 @@ struct FolderDetailView: View {
         }
     }
 
-    /// 描边可选颜色
-    private var edgeColorOptions: [(name: String, hex: String)] {
-        [("白色", "FFFFFF"), ("黑色", "000000"), ("金色", "E8C05C"),
-         ("红色", "E74C3C"), ("粉色", "FF9FF3"), ("蓝色", "54A0FF"),
-         ("绿色", "1DD1A1"), ("紫色", "8B7CF6")]
-    }
-
     private var clipsSection: some View {
         SectionCard(title: "素材管理") {
             if folderClips.isEmpty {

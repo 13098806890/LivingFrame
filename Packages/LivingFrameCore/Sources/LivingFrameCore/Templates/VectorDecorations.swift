@@ -2,15 +2,24 @@ import CoreGraphics
 import CoreImage
 import Foundation
 
-/// 矢量装饰绘制：CoreGraphics 代码生成，体积 0、无限缩放、双平台复用
+/// 装饰绘制：CoreGraphics 代码生成 + 动图贴纸（PNG 帧序列，Bundle 内资源）
+/// 体积 0 的矢量装饰 vs 位图贴纸双平台复用
 public struct DecorationRenderer {
     private let cache = NSCache<NSString, CIImage>()
+    private static let lock = NSLock()
+    /// 动图贴纸帧缓存（decorationID → [CGImage]，解码一次，铺满元素时间段）
+    private static var stickerFrames: [String: [CGImage]] = [:]
 
     public init() {}
 
-    /// 装饰 id 约定（与 TemplateCatalog 一致）：
-    /// frame-gold / corners / vignette / glow-soft / glow-orb / dust / wand-beam
-    public func image(for decorationID: String, canvas: CGRect) -> CIImage? {
+    /// 装饰 id 约定：frame-gold / corners / vignette / glow-soft / glow-orb / dust / wand-beam（矢量）
+    /// 以及 sticker-firework（动图贴纸，需要时间参数）
+    /// - Parameter localTime: 元素内时间（秒，从元素起始时间起算）
+    /// - Parameter duration: 元素时长（秒），动图贴纸把全部帧铺满整个时间段
+    public func image(for decorationID: String, canvas: CGRect, at localTime: TimeInterval = 0, duration: TimeInterval = 0) -> CIImage? {
+        if decorationID.hasPrefix("sticker-") {
+            return stickerImage(decorationID: decorationID, localTime: localTime, duration: duration)
+        }
         let key = "\(decorationID)-\(Int(canvas.width))x\(Int(canvas.height))" as NSString
         if let cached = cache.object(forKey: key) {
             return cached
@@ -19,6 +28,51 @@ public struct DecorationRenderer {
         let ci = CIImage(cgImage: cg)
         cache.setObject(ci, forKey: key)
         return ci
+    }
+
+    // MARK: - 动图贴纸
+
+    /// 加载贴纸帧序列（首次解码后缓存）；帧图 512x512 含透明
+    private func frames(for decorationID: String) -> [CGImage]? {
+        Self.lock.lock()
+        if let cached = Self.stickerFrames[decorationID] {
+            Self.lock.unlock()
+            return cached
+        }
+        Self.lock.unlock()
+
+        let count: Int
+        switch decorationID {
+        case "sticker-firework": count = 9
+        default: return nil
+        }
+        var loaded: [CGImage] = []
+        loaded.reserveCapacity(count)
+        for i in 0..<count {
+            guard let url = Bundle.module.url(
+                forResource: String(format: "firework-frame-%02d", i),
+                withExtension: "png"
+            ), let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+               let img = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                Self.lock.lock()
+                Self.stickerFrames[decorationID] = []
+                Self.lock.unlock()
+                return nil
+            }
+            loaded.append(img)
+        }
+        Self.lock.lock()
+        Self.stickerFrames[decorationID] = loaded
+        Self.lock.unlock()
+        return loaded
+    }
+
+    /// 按固定 0.1s/帧播放，拉长时间轴时帧循环补满（不减速）：
+    /// 默认时长=一帧循环（9 帧×0.1s=0.9s）时即"播放一次"
+    private func stickerImage(decorationID: String, localTime: TimeInterval, duration: TimeInterval) -> CIImage? {
+        guard let frames = frames(for: decorationID), !frames.isEmpty else { return nil }
+        let frameIndex = Int((max(localTime, 0) / 0.1).rounded(.down)) % frames.count
+        return CIImage(cgImage: frames[frameIndex])
     }
 
     private func draw(decorationID: String, size: CGSize) -> CGImage? {
