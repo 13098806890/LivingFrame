@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - 主题色（魔法深色系）
+// MARK: - 主题色（Cloud Glass：浅色系统背景 + iOS 蓝）
 
 extension Color {
     init(hex: String) {
@@ -20,19 +20,28 @@ extension Color {
 }
 
 enum LF {
-    static let background = Color(hex: "0B0E1A")
-    static let surface = Color(hex: "171A2E")
-    static let surface2 = Color(hex: "1F2440")
-    static let gold = Color(hex: "E8C05C")
-    static let goldDeep = Color(hex: "8C6D2F")
-    static let magic = Color(hex: "8B7CF6")
-    static let textPrimary = Color(hex: "F2F3F7")
-    static let textSecondary = Color(hex: "9AA0B4")
+    /// 使用系统语义色，浅色/深色模式和提高对比度设置都能自动适配。
+    static let background = Color(uiColor: .systemGroupedBackground)
+    static let surface = Color(uiColor: .secondarySystemGroupedBackground)
+    static let surface2 = Color(uiColor: .tertiarySystemFill)
+    static let accent = Color(uiColor: .systemBlue)
+    static let accentSoft = Color(hex: "DCEBFF")
+    static let accentDeep = Color(hex: "356DB5")
+    static let magic = Color(uiColor: .systemIndigo)
+    static let textPrimary = Color(uiColor: .label)
+    static let textSecondary = Color(uiColor: .secondaryLabel)
 
-    static let goldGradient = LinearGradient(
-        colors: [Color(hex: "F0D78C"), Color(hex: "D4A93C")],
+    /// 兼容现有调用点：原 gold 语义统一映射到 iOS 蓝，不再使用黑金配色。
+    static let gold = accent
+    static let goldDeep = accentDeep
+
+    static let accentGradient = LinearGradient(
+        colors: [Color(hex: "3D9BFF"), Color(hex: "0A84FF")],
         startPoint: .topLeading, endPoint: .bottomTrailing
     )
+
+    /// 兼容现有调用点。
+    static let goldGradient = accentGradient
 }
 
 // MARK: - 组件样式
@@ -43,15 +52,15 @@ struct MagicButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .foregroundStyle(prominent ? Color(hex: "1A1405") : LF.textPrimary)
+            .foregroundStyle(prominent ? .white : LF.textPrimary)
             .padding(.horizontal, 18)
             .padding(.vertical, 10)
             .background {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(prominent ? AnyShapeStyle(LF.goldGradient) : AnyShapeStyle(Color.clear))
+                    .fill(prominent ? AnyShapeStyle(LF.accentGradient) : AnyShapeStyle(Color.clear))
                     .overlay {
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(LF.gold.opacity(prominent ? 0 : 0.5), lineWidth: 1)
+                            .stroke(LF.accent.opacity(prominent ? 0 : 0.5), lineWidth: 1)
                     }
             }
             .opacity(configuration.isPressed ? 0.7 : 1)
@@ -76,7 +85,11 @@ struct SectionCard<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LF.surface, in: RoundedRectangle(cornerRadius: 16))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.45), lineWidth: 0.8)
+        }
     }
 }
 
@@ -102,12 +115,12 @@ struct EmptyStateView: View {
     }
 }
 
-/// 深色主题背景修饰
+/// Cloud Glass 背景修饰：内容层使用系统背景，导航栏和 Tab 栏使用系统材质。
 struct MagicBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(LF.background.ignoresSafeArea())
-            .toolbarBackground(LF.surface.opacity(0.6), for: .navigationBar, .tabBar)
+            .toolbarBackground(.regularMaterial, for: .navigationBar, .tabBar)
     }
 }
 

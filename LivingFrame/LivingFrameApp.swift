@@ -8,7 +8,7 @@ struct LivingFrameApp: App {
         WindowGroup {
             MainTabView()
                 .environmentObject(appState)
-                .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
                 .tint(LF.gold)
         }
     }

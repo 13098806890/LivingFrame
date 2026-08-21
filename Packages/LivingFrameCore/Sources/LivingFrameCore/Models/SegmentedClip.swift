@@ -38,13 +38,18 @@ public struct SegmentedClip: Identifiable {
     /// 素材在时间轴上的有效时长（按倍速折算）：
     /// 1x 就是自身时长，2x 只占一半时间，0.5x 占两倍时间
     public var effectiveDuration: TimeInterval {
-        duration / max(playbackSpeed, 0.01)
+        activeDuration / max(playbackSpeed, 0.01)
     }
 
     /// 参与播放的帧索引（升序，排除 excludedFrames 后）
     public var activeFrameIndices: [Int] {
         let active = (0..<frameCount).filter { !excludedFrames.contains($0) }
         return active.isEmpty ? Array(0..<frameCount) : active
+    }
+
+    /// 排除帧后的真实播放时长。空集合回退为完整素材，避免素材变成 0 秒。
+    public var activeDuration: TimeInterval {
+        fps > 0 ? TimeInterval(activeFrameIndices.count) / fps : 1
     }
 
     public func frameURL(index: Int) -> URL {

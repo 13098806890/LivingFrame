@@ -4,6 +4,8 @@ import SwiftUI
 /// 画布预览：CI 逐帧渲染 + 直接操作（点选 / 拖动 / 双指缩放 / 旋转 / 选中框）
 struct CanvasView: View {
     @EnvironmentObject private var appState: AppState
+    /// 只有编辑页主画布驱动播放；全屏预览只负责显示，避免两个画布同时推进时间。
+    private let drivesPlayback: Bool
     @State private var previewImage: UIImage?
     @State private var viewportSize: CGSize = .zero
     /// 预览渲染器：按视口尺寸解码/渲染，不改变导出分辨率
@@ -14,11 +16,19 @@ struct CanvasView: View {
     @State private var isPinching = false
     /// 裁剪模式下的临时裁剪框（画布坐标系）
     @State private var cropRect: CGRect?
-    /// 渲染版本号：异步渲染完成时只有最新版本才写入，避免旧帧覆盖新帧
+    /// 渲染版本号：异步渲染完成时只有最新版本才写入，避免旧帧覆盖新帧。
     @State private var renderVersion = 0
-    /// 预览渲染串行队列：CI 渲染在后台执行，避免 20Hz tick 主线程卡顿；
-    /// 串行 + 版本号让积压的旧渲染直接跳过
-    private static let renderQueue = DispatchQueue(label: "com.livingframe.canvas-render", qos: .userInteractive)
+    /// 是否有一个预览渲染正在执行；执行期间只保留最新请求，避免任务堆积或全部被跳过。
+    @State private var isRenderInFlight = false
+    /// CI 渲染串行执行，避免多个元素同时渲染造成任务积压和结果互相覆盖。
+    private static let renderQueue = DispatchQueue(
+        label: "com.livingframe.canvas-render",
+        qos: .userInteractive
+    )
+
+    init(drivesPlayback: Bool = true) {
+        self.drivesPlayback = drivesPlayback
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -48,6 +58,7 @@ struct CanvasView: View {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(LF.surface2, lineWidth: 1)
             }
+            .shadow(color: Color.black.opacity(0.14), radius: 18, x: 0, y: 9)
             .background(
                 GeometryReader { geo in
                     Color.clear
@@ -81,6 +92,11 @@ struct CanvasView: View {
         }
         .onChange(of: appState.currentTime) { _, _ in
             render()
+        }
+        .onChange(of: appState.isPlaying) { _, playing in
+            if playing {
+                render()
+            }
         }
         .onChange(of: appState.clipStyleVersion) { _, _ in
             render()
@@ -315,7 +331,7 @@ struct CanvasView: View {
                         .position(x: frame.midX, y: frame.midY)
                         .allowsHitTesting(false)
                     // 四角手柄（可拖拽）
-                    ForEach(cornerPoints(of: frame), id: \.self) { point in
+                    ForEach(Array(cornerPoints(of: frame).enumerated()), id: \.offset) { _, point in
                         Circle()
                             .fill(LF.gold)
                             .frame(width: 22, height: 22)
@@ -422,30 +438,62 @@ struct CanvasView: View {
     private func refreshRendererScale() {
         guard viewportSize.width > 0, viewportSize.height > 0 else { return }
         let pixelScale = UIScreen.main.scale
-        let maxPixel = max(viewportSize.width, viewportSize.height) * pixelScale * 1.1
+        // 编辑预览不需要按 Retina 全分辨率渲染；多素材同时播放时，
+        // 把中间合成限制在 900px 内，避免渲染队列长期追不上播放时钟。
+        let maxPixel = min(
+            max(viewportSize.width, viewportSize.height) * pixelScale * 1.1,
+            900
+        )
         renderer = CompositionRenderer(frameMaxPixelSize: maxPixel)
     }
 
     private func render() {
-        renderVersion += 1
+        renderVersion &+= 1
+
+        guard !isRenderInFlight else { return }
+        isRenderInFlight = true
+
         let version = renderVersion
-        guard let comp = appState.composition else {
-            previewImage = nil
-            return
-        }
-        let time = min(appState.currentTime, comp.duration)
+        let composition = appState.composition
+        let time = composition.map { min(appState.currentTime, $0.duration) } ?? 0
         let renderer = renderer
-        Self.renderQueue.async { [renderer] in
-            // 队列里积压的旧版本直接跳过，不浪费渲染
-            guard version == self.renderVersion else { return }
-            guard let cg = renderer.render(comp, at: time) else {
-                LogStore.log("CanvasView.render: renderer returned nil elements=\(comp.elements.count) time=\(time)")
-                return
+        let renderStartedAt = Date()
+        Self.renderQueue.async { [renderer, composition, time, renderStartedAt] in
+            let cg = composition.flatMap {
+                renderer.render($0, at: time)
             }
             DispatchQueue.main.async {
-                guard version == self.renderVersion else { return }
-                self.previewImage = UIImage(cgImage: cg)
+                self.isRenderInFlight = false
+
+                let isCurrentVersion = version == self.renderVersion
+                if let cg, isCurrentVersion {
+                    self.previewImage = UIImage(cgImage: cg)
+                } else if isCurrentVersion {
+                    self.previewImage = nil
+                }
+
+                // 播放期间如果有新时间点到达，当前渲染结束后立刻补渲染最新请求。
+                if !isCurrentVersion {
+                    self.render()
+                } else if self.appState.isPlaying && self.drivesPlayback {
+                    self.scheduleNextPlaybackStep(
+                        renderDuration: Date().timeIntervalSince(renderStartedAt)
+                    )
+                }
             }
+        }
+    }
+
+    /// 渲染完成后再推进播放时间，确保播放时钟不会领先于完整合成画面。
+    private func scheduleNextPlaybackStep(renderDuration: TimeInterval) {
+        guard let composition = appState.composition else { return }
+        let targetFPS = min(max(composition.fps, 15), 30)
+        let frameInterval = 1 / targetFPS
+        let delay = max(0, frameInterval - renderDuration)
+        let delta = max(frameInterval, renderDuration)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard self.appState.isPlaying else { return }
+            self.appState.tick(delta: delta)
         }
     }
 }

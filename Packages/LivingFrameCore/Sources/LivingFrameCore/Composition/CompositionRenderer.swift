@@ -21,7 +21,10 @@ public struct CompositionRenderer {
 
     // MARK: - 输出
 
-    public func render(_ composition: Composition, at time: TimeInterval) -> CGImage? {
+    public func render(
+        _ composition: Composition,
+        at time: TimeInterval
+    ) -> CGImage? {
         guard let ci = renderCIImage(composition, at: time) else { return nil }
         let rect = composition.renderRect
         // 预览输出降采样到视口分辨率：先裁到画布区域再缩放，
@@ -47,23 +50,37 @@ public struct CompositionRenderer {
 
     // MARK: - 合成
 
-    func renderCIImage(_ composition: Composition, at time: TimeInterval) -> CIImage? {
+    func renderCIImage(
+        _ composition: Composition,
+        at time: TimeInterval
+    ) -> CIImage? {
         let canvas = composition.canvasRect
         var image = backgroundCIImage(composition.background, in: canvas)
-        for element in composition.elements.sorted(by: { $0.zIndex < $1.zIndex }) {
+        // 同一 zIndex 的旧工程也要保持插入顺序，避免 Swift 的不稳定排序导致
+        // 重叠元素在播放时层级随机变化，表现为某个元素像是“消失”。
+        let orderedElements = composition.elements.enumerated().sorted { lhs, rhs in
+            if lhs.element.zIndex != rhs.element.zIndex {
+                return lhs.element.zIndex < rhs.element.zIndex
+            }
+            return lhs.offset < rhs.offset
+        }
+        for item in orderedElements {
+            let element = item.element
             guard element.isVisible(at: time) else { continue }
             // 跳过非法变换的元素（NaN/Inf 会导致整个画布渲染失败）
             let t = element.transform
             guard t.position.x.isFinite, t.position.y.isFinite,
                   t.scale.isFinite, t.scale > 0,
                   t.rotation.isFinite else {
-                LogStore.log("renderCIImage: 跳过非法变换元素 id=\(element.id) transform=\(t)")
                 continue
             }
-            if let placed = placedImage(for: element, at: time, canvas: canvas, composition: composition) {
+            if let placed = placedImage(
+                for: element,
+                at: time,
+                canvas: canvas,
+                composition: composition
+            ) {
                 image = placed.composited(over: image)
-            } else {
-                LogStore.log("renderCIImage: 元素渲染失败 kind=\(element.kind) time=\(time)")
             }
         }
         // 统一裁剪到画布：任何背景/元素 extent 异常都不会产生未覆盖黑块
@@ -135,15 +152,26 @@ public struct CompositionRenderer {
         return transform
     }
 
-    private func placedImage(for element: CompositionElement, at time: TimeInterval, canvas: CGRect, composition: Composition) -> CIImage? {
+    private func placedImage(
+        for element: CompositionElement,
+        at time: TimeInterval,
+        canvas: CGRect,
+        composition: Composition
+    ) -> CIImage? {
         let source: CIImage?
         var fixScale: CGFloat = 1
         switch element.kind {
         case .clip(let clipID):
             if let clip = FrameCache.shared.clip(id: clipID) {
-                // 素材内时间：从元素起始时间起算，再按素材倍速折算播放位置
-                let playTime = max(0, time - element.startTime) * clip.playbackSpeed
-                if let frame = clipFrameImage(clipID: clipID, at: playTime) {
+                // 素材内时间：从源素材入点起算，再按素材倍速折算播放位置。
+                // 时间轴上的 start/end 只表示当前播放区间，不能再决定素材从第几帧开始。
+                let sourceDuration = clip.activeDuration
+                let sourceStart = min(max(element.sourceStartTime, 0), sourceDuration)
+                let playTime = sourceStart + max(0, time - element.startTime) * clip.playbackSpeed
+                if let frame = clipFrameImage(
+                    clipID: clipID,
+                    at: playTime
+                ) {
                 // 预览用缩略图（尺寸 < 素材实际像素）。不把源图放大回全尺寸——
                 // 放大插值会在人物边缘产生半透明残留像素（贴边时形成"阴影线"）。
                 // 改为把归一化因子并入元素缩放，源图始终一次缩放到位。
@@ -187,11 +215,9 @@ public struct CompositionRenderer {
                 }
                 source = content
                 } else {
-                    LogStore.log("placedImage: clip 帧获取失败 clipID=\(clipID) time=\(time) registered=\(FrameCache.shared.clip(id: clipID) != nil)")
                     source = nil
                 }
             } else {
-                LogStore.log("placedImage: clip 未注册 clipID=\(clipID)")
                 source = nil
             }
         case .decoration(let decorationID):
@@ -274,7 +300,10 @@ public struct CompositionRenderer {
         guard let cg = ctx.makeImage() else { return nil }
         return CIImage(cgImage: cg)
     }
-    private func clipFrameImage(clipID: String, at time: TimeInterval) -> CIImage? {
+    private func clipFrameImage(
+        clipID: String,
+        at time: TimeInterval
+    ) -> CIImage? {
         guard let clip = FrameCache.shared.clip(id: clipID) else { return nil }
         let active = clip.activeFrameIndices
         guard !active.isEmpty else { return nil }
@@ -285,13 +314,17 @@ public struct CompositionRenderer {
             return nil
         }
         // 按 activeFrameIndices 顺序播放（视频编辑逻辑：素材播完即结束，不循环）
-        let rawIndex = Int((time * clip.fps).rounded())
+        let rawIndex = Int((time * clip.fps).rounded(.down))
         // 超出素材时长（排除帧后）→ 素材已结束，不再渲染（元素消失）
         guard rawIndex >= 0, rawIndex < active.count else { return nil }
         let index = active[rawIndex]
         let frame: CGImage?
         if let frameMaxPixelSize {
-            frame = FrameCache.shared.cachedThumbnail(for: clip, index: index, maxPixelSize: frameMaxPixelSize)
+            frame = FrameCache.shared.cachedThumbnail(
+                for: clip,
+                index: index,
+                maxPixelSize: frameMaxPixelSize
+            )
         } else {
             frame = FrameCache.shared.cachedFrame(for: clip, index: index)
         }
@@ -554,4 +587,3 @@ extension CIColor {
         self.init(red: r, green: g, blue: b, alpha: 1)
     }
 }
-

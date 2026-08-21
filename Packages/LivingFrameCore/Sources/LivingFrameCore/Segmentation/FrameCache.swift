@@ -8,14 +8,17 @@ public final class FrameCache {
     public static let shared = FrameCache()
 
     private let rootURL: URL
+    private let registryLock = NSLock()
     private var registered: [String: SegmentedClip] = [:]
     /// 预览帧解码缓存（避免每帧重复磁盘解码导致素材库卡顿）
     private let frameLock = NSLock()
     private var frameCache: [String: CGImage] = [:]
     /// LRU 淘汰顺序（队首 = 最久未使用）。整表清空会导致多素材循环播放时频繁重解码
     private var frameOrder: [String] = []
-    /// 多个素材循环播放时缓存须覆盖各素材最近几帧，太小会导致频繁清空重解码
-    private let frameCacheMax = 128
+    private var frameCacheCost = 0
+    /// 预览缓存最多保留约 96MB，避免多素材播放时无限增长。
+    private let frameCacheMaxCost = 96 * 1024 * 1024
+    private let frameCacheMaxCount = 256
     /// 素材占用空间缓存（clipID → bytes）
     private var clipSizes: [String: Int64] = [:]
 
@@ -32,12 +35,16 @@ public final class FrameCache {
     }
 
     public func register(_ clip: SegmentedClip) {
+        registryLock.lock()
         registered[clip.id] = clip
+        registryLock.unlock()
         saveManifest(for: clip)
     }
 
     public func clip(id: String) -> SegmentedClip? {
-        registered[id]
+        registryLock.lock()
+        defer { registryLock.unlock() }
+        return registered[id]
     }
 
     /// 带缓存的帧解码（预览/渲染共用，超出容量淘汰最久未使用）
@@ -50,7 +57,7 @@ public final class FrameCache {
 
     /// 低分辨率缩略帧解码（素材库/选择器预览用，直接按目标尺寸解码，省去全尺寸解码）
     public func cachedThumbnail(for clip: SegmentedClip, index: Int, maxPixelSize: CGFloat) -> CGImage? {
-        let key = "\(clip.id):\(index):thumb\(Int(maxPixelSize))"
+        let key = thumbnailKey(clip: clip, index: index, maxPixelSize: maxPixelSize)
         frameLock.lock()
         defer { frameLock.unlock() }
         return hitOrLoad(key: key) {
@@ -72,13 +79,33 @@ public final class FrameCache {
             return image
         }
         guard let image = load() else { return nil }
-        frameCache[key] = image
-        frameOrder.append(key)
-        if frameOrder.count > frameCacheMax {
-            let evicted = frameOrder.removeFirst()
-            frameCache.removeValue(forKey: evicted)
-        }
+        insert(image, forKey: key)
         return image
+    }
+
+    private func insert(_ image: CGImage, forKey key: String) {
+        if let old = frameCache[key] {
+            frameCacheCost -= imageCost(old)
+        }
+        frameCache[key] = image
+        frameOrder.removeAll { $0 == key }
+        frameOrder.append(key)
+        frameCacheCost += imageCost(image)
+        while frameOrder.count > frameCacheMaxCount || frameCacheCost > frameCacheMaxCost {
+            guard let evicted = frameOrder.first else { break }
+            frameOrder.removeFirst()
+            if let image = frameCache.removeValue(forKey: evicted) {
+                frameCacheCost -= imageCost(image)
+            }
+        }
+    }
+
+    private func imageCost(_ image: CGImage) -> Int {
+        max(image.width * image.height * 4, 1)
+    }
+
+    private func thumbnailKey(clip: SegmentedClip, index: Int, maxPixelSize: CGFloat) -> String {
+        "\(clip.id):\(index):thumb\(Int(maxPixelSize))"
     }
 
     private func touch(_ key: String) {
@@ -90,17 +117,22 @@ public final class FrameCache {
 
     /// 重新扫描磁盘，恢复所有素材注册（启动时调用）
     public func reload() {
-        registered.removeAll()
+        var loaded: [String: SegmentedClip] = [:]
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: rootURL, includingPropertiesForKeys: nil
-        ) else { return }
+        ) else {
+            registryLock.lock()
+            registered.removeAll()
+            registryLock.unlock()
+            return
+        }
         for dir in entries where dir.hasDirectoryPath {
             let id = dir.lastPathComponent
             guard let data = try? Data(contentsOf: manifestURL(for: id)),
                   let manifest = try? JSONDecoder().decode(ClipManifest.self, from: data) else { continue }
             let audioURL = manifest.audioFilename.map { dir.appendingPathComponent($0) }
             // 旧版本边缘样式迁移：blackOutline/goldOutline 映射颜色，outlineDashed/Dotted 映射线型
-            var edgeStyle = manifest.edgeStyle ?? .none
+            let edgeStyle = manifest.edgeStyle ?? .none
             var edgeColor = manifest.edgeColorHex ?? "FFFFFF"
             var edgeLine = manifest.edgeLineStyle ?? .solid
             switch edgeStyle {
@@ -109,7 +141,7 @@ public final class FrameCache {
             case .outlineDashed, .outlineDotted: edgeLine = .dashed
             default: break
             }
-            registered[id] = SegmentedClip(
+            loaded[id] = SegmentedClip(
                 id: manifest.id,
                 name: manifest.name,
                 fps: manifest.fps,
@@ -127,19 +159,31 @@ public final class FrameCache {
                 excludedFrames: manifest.excludedFrames.map { Set($0) } ?? []
             )
         }
+        registryLock.lock()
+        registered = loaded
+        registryLock.unlock()
     }
 
     public func allClips() -> [SegmentedClip] {
-        registered.values.sorted { $0.createdAt > $1.createdAt }
+        registryLock.lock()
+        defer { registryLock.unlock() }
+        return registered.values.sorted { $0.createdAt > $1.createdAt }
     }
 
     public func removeClip(id: String) {
+        registryLock.lock()
         registered[id] = nil
+        registryLock.unlock()
+        frameLock.lock()
         clipSizes[id] = nil
         // 清理该素材的解码缓存，避免残留占用内存
-        frameLock.lock()
         let prefix = id + ":"
-        frameCache = frameCache.filter { !$0.key.hasPrefix(prefix) }
+        let keysToRemove = frameCache.keys.filter { $0.hasPrefix(prefix) }
+        for key in keysToRemove {
+            if let image = frameCache.removeValue(forKey: key) {
+                frameCacheCost -= imageCost(image)
+            }
+        }
         frameOrder.removeAll { $0.hasPrefix(prefix) }
         frameLock.unlock()
         try? FileManager.default.removeItem(at: rootURL.appendingPathComponent(id))
@@ -168,12 +212,15 @@ public final class FrameCache {
     }
 
     public func removeAll() {
+        registryLock.lock()
         registered.removeAll()
+        registryLock.unlock()
         frameLock.lock()
         frameCache.removeAll()
         frameOrder.removeAll()
-        frameLock.unlock()
+        frameCacheCost = 0
         clipSizes.removeAll()
+        frameLock.unlock()
         // 直接清空整个素材目录（含未注册的残留目录）
         try? FileManager.default.removeItem(at: rootURL)
         try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)

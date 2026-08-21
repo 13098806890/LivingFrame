@@ -19,7 +19,7 @@ public struct GIFExporter {
         to url: URL,
         fps: Double = 15,
         progress: @escaping (Double) -> Void = { _ in },
-        isCancelled: @escaping () -> Bool = { false }
+        isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws {
         let frameCount = max(1, Int(composition.duration * fps))
         guard let destination = CGImageDestinationCreateWithURL(
@@ -27,11 +27,6 @@ public struct GIFExporter {
         ) else { throw ExportError.destinationFailed }
         let start = Date()
         LogStore.log("GIFExporter: start frames=\(frameCount) fps=\(fps) size=\(Int(composition.canvas.width))x\(Int(composition.canvas.height)) url=\(url.path)")
-
-        let loopProperties = [
-            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]
-        ]
-        CGImageDestinationSetProperties(destination, loopProperties as CFDictionary)
 
         let renderer = CompositionRenderer()
         var skipped = 0

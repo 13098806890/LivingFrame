@@ -19,7 +19,22 @@ final class AppState: ObservableObject {
 
     // MARK: - 工程
 
-    @Published var composition: Composition?
+    @Published var composition: Composition? {
+        willSet {
+            guard !isApplyingHistory,
+                  let current = composition,
+                  let next = newValue,
+                  current != next else { return }
+            undoStack.append(current)
+            if undoStack.count > 50 { undoStack.removeFirst() }
+            redoStack.removeAll()
+        }
+    }
+    private var undoStack: [Composition] = []
+    private var redoStack: [Composition] = []
+    private var isApplyingHistory = false
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
     /// 素材属性（边缘/风格等）变更版本号，用于触发画布重渲染
     @Published var clipStyleVersion = 0
     /// 画布上选中的元素（支持多选，primary 为最后点选的）
@@ -82,9 +97,6 @@ final class AppState: ObservableObject {
     @Published var isPlaying = false
     /// 倒序播放
     @Published var isReversed = false
-    /// 循环播放（默认开）
-    @Published var isLooping = true
-
     // MARK: - 导出
 
     @Published var isExporting = false
@@ -184,6 +196,12 @@ final class AppState: ObservableObject {
             }
             addClip(clip)
             isSegmenting = false
+        } catch is CancellationError {
+            isSegmenting = false
+            segmentationProgress = 0
+        } catch SegmentationError.cancelled {
+            isSegmenting = false
+            segmentationProgress = 0
         } catch {
             LogStore.log("startSegmenting failed: \(error)")
             isSegmenting = false
@@ -209,6 +227,12 @@ final class AppState: ObservableObject {
             }.value
             addClip(clip)
             isSegmenting = false
+        } catch is CancellationError {
+            isSegmenting = false
+            segmentationProgress = 0
+        } catch SegmentationError.cancelled {
+            isSegmenting = false
+            segmentationProgress = 0
         } catch {
             LogStore.log("startPhotoSegmenting failed: \(error)")
             isSegmenting = false
@@ -232,6 +256,17 @@ final class AppState: ObservableObject {
             composition = comp
         }
         syncAudioPreview()
+        recomputeDuration()
+        if let elements = composition?.elements {
+            selectedElementIDs = selectedElementIDs.filter { id in elements.contains { $0.id == id } }
+            if let lastSelectedElementID, !elements.contains(where: { $0.id == lastSelectedElementID }) {
+                self.lastSelectedElementID = nil
+            }
+        }
+        if let selectedAudioID,
+           composition?.audioClips.contains(where: { $0.id == selectedAudioID }) != true {
+            self.selectedAudioID = nil
+        }
     }
 
     /// 删除单个素材（磁盘 + 文件夹 + 工程引用）
@@ -248,6 +283,17 @@ final class AppState: ObservableObject {
             composition = comp
         }
         syncAudioPreview()
+        recomputeDuration()
+        if let elements = composition?.elements {
+            selectedElementIDs = selectedElementIDs.filter { id in elements.contains { $0.id == id } }
+            if let lastSelectedElementID, !elements.contains(where: { $0.id == lastSelectedElementID }) {
+                self.lastSelectedElementID = nil
+            }
+        }
+        if let selectedAudioID,
+           composition?.audioClips.contains(where: { $0.id == selectedAudioID }) != true {
+            self.selectedAudioID = nil
+        }
     }
 
     /// 从所有文件夹中移除素材引用并持久化
@@ -454,7 +500,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// 修改画布比例：元素位置按比例换算，保持相对布局
+    /// 修改画布比例：以画布中心为锚点，等比缩放元素的位置和大小，避免纵横轴分别缩放造成偏移
     func setCanvasAspect(_ aspect: CanvasAspect) {
         guard var comp = composition else { return }
         let oldSize = comp.canvasRect.size
@@ -462,12 +508,16 @@ final class AppState: ObservableObject {
         guard oldSize.width > 0, oldSize.height > 0 else { return }
         let sx = newSize.width / oldSize.width
         let sy = newSize.height / oldSize.height
+        let contentScale = min(sx, sy)
+        let oldCenter = CGPoint(x: oldSize.width / 2, y: oldSize.height / 2)
+        let newCenter = CGPoint(x: newSize.width / 2, y: newSize.height / 2)
         for index in comp.elements.indices {
+            let position = comp.elements[index].transform.position
             comp.elements[index].transform.position = CGPoint(
-                x: comp.elements[index].transform.position.x * sx,
-                y: comp.elements[index].transform.position.y * sy
+                x: newCenter.x + (position.x - oldCenter.x) * contentScale,
+                y: newCenter.y + (position.y - oldCenter.y) * contentScale
             )
-            comp.elements[index].transform.scale *= min(sx, sy)
+            comp.elements[index].transform.scale *= contentScale
         }
         comp.canvas = CanvasSpec(width: newSize.width, height: newSize.height)
         comp.cropRect = nil
@@ -493,17 +543,21 @@ final class AppState: ObservableObject {
 
     // MARK: - 元素
 
-    func updateElement(_ id: UUID, _ mutate: (inout CompositionElement) -> Void) {
+    func updateElement(
+        _ id: UUID,
+        _ mutate: (inout CompositionElement) -> Void,
+        recomputeDuration shouldRecomputeDuration: Bool = true
+    ) {
         guard var comp = composition,
               let index = comp.elements.firstIndex(where: { $0.id == id }) else { return }
         mutate(&comp.elements[index])
         comp.elements[index].transform = sanitizedTransform(comp.elements[index].transform)
         composition = comp
-        recomputeDuration()
+        if shouldRecomputeDuration { recomputeDuration() }
     }
 
     /// 时长跟随内容：总时长 = 所有元素结束时间 / 音频结束时间的最大者（自由放置，可重叠）
-    private func recomputeDuration() {
+    func recomputeDuration() {
         guard var comp = composition else { return }
         var maxEnd: TimeInterval = 0
         for e in comp.elements {
@@ -515,6 +569,9 @@ final class AppState: ObservableObject {
         if comp.duration != maxEnd {
             comp.duration = maxEnd
             composition = comp
+        }
+        if currentTime > maxEnd {
+            currentTime = maxEnd
         }
     }
 
@@ -546,14 +603,54 @@ final class AppState: ObservableObject {
         composition = comp
         selectedElementIDs.remove(id)
         if lastSelectedElementID == id { lastSelectedElementID = nil }
+        recomputeDuration()
+    }
+
+    private func nextElementZIndex(in composition: Composition) -> Int {
+        (composition.elements.map(\.zIndex).max() ?? -1) + 1
+    }
+
+    /// 新增长素材时，让仍处于默认时长的动图贴纸覆盖新的工程时长并循环播放。
+    /// 已经手动调整过时间轴的贴纸不强行改动，保留用户的裁剪选择。
+    private func extendDefaultStickerDurations(in composition: inout Composition, to duration: TimeInterval) {
+        guard duration.isFinite, duration > 0 else { return }
+        for index in composition.elements.indices {
+            guard case .decoration(let decorationID) = composition.elements[index].kind,
+                  let defaultDuration = DecorationRenderer.stickerDefinition(for: decorationID)?.defaultDuration,
+                  composition.elements[index].endTime <= defaultDuration + 0.001 else { continue }
+            composition.elements[index].endTime = max(composition.elements[index].endTime, duration)
+        }
+    }
+
+    /// 清空当前编辑页内容；不删除素材库中的素材，也保留画布比例和背景设置。
+    func clearEditorContent() {
+        guard var comp = composition else { return }
+        pause()
+        comp.elements.removeAll()
+        comp.audioClips.removeAll()
+        comp.texts.removeAll()
+        comp.duration = 0
+        composition = comp
+        selectedElementIDs.removeAll()
+        lastSelectedElementID = nil
+        selectedAudioID = nil
+        selectedBackground = false
+        isCropping = false
+        currentTime = 0
+        syncAudioPreview()
     }
 
     func moveElementZ(_ id: UUID, up: Bool) {
-        guard var comp = composition,
-              let index = comp.elements.firstIndex(where: { $0.id == id }) else { return }
+        guard var comp = composition else { return }
+        var ordered = comp.elements.sorted { $0.zIndex < $1.zIndex }
+        guard let index = ordered.firstIndex(where: { $0.id == id }) else { return }
         let neighbor = up ? index + 1 : index - 1
-        guard comp.elements.indices.contains(neighbor) else { return }
-        comp.elements.swapAt(index, neighbor)
+        guard ordered.indices.contains(neighbor) else { return }
+        ordered.swapAt(index, neighbor)
+        for (zIndex, element) in ordered.enumerated() {
+            guard let originalIndex = comp.elements.firstIndex(where: { $0.id == element.id }) else { continue }
+            comp.elements[originalIndex].zIndex = zIndex
+        }
         composition = comp
     }
 
@@ -571,13 +668,14 @@ final class AppState: ObservableObject {
                 scale: 1,
                 rotation: 0
             ),
-            zIndex: comp.elements.count,
+            zIndex: nextElementZIndex(in: comp),
             startTime: 0,
-            endTime: comp.duration
+            endTime: max(comp.duration, 1)
         )
         comp.elements.append(element)
         composition = comp
         selectElement(element.id)
+        recomputeDuration()
         return text.id
     }
 
@@ -629,13 +727,16 @@ final class AppState: ObservableObject {
                 scale: scale.isFinite ? scale : 0.5,
                 rotation: 0
             ),
-            zIndex: comp.elements.count,  // 0,1,2,... 不会重复
+            zIndex: nextElementZIndex(in: comp),
             // 时间轴 = 素材播放时长（按倍速折算），起始时间为 0，
             // 之后可在时间轴上拖动起始/结束位置调整整体播放时间
             startTime: 0,
-            endTime: clip.effectiveDuration.isFinite ? clip.effectiveDuration : 1
+            endTime: clip.effectiveDuration.isFinite ? clip.effectiveDuration : 1,
+            sourceStartTime: 0,
+            sourceEndTime: clip.activeDuration.isFinite ? clip.activeDuration : 1
         )
         comp.elements.append(element)
+        extendDefaultStickerDurations(in: &comp, to: max(comp.duration, element.endTime))
         composition = comp
         selectElement(element.id)
         recomputeDuration()
@@ -647,12 +748,20 @@ final class AppState: ObservableObject {
         guard clips[index].playbackSpeed != speed else { return }
         clips[index].playbackSpeed = speed
         FrameCache.shared.register(clips[index])
-        // 引用该素材的元素结束时间 = 起始时间 + 素材有效时长
+        // 引用该素材的元素结束时间 = 起始时间 + 当前源范围时长 / 倍速
         if var comp = composition {
             for i in comp.elements.indices {
                 if case .clip(let cid) = comp.elements[i].kind, cid == clipID,
                    let clip = clips.first(where: { $0.id == cid }) {
-                    comp.elements[i].endTime = comp.elements[i].startTime + clip.effectiveDuration
+                    let sourceDuration = max(clip.activeDuration, 0.001)
+                    let sourceStart = min(max(comp.elements[i].sourceStartTime, 0), sourceDuration)
+                    let sourceEnd = comp.elements[i].sourceEndTime.isFinite
+                        ? min(max(comp.elements[i].sourceEndTime, sourceStart), sourceDuration)
+                        : sourceDuration
+                    comp.elements[i].sourceStartTime = sourceStart
+                    comp.elements[i].sourceEndTime = sourceEnd
+                    comp.elements[i].endTime = comp.elements[i].startTime
+                        + max((sourceEnd - sourceStart) / max(speed, 0.01), 0.1)
                 }
             }
             composition = comp
@@ -678,7 +787,11 @@ final class AppState: ObservableObject {
         recomputeDuration()
     }
 
-    func updateAudio(_ id: UUID, _ mutate: (inout AudioClip) -> Void) {
+    func updateAudio(
+        _ id: UUID,
+        _ mutate: (inout AudioClip) -> Void,
+        syncPreview shouldSyncPreview: Bool = true
+    ) {
         guard var comp = composition,
               let index = comp.audioClips.firstIndex(where: { $0.id == id }) else { return }
         let oldVolume = comp.audioClips[index].volume
@@ -690,12 +803,19 @@ final class AppState: ObservableObject {
                 audioEngine.updateVolume(comp.audioClips[index].volume, for: id)
             } else {
                 // 淡入淡出/时长等结构变化：重建引擎并从当前位置续播
-                syncAudioPreview()
+                if shouldSyncPreview { syncAudioPreview() }
                 audioEngine.play(from: currentTime)
             }
-        } else {
+        } else if shouldSyncPreview {
             syncAudioPreview()
         }
+        if shouldSyncPreview { recomputeDuration() }
+    }
+
+    /// 时间轴拖拽结束后一次性同步音频预览和工程时长。
+    func finishAudioEdit() {
+        syncAudioPreview()
+        recomputeDuration()
     }
 
     func deleteAudio(_ id: UUID) {
@@ -718,7 +838,13 @@ final class AppState: ObservableObject {
     // MARK: - 播放
 
     func play() {
-        guard composition != nil else { return }
+        guard let comp = composition, comp.duration > 0 else { return }
+        // 播放完成后再次点击，从对应方向的端点重新开始，但每次只播放一遍。
+        if isReversed {
+            if currentTime <= 0 { currentTime = comp.duration }
+        } else if currentTime >= comp.duration {
+            currentTime = 0
+        }
         isPlaying = true
         audioEngine.play(from: currentTime)
     }
@@ -734,36 +860,48 @@ final class AppState: ObservableObject {
         currentTime = clamped.isFinite ? clamped : 0
     }
 
-    func tick() {
+    /// 播放由画布渲染驱动：一帧完整合成完成后才调用一次。
+    func tick(delta: TimeInterval = 0.05) {
         guard isPlaying, let comp = composition, comp.fps > 0, comp.duration.isFinite else { return }
-        // 时间轴以真实时间 1x 前进（编辑页播放时钟 20Hz，每 tick 前进 1/20s）。
-        // 素材的快慢由各自 playbackSpeed 在渲染时折算，不再全局改 fps。
-        let step = 0.05
+        // 使用实际渲染间隔推进时间，不再让独立 Timer 超过预览渲染速度。
+        let step = min(max(delta.isFinite ? delta : 0.05, 0.001), 0.25)
         if isReversed {
             let next = currentTime - step
             if next <= 0 {
-                if isLooping {
-                    currentTime = comp.duration - step
-                } else {
-                    currentTime = 0
-                    isPlaying = false
-                }
+                currentTime = 0
+                isPlaying = false
             } else {
                 currentTime = next
             }
         } else {
             let next = currentTime + step
             if next >= comp.duration {
-                if isLooping {
-                    currentTime = 0
-                } else {
-                    currentTime = comp.duration
-                    isPlaying = false
-                }
+                currentTime = comp.duration
+                isPlaying = false
             } else {
                 currentTime = next
             }
         }
+    }
+
+    func undo() {
+        guard let previous = undoStack.popLast(), let current = composition else { return }
+        redoStack.append(current)
+        isApplyingHistory = true
+        composition = previous
+        isApplyingHistory = false
+        currentTime = min(currentTime, previous.duration)
+        LogStore.log("history.undo elements=\(previous.elements.count)")
+    }
+
+    func redo() {
+        guard let next = redoStack.popLast(), let current = composition else { return }
+        undoStack.append(current)
+        isApplyingHistory = true
+        composition = next
+        isApplyingHistory = false
+        currentTime = min(currentTime, next.duration)
+        LogStore.log("history.redo elements=\(next.elements.count)")
     }
 
     func addEffect(_ effectID: String) {
@@ -775,29 +913,31 @@ final class AppState: ObservableObject {
                 position: CGPoint(x: comp.canvas.width / 2, y: comp.canvas.height / 2),
                 scale: 1, rotation: 0
             ),
-            zIndex: 60,
+            zIndex: nextElementZIndex(in: comp),
             startTime: 0,
-            endTime: comp.duration
+            endTime: max(comp.duration, 1)
         )
         comp.elements.append(element)
         composition = comp
         selectElement(element.id)
+        recomputeDuration()
     }
 
-    /// 添加动图贴纸：默认播放一次（烟花 9 帧 × 0.1s = 0.9s），
-    /// 之后可在时间轴上拖动结束时间拉长（帧循环补满，不减速）
+    /// 添加动图贴纸：默认覆盖当前工程时长，帧序列不足时循环补满。
+    /// 之后仍可在时间轴上拖动结束时间调整播放区间。
     func addSticker(_ stickerID: String) {
         guard var comp = composition ?? defaultComposition() else { return }
+        let stickerDuration = DecorationRenderer.stickerDefinition(for: stickerID)?.defaultDuration ?? 0.9
         let element = CompositionElement(
             kind: .decoration(decorationID: stickerID),
-            name: NSLocalizedString("烟花", comment: "Sticker name"),
+            name: DecorationRenderer.stickerName(for: stickerID),
             transform: ElementTransform(
                 position: CGPoint(x: comp.canvas.width / 2, y: comp.canvas.height / 2),
                 scale: 1, rotation: 0
             ),
-            zIndex: 60,
+            zIndex: nextElementZIndex(in: comp),
             startTime: 0,
-            endTime: 0.9
+            endTime: max(comp.duration, stickerDuration)
         )
         comp.elements.append(element)
         composition = comp
@@ -828,7 +968,8 @@ final class AppState: ObservableObject {
                 sourceResolver: { [weak self] sourceID in
                     self?.clips.first(where: { $0.id == sourceID })?.loadAudioURL()
                 },
-                to: url
+                to: url,
+                fps: fps
             ) { [weak self] value in
                 Task { @MainActor in self?.exportProgress = value }
             }
@@ -871,15 +1012,20 @@ final class AppState: ObservableObject {
 
     // MARK: - 作品
 
-    func saveCurrentToWorks() {
-        guard let comp = composition,
-              let poster = CompositionRenderer().render(comp, at: 0),
-              let posterData = pngData(from: poster) else { return }
+    func saveCurrentToWorks(format: ExportFormat? = nil) async {
+        guard let comp = composition else { return }
+        let posterData = await Task.detached(priority: .utility) {
+            guard let poster = CompositionRenderer(frameMaxPixelSize: 900).render(comp, at: 0) else {
+                return Data?.none
+            }
+            return pngData(from: poster)
+        }.value
+        guard let posterData else { return }
         let work = WorkItem(
             name: comp.name,
             composition: comp,
             posterData: posterData,
-            format: defaultFormat
+            format: format ?? defaultFormat
         )
         if (try? worksStore.save(work)) != nil {
             works = worksStore.loadWorks()
@@ -893,6 +1039,7 @@ final class AppState: ObservableObject {
 
     func reopen(_ work: WorkItem) {
         var comp = work.composition
+        migrateClipSourceRanges(in: &comp)
         // 消毒历史工程中的非法变换值（NaN/Inf 会导致渲染失败）
         var sanitized = false
         for index in comp.elements.indices {
@@ -907,6 +1054,36 @@ final class AppState: ObservableObject {
         // 重新注册仍存在的缓存素材
         for clip in clips {
             FrameCache.shared.register(clip)
+        }
+    }
+
+    /// 为旧版本工程补齐素材源范围。
+    /// 旧版本只有时间轴 start/end，默认从素材第 0 帧开始播放；保留这个行为，
+    /// 同时把源出点限制到旧工程实际播放的素材时长，避免打开工程后画面突然变化。
+    private func migrateClipSourceRanges(in comp: inout Composition) {
+        for index in comp.elements.indices {
+            guard case .clip(let clipID) = comp.elements[index].kind,
+                  let clip = clips.first(where: { $0.id == clipID }) else { continue }
+
+            let sourceDuration = max(clip.activeDuration, 0.001)
+            let speed = max(clip.playbackSpeed, 0.01)
+            if !comp.elements[index].sourceEndTime.isFinite {
+                let oldTimelineDuration = max(
+                    comp.elements[index].endTime - comp.elements[index].startTime,
+                    1 / max(clip.fps, 1)
+                )
+                comp.elements[index].sourceStartTime = 0
+                comp.elements[index].sourceEndTime = min(sourceDuration, oldTimelineDuration * speed)
+            } else {
+                comp.elements[index].sourceStartTime = min(
+                    max(comp.elements[index].sourceStartTime, 0),
+                    sourceDuration
+                )
+                comp.elements[index].sourceEndTime = min(
+                    max(comp.elements[index].sourceEndTime, comp.elements[index].sourceStartTime),
+                    sourceDuration
+                )
+            }
         }
     }
 

@@ -208,13 +208,10 @@ private struct FolderAddClipsView: View {
                 } else {
                     LazyVGrid(columns: columns, spacing: 10) {
                         ForEach(candidates) { clip in
-                            Button {
+                            AssetCell(clip: clip) {
                                 appState.moveClip(clip.id, toFolder: folder.id)
                                 dismiss()
-                            } label: {
-                                AssetCell(clip: clip)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding()

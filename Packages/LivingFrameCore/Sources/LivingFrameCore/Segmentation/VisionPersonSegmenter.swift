@@ -11,7 +11,11 @@ public enum PersonSegmenterError: Error {
 /// 使用与 iOS 相册「长按抠主体」相同的引擎：VNGenerateForegroundInstanceMaskRequest
 /// （泛化前景实例掩码），相比人物专用掩码质量更稳、边缘更好。
 public struct VisionPersonSegmenter {
-    public init() {}
+    private let context: CIContext
+
+    public init() {
+        context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
+    }
 
     /// 输出带透明通道的主体图（保留原始帧尺寸，不裁剪）
     public func segmentedImage(from cgImage: CGImage) throws -> CGImage {
@@ -38,7 +42,6 @@ public struct VisionPersonSegmenter {
             throw PersonSegmenterError.noSubject
         }
         let ci = CIImage(cvPixelBuffer: buffer)
-        let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
         guard let output = context.createCGImage(ci, from: ci.extent) else {
             throw PersonSegmenterError.renderFailed
         }

@@ -1,19 +1,187 @@
 import CoreGraphics
 import CoreImage
 import Foundation
+import ImageIO
+
+public enum StickerCategory: String, Equatable, Sendable {
+    case doodle
+}
+
+public struct StickerDefinition: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public let category: StickerCategory
+    public let resourceName: String
+    public let resourceExtension: String
+    public let isFrameSequence: Bool
+    public let frameCount: Int
+
+    public var defaultDuration: TimeInterval {
+        Double(frameCount) * 0.1
+    }
+
+    public init(
+        id: String,
+        name: String,
+        category: StickerCategory,
+        resourceName: String,
+        resourceExtension: String,
+        isFrameSequence: Bool,
+        frameCount: Int
+    ) {
+        self.id = id
+        self.name = name
+        self.category = category
+        self.resourceName = resourceName
+        self.resourceExtension = resourceExtension
+        self.isFrameSequence = isFrameSequence
+        self.frameCount = frameCount
+    }
+}
 
 /// 装饰绘制：CoreGraphics 代码生成 + 动图贴纸（PNG 帧序列，Bundle 内资源）
 /// 体积 0 的矢量装饰 vs 位图贴纸双平台复用
 public struct DecorationRenderer {
     private let cache = NSCache<NSString, CIImage>()
     private static let lock = NSLock()
-    /// 动图贴纸帧缓存（decorationID → [CGImage]，解码一次，铺满元素时间段）
-    private static var stickerFrames: [String: [CGImage]] = [:]
+    /// 动图贴纸帧缓存。NSCache 会在内存紧张时自动回收，避免未来增加贴纸后永久持有所有帧。
+    private static let stickerFrameCache: NSCache<NSString, NSArray> = {
+        let cache = NSCache<NSString, NSArray>()
+        cache.countLimit = 8
+        cache.totalCostLimit = 32 * 1024 * 1024
+        return cache
+    }()
+
+    public static let stickerCatalog: [StickerDefinition] = [
+        StickerDefinition(
+            id: "sticker-firework", name: "烟花", category: .doodle,
+            resourceName: "firework-frame-%02d", resourceExtension: "png",
+            isFrameSequence: true, frameCount: 9
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-orange-bubble", name: "橙色气泡框", category: .doodle,
+            resourceName: "doodle-orange-bubble", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-color-exclamation", name: "彩色感叹号", category: .doodle,
+            resourceName: "doodle-color-exclamation", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-tangle", name: "乱麻", category: .doodle,
+            resourceName: "doodle-tangle", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 5
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-tomato", name: "番茄", category: .doodle,
+            resourceName: "doodle-tomato", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-triangle-flag", name: "三角彩旗", category: .doodle,
+            resourceName: "doodle-triangle-flag", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-lightbulb", name: "灯泡", category: .doodle,
+            resourceName: "doodle-lightbulb", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-frame", name: "边框", category: .doodle,
+            resourceName: "doodle-frame", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-red-flower", name: "红色花朵", category: .doodle,
+            resourceName: "doodle-red-flower", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-insult", name: "骂人", category: .doodle,
+            resourceName: "doodle-insult", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-summer", name: "summer", category: .doodle,
+            resourceName: "doodle-summer", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-sweat", name: "流汗", category: .doodle,
+            resourceName: "doodle-sweat", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 5
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-rainbow", name: "彩虹", category: .doodle,
+            resourceName: "doodle-rainbow", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-loading", name: "黄色loading", category: .doodle,
+            resourceName: "doodle-loading", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 7
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-red-bow", name: "红色蝴蝶结", category: .doodle,
+            resourceName: "doodle-red-bow", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-number-1", name: "数字1", category: .doodle,
+            resourceName: "doodle-number-1", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 7
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-number-3", name: "数字3", category: .doodle,
+            resourceName: "doodle-number-3", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 7
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-number-2", name: "数字2", category: .doodle,
+            resourceName: "doodle-number-2", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 7
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-pink-flower", name: "粉色小花", category: .doodle,
+            resourceName: "doodle-pink-flower", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-sun", name: "太阳", category: .doodle,
+            resourceName: "doodle-sun", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-kite", name: "风筝", category: .doodle,
+            resourceName: "doodle-kite", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3
+        )
+    ]
 
     public init() {}
 
+    public static func stickerDefinition(for decorationID: String) -> StickerDefinition? {
+        stickerCatalog.first { $0.id == decorationID }
+    }
+
+    public static func stickerName(for decorationID: String) -> String {
+        stickerDefinition(for: decorationID)?.name ?? decorationID
+    }
+
+    /// 贴纸选择器使用的静态预览帧。
+    public func previewImage(for decorationID: String) -> CGImage? {
+        frames(for: decorationID)?.first
+    }
+
+    /// 贴纸选择器使用的帧序列预览。帧在进程内按贴纸 id 缓存，避免每次打开面板重复解码。
+    public func previewFrames(for decorationID: String) -> [CGImage] {
+        frames(for: decorationID) ?? []
+    }
+
     /// 装饰 id 约定：frame-gold / corners / vignette / glow-soft / glow-orb / dust / wand-beam（矢量）
-    /// 以及 sticker-firework（动图贴纸，需要时间参数）
+    /// 以及 sticker-*（Bundle 内的动图贴纸，需要时间参数）
     /// - Parameter localTime: 元素内时间（秒，从元素起始时间起算）
     /// - Parameter duration: 元素时长（秒），动图贴纸把全部帧铺满整个时间段
     public func image(for decorationID: String, canvas: CGRect, at localTime: TimeInterval = 0, duration: TimeInterval = 0) -> CIImage? {
@@ -34,35 +202,55 @@ public struct DecorationRenderer {
 
     /// 加载贴纸帧序列（首次解码后缓存）；帧图 512x512 含透明
     private func frames(for decorationID: String) -> [CGImage]? {
+        let cacheKey = decorationID as NSString
         Self.lock.lock()
-        if let cached = Self.stickerFrames[decorationID] {
+        if let cached = Self.stickerFrameCache.object(forKey: cacheKey) {
             Self.lock.unlock()
-            return cached
+            return cached.map { $0 as! CGImage }
         }
         Self.lock.unlock()
 
-        let count: Int
-        switch decorationID {
-        case "sticker-firework": count = 9
-        default: return nil
-        }
+        guard let definition = Self.stickerDefinition(for: decorationID) else { return nil }
         var loaded: [CGImage] = []
-        loaded.reserveCapacity(count)
-        for i in 0..<count {
+        loaded.reserveCapacity(definition.frameCount)
+
+        if definition.isFrameSequence {
+            for i in 0..<definition.frameCount {
+                guard let url = Bundle.module.url(
+                    forResource: String(format: definition.resourceName, i),
+                    withExtension: definition.resourceExtension
+                ), let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                   let img = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                    Self.lock.lock()
+                    Self.stickerFrameCache.setObject([] as NSArray, forKey: cacheKey)
+                    Self.lock.unlock()
+                    return nil
+                }
+                loaded.append(img)
+            }
+        } else {
             guard let url = Bundle.module.url(
-                forResource: String(format: "firework-frame-%02d", i),
-                withExtension: "png"
-            ), let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-               let img = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                forResource: definition.resourceName,
+                withExtension: definition.resourceExtension
+            ), let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
                 Self.lock.lock()
-                Self.stickerFrames[decorationID] = []
+                Self.stickerFrameCache.setObject([] as NSArray, forKey: cacheKey)
                 Self.lock.unlock()
                 return nil
             }
-            loaded.append(img)
+
+            let count = CGImageSourceGetCount(source)
+            loaded.reserveCapacity(count)
+            for index in 0..<count {
+                guard let img = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
+                loaded.append(img)
+            }
         }
         Self.lock.lock()
-        Self.stickerFrames[decorationID] = loaded
+        let cost = loaded.reduce(0) { partial, image in
+            partial + image.width * image.height * 4
+        }
+        Self.stickerFrameCache.setObject(loaded as NSArray, forKey: cacheKey, cost: cost)
         Self.lock.unlock()
         return loaded
     }

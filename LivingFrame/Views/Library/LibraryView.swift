@@ -1,27 +1,9 @@
 import AVFoundation
-import Combine
 import ImageIO
 import LivingFrameCore
 import Photos
 import PhotosUI
 import SwiftUI
-
-/// 素材格子动画共用时钟：整个 App 只有一个 10Hz ticker，
-/// 取代"每个格子一个 Timer"（素材多时主线程压力大、缓存抖动）
-final class ClipTicker: ObservableObject {
-    static let shared = ClipTicker()
-
-    @Published private(set) var tick = 0
-    private var cancellable: AnyCancellable?
-
-    private init() {
-        cancellable = Timer.publish(every: 1.0 / 10, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                self?.tick &+= 1
-            }
-    }
-}
 
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
@@ -40,6 +22,7 @@ struct LibraryView: View {
     @State private var frameEditClip: SegmentedClip?
     /// 提取方式选择弹窗（静态贴纸 / 动态贴纸）
     @State private var pendingExtract: PendingExtract?
+    @State private var importTask: Task<Void, Never>?
 
     /// 待用户确认提取方式的素材（视频/Live 均先询问）
     private struct PendingExtract: Identifiable {
@@ -142,6 +125,9 @@ struct LibraryView: View {
                 FrameGridView(clipID: clip.id)
                     .environmentObject(appState)
             }
+            .onDisappear {
+                importTask?.cancel()
+            }
         }
     }
 
@@ -172,7 +158,7 @@ struct LibraryView: View {
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
             pickerItems.removeAll()
-            Task {
+            importTask = Task { @MainActor in
                 // 1. 并行下载所有选中素材（iCloud 下载可多线程加速）
                 var sources: [ImportSource] = []
                 isDownloading = true
@@ -189,6 +175,7 @@ struct LibraryView: View {
                 isDownloading = false
                 // 2. 串行提取：视频/Live 先询问 静态/动态，照片直接静态
                 for source in sources {
+                    guard !Task.isCancelled else { break }
                     switch source {
                     case .video(let url, let name, let stillOrientation, let stillURL):
                         // 视频类（Live Photo / 普通视频）：询问提取方式
@@ -217,6 +204,7 @@ struct LibraryView: View {
                         await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
                     }
                 }
+                isDownloading = false
             }
         }
     }
@@ -624,6 +612,10 @@ struct LibraryView: View {
                 .font(.caption)
                 .foregroundStyle(LF.textSecondary)
                 .lineLimit(1)
+            Button("取消抠图", role: .cancel) {
+                importTask?.cancel()
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -663,25 +655,10 @@ struct LibraryView: View {
 struct ClipCell: View {
     let clip: SegmentedClip
 
-    @ObservedObject private var ticker = ClipTicker.shared
-
-    /// 由共享时钟推导的当前帧索引（10fps 动画预览，不占用独立 Timer）
-    private var frameIndex: Int {
-        guard clip.frameCount > 1 else { return 0 }
-        return ticker.tick % clip.frameCount
-    }
-
     var body: some View {
         VStack(spacing: 6) {
             ZStack {
-                CheckerboardView()
-                if let frame = FrameCache.shared.cachedThumbnail(for: clip, index: frameIndex, maxPixelSize: 320) {
-                    Image(decorative: frame, scale: 1)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Color.black
-                }
+                AnimatedClipPreview(clip: clip, maxPixelSize: 320)
             }
             .frame(height: 120)
             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -695,7 +672,8 @@ struct ClipCell: View {
                         .padding(4)
                 }
             }
-            .overlay(alignment: .bottomLeading) {
+            // 播放按钮固定在左下角，边缘样式徽标移到左上角，避免遮挡动态素材播放入口。
+            .overlay(alignment: .topLeading) {
                 if clip.edgeStyle != .none {
                     Image(systemName: "square.dashed")
                         .font(.caption)
@@ -718,9 +696,6 @@ struct ClipCell: View {
                     .font(.caption2)
                     .foregroundStyle(LF.textSecondary)
                     .lineLimit(1)
-                Text(ByteCountFormatter.string(fromByteCount: FrameCache.shared.clipSizeBytes(clip), countStyle: .file))
-                    .font(.caption2)
-                    .foregroundStyle(LF.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -885,13 +860,7 @@ struct ClipDragPreview: View {
 
     var body: some View {
         Group {
-            if let frame = FrameCache.shared.cachedThumbnail(for: clip, index: 0, maxPixelSize: 88) {
-                Image(decorative: frame, scale: 1)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Color.gray
-            }
+            ClipThumbnailView(clip: clip, index: 0, maxPixelSize: 88)
         }
         .frame(width: 44, height: 44)
         .clipShape(RoundedRectangle(cornerRadius: 8))

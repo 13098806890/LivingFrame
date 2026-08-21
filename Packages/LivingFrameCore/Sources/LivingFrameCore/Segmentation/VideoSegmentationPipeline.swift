@@ -45,7 +45,7 @@ public struct VideoSegmentationPipeline {
         maxFPS: Double = 30,
         stillOrientation: CGImagePropertyOrientation = .up,
         progress: ProgressHandler? = nil,
-        isCancelled: @escaping () -> Bool = { false }
+        isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws -> SegmentedClip {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
@@ -75,6 +75,12 @@ public struct VideoSegmentationPipeline {
 
         let clipID = UUID().uuidString
         let folder = try FrameCache.shared.makeClipFolder(id: clipID)
+        var succeeded = false
+        defer {
+            if !succeeded {
+                try? FileManager.default.removeItem(at: folder)
+            }
+        }
         let totalFrames = max(1, Int((duration.seconds * outputFPS).rounded(.up)))
 
         let segmenter = VisionPersonSegmenter()
@@ -87,7 +93,7 @@ public struct VideoSegmentationPipeline {
         var prevMaskedImage: CIImage?
 
         while let sample = output.copyNextSampleBuffer() {
-            if isCancelled() {
+            if isCancelled() || Task.isCancelled {
                 reader.cancelReading()
                 LogStore.log("segmentVideo: user cancelled")
                 throw SegmentationError.cancelled
@@ -158,6 +164,10 @@ public struct VideoSegmentationPipeline {
 
         reader.cancelReading()
 
+        if isCancelled() || Task.isCancelled {
+            throw SegmentationError.cancelled
+        }
+
         LogStore.log("segmentVideo output: okFrames=\(index) skippedNoSubject=\(skippedNoSubject) skippedNoImage=\(skippedNoImage) frameSize=\(firstSize?.width ?? 0)x\(firstSize?.height ?? 0)")
 
         guard index > 0, let firstSize else {
@@ -184,6 +194,7 @@ public struct VideoSegmentationPipeline {
         LogStore.log("segmentVideo done: clip=\(clipID) name=\(name) frames=\(clip.frameCount) fps=\(clip.fps) size=\(clip.width)x\(clip.height) duration=\(clip.duration)s audio=\(clip.audioURL != nil)")
         LogStore.trimIfNeeded()
         FrameCache.shared.register(clip)
+        succeeded = true
         return clip
     }
 

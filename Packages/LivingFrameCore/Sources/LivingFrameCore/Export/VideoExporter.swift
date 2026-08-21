@@ -17,22 +17,24 @@ public struct VideoExporter {
         format: ExportFormat,
         sourceResolver: @escaping (String) -> URL?,
         to url: URL,
+        fps: Double? = nil,
         progress: @escaping (Double) -> Void = { _ in },
-        isCancelled: @escaping () -> Bool = { false }
+        isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws {
         let renderSize = composition.renderRect.size
         let width = max(2, Int(renderSize.width))
         let height = max(2, Int(renderSize.height))
         try? FileManager.default.removeItem(at: url)
         let start = Date()
-        let frameCount = max(1, Int(composition.duration * composition.fps))
+        let exportFPS = fps.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? composition.fps
+        let frameCount = max(1, Int((composition.duration * exportFPS).rounded(.up)))
         let hasAudio = !composition.audioClips.isEmpty
         LogStore.log("VideoExporter: start codec=\(format.rawValue) size=\(width)x\(height) frames=\(frameCount) audio=\(hasAudio) url=\(url.path)")
 
         // 1. 视频轨（进度 0~0.95）
         try await writeVideoTrack(
             composition, format: format, to: url,
-            frameCount: frameCount, progress: progress, isCancelled: isCancelled
+            fps: exportFPS, frameCount: frameCount, progress: progress, isCancelled: isCancelled
         )
         LogStore.log("VideoExporter: video track done elapsed=\(Int(Date().timeIntervalSince(start)))s")
 
@@ -70,6 +72,7 @@ public struct VideoExporter {
         _ composition: Composition,
         format: ExportFormat,
         to url: URL,
+        fps: Double,
         frameCount: Int,
         progress: @escaping (Double) -> Void,
         isCancelled: @escaping () -> Bool
@@ -149,7 +152,7 @@ public struct VideoExporter {
             var pixelBuffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
             guard let buffer = pixelBuffer else { throw ExportError.renderFailed }
-            let renderOK = renderer.render(composition, at: Double(index) / composition.fps, into: buffer)
+            let renderOK = renderer.render(composition, at: Double(index) / fps, into: buffer)
             if !renderOK && index < 3 {
                 LogStore.log("VideoExporter: render(into:) 失败 index=\(index)")
             }
@@ -157,7 +160,7 @@ public struct VideoExporter {
             if renderCost > 2 {
                 LogStore.log("VideoExporter: ⚠️ frame \(index) render slow cost=\(Int(renderCost))s")
             }
-            let time = CMTime(seconds: Double(index) / composition.fps, preferredTimescale: 600)
+            let time = CMTime(seconds: Double(index) / fps, preferredTimescale: 600)
             guard adaptor.append(buffer, withPresentationTime: time) else {
                 LogStore.log("VideoExporter: append failed index=\(index)/\(frameCount) status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
                 throw ExportError.renderFailed

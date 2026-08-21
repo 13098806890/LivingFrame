@@ -32,7 +32,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .asset: "photo.badge.plus"
-        case .canvas: "rectangle.split.3x1"
+        case .canvas: "rectangle.on.rectangle"
         case .text: "textformat"
         case .sticker: "face.smiling"
         case .border: "square"
@@ -42,57 +42,66 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .crop: "crop"
         }
     }
+
+    /// 当前版本只把已完成且属于核心编辑流程的工具放进主工具栏。
+    static let visibleCases: [EditorTool] = [.asset, .canvas, .sticker, .border, .frame, .crop]
 }
 
 /// 编辑页（参考 ImgPlay 布局）
-/// 自上而下：导航栏 → 画布（顶到最上面，位置固定） → 时间轴+播放按钮 → 底部工具栏+速度条
-/// 工具（画布/文本/贴纸/帧等）点击弹出 sheet 遮住编辑页
+/// 自上而下：顶部信息 → 有层次的画布 → 播放控制 → 时间轴 → 紧凑工具栏
+/// 工具和选中元素的详细属性通过 sheet 覆盖画布显示
 struct EditorView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showAssetPicker = false
     @State private var showBackgroundPicker = false
     /// 工具 sheet（点击工具栏弹出，遮住编辑页）
     @State private var toolSheet: EditorTool?
-    /// 播放时钟：仅播放时运行（暂停时无 20Hz tick 开销）
-    @State private var playbackTimer: Timer?
+    /// 选中元素后的详细属性面板（不再常驻占用画布高度）
+    @State private var showInspectorSheet = false
+    /// 清空编辑页前的二次确认
+    @State private var showClearConfirmation = false
+    /// 全屏预览（播放控制行最右侧按钮）
+    @State private var showPreview = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            // ① 大画布（顶到最上边，忽略顶部安全区，位置固定）
-            CanvasView()
-                .ignoresSafeArea(.container, edges: .top)
-                .padding(.horizontal, 8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ZStack(alignment: .bottom) {
+            // 画布按屏幕宽度计算真实高度；竖屏比例较高时由外层滚动承载，
+            // 不再为了给底部面板让空间而把画布缩窄。
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // ① 顶部工程信息（参考 imgplay：标题和帧数居中）
+                    topBar
+                        .padding(.horizontal, 12)
+                        .padding(.top, 4)
+                        .padding(.bottom, 8)
 
-            // ② 时间轴 + 播放按钮（画布下方，拖动素材控制起点/终点）
-            timelineArea
-                .padding(.horizontal, 12)
-                .padding(.top, 6)
+                    // ② 画布宽度始终铺满，比例只决定它的高度
+                    CanvasView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.clear)
 
-            // ③ 底部：工具栏 + 速度条
-            bottomArea
+                    // ③ 播放控制贴在画布下方
+                    transportBar
+
+                    // ④ 时间轴放在画布和播放控制之后，符合视频编辑器的操作顺序
+                    timelineArea
+                        .padding(.horizontal, 12)
+                        .padding(.top, 6)
+                        .padding(.bottom, 6)
+                }
+                // 底部工具栏是覆盖层，滚动内容留出安全空间避免遮挡播放控制。
+                .padding(.bottom, 74)
+            }
+
+            // ⑤ 底部只保留紧凑工具栏，详细编辑内容通过弹窗覆盖画布
+            editorToolbar
         }
         .magicBackground()
         .onAppear {
             appState.ensureComposition()
             appState.selectBackground()
-            if appState.isPlaying { startPlaybackTimer() }
-        }
-        .onDisappear {
-            stopPlaybackTimer()
-        }
-        .onChange(of: appState.isPlaying) { _, playing in
-            if playing {
-                startPlaybackTimer()
-            } else {
-                stopPlaybackTimer()
-            }
-        }
-        .overlay(alignment: .top) {
-            // 自定义顶部栏（浮在画布上方，不占布局空间）
-            topBar
-                .padding(.horizontal, 12)
-                .padding(.top, 4)
         }
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $appState.showExportView) {
@@ -103,6 +112,46 @@ struct EditorView: View {
         }
         .sheet(isPresented: $showBackgroundPicker) {
             BackgroundPickerView().environmentObject(appState)
+        }
+        .sheet(isPresented: $showInspectorSheet) {
+            NavigationStack {
+                ElementInspectorView()
+                    .navigationTitle("调整")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .magicBackground()
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .alert("清空编辑内容？", isPresented: $showClearConfirmation) {
+            Button("清空", role: .destructive) {
+                appState.clearEditorContent()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将移除画布和时间轴中的全部内容，但不会删除素材库里的素材。")
+        }
+        .fullScreenCover(isPresented: $showPreview) {
+            ZStack(alignment: .topTrailing) {
+                Color.black.ignoresSafeArea()
+                CanvasView(drivesPlayback: false)
+                    .padding(.horizontal, 18)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .environmentObject(appState)
+                Button {
+                    showPreview = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(.black.opacity(0.45), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 14)
+                .padding(.trailing, 14)
+                .accessibilityLabel("关闭全屏预览")
+            }
         }
         .sheet(item: $toolSheet) { tool in
             if tool == .frame {
@@ -124,14 +173,26 @@ struct EditorView: View {
                         }
                 }
                 .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
         }
     }
 
-    /// 自定义顶部栏（编辑信息 + 保存，浮在画布上方）
+    /// 自定义顶部栏（编辑信息 + 导出）
     private var topBar: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 0) {
+            Button {
+                showClearConfirmation = true
+            } label: {
+                Label("清空", systemImage: "trash")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .frame(width: 54, height: 30)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("清空编辑内容")
+            Spacer()
+            VStack(spacing: 0) {
                 Text("编辑")
                     .font(.subheadline.weight(.semibold))
                 if let comp = appState.composition {
@@ -142,7 +203,7 @@ struct EditorView: View {
             }
             Spacer()
             Button { appState.showExportView = true } label: {
-                Text("保存")
+                Text("导出")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.black)
                     .padding(.horizontal, 12)
@@ -163,48 +224,86 @@ struct EditorView: View {
         return "\(totalFrames)张 / \(String(format: "%.2f", duration))秒"
     }
 
-    // MARK: - 时间轴区域（画布下方：播放按钮 + 双轨时间轴）
+    // MARK: - 时间轴区域（播放控制下方：双轨时间轴）
 
     private var timelineArea: some View {
-        VStack(spacing: 4) {
-            // 播放按钮行
-            HStack(spacing: 10) {
-                Button {
-                    appState.isPlaying ? appState.pause() : appState.play()
-                } label: {
-                    Image(systemName: appState.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.callout)
-                        .frame(width: 30, height: 30)
-                        .background(LF.gold, in: Circle())
-                        .foregroundStyle(.black)
-                }
-                .buttonStyle(.plain)
-                Text(String(format: "%.2f / %.2f s", appState.currentTime, appState.composition?.duration ?? 0))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(LF.textSecondary)
-                Spacer()
-                // 反转播放
-                Button { appState.isReversed.toggle() } label: {
-                    Image(systemName: "arrow.right.arrow.left")
-                        .font(.caption.weight(.semibold))
-                        .frame(width: 28, height: 28)
-                        .background(appState.isReversed ? LF.gold.opacity(0.3) : .clear, in: Circle())
-                        .foregroundStyle(appState.isReversed ? LF.gold : LF.textSecondary)
-                }
-                .buttonStyle(.plain)
-                // 循环播放
-                Button { appState.isLooping.toggle() } label: {
-                    Image(systemName: appState.isLooping ? "repeat" : "repeat.1")
-                        .font(.caption.weight(.semibold))
-                        .frame(width: 28, height: 28)
-                        .background(appState.isLooping ? LF.gold.opacity(0.3) : .clear, in: Circle())
-                        .foregroundStyle(appState.isLooping ? LF.gold : LF.textSecondary)
-                }
-                .buttonStyle(.plain)
+        TimelineView()
+            .padding(12)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.white.opacity(0.65), lineWidth: 0.8)
             }
-            // 双轨时间轴（元素轨 + 音频轨，可拖动起点/终点）
-            TimelineView()
+            .shadow(color: Color.black.opacity(0.08), radius: 14, x: 0, y: 6)
+    }
+
+    private var transportBar: some View {
+        ZStack {
+            HStack {
+                HStack(spacing: 4) {
+                    Button {
+                        appState.undo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 38, height: 38)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(appState.canUndo ? LF.textPrimary : LF.textSecondary.opacity(0.35))
+                    .disabled(!appState.canUndo)
+                    .accessibilityLabel("撤销")
+
+                    Button {
+                        appState.redo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 38, height: 38)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(appState.canRedo ? LF.textPrimary : LF.textSecondary.opacity(0.35))
+                    .disabled(!appState.canRedo)
+                    .accessibilityLabel("重做")
+                }
+
+                Spacer()
+
+                Button {
+                    showPreview = true
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 38, height: 38)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(LF.textPrimary)
+                .accessibilityLabel("全屏预览")
+            }
+
+            Button {
+                togglePlayback()
+            } label: {
+                Image(systemName: appState.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.subheadline.weight(.bold))
+                    .frame(width: 36, height: 36)
+                    .background(LF.accentGradient, in: Circle())
+                    .foregroundStyle(.white)
+                    .shadow(color: LF.accent.opacity(0.24), radius: 6, y: 3)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(appState.isPlaying ? "暂停" : "播放")
         }
+        .padding(.horizontal, 16)
+        .frame(height: 56)
+    }
+
+    private func togglePlayback() {
+        if appState.isPlaying {
+            appState.pause()
+            return
+        }
+
+        appState.play()
     }
 
     // MARK: - 底部区域
@@ -215,34 +314,28 @@ struct EditorView: View {
             || appState.selectedAudioID != nil
     }
 
-    private var bottomArea: some View {
-        VStack(spacing: 4) {
-            editorToolbar
-                .padding(.horizontal, 4)
-            // 检查器：固定预留高度（内部滚动），选中与否画布/时间轴高度不变
-            Group {
-                if hasSelection {
-                    ElementInspectorView()
-                        .padding(.horizontal, 12)
-                } else {
-                    Text("点击画布或时间轴上的元素进行编辑")
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .frame(maxHeight: 200)
-            Spacer(minLength: 0)
-        }
-        .frame(height: 252)
-    }
-
     // MARK: - 工具栏（ImgPlay 式：图标+文字，横排可滚动）
 
     private var editorToolbar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
-                ForEach(EditorTool.allCases) { tool in
+                if hasSelection {
+                    Button {
+                        showInspectorSheet = true
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.title3)
+                                .frame(width: 28, height: 28)
+                            Text("调整")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(LF.gold)
+                        .frame(width: 52)
+                    }
+                    .buttonStyle(.plain)
+                }
+                ForEach(EditorTool.visibleCases) { tool in
                     Button {
                         handleToolTap(tool)
                     } label: {
@@ -260,6 +353,13 @@ struct EditorView: View {
                 }
             }
             .padding(.horizontal, 8)
+        }
+        .frame(height: 74)
+        .background(.regularMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.white.opacity(0.45))
+                .frame(height: 0.8)
         }
     }
 
@@ -286,19 +386,6 @@ struct EditorView: View {
 
     // MARK: - 播放时钟（仅播放时运行）
 
-    private func startPlaybackTimer() {
-        stopPlaybackTimer()
-        let timer = Timer(timeInterval: 1.0 / 20, repeats: true) { [weak appState] _ in
-            appState?.tick()
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        playbackTimer = timer
-    }
-
-    private func stopPlaybackTimer() {
-        playbackTimer?.invalidate()
-        playbackTimer = nil
-    }
     // MARK: - 工具面板（sheet 弹出，遮住编辑页）
 
     private func toolPanel(_ tool: EditorTool) -> some View {
@@ -338,10 +425,14 @@ struct EditorView: View {
                                 Button { appState.setCanvasAspect(aspect) } label: {
                                     VStack(spacing: 3) {
                                         RoundedRectangle(cornerRadius: 4)
-                                            .stroke(
-                                                appState.composition?.canvasRect.size == aspect.canvasSize ? LF.gold : LF.surface2,
-                                                lineWidth: appState.composition?.canvasRect.size == aspect.canvasSize ? 2 : 1
-                                            )
+                                            .fill(selectedCanvasBackgroundColor)
+                                            .overlay {
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .stroke(
+                                                        appState.composition?.canvasRect.size == aspect.canvasSize ? LF.gold : LF.surface2,
+                                                        lineWidth: appState.composition?.canvasRect.size == aspect.canvasSize ? 2 : 1
+                                                    )
+                                            }
                                             .frame(width: 36, height: 36)
                                         Text(aspect.title).font(.caption2)
                                     }
@@ -412,7 +503,7 @@ struct EditorView: View {
                     }
                 }
                 if bgOverlay != nil {
-                    // 图案参数（一行横排：粗细 | 疏密 | 颜色 | 角度）
+                    // 图案参数（粗细 | 疏密）
                     HStack(spacing: 10) {
                         ForEach(bgPatternOptions(bgOverlay?.pattern).widths, id: \.0) { opt in
                             Button {
@@ -447,6 +538,7 @@ struct EditorView: View {
                             }
                         }
                     }
+                    // 图案颜色
                     HStack(spacing: 10) {
                         ForEach(bgPatternColors, id: \.hex) { color in
                             Button {
@@ -456,11 +548,19 @@ struct EditorView: View {
                             } label: {
                                 Circle().fill(Color(hex: color.hex))
                                     .frame(width: 22, height: 22)
-                                    .overlay { Circle().stroke(bgOverlay?.colorHex == color.hex ? LF.gold : LF.surface2, lineWidth: bgOverlay?.colorHex == color.hex ? 2.5 : 1) }
+                                    .overlay {
+                                        Circle().stroke(
+                                            bgOverlay?.colorHex == color.hex ? LF.gold : LF.surface2,
+                                            lineWidth: bgOverlay?.colorHex == color.hex ? 2.5 : 1
+                                        )
+                                    }
                             }
                             .buttonStyle(.plain)
                         }
-                        if bgOverlay?.pattern != .mosaic {
+                    }
+                    // 横线角度单独占下一行；马赛克不需要角度。
+                    if bgOverlay?.pattern != .mosaic {
+                        HStack(spacing: 10) {
                             Text("角度").font(.caption2).foregroundStyle(LF.textSecondary)
                             Slider(
                                 value: Binding(
@@ -470,8 +570,10 @@ struct EditorView: View {
                                 in: 0...180
                             )
                             .tint(LF.gold)
-                            .frame(maxWidth: 140)
-                            Text("\(Int(bgOverlay?.angle ?? 0))°").font(.caption2.monospacedDigit()).foregroundStyle(LF.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            Text("\(Int(bgOverlay?.angle ?? 0))°")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(LF.textSecondary)
                         }
                     }
                 }
@@ -493,6 +595,13 @@ struct EditorView: View {
 
     private var bgOverlay: BackgroundPatternStyle? {
         appState.composition?.background.patternOverlay
+    }
+
+    private var selectedCanvasBackgroundColor: Color {
+        guard let background = appState.composition?.background else {
+            return Color(hex: "FFFFFF")
+        }
+        return Color(hex: background.topColor)
     }
 
     private func bgPatternOptions(_ pattern: BackgroundPattern?) -> (
@@ -570,34 +679,47 @@ struct EditorView: View {
     ]
 
     private var stickerPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("内置贴纸")
+        let doodleStickers = DecorationRenderer.stickerCatalog.filter { $0.category == .doodle }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("贴纸分类")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
-            HStack(spacing: 10) {
-                // 烟花动图贴纸
-                Button {
-                    appState.addSticker("sticker-firework")
-                    toolSheet = nil
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.title2)
-                        Text("烟花")
-                            .font(.caption2)
-                    }
-                    .frame(width: 64, height: 64)
-                    .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12))
-                    .foregroundStyle(LF.gold)
-                }
-                .buttonStyle(.plain)
+            HStack {
+                Text("涂鸦")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(LF.gold, in: Capsule())
+                    .foregroundStyle(.black)
                 Spacer()
             }
-            Text("其他贴纸即将上线")
-                .font(.caption)
-                .foregroundStyle(LF.textSecondary)
-                .padding(.vertical, 20)
-                .frame(maxWidth: .infinity)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 84), spacing: 10)],
+                    spacing: 10
+                ) {
+                    ForEach(doodleStickers) { sticker in
+                        Button {
+                            appState.addSticker(sticker.id)
+                            toolSheet = nil
+                        } label: {
+                            VStack(spacing: 4) {
+                                AnimatedStickerPreview(decorationID: sticker.id)
+                                    .frame(width: 58, height: 58)
+                                Text(sticker.name)
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 84, height: 88)
+                            .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12))
+                            .foregroundStyle(LF.gold)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
         }
     }
 
@@ -696,6 +818,45 @@ struct EditorView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// 贴纸面板中的轻量循环预览：只创建一个 SwiftUI TimelineView，帧图像由 DecorationRenderer 缓存。
+/// 视图离开面板后 TimelineView 自动停止刷新，异步加载任务也会被 SwiftUI 取消。
+private struct AnimatedStickerPreview: View {
+    let decorationID: String
+
+    @State private var frames: [CGImage] = []
+    @State private var animationStart = Date()
+
+    var body: some View {
+        Group {
+            if frames.isEmpty {
+                Image(systemName: "sparkles")
+                    .font(.title2)
+            } else {
+                SwiftUI.TimelineView(.periodic(from: .now, by: 0.1)) { context in
+                    let elapsed = max(0, context.date.timeIntervalSince(animationStart))
+                    let index = Int(elapsed / 0.1) % frames.count
+                    Image(decorative: frames[index], scale: 1)
+                        .resizable()
+                        .scaledToFit()
+                }
+            }
+        }
+        .task(id: decorationID) {
+            let id = decorationID
+            let loaded = await Task.detached(priority: .utility) {
+                DecorationRenderer().previewFrames(for: id)
+            }.value
+            guard !Task.isCancelled else { return }
+            frames = loaded
+            animationStart = Date()
+        }
+        .onDisappear {
+            // 释放当前视图对帧数组的引用；解码缓存仍由 Core 层统一复用。
+            frames.removeAll(keepingCapacity: false)
         }
     }
 }

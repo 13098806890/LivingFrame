@@ -36,14 +36,10 @@ public enum CanvasAspect: String, CaseIterable, Identifiable {
     public static func aspect(for size: CGSize) -> CanvasAspect {
         guard size.width > 0, size.height > 0 else { return .portrait9x16 }
         let ratio = size.width / size.height
-        switch ratio {
-        case 0.53...0.59: return .portrait9x16   // 0.5625
-        case 0.72...0.82: return .portrait4x5     // 0.80
-        case 0.66...0.72: return .portrait3x4     // 0.75
-        case 0.9...1.1: return .square1x1          // 1.0
-        default:
-            if ratio > 1.1 { return .landscape16x9 }
-            return .portrait9x16
-        }
+        // 用实际预设比例取最近值，避免 3:4 和 4:5 的区间重叠时选错比例。
+        return allCases.min {
+            abs(ratio - $0.canvasSize.width / $0.canvasSize.height)
+                < abs(ratio - $1.canvasSize.width / $1.canvasSize.height)
+        } ?? .portrait9x16
     }
 }

@@ -26,7 +26,7 @@ public struct LivePhotoExporter {
         _ composition: Composition,
         to url: URL,
         progress: @escaping (Double) -> Void = { _ in },
-        isCancelled: @escaping () -> Bool = { false }
+        isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws -> Output {
         let renderSize = composition.renderRect.size
         let width = max(2, Int(renderSize.width))

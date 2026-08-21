@@ -97,7 +97,7 @@ struct SettingsView: View {
                             Text("哈利波特风格动态照片制作工具")
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
-                            Text("版本 1.0")
+                            Text(appVersionText)
                                 .font(.caption2)
                                 .foregroundStyle(LF.textSecondary)
                         }
@@ -118,5 +118,12 @@ struct SettingsView: View {
         )[.size] as? Int) ?? 0
         let sizeText = ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
         return "共 \(lines) 行 · \(sizeText)\n选择素材后会自动记录加载与抠图过程，导出后可直接分析。"
+    }
+
+    private var appVersionText: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let version = info["CFBundleShortVersionString"] as? String ?? "未设置"
+        let build = info["CFBundleVersion"] as? String ?? "未设置"
+        return "版本 \(version) (Build \(build))"
     }
 }

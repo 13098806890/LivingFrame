@@ -107,6 +107,9 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     /// 时间轴出现/消失（秒）
     public var startTime: TimeInterval
     public var endTime: TimeInterval
+    /// 素材源内容的入点/出点（秒）。只对 clip 元素生效；默认覆盖完整素材。
+    public var sourceStartTime: TimeInterval
+    public var sourceEndTime: TimeInterval
     /// 元素级背景图案（垫在元素内容下层，nil = 无）
     public var backgroundPattern: BackgroundPatternStyle?
     /// 滤镜（作用于元素内容，nil = 原图）
@@ -120,6 +123,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         zIndex: Int = 0,
         startTime: TimeInterval = 0,
         endTime: TimeInterval = .greatestFiniteMagnitude,
+        sourceStartTime: TimeInterval = 0,
+        sourceEndTime: TimeInterval = .greatestFiniteMagnitude,
         backgroundPattern: BackgroundPatternStyle? = nil,
         filter: ElementFilter? = nil
     ) {
@@ -130,6 +135,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         self.zIndex = zIndex
         self.startTime = startTime
         self.endTime = endTime
+        self.sourceStartTime = sourceStartTime
+        self.sourceEndTime = sourceEndTime
         self.backgroundPattern = backgroundPattern
         self.filter = filter
     }
@@ -141,7 +148,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     // MARK: - 解码兼容（filter 为新字段）
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, name, transform, zIndex, startTime, endTime, backgroundPattern, filter
+        case id, kind, name, transform, zIndex, startTime, endTime, sourceStartTime, sourceEndTime, backgroundPattern, filter
     }
 
     public init(from decoder: Decoder) throws {
@@ -153,6 +160,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         zIndex = try container.decodeIfPresent(Int.self, forKey: .zIndex) ?? 0
         startTime = try container.decodeIfPresent(TimeInterval.self, forKey: .startTime) ?? 0
         endTime = try container.decodeIfPresent(TimeInterval.self, forKey: .endTime) ?? .greatestFiniteMagnitude
+        sourceStartTime = try container.decodeIfPresent(TimeInterval.self, forKey: .sourceStartTime) ?? 0
+        sourceEndTime = try container.decodeIfPresent(TimeInterval.self, forKey: .sourceEndTime) ?? .greatestFiniteMagnitude
         backgroundPattern = try container.decodeIfPresent(BackgroundPatternStyle.self, forKey: .backgroundPattern)
         filter = try container.decodeIfPresent(ElementFilter.self, forKey: .filter)
     }
@@ -166,6 +175,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         try container.encode(zIndex, forKey: .zIndex)
         try container.encode(startTime, forKey: .startTime)
         try container.encode(endTime, forKey: .endTime)
+        try container.encode(sourceStartTime, forKey: .sourceStartTime)
+        try container.encode(sourceEndTime, forKey: .sourceEndTime)
         try container.encode(backgroundPattern, forKey: .backgroundPattern)
         try container.encode(filter, forKey: .filter)
     }

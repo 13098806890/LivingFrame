@@ -12,6 +12,7 @@ struct ExportView: View {
     @State private var exportedURL: URL?
     @State private var exportError: String?
     @State private var savedToLibrary = false
+    @State private var exportTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -103,7 +104,13 @@ struct ExportView: View {
             .magicBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("取消") { dismiss() }
+                    Button(appState.isExporting ? "停止导出" : "取消") {
+                        if appState.isExporting {
+                            exportTask?.cancel()
+                        } else {
+                            dismiss()
+                        }
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -117,6 +124,13 @@ struct ExportView: View {
             }
         }
         .presentationDetents([.large])
+        .onAppear {
+            format = appState.defaultFormat
+            fps = appState.exportFPS
+        }
+        .onDisappear {
+            exportTask?.cancel()
+        }
     }
 
     private func summaryCard(_ comp: Composition) -> some View {
@@ -145,13 +159,16 @@ struct ExportView: View {
         exportedURL = nil
         savedToLibrary = false
         exportError = nil
-        Task {
+        exportTask = Task { @MainActor in
             do {
                 let url = try await appState.export(format: format, fps: fps)
                 exportedURL = url
+                await appState.saveCurrentToWorks(format: format)
                 if format == .livePhoto {
                     savedToLibrary = true
                 }
+            } catch is CancellationError {
+                // 用户主动停止，不显示错误。
             } catch {
                 exportError = error.localizedDescription
             }
@@ -159,17 +176,28 @@ struct ExportView: View {
     }
 
     private func saveToLibrary(url: URL) {
-        if url.pathExtension.lowercased() == "gif" {
-            PHPhotoLibrary.shared().performChanges {
-                PHAssetCreationRequest.forAsset().addResource(with: .photo, fileURL: url, options: nil)
-            } completionHandler: { success, _ in
-                DispatchQueue.main.async {
-                    savedToLibrary = success
+        Task { @MainActor in
+            do {
+                let currentStatus = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+                let authorized: Bool
+                if currentStatus == .notDetermined {
+                    authorized = await PHPhotoLibrary.requestAuthorization(for: .addOnly) == .authorized
+                } else {
+                    authorized = currentStatus == .authorized || currentStatus == .limited
                 }
+                guard authorized else { throw AppStateError.photoLibraryDenied }
+                try await PHPhotoLibrary.shared().performChanges {
+                    let request = PHAssetCreationRequest.forAsset()
+                    if url.pathExtension.lowercased() == "gif" {
+                        request.addResource(with: .photo, fileURL: url, options: nil)
+                    } else {
+                        request.addResource(with: .video, fileURL: url, options: nil)
+                    }
+                }
+                savedToLibrary = true
+            } catch {
+                exportError = error.localizedDescription
             }
-        } else {
-            UISaveVideoAtPathToSavedPhotosAlbum(url.path, nil, nil, nil)
-            savedToLibrary = true
         }
     }
 }
