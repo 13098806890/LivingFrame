@@ -1,7 +1,7 @@
 import LivingFrameCore
 import SwiftUI
 
-/// 合成帧缓存：异步渲染合成画面缩略图，按帧索引缓存
+/// 编辑帧缓存：素材模式读取原始素材帧，背景模式异步渲染整张画布。
 @MainActor
 final class CompositeFrameCache: ObservableObject {
     @Published var frames: [Int: CGImage] = [:]
@@ -9,32 +9,52 @@ final class CompositeFrameCache: ObservableObject {
     /// 缓存版本号（composition 变化时递增，触发全量刷新）
     private var version = 0
 
-    /// 按主素材帧序列渲染合成画面：帧 i = 主素材播放到第 i 帧时的整个画布
-    /// （多素材叠加时每帧都显示全部素材 + 背景）
-    func rebuildForClip(composition: Composition, clipID: String, thumbSize: CGFloat = 160) {
+    /// 素材模式：直接读取指定素材自己的原始帧，不混入其他图层或背景。
+    func rebuildForClip(_ clip: SegmentedClip, thumbSize: CGFloat = 160) {
         version += 1
         let currentVersion = version
         renderTask?.cancel()
         frames.removeAll()
 
-        guard let element = composition.elements.first(where: { e in
-            if case .clip(let id) = e.kind { return id == clipID }; return false
-        }),
-        let clip = FrameCache.shared.clip(id: clipID),
-        clip.frameCount > 0,
-        clip.fps > 0 else { return }
-
-        let comp = composition
+        guard clip.frameCount > 0 else { return }
+        let clipValue = clip
         let count = clip.frameCount
-        let fps = clip.fps
-        let startTime = element.startTime
+
+        renderTask = Task.detached(priority: .utility) {
+            for i in 0..<count {
+                guard !Task.isCancelled else { return }
+                let image = FrameCache.shared.cachedThumbnail(
+                    for: clipValue,
+                    index: i,
+                    maxPixelSize: thumbSize
+                )
+                await MainActor.run {
+                    guard self.version == currentVersion else { return }
+                    if let image { self.frames[i] = image }
+                }
+            }
+        }
+    }
+
+    /// 背景模式：按工程 FPS 渲染全部图层合成后的原始画布帧。
+    func rebuildForComposition(_ composition: Composition, thumbSize: CGFloat = 160) {
+        version += 1
+        let currentVersion = version
+        renderTask?.cancel()
+        frames.removeAll()
+
+        var comp = composition
+        // 编辑时必须看到被排除位置原本的合成画面，才能重新选回该帧。
+        comp.excludedCompositionFrames = []
+        let count = comp.frameCount
+        guard count > 0, comp.fps > 0 else { return }
+        let fps = comp.fps
 
         renderTask = Task.detached(priority: .utility) {
             let renderer = CompositionRenderer(frameMaxPixelSize: thumbSize)
             for i in 0..<count {
                 guard !Task.isCancelled else { return }
-                let time = startTime + Double(i) / fps
-                let image = renderer.render(comp, at: time)
+                let image = renderer.render(comp, at: Double(i) / fps)
                 await MainActor.run {
                     guard self.version == currentVersion else { return }
                     if let image { self.frames[i] = image }
@@ -112,20 +132,23 @@ struct FramePresetIcon: View {
 }
 
 /// 帧网格视图（参考 ImgPlay "编辑帧"）：
-/// 单素材帧选择（预设 + 手动 + 放大 + 保存），clipID 为 nil 时取编辑页主素材
+/// 素材模式编辑指定素材原始帧；背景模式编辑全部图层合成后的画布帧。
 struct FrameGridView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @StateObject private var cache = CompositeFrameCache()
 
-    /// 指定素材；nil = 编辑页第一个 clip 元素
+    /// 指定素材；nil = 编辑页第一个 clip 元素。背景模式下忽略该值。
     let clipID: String?
+    let editsComposition: Bool
 
-    init(clipID: String? = nil) {
+    init(clipID: String? = nil, editsComposition: Bool = false) {
         self.clipID = clipID
+        self.editsComposition = editsComposition
     }
 
     private var primaryClipID: String? {
+        guard !editsComposition else { return nil }
         if let clipID { return clipID }
         return appState.composition?.elements.compactMap { e -> String? in
             guard case .clip(let id) = e.kind else { return nil }
@@ -137,14 +160,6 @@ struct FrameGridView: View {
         return appState.clips.first { $0.id == id }
     }
 
-    private var primaryElement: CompositionElement? {
-        guard let id = primaryClipID else { return nil }
-        return appState.composition?.elements.first { e in
-            if case .clip(let cid) = e.kind { return cid == id }
-            return false
-        }
-    }
-
     @State private var excluded: Set<Int> = []
     @State private var preset: FrameSelectPreset = .all
     @State private var zoomIndex: Int? = nil
@@ -152,15 +167,27 @@ struct FrameGridView: View {
     private let columns = [GridItem(.flexible(), spacing: 5), GridItem(.flexible(), spacing: 5),
                            GridItem(.flexible(), spacing: 5), GridItem(.flexible(), spacing: 5)]
 
-    private var totalFrames: Int { primaryClip?.frameCount ?? 0 }
+    private var totalFrames: Int {
+        editsComposition ? (appState.composition?.frameCount ?? 0) : (primaryClip?.frameCount ?? 0)
+    }
     private var selectedCount: Int { totalFrames - excluded.count }
+
+    private var detailComposition: Composition? {
+        guard editsComposition, var comp = appState.composition else { return nil }
+        comp.excludedCompositionFrames = []
+        return comp
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 ScrollView {
                     VStack(spacing: 4) {
-                        Text("去掉的帧会延长保留帧的展示时间，总时长不变，音频保持同步")
+                        Text(
+                            editsComposition
+                                ? "去掉的合成帧由前一张合成帧填补，时间轴和音频保持不变"
+                                : "去掉的素材帧由前一张素材帧填补，后续帧位置和总时长不变"
+                        )
                             .font(.caption2)
                             .foregroundStyle(LF.textSecondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -174,13 +201,14 @@ struct FrameGridView: View {
                         .padding(.horizontal, 3)
                     }
                 }
-                // 单帧放大查看（合成画面）
-                if let zoom = zoomIndex, let clip = primaryClip, let element = primaryElement {
+                // 单帧放大查看：素材模式看原始透明帧，背景模式看整张合成画面。
+                if let zoom = zoomIndex, totalFrames > 0 {
                     FrameDetailView(
-                        composition: appState.composition,
-                        element: element,
-                        clip: clip,
-                        frameIndex: zoom
+                        composition: detailComposition,
+                        clip: editsComposition ? nil : primaryClip,
+                        frameCount: totalFrames,
+                        frameIndex: zoom,
+                        cache: cache
                     ) {
                         zoomIndex = nil
                     }
@@ -198,7 +226,7 @@ struct FrameGridView: View {
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
-                        Text("编辑帧")
+                        Text(editsComposition ? "编辑合成帧" : "编辑素材帧")
                             .font(.subheadline.weight(.semibold))
                         Text("\(selectedCount) / \(totalFrames) 张帧")
                             .font(.caption2)
@@ -215,7 +243,9 @@ struct FrameGridView: View {
                         FramePresetIcon(preset: preset)
                     }
                     Button("完成") {
-                        if let id = primaryClipID {
+                        if editsComposition {
+                            appState.setExcludedCompositionFrames(excluded)
+                        } else if let id = primaryClipID {
                             appState.setExcludedFrames(id, excluded)
                         }
                         dismiss()
@@ -225,15 +255,26 @@ struct FrameGridView: View {
                 }
             }
             .onAppear {
-                if let clip = primaryClip, let comp = appState.composition {
+                if editsComposition, let comp = appState.composition {
+                    excluded = comp.excludedCompositionFrames
+                    for p in FrameSelectPreset.allCases {
+                        if p.excludedFrames(total: comp.frameCount) == excluded {
+                            preset = p; break
+                        }
+                    }
+                    cache.rebuildForComposition(comp, thumbSize: 160)
+                } else if let clip = primaryClip {
                     excluded = clip.excludedFrames
                     for p in FrameSelectPreset.allCases {
                         if p.excludedFrames(total: clip.frameCount) == clip.excludedFrames {
                             preset = p; break
                         }
                     }
-                    cache.rebuildForClip(composition: comp, clipID: clip.id, thumbSize: 160)
+                    cache.rebuildForClip(clip, thumbSize: 160)
                 }
+            }
+            .onDisappear {
+                cache.cancel()
             }
         }
     }
@@ -316,13 +357,15 @@ struct FrameGridView: View {
     }
 }
 
-/// 单帧放大查看（全屏，合成画面，支持左右切换）
+/// 单帧放大查看：clip 非 nil 时显示素材原始帧，否则显示 composition 合成帧。
 struct FrameDetailView: View {
     let composition: Composition?
-    let element: CompositionElement
-    let clip: SegmentedClip
+    let clip: SegmentedClip?
+    let frameCount: Int
     @State var frameIndex: Int
+    @ObservedObject var cache: CompositeFrameCache
     let onClose: () -> Void
+    @State private var detailImage: CGImage?
 
     var body: some View {
         ZStack {
@@ -337,7 +380,7 @@ struct FrameDetailView: View {
                     }
                     .buttonStyle(.plain)
                     Spacer()
-                    Text("第 \(frameIndex + 1) 帧 / 共 \(clip.frameCount) 帧")
+                    Text("第 \(frameIndex + 1) 帧 / 共 \(frameCount) 帧")
                         .font(.subheadline)
                         .foregroundStyle(LF.textPrimary)
                     Spacer()
@@ -345,26 +388,29 @@ struct FrameDetailView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                // 帧图像（合成画面，支持左右滑动切换）
-                TabView(selection: $frameIndex) {
-                    ForEach(0..<clip.frameCount, id: \.self) { index in
-                        ZStack {
-                            CheckerboardView()
-                            if let image = renderCompositeFrame(index) {
-                                Image(decorative: image, scale: 1)
-                                    .resizable()
-                                    .scaledToFit()
-                            }
-                        }
-                        .tag(index)
+                // 只异步渲染当前合成帧，避免 TabView 初始化时在主线程同步渲染全部帧。
+                ZStack {
+                    CheckerboardView()
+                    if let image = detailImage ?? cache.frames[frameIndex] {
+                        Image(decorative: image, scale: 1)
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        ProgressView()
+                            .tint(.white)
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(frameSwipeGesture)
+                .task(id: frameIndex) {
+                    await loadCurrentFrame()
+                }
                 // 帧条（小图，合成画面缓存）
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            ForEach(0..<clip.frameCount, id: \.self) { index in
+                        LazyHStack(spacing: 4) {
+                            ForEach(0..<frameCount, id: \.self) { index in
                                 Button { frameIndex = index } label: {
                                     Group {
                                         if let image = cache.frames[index] {
@@ -395,22 +441,46 @@ struct FrameDetailView: View {
                     }
                 }
                 .padding(.bottom, 8)
-                .onAppear {
-                    if let composition {
-                        cache.rebuildForClip(composition: composition, clipID: clip.id, thumbSize: 80)
-                    }
-                }
             }
         }
     }
 
-    /// 渲染主素材第 index 帧时刻的合成画面（所有素材 + 背景）
-    private func renderCompositeFrame(_ index: Int) -> CGImage? {
-        guard let composition, clip.fps > 0 else { return nil }
-        let time = element.startTime + Double(index) / clip.fps
-        return compositeRenderer.render(composition, at: time)
+    private var frameSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onEnded { value in
+                guard abs(value.translation.width) > 44 else { return }
+                if value.translation.width < 0, frameIndex < frameCount - 1 {
+                    frameIndex += 1
+                } else if value.translation.width > 0, frameIndex > 0 {
+                    frameIndex -= 1
+                }
+            }
     }
 
-    private let compositeRenderer = CompositionRenderer(frameMaxPixelSize: 800)
-    @StateObject private var cache = CompositeFrameCache()
+    /// 高分辨率详情帧在后台按需渲染；切换帧时 SwiftUI 会自动取消上一项任务。
+    @MainActor
+    private func loadCurrentFrame() async {
+        detailImage = nil
+        let index = frameIndex
+        let rendered: CGImage?
+        if let clip {
+            let clipValue = clip
+            rendered = await Task.detached(priority: .userInitiated) {
+                FrameCache.shared.cachedThumbnail(
+                    for: clipValue,
+                    index: index,
+                    maxPixelSize: 800
+                )
+            }.value
+        } else if let composition, composition.fps > 0 {
+            let time = Double(index) / composition.fps
+            rendered = await Task.detached(priority: .userInitiated) {
+                CompositionRenderer(frameMaxPixelSize: 800).render(composition, at: time)
+            }.value
+        } else {
+            return
+        }
+        guard !Task.isCancelled, index == frameIndex else { return }
+        detailImage = rendered
+    }
 }

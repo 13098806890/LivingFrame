@@ -282,6 +282,8 @@ public struct Composition: Identifiable, Codable, Equatable {
     public var cropRect: CGRect?
     /// 文字元素库（元素 kind == .text 引用）
     public var texts: [TextElement]
+    /// 合成画面的排除帧。仅在编辑器选中背景后编辑帧时使用，播放时由前一合成帧补位。
+    public var excludedCompositionFrames: Set<Int>
 
     public init(
         id: UUID = UUID(),
@@ -294,7 +296,8 @@ public struct Composition: Identifiable, Codable, Equatable {
         background: BackgroundPreset = BackgroundPreset(kind: .solid, topColor: "FFFFFF", bottomColor: "FFFFFF"),
         templateID: String? = nil,
         cropRect: CGRect? = nil,
-        texts: [TextElement] = []
+        texts: [TextElement] = [],
+        excludedCompositionFrames: Set<Int> = []
     ) {
         self.id = id
         self.name = name
@@ -307,6 +310,7 @@ public struct Composition: Identifiable, Codable, Equatable {
         self.templateID = templateID
         self.cropRect = cropRect
         self.texts = texts
+        self.excludedCompositionFrames = excludedCompositionFrames
     }
 
     public var canvasRect: CGRect {
@@ -316,7 +320,8 @@ public struct Composition: Identifiable, Codable, Equatable {
     // MARK: - 解码兼容（texts/filter 为新字段，旧工程 JSON 无此 key）
 
     enum CodingKeys: String, CodingKey {
-        case id, name, canvas, duration, fps, elements, audioClips, background, templateID, cropRect, texts
+        case id, name, canvas, duration, fps, elements, audioClips, background, templateID, cropRect, texts,
+             excludedCompositionFrames
     }
 
     public init(from decoder: Decoder) throws {
@@ -333,6 +338,67 @@ public struct Composition: Identifiable, Codable, Equatable {
         templateID = try container.decodeIfPresent(String.self, forKey: .templateID)
         cropRect = try container.decodeIfPresent(CGRect.self, forKey: .cropRect)
         texts = try container.decodeIfPresent([TextElement].self, forKey: .texts) ?? []
+        excludedCompositionFrames = try container.decodeIfPresent(
+            Set<Int>.self,
+            forKey: .excludedCompositionFrames
+        ) ?? []
+    }
+
+    /// 工程在当前 FPS 下的帧数。
+    public var frameCount: Int {
+        guard duration.isFinite, fps.isFinite, fps > 0 else { return 0 }
+        return max(Int((duration * fps).rounded(.up)), 1)
+    }
+
+    /// 将时间轴帧映射到实际应显示的合成帧。排除位置由前面最近的保留帧填补；
+    /// 开头没有前帧时使用后面第一张保留帧，全部排除则回退原帧。
+    public func compositionPlaybackFrameIndex(
+        for frameIndex: Int,
+        reversed: Bool = false
+    ) -> Int {
+        let count = frameCount
+        guard count > 0 else { return 0 }
+        let clamped = min(max(frameIndex, 0), count - 1)
+        guard excludedCompositionFrames.contains(clamped) else { return clamped }
+
+        if reversed {
+            if clamped + 1 < count,
+               let next = (clamped + 1..<count).first(where: {
+                   !excludedCompositionFrames.contains($0)
+               }) {
+                return next
+            }
+            var fallback = clamped - 1
+            while fallback >= 0 {
+                if !excludedCompositionFrames.contains(fallback) { return fallback }
+                fallback -= 1
+            }
+        } else {
+            var previous = clamped - 1
+            while previous >= 0 {
+                if !excludedCompositionFrames.contains(previous) { return previous }
+                previous -= 1
+            }
+            if clamped + 1 < count,
+               let next = (clamped + 1..<count).first(where: {
+                   !excludedCompositionFrames.contains($0)
+               }) {
+                return next
+            }
+        }
+        return clamped
+    }
+
+    /// 合成渲染使用的实际时间。没有工程级帧编辑时保留连续时间，避免改变原有播放精度。
+    public func compositionPlaybackTime(
+        for time: TimeInterval,
+        reversed: Bool = false
+    ) -> TimeInterval {
+        guard !excludedCompositionFrames.isEmpty, time.isFinite, fps.isFinite, fps > 0 else {
+            return time
+        }
+        let index = Int((max(time, 0) * fps).rounded(.down))
+        return TimeInterval(compositionPlaybackFrameIndex(for: index, reversed: reversed)) / fps
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -348,6 +414,7 @@ public struct Composition: Identifiable, Codable, Equatable {
         try container.encode(templateID, forKey: .templateID)
         try container.encode(cropRect, forKey: .cropRect)
         try container.encode(texts, forKey: .texts)
+        try container.encode(excludedCompositionFrames, forKey: .excludedCompositionFrames)
     }
 
     /// 实际输出区域（裁剪后）

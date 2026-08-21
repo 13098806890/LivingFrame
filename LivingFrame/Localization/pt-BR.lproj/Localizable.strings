@@ -110,3 +110,16 @@
 "Live Photo（动态照片）" = "Live Photo (foto animada)";
 "存入相册长按播放，透明区域用背景填充" = "Salva como foto animada; toque e segure para reproduzir. Áreas transparentes são preenchidas com o fundo";
 "需要相册权限才能保存 Live Photo，请在设置中开启" = "É necessário acesso às Fotos para salvar uma Live Photo. Ative-o em Ajustes";
+"保存" = "Salvar";
+"保存作品" = "Salvar obra";
+"作品已更新" = "Obra atualizada";
+"作品已保存" = "Obra salva";
+"可以在“作品”页面继续编辑或删除。" = "Você pode editar ou excluir na página Obras.";
+"保存失败" = "Falha ao salvar";
+"无法生成作品封面，请稍后再试。" = "Não foi possível criar a capa. Tente novamente.";
+"好" = "OK";
+"已保存" = "Salva";
+"删除这个作品？" = "Excluir esta obra?";
+"删除后无法恢复，素材库中的素材不会被删除。" = "Não é possível desfazer. Os itens da biblioteca não serão excluídos.";
+"在编辑页点击“保存”，作品会显示在这里" = "Toque em Salvar no editor para exibir sua obra aqui";
+"暂无作品，请先在编辑页保存" = "Nenhuma obra. Salve uma no editor primeiro";

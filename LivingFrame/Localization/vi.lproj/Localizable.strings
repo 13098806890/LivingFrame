@@ -110,3 +110,16 @@
 "Live Photo（动态照片）" = "Live Photo (ảnh động)";
 "存入相册长按播放，透明区域用背景填充" = "Lưu thành ảnh động; giữ để phát. Vùng trong suốt được lấp bằng nền";
 "需要相册权限才能保存 Live Photo，请在设置中开启" = "Cần quyền truy cập Ảnh để lưu Live Photo. Hãy bật trong Cài đặt";
+"保存" = "Lưu";
+"保存作品" = "Lưu tác phẩm";
+"作品已更新" = "Đã cập nhật tác phẩm";
+"作品已保存" = "Đã lưu tác phẩm";
+"可以在“作品”页面继续编辑或删除。" = "Bạn có thể chỉnh sửa hoặc xóa trong trang Tác phẩm.";
+"保存失败" = "Lưu thất bại";
+"无法生成作品封面，请稍后再试。" = "Không thể tạo ảnh bìa. Vui lòng thử lại.";
+"好" = "OK";
+"已保存" = "Đã lưu";
+"删除这个作品？" = "Xóa tác phẩm này?";
+"删除后无法恢复，素材库中的素材不会被删除。" = "Không thể hoàn tác. Nội dung trong thư viện sẽ không bị xóa.";
+"在编辑页点击“保存”，作品会显示在这里" = "Nhấn Lưu trong trình chỉnh sửa để tác phẩm xuất hiện ở đây";
+"暂无作品，请先在编辑页保存" = "Chưa có tác phẩm. Hãy lưu từ trình chỉnh sửa trước";

@@ -17,6 +17,27 @@ extension Color {
         let b = Double(value & 0xFF) / 255
         self.init(red: r, green: g, blue: b)
     }
+
+    /// 将系统取色器返回的颜色转成工程使用的 6 位 RGB。
+    var hexRGB: String {
+        let uiColor = UIColor(self)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return "FFFFFF"
+        }
+        func byte(_ value: CGFloat) -> Int {
+            min(max(Int((value * 255).rounded()), 0), 255)
+        }
+        return String(
+            format: "%02X%02X%02X",
+            byte(red),
+            byte(green),
+            byte(blue)
+        )
+    }
 }
 
 enum LF {

@@ -163,7 +163,6 @@ struct ExportView: View {
             do {
                 let url = try await appState.export(format: format, fps: fps)
                 exportedURL = url
-                await appState.saveCurrentToWorks(format: format)
                 if format == .livePhoto {
                     savedToLibrary = true
                 }

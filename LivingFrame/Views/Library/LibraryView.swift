@@ -654,21 +654,24 @@ struct LibraryView: View {
 
 struct ClipCell: View {
     let clip: SegmentedClip
+    @State private var isPlaying = false
 
     var body: some View {
         VStack(spacing: 6) {
             ZStack {
-                AnimatedClipPreview(clip: clip, maxPixelSize: 320)
+                AnimatedClipPreview(clip: clip, maxPixelSize: 320, isPlaying: $isPlaying)
             }
             .frame(height: 120)
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(alignment: .bottomLeading) {
+                ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
+            }
             .overlay(alignment: .bottomTrailing) {
                 if clip.audioURL != nil {
-                    Image(systemName: "waveform")
-                        .font(.caption)
-                        .foregroundStyle(LF.gold)
-                        .padding(6)
-                        .background(.black.opacity(0.55), in: Circle())
+                    ClipPreviewBadgeIcon(
+                        systemName: "waveform",
+                        foregroundStyle: LF.gold
+                    )
                         .padding(4)
                 }
             }

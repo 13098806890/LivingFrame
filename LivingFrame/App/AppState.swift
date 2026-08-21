@@ -106,6 +106,8 @@ final class AppState: ObservableObject {
     // MARK: - 作品
 
     @Published var works: [WorkItem] = []
+    /// 当前编辑页来自哪个已保存作品。nil 表示尚未保存的新工程。
+    @Published private(set) var editingWorkID: UUID?
 
     // MARK: - Tab
 
@@ -419,6 +421,16 @@ final class AppState: ObservableObject {
         clipStyleVersion += 1
     }
 
+    /// 设置整张画布的排除帧；与单个素材的帧选择相互独立。
+    func setExcludedCompositionFrames(_ excluded: Set<Int>) {
+        guard var comp = composition else { return }
+        let valid = Set(excluded.filter { $0 >= 0 && $0 < comp.frameCount })
+        guard comp.excludedCompositionFrames != valid else { return }
+        comp.excludedCompositionFrames = valid
+        composition = comp
+        clipStyleVersion += 1
+    }
+
     // MARK: - 背景
 
     /// 设置背景为纯色
@@ -475,6 +487,7 @@ final class AppState: ObservableObject {
             duration: 0,
             fps: 30
         )
+        editingWorkID = nil
         composition = comp
         return comp
     }
@@ -490,6 +503,7 @@ final class AppState: ObservableObject {
             duration: 0,
             fps: 30
         )
+        editingWorkID = nil
         composition = comp
     }
 
@@ -559,15 +573,60 @@ final class AppState: ObservableObject {
     /// 时长跟随内容：总时长 = 所有元素结束时间 / 音频结束时间的最大者（自由放置，可重叠）
     func recomputeDuration() {
         guard var comp = composition else { return }
+        let previousDuration = comp.duration
         var maxEnd: TimeInterval = 0
+        var autoFillStickerIndices: [Int] = []
         for e in comp.elements {
             if e.endTime.isFinite { maxEnd = max(maxEnd, e.endTime) }
         }
         for a in comp.audioClips {
             maxEnd = max(maxEnd, a.startTime + a.duration)
         }
+
+        // 贴纸若正好贴着上一次工程末端，视为“默认铺满”而非独立撑长工程。
+        // 先从内容最大时长中排除它，之后再让它跟随新的工程末端一起伸缩。
+        if previousDuration.isFinite, previousDuration > 0 {
+            for index in comp.elements.indices {
+                guard case .decoration = comp.elements[index].kind,
+                      abs(comp.elements[index].endTime - previousDuration) <= 0.001 else { continue }
+                autoFillStickerIndices.append(index)
+            }
+        }
+
+        if !autoFillStickerIndices.isEmpty {
+            let autoFillStickerSet = Set(autoFillStickerIndices)
+            maxEnd = 0
+            for (index, element) in comp.elements.enumerated()
+                where !autoFillStickerSet.contains(index) && element.endTime.isFinite {
+                maxEnd = max(maxEnd, element.endTime)
+            }
+            for audio in comp.audioClips {
+                maxEnd = max(maxEnd, audio.startTime + audio.duration)
+            }
+            for index in autoFillStickerIndices {
+                guard case .decoration(let decorationID) = comp.elements[index].kind else { continue }
+                let minimumDuration = DecorationRenderer.stickerDefinition(for: decorationID)?.defaultDuration ?? 0.1
+                comp.elements[index].endTime = max(maxEnd, minimumDuration)
+            }
+            maxEnd = max(
+                maxEnd,
+                autoFillStickerIndices.compactMap { comp.elements[$0].endTime }.max() ?? 0
+            )
+        }
+
+        // 贴纸默认铺满时间轴：当素材把工程时长向右撑长时，仍处于旧时间轴末端的贴纸
+        // 自动跟随延长；已经缩短到旧末端之前的贴纸则视为用户手动调整，不强行改动。
+        if maxEnd > previousDuration + 0.001 {
+            for index in comp.elements.indices {
+                guard case .decoration = comp.elements[index].kind,
+                      comp.elements[index].endTime <= previousDuration + 0.001 else { continue }
+                comp.elements[index].endTime = maxEnd
+            }
+        }
         if comp.duration != maxEnd {
             comp.duration = maxEnd
+            composition = comp
+        } else if maxEnd > previousDuration + 0.001 {
             composition = comp
         }
         if currentTime > maxEnd {
@@ -650,6 +709,21 @@ final class AppState: ObservableObject {
         for (zIndex, element) in ordered.enumerated() {
             guard let originalIndex = comp.elements.firstIndex(where: { $0.id == element.id }) else { continue }
             comp.elements[originalIndex].zIndex = zIndex
+        }
+        composition = comp
+    }
+
+    /// 按“画布最上层 → 最下层”的顺序一次性重排元素层级。
+    /// 时间轴拖拽使用稳定的元素 ID 顺序提交，避免拖动经过多行时逐次交换造成跳动。
+    func setElementLayerOrder(topToBottom elementIDs: [UUID]) {
+        guard var comp = composition,
+              elementIDs.count == comp.elements.count,
+              Set(elementIDs) == Set(comp.elements.map(\.id)) else { return }
+
+        let highestZIndex = elementIDs.count - 1
+        for (displayIndex, id) in elementIDs.enumerated() {
+            guard let elementIndex = comp.elements.firstIndex(where: { $0.id == id }) else { continue }
+            comp.elements[elementIndex].zIndex = highestZIndex - displayIndex
         }
         composition = comp
     }
@@ -870,14 +944,17 @@ final class AppState: ObservableObject {
             if next <= 0 {
                 currentTime = 0
                 isPlaying = false
+                audioEngine.stop()
             } else {
                 currentTime = next
             }
         } else {
             let next = currentTime + step
             if next >= comp.duration {
-                currentTime = comp.duration
+                // 播放完成后回到第一帧，方便用户立即再次预览或继续编辑。
+                currentTime = 0
                 isPlaying = false
+                audioEngine.stop()
             } else {
                 currentTime = next
             }
@@ -1012,32 +1089,70 @@ final class AppState: ObservableObject {
 
     // MARK: - 作品
 
-    func saveCurrentToWorks(format: ExportFormat? = nil) async {
-        guard let comp = composition else { return }
+    /// 只有用户在编辑页主动点击“保存”时调用。再次保存已打开的作品会更新原记录。
+    @discardableResult
+    func saveCurrentToWorks() async -> Bool {
+        guard let comp = composition else { return false }
         let posterData = await Task.detached(priority: .utility) {
             guard let poster = CompositionRenderer(frameMaxPixelSize: 900).render(comp, at: 0) else {
                 return Data?.none
             }
             return pngData(from: poster)
         }.value
-        guard let posterData else { return }
+        guard let posterData else {
+            LogStore.log("work.save failed: poster render returned nil")
+            return false
+        }
+        let existing = editingWorkID.flatMap { id in works.first { $0.id == id } }
+        let now = Date()
+        let referencedClipIDs = Set(comp.elements.compactMap { element -> String? in
+            guard case .clip(let clipID) = element.kind else { return nil }
+            return clipID
+        })
+        let clipSettings = clips
+            .filter { referencedClipIDs.contains($0.id) }
+            .map {
+                WorkClipSettings(
+                    clipID: $0.id,
+                    edgeStyle: $0.edgeStyle,
+                    edgeLineStyle: $0.edgeLineStyle,
+                    edgeThickness: $0.edgeThickness,
+                    edgeColorHex: $0.edgeColorHex,
+                    stickerStyle: $0.stickerStyle,
+                    playbackSpeed: $0.playbackSpeed,
+                    excludedFrames: $0.excludedFrames
+                )
+            }
         let work = WorkItem(
+            id: existing?.id ?? UUID(),
             name: comp.name,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
             composition: comp,
+            clipSettings: clipSettings,
             posterData: posterData,
-            format: format ?? defaultFormat
+            format: existing?.format ?? defaultFormat
         )
-        if (try? worksStore.save(work)) != nil {
+        do {
+            try worksStore.save(work)
+            editingWorkID = work.id
             works = worksStore.loadWorks()
+            LogStore.log("work.save done id=\(work.id) updated=\(existing != nil)")
+            return true
+        } catch {
+            LogStore.log("work.save failed: \(error)")
+            return false
         }
     }
 
     func deleteWork(_ work: WorkItem) {
         worksStore.delete(work)
+        if editingWorkID == work.id { editingWorkID = nil }
         works = worksStore.loadWorks()
     }
 
     func reopen(_ work: WorkItem) {
+        restoreClipSettings(from: work)
         var comp = work.composition
         migrateClipSourceRanges(in: &comp)
         // 消毒历史工程中的非法变换值（NaN/Inf 会导致渲染失败）
@@ -1050,10 +1165,36 @@ final class AppState: ObservableObject {
         if sanitized {
             LogStore.log("reopen: 已修复工程中的非法变换值")
         }
+        pause()
+        isApplyingHistory = true
         composition = comp
+        isApplyingHistory = false
+        undoStack.removeAll()
+        redoStack.removeAll()
+        editingWorkID = work.id
+        currentTime = 0
+        selectedElementIDs.removeAll()
+        lastSelectedElementID = nil
+        selectedAudioID = nil
+        selectedBackground = true
+        isCropping = false
         // 重新注册仍存在的缓存素材
         for clip in clips {
             FrameCache.shared.register(clip)
+        }
+        clipStyleVersion += 1
+    }
+
+    private func restoreClipSettings(from work: WorkItem) {
+        for settings in work.clipSettings ?? [] {
+            guard let index = clips.firstIndex(where: { $0.id == settings.clipID }) else { continue }
+            clips[index].edgeStyle = settings.edgeStyle
+            clips[index].edgeLineStyle = settings.edgeLineStyle
+            clips[index].edgeThickness = settings.edgeThickness
+            clips[index].edgeColorHex = settings.edgeColorHex
+            clips[index].stickerStyle = settings.stickerStyle
+            clips[index].playbackSpeed = settings.playbackSpeed
+            clips[index].excludedFrames = settings.excludedFrames
         }
     }
 
@@ -1093,6 +1234,12 @@ final class AppState: ObservableObject {
         guard let comp = composition,
               let poster = CompositionRenderer().render(comp, at: 0) else { return }
         FrameStore.savePoster(poster, title: comp.name)
+    }
+
+    /// 从作品快照生成 Widget 封面，不改变当前编辑页中的工程。
+    func savePosterForWidget(_ work: WorkItem) {
+        guard let poster = UIImage(data: work.posterData)?.cgImage else { return }
+        FrameStore.savePoster(poster, title: work.name)
     }
 
     // MARK: - 缓存

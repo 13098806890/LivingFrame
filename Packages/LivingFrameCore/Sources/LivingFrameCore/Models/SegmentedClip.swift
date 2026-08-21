@@ -28,7 +28,7 @@ public struct SegmentedClip: Identifiable {
     public var stickerStyle: StickerStyle = .none
     /// 播放倍速（1 = 正常；>1 快放，<1 慢放）
     public var playbackSpeed: Double = 1
-    /// 被排除的帧索引（不参与播放，用于"帧选择"功能）
+    /// 被排除的帧索引（播放时由前面最近的保留帧填补，用于"帧选择"功能）
     public var excludedFrames: Set<Int> = []
 
     public var duration: TimeInterval {
@@ -47,9 +47,44 @@ public struct SegmentedClip: Identifiable {
         return active.isEmpty ? Array(0..<frameCount) : active
     }
 
-    /// 排除帧后的真实播放时长。空集合回退为完整素材，避免素材变成 0 秒。
+    /// 正放时使用的等长播放映射。
+    public var playbackFrameIndices: [Int] {
+        playbackFrameIndices(reversed: false)
+    }
+
+    /// 与原始帧序列等长的播放映射。排除某帧时，使用播放方向上刚显示过的保留帧填补；
+    /// 例如排除第 4 帧得到 1,2,3,3,5，排除第 3、4 帧得到 1,2,2,2,5。
+    /// 正放开头或倒放结尾没有上一帧可用时，使用另一侧第一张保留帧兜底。
+    public func playbackFrameIndices(reversed: Bool) -> [Int] {
+        guard frameCount > 0 else { return [] }
+        let kept = (0..<frameCount).filter { !excludedFrames.contains($0) }
+        // 全部排除属于无效选择，回退到原始序列，避免素材只剩空画面。
+        guard let firstKept = kept.first else { return Array(0..<frameCount) }
+
+        if reversed {
+            var nextKept = kept.last ?? firstKept
+            var result = Array(repeating: nextKept, count: frameCount)
+            for index in stride(from: frameCount - 1, through: 0, by: -1) {
+                if !excludedFrames.contains(index) {
+                    nextKept = index
+                }
+                result[index] = nextKept
+            }
+            return result
+        }
+
+        var lastKept = firstKept
+        return (0..<frameCount).map { index in
+            if !excludedFrames.contains(index) {
+                lastKept = index
+            }
+            return lastKept
+        }
+    }
+
+    /// 排除帧只改变对应时刻显示的画面，不压缩素材，播放时长始终保持不变。
     public var activeDuration: TimeInterval {
-        fps > 0 ? TimeInterval(activeFrameIndices.count) / fps : 1
+        fps > 0 ? TimeInterval(playbackFrameIndices.count) / fps : 1
     }
 
     public func frameURL(index: Int) -> URL {

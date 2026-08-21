@@ -53,7 +53,6 @@ enum EditorTool: String, CaseIterable, Identifiable {
 struct EditorView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showAssetPicker = false
-    @State private var showBackgroundPicker = false
     /// 工具 sheet（点击工具栏弹出，遮住编辑页）
     @State private var toolSheet: EditorTool?
     /// 选中元素后的详细属性面板（不再常驻占用画布高度）
@@ -62,6 +61,9 @@ struct EditorView: View {
     @State private var showClearConfirmation = false
     /// 全屏预览（播放控制行最右侧按钮）
     @State private var showPreview = false
+    /// 主动保存作品的进行中/结果状态。
+    @State private var isSavingWork = false
+    @State private var workSaveResult: WorkSaveResult?
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -110,9 +112,6 @@ struct EditorView: View {
         .sheet(isPresented: $showAssetPicker) {
             AssetPickerView().environmentObject(appState)
         }
-        .sheet(isPresented: $showBackgroundPicker) {
-            BackgroundPickerView().environmentObject(appState)
-        }
         .sheet(isPresented: $showInspectorSheet) {
             NavigationStack {
                 ElementInspectorView()
@@ -130,6 +129,22 @@ struct EditorView: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("将移除画布和时间轴中的全部内容，但不会删除素材库里的素材。")
+        }
+        .alert(item: $workSaveResult) { result in
+            switch result {
+            case .success(let updated):
+                Alert(
+                    title: Text(updated ? "作品已更新" : "作品已保存"),
+                    message: Text("可以在“作品”页面继续编辑或删除。"),
+                    dismissButton: .default(Text("好"))
+                )
+            case .failure:
+                Alert(
+                    title: Text("保存失败"),
+                    message: Text("无法生成作品封面，请稍后再试。"),
+                    dismissButton: .default(Text("好"))
+                )
+            }
         }
         .fullScreenCover(isPresented: $showPreview) {
             ZStack(alignment: .topTrailing) {
@@ -155,7 +170,10 @@ struct EditorView: View {
         }
         .sheet(item: $toolSheet) { tool in
             if tool == .frame {
-                FrameGridView()
+                FrameGridView(
+                    clipID: selectedFrameClipID,
+                    editsComposition: appState.selectedBackground
+                )
                     .environmentObject(appState)
                     .presentationDetents([.medium, .large])
             } else {
@@ -178,41 +196,76 @@ struct EditorView: View {
         }
     }
 
-    /// 自定义顶部栏（编辑信息 + 导出）
+    /// 自定义顶部栏（编辑信息 + 主动保存/导出）
     private var topBar: some View {
-        HStack {
-            Button {
-                showClearConfirmation = true
-            } label: {
-                Label("清空", systemImage: "trash")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.red)
-                    .frame(width: 54, height: 30)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("清空编辑内容")
-            Spacer()
+        ZStack {
             VStack(spacing: 0) {
                 Text("编辑")
                     .font(.subheadline.weight(.semibold))
                 if let comp = appState.composition {
                     Text(frameInfoText(comp))
                         .font(.caption2)
-                        .foregroundStyle(LF.textSecondary)
+                    .foregroundStyle(LF.textSecondary)
                 }
             }
-            Spacer()
-            Button { appState.showExportView = true } label: {
-                Text("导出")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(LF.gold, in: Capsule())
+
+            HStack(spacing: 6) {
+                Button {
+                    showClearConfirmation = true
+                } label: {
+                    Label("清空", systemImage: "trash")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                        .frame(width: 54, height: 30)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("清空编辑内容")
+
+                Spacer()
+
+                Button(action: saveWork) {
+                    HStack(spacing: 3) {
+                        if isSavingWork {
+                            ProgressView()
+                                .controlSize(.mini)
+                        } else {
+                            Image(systemName: "square.and.arrow.down")
+                        }
+                        Text("保存")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+                    .frame(height: 30)
+                    .padding(.horizontal, 7)
+                    .background(LF.surface2.opacity(0.7), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(isSavingWork)
+                .accessibilityLabel("保存作品")
+
+                Button { appState.showExportView = true } label: {
+                    Text("导出")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(LF.gold, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 4)
+    }
+
+    private func saveWork() {
+        guard !isSavingWork else { return }
+        let isUpdating = appState.editingWorkID != nil
+        isSavingWork = true
+        Task { @MainActor in
+            let saved = await appState.saveCurrentToWorks()
+            isSavingWork = false
+            workSaveResult = saved ? .success(updated: isUpdating) : .failure
+        }
     }
 
     // MARK: - 帧信息
@@ -245,8 +298,8 @@ struct EditorView: View {
                         appState.undo()
                     } label: {
                         Image(systemName: "arrow.uturn.backward")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 38, height: 38)
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(appState.canUndo ? LF.textPrimary : LF.textSecondary.opacity(0.35))
@@ -257,8 +310,8 @@ struct EditorView: View {
                         appState.redo()
                     } label: {
                         Image(systemName: "arrow.uturn.forward")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 38, height: 38)
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(appState.canRedo ? LF.textPrimary : LF.textSecondary.opacity(0.35))
@@ -272,8 +325,8 @@ struct EditorView: View {
                     showPreview = true
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.body.weight(.semibold))
-                        .frame(width: 38, height: 38)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(LF.textPrimary)
@@ -284,17 +337,15 @@ struct EditorView: View {
                 togglePlayback()
             } label: {
                 Image(systemName: appState.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.subheadline.weight(.bold))
-                    .frame(width: 36, height: 36)
-                    .background(LF.accentGradient, in: Circle())
-                    .foregroundStyle(.white)
-                    .shadow(color: LF.accent.opacity(0.24), radius: 6, y: 3)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 30, height: 30)
             }
             .buttonStyle(.plain)
+            .foregroundStyle(LF.textPrimary)
             .accessibilityLabel(appState.isPlaying ? "暂停" : "播放")
         }
         .padding(.horizontal, 16)
-        .frame(height: 56)
+        .frame(height: 30)
     }
 
     private func togglePlayback() {
@@ -384,6 +435,17 @@ struct EditorView: View {
         }
     }
 
+    /// 编辑帧优先作用于当前最后选中的素材元素；没有选中素材时保留原来的主素材回退行为。
+    private var selectedFrameClipID: String? {
+        guard let selectedID = appState.lastSelectedElementID,
+              appState.selectedElementIDs.contains(selectedID),
+              let element = appState.composition?.elements.first(where: { $0.id == selectedID }),
+              case .clip(let clipID) = element.kind else {
+            return nil
+        }
+        return clipID
+    }
+
     // MARK: - 播放时钟（仅播放时运行）
 
     // MARK: - 工具面板（sheet 弹出，遮住编辑页）
@@ -458,16 +520,33 @@ struct EditorView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    Button {
-                        toolSheet = nil
-                        showBackgroundPicker = true
-                    } label: {
+                    ColorPicker(
+                        "更多",
+                        selection: Binding(
+                            get: { selectedCanvasBackgroundColor },
+                            set: { appState.setBackground(color: $0.hexRGB) }
+                        ),
+                        supportsOpacity: false
+                    )
+                    .labelsHidden()
+                    .frame(width: 36, height: 36)
+                    .overlay {
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red], center: .center))
-                            .frame(width: 36, height: 36)
-                            .overlay { Text("更多").font(.caption2).foregroundStyle(.white) }
+                            .fill(
+                                AngularGradient(
+                                    colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
+                                    center: .center
+                                )
+                            )
+                            .overlay {
+                                Text("更多")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .shadow(color: .black.opacity(0.35), radius: 1)
+                            }
+                            .allowsHitTesting(false)
                     }
-                    .buttonStyle(.plain)
+                    .accessibilityLabel("更多背景颜色")
                 }
                 // 图案叠加（横排：类型+参数一行搞定）
                 HStack(spacing: 8) {
@@ -818,6 +897,18 @@ struct EditorView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+private enum WorkSaveResult: Identifiable {
+    case success(updated: Bool)
+    case failure
+
+    var id: String {
+        switch self {
+        case .success(let updated): updated ? "updated" : "created"
+        case .failure: "failure"
         }
     }
 }

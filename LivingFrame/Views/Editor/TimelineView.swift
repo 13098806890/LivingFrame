@@ -10,20 +10,33 @@ import SwiftUI
 struct TimelineView: View {
     @EnvironmentObject private var appState: AppState
 
+    /// 拖拽必须在不会随素材条一起移动的坐标系中计算。
+    /// 如果使用 DragGesture 默认的局部坐标系，素材条每次更新位置后都会改变下一帧的
+    /// translation 基准，形成“手指向右、素材左右来回跳”的反馈循环。
+    private static let contentCoordinateSpace = "living-frame.timeline-content"
+    private static let layerGutterCoordinateSpace = "living-frame.timeline-layer-gutter"
+
     private let trackGutterWidth: CGFloat = 38
     private let rowHeight: CGFloat = 42
-    private let rowSpacing: CGFloat = 4
+    /// 轨道之间保持极紧凑的分隔，避免素材较多时浪费垂直空间。
+    private let rowSpacing: CGFloat = 1
     private let rulerHeight: CGFloat = 26
+    /// 为 0s 标签预留半个标签宽度，让标签中心、主刻度线和播放头共用同一 x 坐标。
+    private let timelineLeadingInset: CGFloat = 18
+    /// 给最右侧 iOS 风格裁剪柄预留可见空间，避免贴到时间轴边界后被裁掉。
+    private let timelineTrailingInset: CGFloat = 18
     /// 时间轴缩放（1x = 全时长铺满，8x = 放大到帧级）
     @State private var zoom: CGFloat = 1
     @State private var lastPinchZoom: CGFloat = 1
     @State private var elementDragSession: ElementDragSession?
+    @State private var layerReorderSession: LayerReorderSession?
     @State private var audioDragAnchors: [UUID: TimeInterval] = [:]
     @State private var playheadDragStart: TimeInterval?
     @State private var isScrubbing = false
     /// 直接操作轨道时锁住外层 ScrollView，避免轨道内容跟着手势整体平移。
     @State private var isTimelineManipulating = false
-    /// 时间轴显示刻度的基准时长只增不减，避免缩短单个素材时整条时间轴突然重排。
+    /// 拖拽期间冻结的刻度基准：操作中允许内容把它撑长，松手后再按实际内容收缩，
+    /// 避免素材跟手移动时刻度反复重排。
     @State private var timelineScaleDuration: TimeInterval = 1
 
     private struct ElementDragAnchor {
@@ -54,6 +67,13 @@ struct TimelineView: View {
         let secondsPerPoint: CGFloat
     }
 
+    private struct LayerReorderSession {
+        let id: UUID
+        let initialOrder: [UUID]
+        let startIndex: Int
+        var currentIndex: Int
+    }
+
     private let maxTimelineHeight: CGFloat = 188
 
     private var rows: Int {
@@ -65,6 +85,18 @@ struct TimelineView: View {
         CGFloat(rows) * rowHeight + CGFloat(max(rows - 1, 0)) * rowSpacing
     }
 
+    /// 时间轴从上到下直接对应画布从上层到下层；同层级的旧工程按插入顺序稳定显示。
+    private func timelineElements(_ comp: Composition) -> [CompositionElement] {
+        comp.elements.enumerated()
+            .sorted { lhs, rhs in
+                if lhs.element.zIndex != rhs.element.zIndex {
+                    return lhs.element.zIndex > rhs.element.zIndex
+                }
+                return lhs.offset > rhs.offset
+            }
+            .map(\.element)
+    }
+
     /// 每像素对应的秒数（缩放后）
     private func secondsPerPoint(_ width: CGFloat) -> CGFloat {
         let duration = displayedTimelineDuration()
@@ -73,11 +105,14 @@ struct TimelineView: View {
 
     /// 时间轴显示完整素材内容，即使当前播放区间已经被裁短。
     private func displayedTimelineDuration() -> TimeInterval {
-        guard let comp = appState.composition else {
-            return max(timelineScaleDuration, 0.1)
-        }
+        max(contentTimelineDuration(), timelineScaleDuration, 0.1)
+    }
+
+    /// 不包含冻结基准的真实内容范围，用于拖拽结束后恢复合适的刻度上限。
+    private func contentTimelineDuration() -> TimeInterval {
+        guard let comp = appState.composition else { return 0.1 }
         let fullContentEnd = comp.elements.map(fullContentEndTime).max() ?? 0
-        return max(comp.duration, fullContentEnd, timelineScaleDuration, 0.1)
+        return max(comp.duration, fullContentEnd, 0.1)
     }
 
     private func fullContentEndTime(_ element: CompositionElement) -> TimeInterval {
@@ -98,40 +133,59 @@ struct TimelineView: View {
                 GeometryReader { geo in
                     // 给左侧轨道标识预留固定宽度，时间内容从同一条左边线开始。
                     let viewportWidth = max(geo.size.width - trackGutterWidth - 8, 1)
-                    let contentWidth = max(viewportWidth, viewportWidth * zoom)
+                    let timeViewportWidth = max(
+                        viewportWidth - timelineLeadingInset - timelineTrailingInset,
+                        1
+                    )
+                    let contentWidth = timelineLeadingInset
+                        + max(timeViewportWidth, timeViewportWidth * zoom)
+                        + timelineTrailingInset
                     let contentHeight = rulerHeight + totalHeight
-                    let spp = secondsPerPoint(viewportWidth)
-                    // 时间轴面板本身固定不做纵向平移；只有放大时间轴后，
-                    // 内容超出视口时才允许横向查看，避免拖空白区域时整块轨道跟手移动。
-                    ScrollView(.horizontal, showsIndicators: false) {
+                    let spp = secondsPerPoint(timeViewportWidth)
+                    let orderedElements = timelineElements(comp)
+                    // 轨道超过面板高度时由外层纵向滚动；右侧时间内容放大后再单独
+                    // 横向滚动。这样左侧轨道标识会和素材行一起上下移动，却不会被
+                    // 横向滚出视口。
+                    ScrollView(.vertical, showsIndicators: true) {
                         HStack(alignment: .top, spacing: 8) {
                             trackGutter(comp)
 
-                            ZStack(alignment: .topLeading) {
-                                ruler(width: viewportWidth, spp: spp)
-                                    .frame(width: contentWidth, height: rulerHeight, alignment: .leading)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                ZStack(alignment: .topLeading) {
+                                    ruler(width: viewportWidth, spp: spp)
+                                        .frame(width: contentWidth, height: rulerHeight, alignment: .leading)
 
-                                // 元素行
-                                ForEach(Array(comp.elements.enumerated()), id: \.element.id) { i, element in
-                                    elementRow(element, spp: spp)
-                                        .position(x: rowX(element, spp: spp), y: rulerHeight + rowCenterY(i))
+                                    // 元素行
+                                    ForEach(Array(orderedElements.enumerated()), id: \.element.id) { i, element in
+                                        elementRow(element, spp: spp)
+                                            .position(x: rowX(element, spp: spp), y: rulerHeight + rowCenterY(i))
+                                    }
+
+                                    // 音频行（每条音轨一行，元素行之下依次排开）
+                                    ForEach(Array(comp.audioClips.enumerated()), id: \.element.id) { i, audio in
+                                        audioRow(audio, spp: spp)
+                                            .position(x: audioX(audio, spp: spp), y: rulerHeight + rowCenterY(orderedElements.count + i))
+                                    }
+
+                                    // 播放头（可拖动定位）
+                                    playhead(spp: spp, height: totalHeight, contentWidth: contentWidth)
                                 }
-
-                                // 音频行（每条音轨一行，元素行之下依次排开）
-                                ForEach(Array(comp.audioClips.enumerated()), id: \.element.id) { i, audio in
-                                    audioRow(audio, spp: spp)
-                                        .position(x: audioX(audio, spp: spp), y: rulerHeight + rowCenterY(comp.elements.count + i))
-                                }
-
-                                // 播放头（可拖动定位）
-                                playhead(spp: spp, height: totalHeight, contentWidth: contentWidth)
+                                .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
+                                .animation(
+                                    .interactiveSpring(response: 0.28, dampingFraction: 0.82),
+                                    value: orderedElements.map(\.id)
+                                )
+                                .coordinateSpace(name: Self.contentCoordinateSpace)
                             }
-                            .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
+                            .scrollDisabled(isTimelineManipulating)
+                            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                            .frame(width: viewportWidth, height: contentHeight, alignment: .topLeading)
                         }
-                        .frame(width: trackGutterWidth + 8 + contentWidth, height: contentHeight, alignment: .topLeading)
+                        .frame(width: geo.size.width, height: contentHeight, alignment: .topLeading)
                         .simultaneousGesture(pinchZoomGesture)
                     }
-                    .scrollDisabled(contentWidth <= viewportWidth + 0.5 || isTimelineManipulating)
+                    .scrollDisabled(isTimelineManipulating)
+                    .scrollBounceBehavior(.basedOnSize, axes: .vertical)
                     .frame(width: geo.size.width, height: min(maxTimelineHeight, contentHeight), alignment: .topLeading)
                 }
                 .frame(height: min(maxTimelineHeight, rulerHeight + totalHeight))
@@ -144,25 +198,33 @@ struct TimelineView: View {
             }
         }
         .onAppear {
-            syncTimelineScaleDuration()
+            settleTimelineScaleDuration()
         }
-        .onChange(of: appState.composition?.duration) { _, newDuration in
-            timelineScaleDuration = max(timelineScaleDuration, newDuration ?? 1, 0.1)
+        .onChange(of: appState.composition?.duration) { _, _ in
+            if isTimelineManipulating {
+                growTimelineScaleDurationIfNeeded()
+            } else {
+                settleTimelineScaleDuration()
+            }
         }
         .onChange(of: appState.composition?.id) { _, _ in
-            timelineScaleDuration = max(appState.composition?.duration ?? 1, 0.1)
+            settleTimelineScaleDuration()
         }
     }
 
-    private func syncTimelineScaleDuration() {
-        timelineScaleDuration = max(timelineScaleDuration, displayedTimelineDuration(), 0.1)
+    private func growTimelineScaleDurationIfNeeded() {
+        timelineScaleDuration = max(timelineScaleDuration, contentTimelineDuration(), 1)
+    }
+
+    private func settleTimelineScaleDuration() {
+        timelineScaleDuration = max(contentTimelineDuration(), 1)
     }
 
     private var timelineHeader: some View {
         HStack(spacing: 8) {
             Label("时间轴", systemImage: "film.stack")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(LF.accentDeep)
+                .foregroundStyle(Color.black)
 
             Spacer(minLength: 4)
 
@@ -202,7 +264,7 @@ struct TimelineView: View {
 
             Text(String(format: "%.2f / %.1f s", appState.currentTime, appState.composition?.duration ?? 0))
                 .font(.caption2.monospacedDigit())
-                .foregroundStyle(LF.textSecondary)
+                .foregroundStyle(Color.black)
 
             Button {
                 appState.isReversed.toggle()
@@ -216,7 +278,7 @@ struct TimelineView: View {
                     )
             }
             .buttonStyle(.plain)
-            .foregroundStyle(appState.isReversed ? LF.accentDeep : LF.textSecondary)
+                .foregroundStyle(appState.isReversed ? Color.black : LF.textSecondary)
             .accessibilityLabel("倒放")
         }
     }
@@ -235,25 +297,51 @@ struct TimelineView: View {
 
     // MARK: - 刻度尺
 
-    private func ruler(width: CGFloat, spp: CGFloat) -> some View {
+    private func ruler(width _: CGFloat, spp: CGFloat) -> some View {
         let duration = displayedTimelineDuration()
         // 刻度间隔：保证标签间距 ≥ 48pt
         let candidates: [CGFloat] = [0.5, 1, 2, 5, 10, 15, 30]
         let step = candidates.first { $0 / spp >= 48 } ?? 60
-        return ZStack(alignment: .leading) {
+        let majorCount = max(Int(ceil(duration / step)), 1)
+        let majorWidth = step / spp
+        let minorDivisions = 4
+        let labelWidth: CGFloat = 34
+
+        return ZStack(alignment: .topLeading) {
             Rectangle()
-                .fill(LF.accentSoft.opacity(0.45))
-            HStack(spacing: 0) {
-                ForEach(0..<Int(duration / step) + 1, id: \.self) { i in
-                    VStack(alignment: .leading, spacing: 0) {
+                .fill(Color.black.opacity(0.08))
+
+            ForEach(0...majorCount, id: \.self) { i in
+                let majorX = timelineLeadingInset + CGFloat(i) * majorWidth
+
+                // 所有标签都与对应主刻度线共用中心点，包括 0 秒。
+                Rectangle()
+                    .fill(Color.black.opacity(0.72))
+                    .frame(width: 1, height: 9)
+                    .offset(x: majorX - 0.5)
+
+                Text(rulerTimeLabel(CGFloat(i) * step))
+                    .font(.system(size: 8))
+                    .foregroundStyle(Color.black)
+                    .frame(
+                        width: labelWidth,
+                        alignment: .center
+                    )
+                    .offset(
+                        x: majorX - labelWidth / 2,
+                        y: 11
+                    )
+
+                // 每两个主刻度之间四等分；中间短线稍长，便于快速判断半刻度。
+                if i < majorCount {
+                    ForEach(1..<minorDivisions, id: \.self) { division in
+                        let minorX = majorX
+                            + majorWidth * CGFloat(division) / CGFloat(minorDivisions)
                         Rectangle()
-                            .fill(LF.accentDeep.opacity(0.58))
-                            .frame(width: 1, height: 9)
-                            Text("\(Int(CGFloat(i) * step))s")
-                                .font(.system(size: 8))
-                                .foregroundStyle(LF.accentDeep.opacity(0.82))
+                            .fill(Color.black.opacity(division == 2 ? 0.55 : 0.35))
+                            .frame(width: 0.8, height: division == 2 ? 6 : 4)
+                            .offset(x: minorX - 0.4)
                     }
-                    .frame(width: step / spp, alignment: .leading)
                 }
             }
         }
@@ -262,13 +350,21 @@ struct TimelineView: View {
         .clipped()
     }
 
+    private func rulerTimeLabel(_ seconds: CGFloat) -> String {
+        if abs(seconds.rounded() - seconds) < 0.001 {
+            return "\(Int(seconds.rounded()))s"
+        }
+        return String(format: "%.1fs", Double(seconds))
+    }
+
     private func trackGutter(_ comp: Composition) -> some View {
-        VStack(spacing: 0) {
+        let orderedElements = timelineElements(comp)
+        return VStack(spacing: 0) {
             Color.clear.frame(height: rulerHeight)
 
             VStack(spacing: rowSpacing) {
-                ForEach(Array(comp.elements.enumerated()), id: \.element.id) { _, element in
-                    trackBadge(symbol: elementSymbol(element))
+                ForEach(orderedElements) { element in
+                    layerTrackBadge(element)
                         .frame(height: rowHeight)
                 }
                 ForEach(comp.audioClips) { _ in
@@ -278,6 +374,27 @@ struct TimelineView: View {
             }
         }
         .frame(width: trackGutterWidth, height: rulerHeight + totalHeight, alignment: .top)
+        .coordinateSpace(name: Self.layerGutterCoordinateSpace)
+    }
+
+    private func layerTrackBadge(_ element: CompositionElement) -> some View {
+        let isDragging = layerReorderSession?.id == element.id
+        return HStack(spacing: 2) {
+            Image(systemName: elementSymbol(element))
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(LF.textSecondary)
+        }
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(isDragging ? LF.accentDeep : Color.black.opacity(0.78))
+        .frame(width: 36, height: 30)
+        .background(isDragging ? LF.accentSoft : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            appState.selectElement(element.id)
+        }
+        .highPriorityGesture(layerReorderGesture(element))
+        .accessibilityLabel("\(element.name)，上下拖动调整图层")
     }
 
     private func trackBadge(symbol: String) -> some View {
@@ -285,6 +402,58 @@ struct TimelineView: View {
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(Color.black.opacity(0.78))
             .frame(width: 30, height: 30)
+    }
+
+    /// 左侧轨道手柄只处理垂直层级调整，不与素材条的水平移动/裁剪手势竞争。
+    private func layerReorderGesture(_ element: CompositionElement) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.35, maximumDistance: 10)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.layerGutterCoordinateSpace)))
+            .onChanged { value in
+                guard case let .second(true, dragValue?) = value else { return }
+
+                if layerReorderSession == nil {
+                    guard let comp = appState.composition else { return }
+                    let order = timelineElements(comp).map(\.id)
+                    guard let startIndex = order.firstIndex(of: element.id) else { return }
+                    layerReorderSession = LayerReorderSession(
+                        id: element.id,
+                        initialOrder: order,
+                        startIndex: startIndex,
+                        currentIndex: startIndex
+                    )
+                    appState.selectElement(element.id)
+                    isTimelineManipulating = true
+                }
+
+                guard var session = layerReorderSession,
+                      session.id == element.id else { return }
+                let rowStep = rowHeight + rowSpacing
+                let offset = Int((dragValue.translation.height / rowStep).rounded())
+                let targetIndex = min(
+                    max(session.startIndex + offset, 0),
+                    session.initialOrder.count - 1
+                )
+                guard targetIndex != session.currentIndex else { return }
+
+                var reordered = session.initialOrder
+                let movedID = reordered.remove(at: session.startIndex)
+                reordered.insert(movedID, at: targetIndex)
+                withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.82)) {
+                    appState.setElementLayerOrder(topToBottom: reordered)
+                }
+                session.currentIndex = targetIndex
+                layerReorderSession = session
+            }
+            .onEnded { _ in
+                if let session = layerReorderSession {
+                    LogStore.log(
+                        "timeline.layerReorder id=\(session.id) "
+                            + "from=\(session.startIndex) to=\(session.currentIndex)"
+                    )
+                }
+                layerReorderSession = nil
+                isTimelineManipulating = false
+            }
     }
 
     // MARK: - 行定位
@@ -295,21 +464,31 @@ struct TimelineView: View {
 
     private func rowX(_ element: CompositionElement, spp: CGFloat) -> CGFloat {
         let metrics = elementMetrics(element, spp: spp)
-        return metrics.outerStart + metrics.barWidth / 2
+        return timelineLeadingInset + metrics.outerStart + metrics.barWidth / 2
     }
 
     private func audioX(_ clip: AudioClip, spp: CGFloat) -> CGFloat {
         let barWidth = max(clip.duration / spp, 20)
-        return clip.startTime / spp + barWidth / 2
+        return timelineLeadingInset + clip.startTime / spp + barWidth / 2
     }
 
     private func elementMetrics(_ element: CompositionElement, spp: CGFloat) -> ElementTimelineMetrics {
         guard case .clip(let clipID) = element.kind,
               let clip = FrameCache.shared.clip(id: clipID) else {
-            let activeWidth = max((element.endTime - element.startTime) / spp, 20)
+            let activeDuration = max(element.endTime - element.startTime, 0.1)
+            let cycleDuration: TimeInterval
+            if case .decoration(let decorationID) = element.kind,
+               let defaultDuration = DecorationRenderer.stickerDefinition(for: decorationID)?.defaultDuration,
+               defaultDuration.isFinite, defaultDuration > 0 {
+                cycleDuration = defaultDuration
+            } else {
+                cycleDuration = activeDuration
+            }
+            let activeWidth = max(activeDuration / spp, 20)
+            let barWidth = max(max(cycleDuration, activeDuration) / spp, 20)
             return ElementTimelineMetrics(
                 outerStart: element.startTime / spp,
-                barWidth: activeWidth,
+                barWidth: barWidth,
                 activeOffset: 0,
                 activeWidth: activeWidth
             )
@@ -318,20 +497,21 @@ struct TimelineView: View {
         let speed = max(clip.playbackSpeed, 0.01)
         let sourceDuration = max(clip.activeDuration, 0.001)
         let sourceStart = min(max(element.sourceStartTime, 0), sourceDuration)
-        let fullTimelineDuration = sourceDuration / speed
-        // 有效区域的视觉边界只由时间轴上的 start/end 决定。
-        // sourceStart/sourceEnd 只负责源素材入点/出点，不能再参与有效条宽度计算，
-        // 否则右边界减少时会同时改变有效区的两套几何量，产生“缩短两倍”的错觉。
+        let sourceEnd = element.sourceEndTime.isFinite
+            ? min(max(element.sourceEndTime, sourceStart), sourceDuration)
+            : sourceDuration
         let activeTimelineDuration = max(element.endTime - element.startTime, 0.1)
-        let barWidth = max(fullTimelineDuration / spp, 20)
-        let activeOffset = min(
-            max(sourceStart / speed / spp, 0),
-            max(0, barWidth - 20)
+        let sourceCycleDuration = max((sourceEnd - sourceStart) / speed, 0.1)
+        let isLooping = activeTimelineDuration > sourceCycleDuration + 0.001
+        let activeOffset = isLooping ? 0 : max(sourceStart / speed / spp, 0)
+        let cycleTimelineDuration = isLooping
+            ? max(sourceEnd / speed, 0.1)
+            : sourceCycleDuration
+        let barWidth = max(
+            (activeOffset * spp + max(cycleTimelineDuration, activeTimelineDuration)) / spp,
+            20
         )
-        let activeWidth = min(
-            max(activeTimelineDuration / spp, 20),
-            barWidth
-        )
+        let activeWidth = max(activeTimelineDuration / spp, 20)
         return ElementTimelineMetrics(
             outerStart: element.startTime / spp - activeOffset,
             barWidth: barWidth,
@@ -347,18 +527,21 @@ struct TimelineView: View {
         let barWidth = metrics.barWidth
         let barHeight = rowHeight - 8
         let isSelected = appState.isElementSelected(element.id)
+        let isLoopTrimDragging = isLoopTrimActive(for: element.id)
         return ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 8)
                 .fill(color(for: element).opacity(0.22))
                 .frame(width: barWidth, height: barHeight)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? LF.accent : .clear, lineWidth: 2.5)
-                }
             // 帧缩略图拼贴：人物素材和贴纸都在时间轴上显示实际帧。
             if case .clip(let clipID) = element.kind,
                let clip = FrameCache.shared.clip(id: clipID) {
-                let fullStrip = thumbnails(for: clip, barWidth: barWidth, spp: spp)
+                let fullStrip = thumbnails(
+                    for: clip,
+                    element: element,
+                    metrics: metrics,
+                    barWidth: barWidth,
+                    spp: spp
+                )
                     .frame(width: barWidth, height: barHeight)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 ZStack(alignment: .leading) {
@@ -397,55 +580,194 @@ struct TimelineView: View {
                 .allowsHitTesting(false)
             }
 
-            // 条内标签，帮助用户在多轨道时快速识别素材。
-            HStack(spacing: 4) {
-                Image(systemName: elementSymbol(element))
-                    .font(.system(size: 9, weight: .bold))
-                Text(displayName(for: element))
-                    .font(.system(size: 10, weight: .semibold))
-                    .lineLimit(1)
+            // 正常状态只用缩略图里的窄明暗接缝表示循环边界；不画贯穿素材的竖线。
+            ForEach(loopBoundaryOffsets(element, metrics: metrics, spp: spp), id: \.self) { offset in
+                if !isSelected {
+                    LoopBoundarySeam(height: barHeight)
+                        .offset(x: offset - 2)
+                }
+                if isSelected {
+                    // 选中时才显示顶部两侧相向弧线，像两段胶片在此处轻轻接合。
+                    LoopBoundaryJoinArc()
+                        .stroke(
+                            Color.black.opacity(0.58),
+                            style: StrokeStyle(lineWidth: 1.2, lineCap: .round)
+                        )
+                        .frame(width: 12, height: 6)
+                        .offset(x: offset - 6, y: -(barHeight / 2) + 2)
+                        .zIndex(3)
+                }
             }
-                .foregroundStyle(.white.opacity(0.96))
-            .padding(.horizontal, 8)
-            .frame(width: max(barWidth - 24, 0), height: barHeight, alignment: .leading)
             .allowsHitTesting(false)
 
-            // 左右裁剪手柄（仅负责视觉，不阻挡热区）
-            HStack(spacing: 0) {
-                Color.clear.frame(width: metrics.activeOffset)
-                Capsule()
-                    .fill(LF.accent)
-                    .frame(width: 4, height: rowHeight - 18)
-                Spacer()
-                    .frame(width: max(0, metrics.activeWidth - 8))
-                Capsule()
-                    .fill(LF.accent)
-                    .frame(width: 4, height: rowHeight - 18)
+            // 素材和贴纸帧条只展示内容，不再叠加名称或类型图标。
+            if showsNameOnTimeline(element) {
+                HStack(spacing: 4) {
+                    Image(systemName: elementSymbol(element))
+                        .font(.system(size: 9, weight: .bold))
+                    Text(displayName(for: element))
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(.white.opacity(0.96))
+                .padding(.horizontal, 8)
+                .frame(width: max(barWidth - 24, 0), height: barHeight, alignment: .leading)
+                .allowsHitTesting(false)
             }
-            // 必须左对齐：barWidth 是完整素材范围，不能把缩短后的有效区间居中。
-            .frame(width: barWidth, height: barHeight, alignment: .leading)
-            .allowsHitTesting(false)
+
+            if isSelected {
+                // 仿 iOS“照片”视频裁剪：只给当前展示范围画细黑框，未选区保持弱化。
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(Color.black, lineWidth: 1.5)
+                    .frame(width: max(metrics.activeWidth, 8), height: barHeight)
+                    .offset(x: metrics.activeOffset)
+                    .allowsHitTesting(false)
+
+                // 两侧圆角拖拽柄略微超出胶片条，避免与缩略图融成一块。
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: max(metrics.activeOffset - 2.5, 0))
+                    Capsule()
+                        .fill(Color.black)
+                        .frame(width: 5, height: barHeight + 8)
+                    Spacer()
+                        .frame(width: max(metrics.activeWidth - 5, 0))
+                    Capsule()
+                        .fill(Color.black)
+                        .frame(width: 5, height: barHeight + 8)
+                }
+                // 必须左对齐：barWidth 是完整素材范围，不能把缩短后的有效区间居中。
+                .frame(width: barWidth, height: barHeight, alignment: .leading)
+                .allowsHitTesting(false)
+            }
+
+            if isLoopTrimDragging,
+               let count = loopCount(element, metrics: metrics, spp: spp) {
+                LoopCountBadge(count: count)
+                    .offset(
+                        x: min(
+                            max(metrics.activeOffset + metrics.activeWidth - 52, 0),
+                            max(barWidth - 52, 0)
+                        ),
+                        y: -(barHeight / 2 + 12)
+                    )
+                    .allowsHitTesting(false)
+            }
         }
         .frame(width: barWidth, height: barHeight)
         .contentShape(Rectangle())
-        .gesture(elementDragGesture(element, spp: spp))
+        // 与纵向 ScrollView 同时识别；手势内部只接受明确的横向拖动。
+        .simultaneousGesture(elementDragGesture(element, spp: spp))
         .onTapGesture {
             appState.selectElement(element.id)
         }
     }
 
-    /// 素材条内帧缩略图拼贴（按条宽平铺，最多 24 个）
-    private func thumbnails(for clip: SegmentedClip, barWidth: CGFloat, spp: CGFloat) -> some View {
+    /// 返回每个循环起点在素材条内的 x 坐标；只对素材和贴纸生效。
+    private func loopBoundaryOffsets(
+        _ element: CompositionElement,
+        metrics: ElementTimelineMetrics,
+        spp: CGFloat
+    ) -> [CGFloat] {
+        guard let cycleWidth = loopCycleWidth(element, spp: spp),
+              cycleWidth > 2 else { return [] }
+        var offsets: [CGFloat] = []
+        var boundary = cycleWidth
+        // activeWidth 可能包含两次以上循环，因此逐个绘制所有后续循环起点。
+        while boundary < metrics.activeWidth - 1 {
+            offsets.append(metrics.activeOffset + boundary)
+            boundary += cycleWidth
+        }
+        return offsets
+    }
+
+    private func isLoopTrimActive(for id: UUID) -> Bool {
+        guard let session = elementDragSession, session.id == id else { return false }
+        if case .trimEnd = session.mode { return true }
+        return false
+    }
+
+    private func loopCount(
+        _ element: CompositionElement,
+        metrics: ElementTimelineMetrics,
+        spp: CGFloat
+    ) -> Int? {
+        guard let cycleWidth = loopCycleWidth(element, spp: spp),
+              cycleWidth > 2 else { return nil }
+        return max(1, Int(ceil(metrics.activeWidth / cycleWidth)))
+    }
+
+    /// 第一次循环的时间轴宽度；只对素材和贴纸生效。
+    private func loopCycleWidth(_ element: CompositionElement, spp: CGFloat) -> CGFloat? {
+        switch element.kind {
+        case .clip(let clipID):
+            guard let clip = FrameCache.shared.clip(id: clipID) else { return nil }
+            let speed = max(clip.playbackSpeed, 0.01)
+            let sourceDuration = max(clip.activeDuration, 0.001)
+            let sourceStart = min(max(element.sourceStartTime, 0), sourceDuration)
+            let sourceEnd = element.sourceEndTime.isFinite
+                ? min(max(element.sourceEndTime, sourceStart), sourceDuration)
+                : sourceDuration
+            let activeDuration = max(element.endTime - element.startTime, 0.1)
+            let sourceCycleDuration = max((sourceEnd - sourceStart) / speed, 0.1)
+            let isLooping = activeDuration > sourceCycleDuration + 0.001
+            let cycleDuration = isLooping ? max(sourceEnd / speed, 0.1) : sourceCycleDuration
+            return max(cycleDuration / spp, 0)
+        case .decoration(let decorationID):
+            guard let duration = DecorationRenderer.stickerDefinition(for: decorationID)?.defaultDuration,
+                  duration.isFinite, duration > 0 else { return nil }
+            return duration / spp
+        case .effect, .text:
+            return nil
+        }
+    }
+
+    /// 素材条内帧缩略图拼贴（按实际播放顺序平铺，最多 24 个）。
+    /// 循环素材从第一次播放入点开始，回绕时从源区间起点继续，而不是每轮重启入点。
+    private func thumbnails(
+        for clip: SegmentedClip,
+        element: CompositionElement,
+        metrics: ElementTimelineMetrics,
+        barWidth: CGFloat,
+        spp: CGFloat
+    ) -> some View {
         let thumbW: CGFloat = 26
         let count = max(Int(barWidth / thumbW), 1)
         let visibleCount = min(count, 24)
         let cellWidth = barWidth / CGFloat(visibleCount)
         let indices = (0..<visibleCount).map { i -> Int in
-            let active = clip.activeFrameIndices
-            guard !active.isEmpty else { return 0 }
-            let t = CGFloat(i) / CGFloat(max(visibleCount, 1)) * CGFloat(active.count)
-            let idx = min(max(Int(t), 0), active.count - 1)
-            return active[idx]
+            let playbackFrames = clip.playbackFrameIndices
+            guard !playbackFrames.isEmpty, clip.fps.isFinite, clip.fps > 0 else { return 0 }
+
+            let speed = max(clip.playbackSpeed, 0.01)
+            let sourceDuration = max(clip.activeDuration, 0.001)
+            let sourceStart = min(max(element.sourceStartTime, 0), sourceDuration)
+            let sourceEnd = element.sourceEndTime.isFinite
+                ? min(max(element.sourceEndTime, sourceStart), sourceDuration)
+                : sourceDuration
+            let activeDuration = max(element.endTime - element.startTime, 0.1)
+            let sourceCycleDuration = max((sourceEnd - sourceStart) / speed, 0.1)
+            let isLooping = activeDuration > sourceCycleDuration + 0.001
+            let rangeStart = isLooping ? 0 : sourceStart
+            let startIndex = min(
+                max(Int((rangeStart * clip.fps).rounded(.down)), 0),
+                playbackFrames.count - 1
+            )
+            let endIndex = min(
+                max(Int((sourceEnd * clip.fps).rounded(.up)), startIndex + 1),
+                playbackFrames.count
+            )
+            let cycleFrameCount = max(endIndex - startIndex, 1)
+
+            let x = (CGFloat(i) + 0.5) * cellWidth
+            let sourceTime: TimeInterval
+            if x < metrics.activeOffset {
+                sourceTime = x * spp * speed
+            } else {
+                let elapsed = (x - metrics.activeOffset) * spp
+                sourceTime = sourceStart + elapsed * speed
+            }
+            let relativeFrame = max(Int(((sourceTime - rangeStart) * clip.fps).rounded(.down)), 0)
+            return playbackFrames[startIndex + (relativeFrame % cycleFrameCount)]
         }
         return HStack(spacing: 1) {
             ForEach(0..<indices.count, id: \.self) { i in
@@ -474,7 +796,7 @@ struct TimelineView: View {
                 .frame(width: barWidth, height: rowHeight - 8)
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? LF.accent : .clear, lineWidth: 2.5)
+                        .stroke(isSelected ? Color.black : .clear, lineWidth: 1.5)
                 }
             HStack(spacing: 3) {
                 Image(systemName: "waveform")
@@ -486,7 +808,8 @@ struct TimelineView: View {
         }
         .frame(width: barWidth, height: rowHeight - 8)
         .contentShape(Rectangle())
-        .gesture(dragAudio(clip, spp: spp))
+        // 纵向滑动交给轨道列表，只有明确横向拖动才移动音频。
+        .simultaneousGesture(dragAudio(clip, spp: spp))
         .onTapGesture {
             appState.selectedAudioID = clip.id
             appState.clearElementSelection()
@@ -496,19 +819,18 @@ struct TimelineView: View {
     // MARK: - 播放头（可拖动）
 
     private func playhead(spp: CGFloat, height: CGFloat, contentWidth: CGFloat) -> some View {
-        let x = appState.currentTime / spp
-        // 刻度尺的 0 秒就是内容区域的 x=0；播放头不能再人为留出 14pt 边距，
-        // 否则最左侧时间刻度和竖线会错开。
-        let clampedX = min(max(x, 0), contentWidth)
+        let x = timelineLeadingInset + appState.currentTime / spp
+        // 刻度尺与播放头共用时间内容的起始留白，0 秒保持同一中心线。
+        let clampedX = min(max(x, timelineLeadingInset), contentWidth)
         let totalHeight = rulerHeight + height
         return ZStack(alignment: .top) {
             Rectangle()
-                .fill(LF.accent)
-                .frame(width: 3, height: totalHeight)
+                .fill(Color.black)
+                .frame(width: 1.5, height: totalHeight)
                 .allowsHitTesting(false)
             TimelinePlayheadMarker()
-                .fill(LF.accent)
-                .frame(width: 16, height: 12)
+                .fill(Color.black)
+                .frame(width: 10, height: 7)
                 .allowsHitTesting(false)
         }
             .frame(width: 16, height: totalHeight)
@@ -523,7 +845,7 @@ struct TimelineView: View {
     }
 
     private func playheadDragGesture(spp: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 0)
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.contentCoordinateSpace))
             .onChanged { value in
                 if playheadDragStart == nil {
                     playheadDragStart = appState.currentTime
@@ -548,7 +870,7 @@ struct TimelineView: View {
                     isTimelineManipulating = true
                     appState.pause()
                 }
-                appState.seek(to: value.location.x * spp)
+                appState.seek(to: max(value.location.x - timelineLeadingInset, 0) * spp)
             }
             .onEnded { _ in
                 isScrubbing = false
@@ -560,11 +882,20 @@ struct TimelineView: View {
 
     /// 一条素材只使用一个拖拽手势；按下时确定模式，整个手势期间不再重新命中。
     private func elementDragGesture(_ element: CompositionElement, spp: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 8, coordinateSpace: .named(Self.contentCoordinateSpace))
             .onChanged { value in
                 if elementDragSession == nil {
+                    // 上下滚动轨道时不建立素材编辑会话，也不锁住 ScrollView。
+                    let horizontal = abs(value.translation.width)
+                    let vertical = abs(value.translation.height)
+                    guard horizontal >= 8, horizontal > vertical * 1.5 else { return }
                     let metrics = elementMetrics(element, spp: spp)
-                    guard let mode = dragMode(at: value.startLocation.x, metrics: metrics) else { return }
+                    // 手势坐标现在以整个时间轴内容为基准；换算回素材条内部坐标后再判断
+                    // 左裁剪 / 整体移动 / 右裁剪的命中区域。
+                    let localStartX = value.startLocation.x
+                        - timelineLeadingInset
+                        - metrics.outerStart
+                    guard let mode = dragMode(at: localStartX, metrics: metrics) else { return }
                     elementDragSession = ElementDragSession(
                         id: element.id,
                         mode: mode,
@@ -603,9 +934,12 @@ struct TimelineView: View {
                 }
             }
             .onEnded { _ in
+                let didEdit = elementDragSession?.id == element.id
                 elementDragSession = nil
+                guard didEdit else { return }
                 isTimelineManipulating = false
                 appState.recomputeDuration()
+                settleTimelineScaleDuration()
             }
     }
 
@@ -639,6 +973,25 @@ struct TimelineView: View {
             ? min(max(anchor.sourceEnd, anchor.sourceStart), sourceDuration)
             : sourceDuration
         let minimumSourceSpan = min(0.1 * speed, sourceDuration)
+
+        // 已经超过一个源循环时，前端裁剪只改变时间轴起点，不能再用单次素材公式
+        // 通过 anchor.end 反推 start，否则会瞬间跳到最后一个循环的起点并吃掉循环区间。
+        let sourceCycleDuration = max((sourceEnd - anchor.sourceStart) / speed, 0.1)
+        if anchor.end - anchor.start > sourceCycleDuration + 0.001 {
+            let newStart = min(max(anchor.start + delta, 0), anchor.end - 0.1)
+            let maximumSourceStart = max(sourceEnd - minimumSourceSpan, 0)
+            let newSourceStart = min(
+                max(anchor.sourceStart + (newStart - anchor.start) * speed, 0),
+                maximumSourceStart
+            )
+            appState.updateElement(element.id, { element in
+                element.startTime = newStart
+                element.sourceStartTime = newSourceStart
+                element.sourceEndTime = sourceEnd
+            }, recomputeDuration: false)
+            return
+        }
+
         let minimumSourceStart = max(0, sourceEnd - anchor.end * speed)
         let maximumSourceStart = max(minimumSourceStart, sourceEnd - minimumSourceSpan)
         let newSourceStart = min(
@@ -671,11 +1024,21 @@ struct TimelineView: View {
         let oldSourceEnd = anchor.sourceEnd.isFinite
             ? min(max(anchor.sourceEnd, minimumSourceEnd), sourceDuration)
             : sourceDuration
-        let newSourceEnd = min(
-            max(oldSourceEnd + delta * speed, minimumSourceEnd),
-            sourceDuration
-        )
-        let newEnd = anchor.start + (newSourceEnd - sourceStart) / speed
+        let requestedEnd = max(anchor.start + 0.1, anchor.end + delta)
+        let firstCycleEnd = anchor.start + (oldSourceEnd - sourceStart) / speed
+        let newSourceEnd: TimeInterval
+        let newEnd: TimeInterval
+        if requestedEnd <= firstCycleEnd {
+            newSourceEnd = min(
+                max(sourceStart + (requestedEnd - anchor.start) * speed, minimumSourceEnd),
+                sourceDuration
+            )
+            newEnd = anchor.start + (newSourceEnd - sourceStart) / speed
+        } else {
+            // 超出当前源区间时保留源出点，时间轴多出的部分由渲染器循环播放。
+            newSourceEnd = oldSourceEnd
+            newEnd = requestedEnd
+        }
         appState.updateElement(element.id, { element in
             element.startTime = anchor.start
             element.endTime = max(newEnd, anchor.start + 0.1)
@@ -698,8 +1061,14 @@ struct TimelineView: View {
     }
 
     private func dragAudio(_ clip: AudioClip, spp: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 8, coordinateSpace: .named(Self.contentCoordinateSpace))
             .onChanged { value in
+                if audioDragAnchors[clip.id] == nil {
+                    // 明确的上下手势留给轨道列表滚动，不移动音频。
+                    let horizontal = abs(value.translation.width)
+                    let vertical = abs(value.translation.height)
+                    guard horizontal >= 8, horizontal > vertical * 1.5 else { return }
+                }
                 guard let comp = appState.composition else { return }
                 let anchor = audioDragAnchors[clip.id] ?? {
                     if appState.isPlaying { appState.pause() }
@@ -720,16 +1089,18 @@ struct TimelineView: View {
                 }, syncPreview: false)
             }
             .onEnded { _ in
-                audioDragAnchors.removeValue(forKey: clip.id)
+                let didEdit = audioDragAnchors.removeValue(forKey: clip.id) != nil
+                guard didEdit else { return }
                 isTimelineManipulating = false
                 appState.finishAudioEdit()
+                settleTimelineScaleDuration()
             }
     }
 
     private func elementSymbol(_ element: CompositionElement) -> String {
         switch element.kind {
         case .clip: "person.crop.rectangle"
-        case .decoration: "rectangle.badge.plus"
+        case .decoration: EditorTool.sticker.icon
         case .effect: "sparkles"
         case .text: "textformat"
         }
@@ -743,6 +1114,16 @@ struct TimelineView: View {
         return catalogName == decorationID ? element.name : catalogName
     }
 
+    /// 素材保留类型图标；贴纸只显示帧条；二者都不显示名称。
+    private func showsNameOnTimeline(_ element: CompositionElement) -> Bool {
+        switch element.kind {
+        case .clip, .decoration:
+            return false
+        case .effect, .text:
+            return true
+        }
+    }
+
     private func color(for element: CompositionElement) -> Color {
         switch element.kind {
         case .clip: Color(hex: "79C9EC").opacity(0.82)
@@ -750,6 +1131,60 @@ struct TimelineView: View {
         case .effect: Color.pink.opacity(0.75)
         case .text: Color.blue.opacity(0.75)
         }
+    }
+}
+
+/// 正常状态的循环接缝：很窄的明暗过渡，不切断缩略图画面。
+private struct LoopBoundarySeam: View {
+    let height: CGFloat
+
+    var body: some View {
+        LinearGradient(
+            colors: [.clear, Color.black.opacity(0.16), .clear],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        .frame(width: 4, height: max(height - 2, 1))
+        .blur(radius: 0.35)
+    }
+}
+
+/// 选中状态的循环起点：顶部边缘两侧相向的短圆弧，避免形成明显分割线。
+private struct LoopBoundaryJoinArc: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let top = rect.minY + 1
+        let bottom = rect.maxY - 1
+        let halfGap: CGFloat = 1
+        let controlOffset: CGFloat = 5
+
+        // 左侧弧线向左鼓出，右侧弧线向右鼓出，形成轻量的 )( 接缝。
+        path.move(to: CGPoint(x: rect.midX - halfGap, y: top))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.midX - halfGap, y: bottom),
+            control: CGPoint(x: rect.midX - controlOffset, y: rect.midY)
+        )
+        path.move(to: CGPoint(x: rect.midX + halfGap, y: top))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.midX + halfGap, y: bottom),
+            control: CGPoint(x: rect.midX + controlOffset, y: rect.midY)
+        )
+        return path
+    }
+}
+
+/// 仅在拖动结束手柄时显示的循环次数提示，不占用时间轴常驻空间。
+private struct LoopCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text("循环 ×\(count)")
+            .font(.system(size: 9, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .frame(height: 18)
+            .background(Color.black.opacity(0.72), in: Capsule())
+            .shadow(color: .black.opacity(0.14), radius: 2, y: 1)
     }
 }
 

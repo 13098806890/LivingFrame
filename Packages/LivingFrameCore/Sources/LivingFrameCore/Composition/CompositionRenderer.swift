@@ -10,13 +10,17 @@ public struct CompositionRenderer {
     private let decorationRenderer = DecorationRenderer()
     /// 预览模式：素材帧与输出按此最大边解码/渲染（nil = 全分辨率，仅影响预览，不改变导出）
     private let frameMaxPixelSize: CGFloat?
+    /// 排除帧的补位方向；倒放预览时使用右侧最近保留帧。
+    private let isPlaybackReversed: Bool
 
     public init(
         context: CIContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()]),
-        frameMaxPixelSize: CGFloat? = nil
+        frameMaxPixelSize: CGFloat? = nil,
+        isPlaybackReversed: Bool = false
     ) {
         self.context = context
         self.frameMaxPixelSize = frameMaxPixelSize
+        self.isPlaybackReversed = isPlaybackReversed
     }
 
     // MARK: - 输出
@@ -25,7 +29,11 @@ public struct CompositionRenderer {
         _ composition: Composition,
         at time: TimeInterval
     ) -> CGImage? {
-        guard let ci = renderCIImage(composition, at: time) else { return nil }
+        let playbackTime = composition.compositionPlaybackTime(
+            for: time,
+            reversed: isPlaybackReversed
+        )
+        guard let ci = renderCIImage(composition, at: playbackTime) else { return nil }
         let rect = composition.renderRect
         // 预览输出降采样到视口分辨率：先裁到画布区域再缩放，
         // 避免对整图（含画布外元素）缩放时超出区域被填黑
@@ -43,7 +51,11 @@ public struct CompositionRenderer {
     }
 
     public func render(_ composition: Composition, at time: TimeInterval, into pixelBuffer: CVPixelBuffer) -> Bool {
-        guard let ci = renderCIImage(composition, at: time) else { return false }
+        let playbackTime = composition.compositionPlaybackTime(
+            for: time,
+            reversed: isPlaybackReversed
+        )
+        guard let ci = renderCIImage(composition, at: playbackTime) else { return false }
         context.render(ci, to: pixelBuffer, bounds: composition.renderRect, colorSpace: nil)
         return true
     }
@@ -167,10 +179,24 @@ public struct CompositionRenderer {
                 // 时间轴上的 start/end 只表示当前播放区间，不能再决定素材从第几帧开始。
                 let sourceDuration = clip.activeDuration
                 let sourceStart = min(max(element.sourceStartTime, 0), sourceDuration)
-                let playTime = sourceStart + max(0, time - element.startTime) * clip.playbackSpeed
+                let sourceEnd = element.sourceEndTime.isFinite
+                    ? min(max(element.sourceEndTime, sourceStart), sourceDuration)
+                    : sourceDuration
+                let elapsed = max(0, time - element.startTime)
+                let sourceCycleDuration = max(
+                    (sourceEnd - sourceStart) / max(clip.playbackSpeed, 0.01),
+                    0.1
+                )
+                let isLooping = element.endTime - element.startTime > sourceCycleDuration + 0.001
+                // 循环素材的第一次播放可以从裁剪后的入点开始，但循环回绕必须回到
+                // 源区间的起点（例如 3,4,5,6,1,2...），不能每轮都从 3 重启。
+                let playbackRangeStart = isLooping ? 0 : sourceStart
+                let playTime = sourceStart + elapsed * clip.playbackSpeed
                 if let frame = clipFrameImage(
                     clipID: clipID,
-                    at: playTime
+                    at: playTime,
+                    sourceStart: playbackRangeStart,
+                    sourceEnd: sourceEnd
                 ) {
                 // 预览用缩略图（尺寸 < 素材实际像素）。不把源图放大回全尺寸——
                 // 放大插值会在人物边缘产生半透明残留像素（贴边时形成"阴影线"）。
@@ -302,22 +328,45 @@ public struct CompositionRenderer {
     }
     private func clipFrameImage(
         clipID: String,
-        at time: TimeInterval
+        at time: TimeInterval,
+        sourceStart: TimeInterval = 0,
+        sourceEnd: TimeInterval? = nil
     ) -> CIImage? {
         guard let clip = FrameCache.shared.clip(id: clipID) else { return nil }
-        let active = clip.activeFrameIndices
-        guard !active.isEmpty else { return nil }
-        guard time.isFinite, clip.fps.isFinite, clip.fps > 0 else {
-            if let frame = FrameCache.shared.cachedFrame(for: clip, index: active[0]) {
+        let playbackFrames = clip.playbackFrameIndices(reversed: isPlaybackReversed)
+        guard !playbackFrames.isEmpty else { return nil }
+        let fps = clip.fps
+        guard fps.isFinite, fps > 0 else {
+            if let frame = FrameCache.shared.cachedFrame(for: clip, index: playbackFrames[0]) {
                 return CIImage(cgImage: frame)
             }
             return nil
         }
-        // 按 activeFrameIndices 顺序播放（视频编辑逻辑：素材播完即结束，不循环）
-        let rawIndex = Int((time * clip.fps).rounded(.down))
-        // 超出素材时长（排除帧后）→ 素材已结束，不再渲染（元素消失）
-        guard rawIndex >= 0, rawIndex < active.count else { return nil }
-        let index = active[rawIndex]
+        let sourceDuration = max(clip.activeDuration, 0)
+        let boundedStart = min(max(sourceStart.isFinite ? sourceStart : 0, 0), sourceDuration)
+        let boundedEnd = min(
+            max(sourceEnd?.isFinite == true ? sourceEnd! : sourceDuration, boundedStart),
+            sourceDuration
+        )
+        let startIndex = min(
+            max(Int((boundedStart * fps).rounded(.down)), 0),
+            playbackFrames.count - 1
+        )
+        let endIndex = min(
+            max(Int((boundedEnd * fps).rounded(.up)), startIndex + 1),
+            playbackFrames.count
+        )
+        let cycleFrameCount = max(endIndex - startIndex, 1)
+        guard time.isFinite else {
+            if let frame = FrameCache.shared.cachedFrame(for: clip, index: playbackFrames[startIndex]) {
+                return CIImage(cgImage: frame)
+            }
+            return nil
+        }
+        // 素材条延长后按当前源入点/出点循环，不再在源素材末尾显示空白。
+        // 帧编辑产生的 playbackFrames 仍然保留原有补位结果，因此循环不会破坏帧编辑语义。
+        let relativeFrame = max(Int(((time - boundedStart) * fps).rounded(.down)), 0)
+        let index = playbackFrames[startIndex + (relativeFrame % cycleFrameCount)]
         let frame: CGImage?
         if let frameMaxPixelSize {
             frame = FrameCache.shared.cachedThumbnail(

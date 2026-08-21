@@ -152,24 +152,22 @@ struct AssetPickerView: View {
     }
 }
 
-/// 动态素材预览：默认停在第一帧，点击左下角按钮后按素材帧率播放一次。
-/// 播放状态独立于素材选择状态，避免点击播放时误触选中素材。
+/// 动态素材预览：默认停在第一帧，由素材卡片传入播放状态并按素材帧率播放一次。
+/// 播放按钮放在卡片外层，避免预览内容被裁切时一起消失。
 struct AnimatedClipPreview: View {
     let clip: SegmentedClip
     let maxPixelSize: CGFloat
-    @State private var isPlaying = false
+    @Binding var isPlaying: Bool
     @State private var framePosition = 0
     /// 点击播放后一次性加载的小尺寸帧；播放期间只切换内存中的 CGImage，避免每帧重复解码。
     @State private var decodedFrames: [CGImage] = []
-    @State private var playbackRequest = 0
 
     private var activeFrames: [Int] {
         clip.activeFrameIndices
     }
 
     private var playbackFrames: [Int] {
-        // 如果旧素材的排除帧记录异常，仍回退到磁盘上的完整帧序列，保证动态素材可播放。
-        activeFrames.count > 1 ? activeFrames : Array(0..<max(clip.frameCount, 1))
+        clip.playbackFrameIndices
     }
 
     private var previewFrame: Int {
@@ -198,36 +196,17 @@ struct AnimatedClipPreview: View {
             } else {
                 ClipThumbnailView(clip: clip, index: previewFrame, maxPixelSize: maxPixelSize)
             }
-
-            if isDynamic {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Button {
-                            togglePlayback()
-                        } label: {
-                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 32, height: 32)
-                                .background(.black.opacity(0.58), in: Circle())
-                                .overlay {
-                                    Circle()
-                                        .stroke(.white.opacity(0.35), lineWidth: 0.8)
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                        .accessibilityLabel(isPlaying ? "暂停动态素材" : "播放动态素材")
-                        Spacer()
-                    }
-                    .padding(6)
-                }
-            }
         }
-        .task(id: playbackRequest) {
+        .task(id: isPlaying) {
             await playOnceIfNeeded()
+        }
+        .onAppear {
+            LogStore.log(
+                "clipPreview.appear id=\(clip.id) name=\(clip.name) "
+                    + "frameCount=\(clip.frameCount) activeFrames=\(activeFrames.count) "
+                    + "isDynamic=\(isDynamic) showsPlayButton=\(isDynamic) "
+                    + "fps=\(clip.fps) maxPixelSize=\(Int(maxPixelSize))"
+            )
         }
         .onDisappear {
             // 离开滚动区域时取消播放任务，避免不可见素材继续解码和刷新。
@@ -239,21 +218,16 @@ struct AnimatedClipPreview: View {
             isPlaying = false
             decodedFrames.removeAll(keepingCapacity: false)
         }
-    }
-
-    private func togglePlayback() {
-        if isPlaying {
-            isPlaying = false
-            framePosition = 0
-        } else {
-            framePosition = 0
-            isPlaying = true
+        .onChange(of: isPlaying) { _, playing in
+            if !playing {
+                framePosition = 0
+            }
         }
-        playbackRequest &+= 1
     }
 
     private func playOnceIfNeeded() async {
         guard isPlaying, isDynamic else { return }
+        framePosition = 0
 
         if decodedFrames.isEmpty {
             let clipValue = clip
@@ -295,15 +269,61 @@ struct AnimatedClipPreview: View {
     }
 }
 
+/// 素材卡片角落的轻量徽标。播放与音频入口共用尺寸和底色，保证左右对齐。
+struct ClipPreviewBadgeIcon: View {
+    let systemName: String
+    var foregroundStyle: Color = .white
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(foregroundStyle.opacity(0.9))
+            .frame(width: 26, height: 26)
+            .background(.black.opacity(0.34), in: Circle())
+    }
+}
+
+/// 与音频徽标处于同一素材卡片覆盖层，确保不会被预览内容的裁切层隐藏。
+struct ClipPreviewPlayButton: View {
+    let clip: SegmentedClip
+    @Binding var isPlaying: Bool
+
+    var body: some View {
+        if clip.frameCount > 1 {
+            Button {
+                let action = isPlaying ? "pause" : "play"
+                LogStore.log(
+                    "clipPreview.buttonTapped id=\(clip.id) name=\(clip.name) "
+                        + "action=\(action) frameCount=\(clip.frameCount) "
+                        + "activeFrames=\(clip.activeFrameIndices.count)"
+                )
+                isPlaying.toggle()
+            } label: {
+                ClipPreviewBadgeIcon(
+                    systemName: isPlaying ? "pause.fill" : "play.fill"
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(4)
+            .contentShape(Rectangle())
+            .accessibilityLabel(isPlaying ? "暂停动态素材" : "播放动态素材")
+        }
+    }
+}
+
 struct AssetCell: View {
     let clip: SegmentedClip
     let onSelect: () -> Void
+    @State private var isPlaying = false
 
     var body: some View {
         VStack(spacing: 4) {
-            AnimatedClipPreview(clip: clip, maxPixelSize: 320)
+            AnimatedClipPreview(clip: clip, maxPixelSize: 320, isPlaying: $isPlaying)
                 .frame(height: 90)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(alignment: .bottomLeading) {
+                    ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
+                }
                 .contentShape(Rectangle())
                 .onTapGesture {
                     onSelect()

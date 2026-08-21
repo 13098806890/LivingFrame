@@ -110,3 +110,16 @@
 "Live Photo（动态照片）" = "Live Photo (hareketli fotoğraf)";
 "存入相册长按播放，透明区域用背景填充" = "Hareketli fotoğraf olarak kaydedilir; oynatmak için basılı tutun. Şeffaf alanlar arka planla doldurulur";
 "需要相册权限才能保存 Live Photo，请在设置中开启" = "Live Photo kaydetmek için Fotoğraflar erişimi gerekir. Ayarlar'dan etkinleştirin";
+"保存" = "Kaydet";
+"保存作品" = "Çalışmayı Kaydet";
+"作品已更新" = "Çalışma Güncellendi";
+"作品已保存" = "Çalışma Kaydedildi";
+"可以在“作品”页面继续编辑或删除。" = "Çalışmalar sayfasından düzenleyebilir veya silebilirsiniz.";
+"保存失败" = "Kaydetme Başarısız";
+"无法生成作品封面，请稍后再试。" = "Çalışma kapağı oluşturulamadı. Tekrar deneyin.";
+"好" = "Tamam";
+"已保存" = "Kaydedildi";
+"删除这个作品？" = "Bu çalışma silinsin mi?";
+"删除后无法恢复，素材库中的素材不会被删除。" = "Bu işlem geri alınamaz. Varlık kitaplığındaki öğeler silinmez.";
+"在编辑页点击“保存”，作品会显示在这里" = "Düzenleyicide Kaydet’e dokunduğunuzda çalışmanız burada görünür";
+"暂无作品，请先在编辑页保存" = "Henüz çalışma yok. Önce düzenleyiciden kaydedin";

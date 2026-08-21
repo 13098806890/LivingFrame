@@ -98,6 +98,10 @@ struct CanvasView: View {
                 render()
             }
         }
+        .onChange(of: appState.isReversed) { _, _ in
+            refreshRendererScale()
+            render()
+        }
         .onChange(of: appState.clipStyleVersion) { _, _ in
             render()
         }
@@ -436,15 +440,17 @@ struct CanvasView: View {
 
     /// 视口尺寸变化时重建预览渲染器（按屏幕像素渲染，预览清晰度足够且不浪费）
     private func refreshRendererScale() {
-        guard viewportSize.width > 0, viewportSize.height > 0 else { return }
         let pixelScale = UIScreen.main.scale
         // 编辑预览不需要按 Retina 全分辨率渲染；多素材同时播放时，
         // 把中间合成限制在 900px 内，避免渲染队列长期追不上播放时钟。
-        let maxPixel = min(
-            max(viewportSize.width, viewportSize.height) * pixelScale * 1.1,
-            900
+        let viewportMax = max(viewportSize.width, viewportSize.height)
+        let maxPixel = viewportMax > 0
+            ? min(viewportMax * pixelScale * 1.1, 900)
+            : 900
+        renderer = CompositionRenderer(
+            frameMaxPixelSize: maxPixel,
+            isPlaybackReversed: appState.isReversed
         )
-        renderer = CompositionRenderer(frameMaxPixelSize: maxPixel)
     }
 
     private func render() {

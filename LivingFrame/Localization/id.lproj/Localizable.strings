@@ -110,3 +110,16 @@
 "Live Photo（动态照片）" = "Live Photo (foto bergerak)";
 "存入相册长按播放，透明区域用背景填充" = "Disimpan sebagai foto bergerak; tahan untuk memutar. Area transparan diisi latar belakang";
 "需要相册权限才能保存 Live Photo，请在设置中开启" = "Diperlukan akses ke Foto untuk menyimpan Live Photo. Aktifkan di Pengaturan";
+"保存" = "Simpan";
+"保存作品" = "Simpan Karya";
+"作品已更新" = "Karya Diperbarui";
+"作品已保存" = "Karya Disimpan";
+"可以在“作品”页面继续编辑或删除。" = "Anda dapat mengedit atau menghapusnya dari halaman Karya.";
+"保存失败" = "Gagal Menyimpan";
+"无法生成作品封面，请稍后再试。" = "Tidak dapat membuat sampul karya. Coba lagi.";
+"好" = "OK";
+"已保存" = "Disimpan";
+"删除这个作品？" = "Hapus karya ini?";
+"删除后无法恢复，素材库中的素材不会被删除。" = "Tindakan ini tidak dapat dibatalkan. Item di pustaka aset tidak akan dihapus.";
+"在编辑页点击“保存”，作品会显示在这里" = "Ketuk Simpan di editor agar karya muncul di sini";
+"暂无作品，请先在编辑页保存" = "Belum ada karya. Simpan dari editor terlebih dahulu";

@@ -14,7 +14,7 @@ struct WorksView: View {
                     EmptyStateView(
                         icon: "photo.stack",
                         title: "还没有作品",
-                        message: "编辑完成后导出，作品会自动保存到这里"
+                        message: "在编辑页点击“保存”，作品会显示在这里"
                     )
                     .padding(.top, 80)
                 } else {
@@ -48,29 +48,56 @@ struct WorksView: View {
 
 private struct WorkCell: View {
     @EnvironmentObject private var appState: AppState
+    @State private var showDeleteConfirmation = false
     let work: WorkItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             if let image = UIImage(data: work.posterData) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 118)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 Color.black
+                    .frame(height: 118)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             Text(work.name)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
             HStack {
-                Text(work.createdAt.formatted(date: .abbreviated, time: .omitted))
+                Text(work.lastSavedAt.formatted(date: .abbreviated, time: .omitted))
                 Spacer()
-                Text(work.format == .gif ? "GIF" : "MOV")
+                Text("已保存")
             }
             .font(.caption2)
             .foregroundStyle(LF.textSecondary)
+
+            HStack(spacing: 8) {
+                Button {
+                    appState.reopen(work)
+                    appState.selectedTab = .editor
+                } label: {
+                    Label("编辑", systemImage: "pencil")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(LF.textPrimary)
+
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("删除", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+            .font(.caption.weight(.semibold))
         }
-        .frame(height: 190)
         .padding(8)
         .background(LF.surface, in: RoundedRectangle(cornerRadius: 12))
         .overlay {
@@ -82,23 +109,26 @@ private struct WorkCell: View {
                 appState.reopen(work)
                 appState.selectedTab = .editor
             } label: {
-                Label("重新编辑", systemImage: "pencil")
+                Label("编辑", systemImage: "pencil")
             }
             Button {
-                appState.composition = work.composition
-                appState.savePosterForWidget()
+                appState.savePosterForWidget(work)
             } label: {
                 Label("设为 Widget 画面", systemImage: "square.grid.2x2")
             }
             Button(role: .destructive) {
-                appState.deleteWork(work)
+                showDeleteConfirmation = true
             } label: {
                 Label("删除", systemImage: "trash")
             }
         }
-        .onTapGesture {
-            appState.reopen(work)
-            appState.selectedTab = .editor
+        .confirmationDialog("删除这个作品？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+            Button("删除", role: .destructive) {
+                appState.deleteWork(work)
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("删除后无法恢复，素材库中的素材不会被删除。")
         }
     }
 }

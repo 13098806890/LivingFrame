@@ -21,7 +21,7 @@ public struct WorksStore {
                 guard let data = try? Data(contentsOf: url) else { return nil }
                 return try? JSONDecoder().decode(WorkItem.self, from: data)
             }
-            .sorted { $0.createdAt > $1.createdAt }
+            .sorted { $0.lastSavedAt > $1.lastSavedAt }
     }
 
     @discardableResult

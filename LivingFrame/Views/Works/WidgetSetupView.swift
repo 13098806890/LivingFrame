@@ -49,14 +49,13 @@ struct WidgetSetupView: View {
 
                 SectionCard(title: "作品列表") {
                     if appState.works.isEmpty {
-                        Text("暂无作品，先导出一次吧")
+                        Text("暂无作品，请先在编辑页保存")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                     } else {
                         ForEach(appState.works) { work in
                             Button {
-                                appState.composition = work.composition
-                                appState.savePosterForWidget()
+                                appState.savePosterForWidget(work)
                                 appliedWorkName = work.name
                             } label: {
                                 HStack {
@@ -70,7 +69,7 @@ struct WidgetSetupView: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(work.name)
                                             .font(.subheadline)
-                                        Text(work.createdAt.formatted(date: .abbreviated, time: .omitted))
+                                        Text(work.lastSavedAt.formatted(date: .abbreviated, time: .omitted))
                                             .font(.caption2)
                                             .foregroundStyle(LF.textSecondary)
                                     }

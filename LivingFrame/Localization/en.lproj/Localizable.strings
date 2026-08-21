@@ -111,3 +111,16 @@
 "Live Photo（动态照片）" = "Live Photo (Dynamic)";
 "存入相册长按播放，透明区域用背景填充" = "Saved to Photos; press and hold to play. Transparent areas are filled with the background";
 "需要相册权限才能保存 Live Photo，请在设置中开启" = "Photos access is required to save a Live Photo. Enable it in Settings";
+"保存" = "Save";
+"保存作品" = "Save Work";
+"作品已更新" = "Work Updated";
+"作品已保存" = "Work Saved";
+"可以在“作品”页面继续编辑或删除。" = "You can edit or delete it from the Works page.";
+"保存失败" = "Save Failed";
+"无法生成作品封面，请稍后再试。" = "Couldn't create the work cover. Please try again.";
+"好" = "OK";
+"已保存" = "Saved";
+"删除这个作品？" = "Delete This Work?";
+"删除后无法恢复，素材库中的素材不会被删除。" = "This can't be undone. Items in your asset library won't be deleted.";
+"在编辑页点击“保存”，作品会显示在这里" = "Tap Save in the editor and your work will appear here";
+"暂无作品，请先在编辑页保存" = "No works yet. Save one from the editor first";
