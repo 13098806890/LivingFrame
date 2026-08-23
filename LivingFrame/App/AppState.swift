@@ -9,6 +9,8 @@ final class AppState: ObservableObject {
     // MARK: - 素材
 
     @Published var clips: [SegmentedClip] = []
+    /// 用户导入的静态/动态背景图片，可在编辑页作为独立元素添加多次。
+    @Published var backgroundMedia: [BackgroundMediaItem] = []
     @Published var isSegmenting = false
     @Published var segmentationProgress: Double = 0
     @Published var segmentingName = ""
@@ -154,6 +156,7 @@ final class AppState: ObservableObject {
         // 恢复持久化的素材与文件夹
         FrameCache.shared.reload()
         clips = FrameCache.shared.allClips()
+        backgroundMedia = BackgroundStore.shared.allUserMedia()
         folders = folderStore.load()
         let defaults = UserDefaults.standard
         if let raw = defaults.string(forKey: settingDefaultFormatKey),
@@ -459,6 +462,150 @@ final class AppState: ObservableObject {
         composition = comp
     }
 
+    /// 刷新背景媒体列表。素材选择器导入相册图片后调用。
+    func reloadBackgroundMedia() {
+        backgroundMedia = BackgroundStore.shared.allUserMedia()
+    }
+
+    /// 保存一张相册图片/动态图片，返回可用于创建元素的媒体 ID。
+    @discardableResult
+    func importBackgroundMedia(
+        data: Data,
+        preferredFileExtension: String? = nil,
+        isVideo: Bool = false
+    ) -> String? {
+        let id = isVideo
+            ? BackgroundStore.shared.saveUserVideo(data, preferredFileExtension: preferredFileExtension)
+            : BackgroundStore.shared.saveUserImage(data, preferredFileExtension: preferredFileExtension)
+        guard let id else { return nil }
+        reloadBackgroundMedia()
+        return id
+    }
+
+    /// 添加一个背景图片元素。背景元素默认位于所有现有元素下方，并覆盖当前工程时长。
+    func addBackgroundElement(mediaID: String) {
+        guard let media = backgroundMedia.first(where: { $0.id == mediaID }),
+              var comp = composition ?? defaultComposition() else { return }
+        let settings = BackgroundElementSettings()
+        let regionRect = backgroundRegionRect(settings.region, in: comp.canvasRect)
+        let duration = comp.duration > 0
+            ? comp.duration
+            : max(media.isAnimated ? media.duration : 1, 1)
+        let element = CompositionElement(
+            kind: .background(backgroundID: media.id),
+            name: media.name == media.id ? NSLocalizedString("背景图片", comment: "Background element") : media.name,
+            transform: ElementTransform(
+                position: CGPoint(x: regionRect.midX, y: regionRect.midY),
+                scale: 1,
+                rotation: 0
+            ),
+            zIndex: minimumElementZIndex(in: comp),
+            startTime: 0,
+            endTime: duration,
+            backgroundSettings: settings
+        )
+        comp.elements.append(element)
+        composition = comp
+        selectElement(element.id)
+        recomputeDuration()
+    }
+
+    func setBackgroundRegion(_ elementID: UUID, _ region: BackgroundRegion) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        settings.region = region
+        comp.elements[index].backgroundSettings = settings
+        let rect = backgroundRegionRect(region, in: comp.canvasRect)
+        comp.elements[index].transform.position = CGPoint(x: rect.midX, y: rect.midY)
+        composition = comp
+    }
+
+    /// 设置分割数量；4 区会自动使用两条互相垂直、可独立平移的分割线。
+    func setBackgroundSplitCount(_ elementID: UUID, _ count: BackgroundSplitCount) {
+        updateBackgroundElement(elementID) {
+            $0.splitCount = count
+            if count == .full {
+                $0.region = .full
+            } else {
+                let maximum = count == .two ? 1 : 3
+                $0.selectedPartition = min(max($0.selectedPartition, 0), maximum)
+            }
+        }
+    }
+
+    /// 设置第一条分割线角度，并在常用角度附近自动磁吸。
+    func setBackgroundDividerAngle(_ elementID: UUID, _ angle: CGFloat) {
+        updateBackgroundElement(elementID) {
+            $0.dividerAngle = snappedBackgroundAngle(angle)
+        }
+    }
+
+    /// 沿自身法线平移一条背景分割线。offset 是相对当前画布可移动范围的比例。
+    func setBackgroundDividerOffset(_ elementID: UUID, dividerIndex: Int, offset: CGFloat) {
+        updateBackgroundElement(elementID) {
+            let value = BackgroundDividerGeometry.clampedOffset(offset)
+            if dividerIndex == 0 {
+                $0.primaryDividerOffset = value
+            } else {
+                $0.secondaryDividerOffset = value
+            }
+        }
+    }
+
+    /// 选择中心分割线切出的区域。
+    func setBackgroundPartition(_ elementID: UUID, _ partition: Int) {
+        updateBackgroundElement(elementID) {
+            let maximum = $0.splitCount == .four ? 3 : 1
+            $0.selectedPartition = min(max(partition, 0), maximum)
+        }
+    }
+
+    func setBackgroundEdgeStyle(_ elementID: UUID, _ style: BackgroundEdgeStyle) {
+        updateBackgroundElement(elementID) { $0.edgeStyle = style }
+    }
+
+    func setBackgroundCropScale(_ elementID: UUID, _ scale: CGFloat) {
+        updateBackgroundElement(elementID) { $0.cropScale = min(max(scale, 1), 4) }
+    }
+
+    func setBackgroundCropOffset(_ elementID: UUID, _ offset: CGPoint) {
+        updateBackgroundElement(elementID) { $0.cropOffset = offset }
+    }
+
+    /// 用户主动顺时针旋转背景图；导入时的 EXIF 方向已在解码层处理，不会重复计算。
+    func rotateBackground90(_ elementID: UUID) {
+        updateBackgroundElement(elementID) {
+            $0.rotationQuarterTurns = ($0.rotationQuarterTurns + 1) % 4
+        }
+    }
+
+    private func updateBackgroundElement(
+        _ elementID: UUID,
+        _ mutate: (inout BackgroundElementSettings) -> Void
+    ) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        mutate(&settings)
+        comp.elements[index].backgroundSettings = settings
+        composition = comp
+    }
+
+    private func snappedBackgroundAngle(_ angle: CGFloat) -> CGFloat {
+        let safeAngle = angle.isFinite ? angle : 45
+        let normalized = safeAngle.truncatingRemainder(dividingBy: 180)
+        let value = normalized < 0 ? normalized + 180 : normalized
+        let snapAngles: [CGFloat] = [0, 30, 45, 60, 90, 120, 135, 150]
+        guard let nearest = snapAngles.min(by: { abs($0 - value) < abs($1 - value) }),
+              abs(nearest - value) <= 6 else {
+            return value
+        }
+        return nearest
+    }
+
     /// 在底层背景上叠加线条图案图层（保留当前底色/图片；nil = 清除叠加层）
     func setBackgroundPattern(_ style: BackgroundPatternStyle?) {
         guard var comp = composition ?? defaultComposition() else { return }
@@ -571,11 +718,12 @@ final class AppState: ObservableObject {
     }
 
     /// 时长跟随内容：总时长 = 所有元素结束时间 / 音频结束时间的最大者（自由放置，可重叠）
-    func recomputeDuration() {
+    func recomputeDuration(autoFillOverlayElements: Bool = true) {
         guard var comp = composition else { return }
         let previousDuration = comp.duration
         var maxEnd: TimeInterval = 0
         var autoFillStickerIndices: [Int] = []
+        var autoFillBackgroundIndices: [Int] = []
         for e in comp.elements {
             if e.endTime.isFinite { maxEnd = max(maxEnd, e.endTime) }
         }
@@ -585,19 +733,27 @@ final class AppState: ObservableObject {
 
         // 贴纸若正好贴着上一次工程末端，视为“默认铺满”而非独立撑长工程。
         // 先从内容最大时长中排除它，之后再让它跟随新的工程末端一起伸缩。
-        if previousDuration.isFinite, previousDuration > 0 {
+        if autoFillOverlayElements, previousDuration.isFinite, previousDuration > 0 {
             for index in comp.elements.indices {
                 guard case .decoration = comp.elements[index].kind,
                       abs(comp.elements[index].endTime - previousDuration) <= 0.001 else { continue }
                 autoFillStickerIndices.append(index)
             }
+            for index in comp.elements.indices {
+                guard case .background = comp.elements[index].kind,
+                      abs(comp.elements[index].endTime - previousDuration) <= 0.001 else { continue }
+                autoFillBackgroundIndices.append(index)
+            }
         }
 
-        if !autoFillStickerIndices.isEmpty {
+        if !autoFillStickerIndices.isEmpty || !autoFillBackgroundIndices.isEmpty {
             let autoFillStickerSet = Set(autoFillStickerIndices)
+            let autoFillBackgroundSet = Set(autoFillBackgroundIndices)
             maxEnd = 0
             for (index, element) in comp.elements.enumerated()
-                where !autoFillStickerSet.contains(index) && element.endTime.isFinite {
+                where !autoFillStickerSet.contains(index) &&
+                      !autoFillBackgroundSet.contains(index) &&
+                      element.endTime.isFinite {
                 maxEnd = max(maxEnd, element.endTime)
             }
             for audio in comp.audioClips {
@@ -608,17 +764,26 @@ final class AppState: ObservableObject {
                 let minimumDuration = DecorationRenderer.stickerDefinition(for: decorationID)?.defaultDuration ?? 0.1
                 comp.elements[index].endTime = max(maxEnd, minimumDuration)
             }
+            for index in autoFillBackgroundIndices {
+                comp.elements[index].endTime = max(maxEnd, 0.1)
+            }
             maxEnd = max(
                 maxEnd,
-                autoFillStickerIndices.compactMap { comp.elements[$0].endTime }.max() ?? 0
+                autoFillStickerIndices.compactMap { comp.elements[$0].endTime }.max() ?? 0,
+                autoFillBackgroundIndices.compactMap { comp.elements[$0].endTime }.max() ?? 0
             )
         }
 
         // 贴纸默认铺满时间轴：当素材把工程时长向右撑长时，仍处于旧时间轴末端的贴纸
         // 自动跟随延长；已经缩短到旧末端之前的贴纸则视为用户手动调整，不强行改动。
-        if maxEnd > previousDuration + 0.001 {
+        if autoFillOverlayElements, maxEnd > previousDuration + 0.001 {
             for index in comp.elements.indices {
                 guard case .decoration = comp.elements[index].kind,
+                      comp.elements[index].endTime <= previousDuration + 0.001 else { continue }
+                comp.elements[index].endTime = maxEnd
+            }
+            for index in comp.elements.indices {
+                guard case .background = comp.elements[index].kind,
                       comp.elements[index].endTime <= previousDuration + 0.001 else { continue }
                 comp.elements[index].endTime = maxEnd
             }
@@ -626,7 +791,7 @@ final class AppState: ObservableObject {
         if comp.duration != maxEnd {
             comp.duration = maxEnd
             composition = comp
-        } else if maxEnd > previousDuration + 0.001 {
+        } else if autoFillOverlayElements, maxEnd > previousDuration + 0.001 {
             composition = comp
         }
         if currentTime > maxEnd {
@@ -667,6 +832,23 @@ final class AppState: ObservableObject {
 
     private func nextElementZIndex(in composition: Composition) -> Int {
         (composition.elements.map(\.zIndex).max() ?? -1) + 1
+    }
+
+    private func minimumElementZIndex(in composition: Composition) -> Int {
+        (composition.elements.map(\.zIndex).min() ?? 0) - 1
+    }
+
+    private func backgroundRegionRect(_ region: BackgroundRegion, in canvas: CGRect) -> CGRect {
+        switch region {
+        case .full, .diagonal:
+            return canvas
+        case .upperHalf:
+            return CGRect(x: canvas.minX, y: canvas.midY, width: canvas.width, height: canvas.height / 2)
+        case .lowerHalf:
+            return CGRect(x: canvas.minX, y: canvas.minY, width: canvas.width, height: canvas.height / 2)
+        case .quarter:
+            return CGRect(x: canvas.midX, y: canvas.midY, width: canvas.width / 2, height: canvas.height / 2)
+        }
     }
 
     /// 新增长素材时，让仍处于默认时长的动图贴纸覆盖新的工程时长并循环播放。

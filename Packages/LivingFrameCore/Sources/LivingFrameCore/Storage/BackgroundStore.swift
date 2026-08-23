@@ -1,7 +1,49 @@
+import AVFoundation
+import CoreImage
 import CoreGraphics
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
+
+/// 用户导入的背景媒体元数据。图片与 GIF/APNG 都以原始数据落盘，动态帧按时间按需解码。
+public enum BackgroundMediaType: String, Codable, Equatable, Sendable {
+    case image
+    case video
+}
+
+public struct BackgroundMediaItem: Identifiable, Equatable {
+    public let id: String
+    public let name: String
+    public let frameCount: Int
+    public let duration: TimeInterval
+    public let width: Int
+    public let height: Int
+    public let createdAt: Date
+    public let mediaType: BackgroundMediaType
+
+    /// Live Photo 的配对视频、视频背景和 GIF/APNG 都需要按时间取帧。
+    public var isAnimated: Bool { mediaType == .video || frameCount > 1 }
+
+    public init(
+        id: String,
+        name: String,
+        frameCount: Int,
+        duration: TimeInterval,
+        width: Int,
+        height: Int,
+        createdAt: Date,
+        mediaType: BackgroundMediaType = .image
+    ) {
+        self.id = id
+        self.name = name
+        self.frameCount = frameCount
+        self.duration = duration
+        self.width = width
+        self.height = height
+        self.createdAt = createdAt
+        self.mediaType = mediaType
+    }
+}
 
 /// 背景图片存储：用户相册图片与 App 预置图片统一存于 Documents/Library/Backgrounds/
 public struct BackgroundStore {
@@ -14,6 +56,12 @@ public struct BackgroundStore {
         cache.countLimit = 16
         return cache
     }()
+    private static let frameCache: NSCache<NSString, CGImage> = {
+        let cache = NSCache<NSString, CGImage>()
+        cache.countLimit = 64
+        return cache
+    }()
+    private static let orientationContext = CIContext(options: [.cacheIntermediates: false])
     /// 预置背景列表（文件名 → 显示名）
     public let presets: [(fileName: String, title: String)] = [
         ("preset-starfield", NSLocalizedString("星空", comment: "Preset background")),
@@ -39,24 +87,190 @@ public struct BackgroundStore {
         rootURL.appendingPathComponent(name).appendingPathExtension("jpg")
     }
 
+    /// 新导入媒体保留自身扩展名；旧工程仍可通过 `fileURL` 找到 .jpg 文件。
+    public func mediaURL(named name: String) -> URL {
+        let extensions = ["mov", "mp4", "m4v", "gif", "png", "heic", "heif", "jpeg", "jpg"]
+        for fileExtension in extensions {
+            let url = rootURL.appendingPathComponent(name).appendingPathExtension(fileExtension)
+            if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        return fileURL(named: name)
+    }
+
     /// 保存用户选择的背景图
     @discardableResult
-    public func saveUserImage(_ data: Data) -> String? {
+    public func saveUserImage(_ data: Data, preferredFileExtension: String? = nil) -> String? {
         let fileName = "user-\(UUID().uuidString)"
-        let url = fileURL(named: fileName)
+        let fileExtension = imageFileExtension(for: data, preferred: preferredFileExtension)
+        let url = rootURL.appendingPathComponent(fileName).appendingPathExtension(fileExtension)
         guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
+        Self.imageCache.removeObject(forKey: fileName as NSString)
         return fileName
+    }
+
+    /// Live Photo 使用配对 MOV 导入，不能当作静态照片数据保存。
+    @discardableResult
+    public func saveUserVideo(_ data: Data, preferredFileExtension: String? = nil) -> String? {
+        let fileName = "user-\(UUID().uuidString)"
+        let allowed = ["mov", "mp4", "m4v"]
+        let requested = preferredFileExtension?.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        let fileExtension = requested.flatMap { allowed.contains($0) ? $0 : nil } ?? "mov"
+        let url = rootURL.appendingPathComponent(fileName).appendingPathExtension(fileExtension)
+        guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
+        Self.imageCache.removeObject(forKey: fileName as NSString)
+        return fileName
+    }
+
+    /// 返回用户已导入的背景媒体，最新导入的排在前面。
+    public func allUserMedia() -> [BackgroundMediaItem] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: rootURL,
+            includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        return urls.compactMap { url in
+            let id = url.deletingPathExtension().lastPathComponent
+            guard id.hasPrefix("user-") else { return nil }
+            let dates = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+            let createdAt = dates?.creationDate ?? dates?.contentModificationDate ?? .distantPast
+            if isVideo(url: url) {
+                let asset = AVURLAsset(url: url)
+                let duration = max(CMTimeGetSeconds(asset.duration), 0.1)
+                let naturalSize = asset.tracks(withMediaType: .video).first?.naturalSize ?? .zero
+                let transform = asset.tracks(withMediaType: .video).first?.preferredTransform ?? .identity
+                let size = naturalSize.applying(transform)
+                return BackgroundMediaItem(
+                    id: id, name: id, frameCount: max(Int((duration * 30).rounded()), 1), duration: duration,
+                    width: Int(abs(size.width)), height: Int(abs(size.height)), createdAt: createdAt, mediaType: .video
+                )
+            }
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+            let frameCount = max(CGImageSourceGetCount(source), 1)
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+            let width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+            let height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+            let duration = frameDurations(source: source).reduce(0, +)
+            return BackgroundMediaItem(
+                id: id,
+                name: id,
+                frameCount: frameCount,
+                duration: max(duration, frameCount > 1 ? 0.1 : 0),
+                width: width,
+                height: height,
+                createdAt: createdAt,
+                mediaType: .image
+            )
+        }
+        .sorted { $0.createdAt > $1.createdAt }
     }
 
     /// 加载背景图（图片不存在时返回 nil）；带内存缓存（NSCache 线程安全）
     public func loadImage(named name: String) -> CGImage? {
         let key = name as NSString
         if let cached = Self.imageCache.object(forKey: key) { return cached }
-        let url = fileURL(named: name)
+        let url = mediaURL(named: name)
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
-        Self.imageCache.setObject(image, forKey: key)
-        return image
+        let oriented = applyingOrientation(to: image, source: source, index: 0)
+        Self.imageCache.setObject(oriented, forKey: key)
+        return oriented
+    }
+
+    /// 按媒体时间加载一帧。静态图片始终返回第一帧，GIF/APNG 按自身时长循环。
+    public func loadFrame(named name: String, at time: TimeInterval) -> CGImage? {
+        if let cached = Self.imageCache.object(forKey: name as NSString) {
+            return cached
+        }
+        let url = mediaURL(named: name)
+        if isVideo(url: url) { return loadVideoFrame(named: name, url: url, at: time) }
+        guard let source = imageSource(named: name) else { return nil }
+        let count = max(CGImageSourceGetCount(source), 1)
+        guard count > 1 else { return loadImage(named: name) }
+        let durations = frameDurations(source: source)
+        let total = max(durations.reduce(0, +), 0.1)
+        let boundedTime = time.isFinite ? max(time, 0).truncatingRemainder(dividingBy: total) : 0
+        var elapsed: TimeInterval = 0
+        var selectedIndex = 0
+        for index in 0..<count {
+            elapsed += durations[index]
+            if boundedTime < elapsed {
+                selectedIndex = index
+                break
+            }
+        }
+        let key = "\(name)-\(selectedIndex)" as NSString
+        if let cached = Self.frameCache.object(forKey: key) { return cached }
+        guard let image = CGImageSourceCreateImageAtIndex(source, selectedIndex, nil) else { return nil }
+        let oriented = applyingOrientation(to: image, source: source, index: selectedIndex)
+        Self.frameCache.setObject(oriented, forKey: key)
+        return oriented
+    }
+
+    public func media(named name: String) -> BackgroundMediaItem? {
+        allUserMedia().first { $0.id == name }
+    }
+
+    private func imageSource(named name: String) -> CGImageSource? {
+        let url = mediaURL(named: name)
+        return CGImageSourceCreateWithURL(url as CFURL, nil)
+    }
+
+    private func isVideo(url: URL) -> Bool {
+        guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+        return type.conforms(to: .movie) || type.conforms(to: .video)
+    }
+
+    private func imageFileExtension(for data: Data, preferred: String?) -> String {
+        let allowed = Set(["jpg", "jpeg", "png", "gif", "heic", "heif"])
+        let requested = preferred?.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        if let requested, allowed.contains(requested) { return requested }
+        if let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let type = CGImageSourceGetType(source),
+           let preferredExtension = UTType(type as String)?.preferredFilenameExtension,
+           allowed.contains(preferredExtension.lowercased()) {
+            return preferredExtension.lowercased()
+        }
+        return "jpg"
+    }
+
+    private func applyingOrientation(to image: CGImage, source: CGImageSource, index: Int) -> CGImage {
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
+        let rawOrientation = (properties?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        guard rawOrientation != 1 else { return image }
+        let oriented = CIImage(cgImage: image).oriented(forExifOrientation: Int32(rawOrientation))
+        return Self.orientationContext.createCGImage(oriented, from: oriented.extent) ?? image
+    }
+
+    private func loadVideoFrame(named name: String, url: URL, at time: TimeInterval) -> CGImage? {
+        let asset = AVURLAsset(url: url)
+        let duration = max(CMTimeGetSeconds(asset.duration), 0.1)
+        let bounded = time.isFinite ? max(time, 0).truncatingRemainder(dividingBy: duration) : 0
+        let frameIndex = Int((bounded * 30).rounded(.down))
+        let key = "\(name)-video-\(frameIndex)" as NSString
+        if let cached = Self.frameCache.object(forKey: key) { return cached }
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        guard let frame = try? generator.copyCGImage(
+            at: CMTime(seconds: bounded, preferredTimescale: 600),
+            actualTime: nil
+        ) else { return nil }
+        Self.frameCache.setObject(frame, forKey: key)
+        return frame
+    }
+
+    private func frameDurations(source: CGImageSource) -> [TimeInterval] {
+        let count = max(CGImageSourceGetCount(source), 1)
+        return (0..<count).map { index in
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
+            let gif = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+            let unclamped = (gif?[kCGImagePropertyGIFUnclampedDelayTime] as? NSNumber)?.doubleValue ?? 0
+            let clamped = (gif?[kCGImagePropertyGIFDelayTime] as? NSNumber)?.doubleValue ?? 0
+            let duration = max(unclamped, clamped)
+            return duration > 0.01 ? duration : 0.1
+        }
     }
 
     // MARK: - 预置图片（程序化生成）

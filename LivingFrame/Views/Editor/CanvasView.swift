@@ -12,6 +12,11 @@ struct CanvasView: View {
     @State private var renderer = CompositionRenderer(frameMaxPixelSize: 900)
     /// 手势起始快照（拖动/缩放/旋转共用）
     @State private var gestureStartTransforms: [UUID: ElementTransform] = [:]
+    /// 背景图片手势起始快照：背景元素的拖动/缩放作用于遮罩内取景。
+    @State private var gestureStartBackgroundSettings: [UUID: BackgroundElementSettings] = [:]
+    /// 背景取景交互状态，用于提示用户当前正在移动还是缩放图片。
+    @State private var backgroundGestureKind: BackgroundGestureKind?
+    @State private var isBackgroundInteracting = false
     /// 双指手势活跃中（防止同时触发拖动）
     @State private var isPinching = false
     /// 裁剪模式下的临时裁剪框（画布坐标系）
@@ -20,6 +25,8 @@ struct CanvasView: View {
     @State private var renderVersion = 0
     /// 是否有一个预览渲染正在执行；执行期间只保留最新请求，避免任务堆积或全部被跳过。
     @State private var isRenderInFlight = false
+    /// 多张背景分区叠加时，预览直接采用导出的最终输出路径，避免降采样阶段混合透明遮罩。
+    @State private var usesExactBackgroundPreview = false
     /// CI 渲染串行执行，避免多个元素同时渲染造成任务积压和结果互相覆盖。
     private static let renderQueue = DispatchQueue(
         label: "com.livingframe.canvas-render",
@@ -45,6 +52,7 @@ struct CanvasView: View {
                     cropOverlay
                 } else {
                     selectionOverlay
+                    backgroundInteractionOverlay
                 }
             }
             .background {
@@ -85,9 +93,13 @@ struct CanvasView: View {
             }
         }
         .onAppear {
+            refreshRendererScale()
             render()
         }
         .onChange(of: appState.composition) { _, _ in
+            if usesExactBackgroundPreview != needsExactBackgroundPreview {
+                refreshRendererScale()
+            }
             render()
         }
         .onChange(of: appState.currentTime) { _, _ in
@@ -171,20 +183,37 @@ struct CanvasView: View {
                     snapshotTransforms(comp)
                 }
                 guard let snaps = gestureStartTransforms.snapshot else { return }
+                if selectedBackgroundElement != nil {
+                    beginBackgroundInteraction(.moving)
+                }
                 let dx = value.translation.width / scale
                 let dy = value.translation.height / scale
                 for id in appState.selectedElementIDs {
                     guard let start = snaps[id] else { continue }
-                    appState.updateElement(id) { element in
-                        element.transform.position = CGPoint(
-                            x: start.position.x + dx,
-                            y: start.position.y - dy
+                    guard let element = comp.elements.first(where: { $0.id == id }) else { continue }
+                    if case .background = element.kind,
+                       let backgroundStart = gestureStartBackgroundSettings[id] {
+                        appState.setBackgroundCropOffset(
+                            id,
+                            CGPoint(
+                                x: backgroundStart.cropOffset.x + dx,
+                                y: backgroundStart.cropOffset.y - dy
+                            )
                         )
+                    } else {
+                        appState.updateElement(id) { element in
+                            element.transform.position = CGPoint(
+                                x: start.position.x + dx,
+                                y: start.position.y - dy
+                            )
+                        }
                     }
                 }
             }
             .onEnded { _ in
                 gestureStartTransforms = [:]
+                gestureStartBackgroundSettings = [:]
+                endBackgroundInteraction()
             }
     }
 
@@ -195,20 +224,34 @@ struct CanvasView: View {
             .onChanged { value in
                 guard !appState.isCropping, !appState.selectedElementIDs.isEmpty else { return }
                 isPinching = true
+                if selectedBackgroundElement != nil {
+                    beginBackgroundInteraction(.scaling)
+                }
                 if gestureStartTransforms.isEmpty {
                     snapshotTransforms(appState.composition)
                 }
                 guard let snaps = gestureStartTransforms.snapshot else { return }
                 for id in appState.selectedElementIDs {
                     guard let start = snaps[id] else { continue }
-                    appState.updateElement(id) { element in
-                        element.transform.scale = max(0.1, min(10, start.scale * value))
+                    guard let element = appState.composition?.elements.first(where: { $0.id == id }) else { continue }
+                    if case .background = element.kind,
+                       let backgroundStart = gestureStartBackgroundSettings[id] {
+                        appState.setBackgroundCropScale(
+                            id,
+                            backgroundStart.cropScale * value
+                        )
+                    } else {
+                        appState.updateElement(id) { element in
+                            element.transform.scale = max(0.1, min(10, start.scale * value))
+                        }
                     }
                 }
             }
             .onEnded { _ in
                 gestureStartTransforms = [:]
+                gestureStartBackgroundSettings = [:]
                 isPinching = false
+                endBackgroundInteraction()
             }
     }
 
@@ -225,6 +268,10 @@ struct CanvasView: View {
                 guard let snaps = gestureStartTransforms.snapshot else { return }
                 for id in appState.selectedElementIDs {
                     guard let start = snaps[id] else { continue }
+                    if let element = appState.composition?.elements.first(where: { $0.id == id }),
+                       case .background = element.kind {
+                        continue
+                    }
                     appState.updateElement(id) { element in
                         // RotationGesture 正值=顺时针（屏幕 y 向下），画布 y 向上需取反
                         element.transform.rotation = start.rotation - Double(value.radians)
@@ -233,7 +280,9 @@ struct CanvasView: View {
             }
             .onEnded { _ in
                 gestureStartTransforms = [:]
+                gestureStartBackgroundSettings = [:]
                 isPinching = false
+                endBackgroundInteraction()
             }
     }
 
@@ -243,6 +292,9 @@ struct CanvasView: View {
         for id in appState.selectedElementIDs {
             if let element = comp.elements.first(where: { $0.id == id }) {
                 snaps[id] = element.transform
+                if case .background = element.kind {
+                    gestureStartBackgroundSettings[id] = element.backgroundSettings ?? BackgroundElementSettings()
+                }
             }
         }
         gestureStartTransforms = snaps
@@ -274,6 +326,73 @@ struct CanvasView: View {
     private var selectedElements: [CompositionElement] {
         guard let comp = appState.composition else { return [] }
         return comp.elements.filter { appState.selectedElementIDs.contains($0.id) }
+    }
+
+    private var selectedBackgroundElement: CompositionElement? {
+        guard appState.selectedElementIDs.count == 1,
+              let id = appState.selectedElementIDs.first,
+              let element = appState.composition?.elements.first(where: { $0.id == id }),
+              case .background = element.kind else { return nil }
+        return element
+    }
+
+    private var backgroundInteractionOverlay: some View {
+        GeometryReader { _ in
+            if let element = selectedBackgroundElement,
+               let comp = appState.composition {
+                let geometry = viewportGeometry(for: comp)
+                let frame = elementFrame(element, in: comp, geometry: geometry)
+                let settings = element.backgroundSettings ?? BackgroundElementSettings()
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(
+                            backgroundGestureKind == nil ? LF.accent.opacity(0.9) : LF.gold,
+                            style: StrokeStyle(lineWidth: 2, dash: [9, 6])
+                        )
+                        .frame(width: frame.width, height: frame.height)
+                        .position(x: frame.midX, y: frame.midY)
+
+                    VStack {
+                        HStack(spacing: 7) {
+                            Image(systemName: backgroundGestureKind == .scaling ? "arrow.up.left.and.arrow.down.right" : "hand.draw")
+                            Text(backgroundGestureKind?.title ?? "背景取景")
+                            Text("· 拖动移动 · 双指缩放")
+                                .foregroundStyle(.white.opacity(0.78))
+                            Text(String(format: "%.1f×", settings.cropScale))
+                                .monospacedDigit()
+                                .foregroundStyle(LF.gold)
+                        }
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
+                        .background(.black.opacity(0.72), in: Capsule())
+                        Spacer()
+                    }
+                    .padding(.top, 10)
+                }
+                .allowsHitTesting(false)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func beginBackgroundInteraction(_ kind: BackgroundGestureKind) {
+        if backgroundGestureKind != kind {
+            backgroundGestureKind = kind
+            if !isBackgroundInteracting {
+                isBackgroundInteracting = true
+                refreshRendererScale()
+            }
+        }
+    }
+
+    private func endBackgroundInteraction() {
+        guard isBackgroundInteracting || backgroundGestureKind != nil else { return }
+        backgroundGestureKind = nil
+        isBackgroundInteracting = false
+        refreshRendererScale()
+        render()
     }
 
     private func cornerPoints(of rect: CGRect) -> [CGPoint] {
@@ -424,6 +543,11 @@ struct CanvasView: View {
            let clip = appState.clips.first(where: { $0.id == clipID }) {
             return CGSize(width: CGFloat(clip.width), height: CGFloat(clip.height))
         }
+        if case .background = element.kind {
+            let region = element.backgroundSettings?.region ?? .full
+            let rect = region.rect(in: comp.canvasRect)
+            return rect.size
+        }
         if case .text(let textID) = element.kind,
            let text = comp.texts.first(where: { $0.id.uuidString == textID }) {
             // 单行估算：宽 ≈ 字符数 × 0.6 × 字号（上限画布宽），高 ≈ 1.2 × 字号
@@ -440,17 +564,29 @@ struct CanvasView: View {
 
     /// 视口尺寸变化时重建预览渲染器（按屏幕像素渲染，预览清晰度足够且不浪费）
     private func refreshRendererScale() {
+        let requiresExactOutput = needsExactBackgroundPreview
+        usesExactBackgroundPreview = requiresExactOutput
         let pixelScale = UIScreen.main.scale
         // 编辑预览不需要按 Retina 全分辨率渲染；多素材同时播放时，
         // 把中间合成限制在 900px 内，避免渲染队列长期追不上播放时钟。
         let viewportMax = max(viewportSize.width, viewportSize.height)
         let maxPixel = viewportMax > 0
-            ? min(viewportMax * pixelScale * 1.1, 900)
+            ? min(viewportMax * pixelScale * 1.1, isBackgroundInteracting ? 480 : 900)
             : 900
         renderer = CompositionRenderer(
-            frameMaxPixelSize: maxPixel,
+            // 多张背景元素在画布中以透明遮罩相互拼接。预览若再对整图做 CI 仿射
+            // 降采样，边缘会因透明像素混合而显示到错误分区；导出不走该分支。
+            // 这里改为与导出相同的最终 CGImage 输出，确保所见即所得。
+            frameMaxPixelSize: requiresExactOutput ? nil : maxPixel,
             isPlaybackReversed: appState.isReversed
         )
+    }
+
+    private var needsExactBackgroundPreview: Bool {
+        guard let elements = appState.composition?.elements else { return false }
+        return elements.reduce(into: 0) { count, element in
+            if case .background = element.kind { count += 1 }
+        } > 1
     }
 
     private func render() {
@@ -510,6 +646,18 @@ private struct ViewportGeometry {
     let offsetY: CGFloat
     /// 视口当前显示的区域（画布坐标系，裁剪后）
     let rect: CGRect
+}
+
+private enum BackgroundGestureKind: Equatable {
+    case moving
+    case scaling
+
+    var title: String {
+        switch self {
+        case .moving: "正在移动背景"
+        case .scaling: "正在缩放背景"
+        }
+    }
 }
 
 private extension Dictionary where Key == UUID, Value == ElementTransform {

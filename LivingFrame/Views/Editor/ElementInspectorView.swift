@@ -303,18 +303,223 @@ struct ElementInspectorView: View {
                 .buttonStyle(.plain)
             }
 
-            if case .clip(let clipID) = element.kind,
-               let clip = appState.clips.first(where: { $0.id == clipID }) {
-                stickerStylePicker(clip)
-                speedPicker(clip)
+            if case .background = element.kind {
+                backgroundElementInspector(element)
+            } else {
+                if case .clip(let clipID) = element.kind,
+                   let clip = appState.clips.first(where: { $0.id == clipID }) {
+                    stickerStylePicker(clip)
+                    speedPicker(clip)
+                }
+                if case .text(let textID) = element.kind,
+                   let text = appState.composition?.texts.first(where: { $0.id.uuidString == textID }) {
+                    textEditor(text)
+                }
+                filterPicker(element)
+                elementBackgroundPicker(element)
             }
-            if case .text(let textID) = element.kind,
-               let text = appState.composition?.texts.first(where: { $0.id.uuidString == textID }) {
-                textEditor(text)
-            }
-            filterPicker(element)
-            elementBackgroundPicker(element)
         }
+    }
+
+    private func backgroundElementInspector(_ element: CompositionElement) -> some View {
+        let settings = element.backgroundSettings ?? BackgroundElementSettings()
+        return VStack(alignment: .leading, spacing: 10) {
+            if let comp = appState.composition,
+               case .background(let backgroundID) = element.kind,
+               let frame = BackgroundStore.shared.loadFrame(named: backgroundID, at: appState.currentTime) {
+                BackgroundFillPreview(
+                    frame: frame,
+                    canvasAspect: comp.canvasRect.width / comp.canvasRect.height,
+                    canvasSize: comp.canvasRect.size,
+                    settings: settings,
+                    onPartitionTap: { partition in
+                        appState.setBackgroundPartition(element.id, partition)
+                    },
+                    onDividerOffsetChange: { dividerIndex, offset in
+                        appState.setBackgroundDividerOffset(
+                            element.id,
+                            dividerIndex: dividerIndex,
+                            offset: offset
+                        )
+                    }
+                )
+            }
+
+            inspectorChoiceRow(
+                title: "分区",
+                items: BackgroundSplitCount.allCases,
+                selected: settings.splitCount
+            ) { splitCount in
+                appState.setBackgroundSplitCount(element.id, splitCount)
+            }
+
+            if settings.splitCount != .full {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Text("角度")
+                            .font(.caption2)
+                            .foregroundStyle(LF.textSecondary)
+                        Spacer()
+                        Text(String(format: "%.0f°", settings.dividerAngle))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(LF.accent)
+                    }
+                    Slider(
+                        value: Binding(
+                            get: { Double(settings.dividerAngle) },
+                            set: { appState.setBackgroundDividerAngle(element.id, CGFloat($0)) }
+                        ),
+                        in: 0...180
+                    )
+                    .tint(LF.accent)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach([CGFloat(0), 30, 45, 60, 90, 120, 135, 150], id: \.self) { angle in
+                                Button {
+                                    appState.setBackgroundDividerAngle(element.id, angle)
+                                } label: {
+                                    Text(String(format: "%.0f°", angle))
+                                        .font(.caption2.monospacedDigit().weight(.semibold))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            abs(settings.dividerAngle - angle) < 0.5 ? LF.accent : LF.surface2,
+                                            in: Capsule()
+                                        )
+                                        .foregroundStyle(abs(settings.dividerAngle - angle) < 0.5 ? .white : LF.textPrimary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    Text(settings.splitCount == .four
+                         ? "靠近常用角度时会自动吸附；预览中的两个圆点可分别拖动"
+                         : "靠近常用角度时会自动吸附；预览中的圆点可拖动")
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                }
+
+                partitionChoiceRow(
+                    title: "填充区域",
+                    count: settings.splitCount == .two ? 2 : 4,
+                    selected: settings.selectedPartition
+                ) { partition in
+                    appState.setBackgroundPartition(element.id, partition)
+                }
+            }
+
+            inspectorChoiceRow(
+                title: "边缘",
+                items: BackgroundEdgeStyle.allCases,
+                selected: settings.edgeStyle
+            ) { style in
+                appState.setBackgroundEdgeStyle(element.id, style)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text("裁剪")
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                    Slider(
+                        value: Binding(
+                            get: { Double(settings.cropScale) },
+                            set: { appState.setBackgroundCropScale(element.id, CGFloat($0)) }
+                        ),
+                        in: 1...4
+                    )
+                    .tint(LF.accent)
+                    Text(String(format: "%.1f×", settings.cropScale))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(LF.textSecondary)
+                        .frame(width: 34, alignment: .trailing)
+                }
+                HStack {
+                    Text("图片缩放")
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                    Spacer()
+                    Button("重置") {
+                        appState.setBackgroundCropScale(element.id, 1)
+                        appState.setBackgroundCropOffset(element.id, .zero)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LF.accent)
+                    Button {
+                        appState.rotateBackground90(element.id)
+                    } label: {
+                        Label("旋转90°", systemImage: "rotate.right")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LF.accent)
+                }
+            }
+        }
+    }
+
+    private func inspectorChoiceRow<T: CaseIterable & Identifiable & Equatable>(
+        title: LocalizedStringKey,
+        items: T.AllCases,
+        selected: T,
+        action: @escaping (T) -> Void
+    ) -> some View where T.AllCases: RandomAccessCollection {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(items) { item in
+                        Button { action(item) } label: {
+                            Text(itemTitle(item))
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(item == selected ? LF.accent : LF.surface2, in: Capsule())
+                                .foregroundStyle(item == selected ? .white : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func partitionChoiceRow(
+        title: LocalizedStringKey,
+        count: Int,
+        selected: Int,
+        action: @escaping (Int) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(0..<count, id: \.self) { partition in
+                        Button { action(partition) } label: {
+                            Text("区域 \(partition + 1)")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(partition == selected ? LF.accent : LF.surface2, in: Capsule())
+                                .foregroundStyle(partition == selected ? .white : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func itemTitle<T>(_ item: T) -> String {
+        if let region = item as? BackgroundRegion { return region.title }
+        if let edge = item as? BackgroundEdgeStyle { return edge.title }
+        if let splitCount = item as? BackgroundSplitCount { return splitCount.title }
+        return ""
     }
 
     // MARK: - 滤镜
@@ -734,5 +939,348 @@ struct ElementInspectorView: View {
                 .tint(LF.gold)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+private struct BackgroundFillPreview: View {
+    let frame: CGImage
+    let canvasAspect: CGFloat
+    let canvasSize: CGSize
+    let settings: BackgroundElementSettings
+    let onPartitionTap: (Int) -> Void
+    let onDividerOffsetChange: (Int, CGFloat) -> Void
+    @State private var activeDividerIndex: Int?
+    @State private var dividerOffsetAtDragStart: CGFloat = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("实时预览 · 点击区域选择图片显示位置 · 拖动圆点平移分割线")
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
+
+            GeometryReader { geometry in
+                let rect = CGRect(origin: .zero, size: geometry.size)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.white)
+
+                    Image(decorative: frame, scale: 1)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .rotationEffect(.degrees(Double(settings.rotationQuarterTurns * 90)))
+                        .scaleEffect(rotationFillScale(in: geometry.size))
+                        .scaleEffect(settings.cropScale)
+                        .offset(
+                            x: settings.cropOffset.x * geometry.size.width / max(canvasSize.width, 1),
+                            y: -settings.cropOffset.y * geometry.size.height / max(canvasSize.height, 1)
+                        )
+                        .clipped()
+                        .clipShape(BackgroundPartitionShape(settings: settings))
+
+                    BackgroundDividerShape(settings: settings)
+                        .stroke(LF.accent.opacity(0.85), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+
+                    if settings.splitCount != .full {
+                        ForEach(0..<dividerCount, id: \.self) { index in
+                            dividerHandle(index: index, in: rect)
+                        }
+
+                        Text("区域 \(settings.selectedPartition + 1)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(LF.accent, in: Capsule())
+                            .position(selectedLabelPosition(in: rect))
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(LF.accent.opacity(0.45), lineWidth: 1)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { location in
+                    if let partition = partition(at: location, in: rect) {
+                        onPartitionTap(partition)
+                    }
+                }
+                .simultaneousGesture(dividerDragGesture(in: rect))
+            }
+            .aspectRatio(canvasAspect, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func selectedLabelPosition(in rect: CGRect) -> CGPoint {
+        let point = BackgroundPartitionShape.samplePoint(
+            settings: settings,
+            in: rect
+        )
+        return CGPoint(x: point.x, y: point.y)
+    }
+
+    private func rotationFillScale(in size: CGSize) -> CGFloat {
+        let turns = ((settings.rotationQuarterTurns % 4) + 4) % 4
+        guard turns % 2 == 1 else { return 1 }
+        return max(size.width / max(size.height, 1), size.height / max(size.width, 1))
+    }
+
+    private func partition(at point: CGPoint, in rect: CGRect) -> Int? {
+        guard settings.splitCount != .full else { return nil }
+        let normal = BackgroundPartitionShape.normal(for: 0, settings: settings)
+        let firstCenter = BackgroundPartitionShape.dividerCenter(
+            for: 0,
+            settings: settings,
+            in: rect
+        )
+        let value = signedDistance(point, from: firstCenter, normal: normal)
+        if settings.splitCount == .two {
+            return value >= 0 ? 0 : 1
+        }
+        let secondNormal = BackgroundPartitionShape.normal(for: 1, settings: settings)
+        let secondCenter = BackgroundPartitionShape.dividerCenter(
+            for: 1,
+            settings: settings,
+            in: rect
+        )
+        let secondValue = signedDistance(point, from: secondCenter, normal: secondNormal)
+        let firstBit = value >= 0
+        let secondBit = secondValue >= 0
+        switch (firstBit, secondBit) {
+        case (true, true): return 0
+        case (false, true): return 1
+        case (false, false): return 2
+        case (true, false): return 3
+        }
+    }
+
+    private var dividerCount: Int {
+        settings.splitCount == .four ? 2 : (settings.splitCount == .two ? 1 : 0)
+    }
+
+    @ViewBuilder
+    private func dividerHandle(index: Int, in rect: CGRect) -> some View {
+        let point = BackgroundPartitionShape.dividerCenter(for: index, settings: settings, in: rect)
+        let isActive = activeDividerIndex == index
+        Circle()
+            .fill(isActive ? LF.gold : LF.accent)
+            .frame(width: isActive ? 22 : 18, height: isActive ? 22 : 18)
+            .overlay {
+                Image(systemName: "arrow.left.and.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .rotationEffect(.degrees(Double(index == 0
+                        ? 90 - settings.dividerAngle
+                        : 180 - settings.dividerAngle)))
+            }
+            .shadow(color: .black.opacity(0.22), radius: 2, y: 1)
+            .position(point)
+            .allowsHitTesting(false)
+    }
+
+    private func dividerDragGesture(in rect: CGRect) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                let draggedDividerIndex: Int
+                let startingOffset: CGFloat
+                if let activeDividerIndex {
+                    draggedDividerIndex = activeDividerIndex
+                    startingOffset = dividerOffsetAtDragStart
+                } else {
+                    guard let nearest = dividerIndex(near: value.startLocation, in: rect) else { return }
+                    draggedDividerIndex = nearest
+                    startingOffset = BackgroundDividerGeometry.offset(
+                        for: nearest,
+                        settings: settings
+                    )
+                    activeDividerIndex = nearest
+                    dividerOffsetAtDragStart = startingOffset
+                }
+
+                let normal = BackgroundPartitionShape.normal(for: draggedDividerIndex, settings: settings)
+                let extent = BackgroundDividerGeometry.extent(in: rect, normal: normal)
+                guard extent > 0.0001 else { return }
+                let projectedTranslation = value.translation.width * normal.x
+                    + value.translation.height * normal.y
+                onDividerOffsetChange(
+                    draggedDividerIndex,
+                    BackgroundDividerGeometry.clampedOffset(startingOffset + projectedTranslation / extent)
+                )
+            }
+            .onEnded { _ in
+                activeDividerIndex = nil
+                dividerOffsetAtDragStart = 0
+            }
+    }
+
+    private func dividerIndex(near point: CGPoint, in rect: CGRect) -> Int? {
+        guard dividerCount > 0 else { return nil }
+        let threshold = max(16, min(rect.width, rect.height) * 0.1)
+        let candidates = (0..<dividerCount).map { index -> (index: Int, distance: CGFloat) in
+            let center = BackgroundPartitionShape.dividerCenter(for: index, settings: settings, in: rect)
+            let normal = BackgroundPartitionShape.normal(for: index, settings: settings)
+            return (index, abs(signedDistance(point, from: center, normal: normal)))
+        }
+        guard let nearest = candidates.min(by: { $0.distance < $1.distance }),
+              nearest.distance <= threshold else { return nil }
+        return nearest.index
+    }
+
+    private func signedDistance(_ point: CGPoint, from center: CGPoint, normal: CGPoint) -> CGFloat {
+        (point.x - center.x) * normal.x + (point.y - center.y) * normal.y
+    }
+}
+
+private struct BackgroundPartitionShape: Shape {
+    let settings: BackgroundElementSettings
+
+    func path(in rect: CGRect) -> Path {
+        guard settings.splitCount != .full else { return Path(rect) }
+        let polygon = polygon(in: rect)
+        var path = Path()
+        guard let first = polygon.first else { return path }
+        path.move(to: first)
+        for point in polygon.dropFirst() { path.addLine(to: point) }
+        path.closeSubpath()
+        return path
+    }
+
+    static func radians(_ degrees: CGFloat) -> CGFloat {
+        let normalized = (degrees.isFinite ? degrees : 45).truncatingRemainder(dividingBy: 180)
+        return (normalized < 0 ? normalized + 180 : normalized) * .pi / 180
+    }
+
+    static func normal(for dividerIndex: Int, settings: BackgroundElementSettings) -> CGPoint {
+        let angle = radians(settings.dividerAngle)
+        let direction = CGPoint(x: cos(angle), y: -sin(angle))
+        return dividerIndex == 0
+            ? CGPoint(x: -direction.y, y: direction.x)
+            : CGPoint(x: -direction.x, y: -direction.y)
+    }
+
+    static func dividerCenter(
+        for dividerIndex: Int,
+        settings: BackgroundElementSettings,
+        in rect: CGRect
+    ) -> CGPoint {
+        BackgroundDividerGeometry.center(
+            in: rect,
+            normal: normal(for: dividerIndex, settings: settings),
+            offset: BackgroundDividerGeometry.offset(for: dividerIndex, settings: settings)
+        )
+    }
+
+    static func samplePoint(settings: BackgroundElementSettings, in rect: CGRect) -> CGPoint {
+        let firstNormal = normal(for: 0, settings: settings)
+        let firstCenter = dividerCenter(for: 0, settings: settings, in: rect)
+        if settings.splitCount == .two {
+            let sign: CGFloat = settings.selectedPartition == 0 ? 1 : -1
+            let distance = BackgroundDividerGeometry.extent(in: rect, normal: firstNormal) * 0.24 * sign
+            return clampedToRect(
+                CGPoint(
+                    x: firstCenter.x + firstNormal.x * distance,
+                    y: firstCenter.y + firstNormal.y * distance
+                ),
+                rect: rect
+            )
+        }
+        let secondNormal = normal(for: 1, settings: settings)
+        let firstSign: CGFloat = settings.selectedPartition == 0 || settings.selectedPartition == 3 ? 1 : -1
+        let secondSign: CGFloat = settings.selectedPartition == 0 || settings.selectedPartition == 1 ? 1 : -1
+        let firstDistance = BackgroundDividerGeometry.extent(in: rect, normal: firstNormal) * 0.2 * firstSign
+        let secondDistance = BackgroundDividerGeometry.extent(in: rect, normal: secondNormal) * 0.2 * secondSign
+        let sample = CGPoint(
+            x: firstCenter.x + firstNormal.x * firstDistance + secondNormal.x * secondDistance,
+            y: firstCenter.y + firstNormal.y * firstDistance + secondNormal.y * secondDistance
+        )
+        return clampedToRect(
+            sample,
+            rect: rect
+        )
+    }
+
+    private func polygon(in rect: CGRect) -> [CGPoint] {
+        let angle = Self.radians(settings.dividerAngle)
+        let direction = CGPoint(x: cos(angle), y: -sin(angle))
+        let normal = CGPoint(x: -direction.y, y: direction.x)
+        let firstCenter = Self.dividerCenter(for: 0, settings: settings, in: rect)
+        let base = [
+            CGPoint(x: rect.minX, y: rect.minY),
+            CGPoint(x: rect.maxX, y: rect.minY),
+            CGPoint(x: rect.maxX, y: rect.maxY),
+            CGPoint(x: rect.minX, y: rect.maxY)
+        ]
+        if settings.splitCount == .two {
+            let sign: CGFloat = settings.selectedPartition == 0 ? 1 : -1
+            return clipped(base, center: firstCenter, normal: normal, sign: sign)
+        }
+        let secondNormal = Self.normal(for: 1, settings: settings)
+        let secondCenter = Self.dividerCenter(for: 1, settings: settings, in: rect)
+        let firstSign: CGFloat = settings.selectedPartition == 0 || settings.selectedPartition == 3 ? 1 : -1
+        let secondSign: CGFloat = settings.selectedPartition == 0 || settings.selectedPartition == 1 ? 1 : -1
+        return clipped(
+            clipped(base, center: firstCenter, normal: normal, sign: firstSign),
+            center: secondCenter,
+            normal: secondNormal,
+            sign: secondSign
+        )
+    }
+
+    private func clipped(_ polygon: [CGPoint], center: CGPoint, normal: CGPoint, sign: CGFloat) -> [CGPoint] {
+        guard !polygon.isEmpty else { return [] }
+        var result: [CGPoint] = []
+        for index in polygon.indices {
+            let current = polygon[index]
+            let previous = polygon[(index + polygon.count - 1) % polygon.count]
+            let currentValue = distance(current, center: center, normal: normal, sign: sign)
+            let previousValue = distance(previous, center: center, normal: normal, sign: sign)
+            let currentInside = currentValue >= 0
+            let previousInside = previousValue >= 0
+            if currentInside != previousInside {
+                let denominator = previousValue - currentValue
+                let progress = abs(denominator) > 0.0001 ? previousValue / denominator : 0
+                result.append(CGPoint(
+                    x: previous.x + (current.x - previous.x) * progress,
+                    y: previous.y + (current.y - previous.y) * progress
+                ))
+            }
+            if currentInside { result.append(current) }
+        }
+        return result
+    }
+
+    private func distance(_ point: CGPoint, center: CGPoint, normal: CGPoint, sign: CGFloat) -> CGFloat {
+        ((point.x - center.x) * normal.x + (point.y - center.y) * normal.y) * sign
+    }
+
+    private static func clampedToRect(_ point: CGPoint, rect: CGRect) -> CGPoint {
+        CGPoint(
+            x: min(max(point.x, rect.minX + 24), rect.maxX - 24),
+            y: min(max(point.y, rect.minY + 16), rect.maxY - 16)
+        )
+    }
+}
+
+private struct BackgroundDividerShape: Shape {
+    let settings: BackgroundElementSettings
+
+    func path(in rect: CGRect) -> Path {
+        guard settings.splitCount != .full else { return Path() }
+        let angle = BackgroundPartitionShape.radians(settings.dividerAngle)
+        let direction = CGPoint(x: cos(angle), y: -sin(angle))
+        let firstCenter = BackgroundPartitionShape.dividerCenter(for: 0, settings: settings, in: rect)
+        let length = max(rect.width, rect.height) * 2
+        var path = Path()
+        path.move(to: CGPoint(x: firstCenter.x - direction.x * length, y: firstCenter.y - direction.y * length))
+        path.addLine(to: CGPoint(x: firstCenter.x + direction.x * length, y: firstCenter.y + direction.y * length))
+        if settings.splitCount == .four {
+            let perpendicular = CGPoint(x: -direction.y, y: direction.x)
+            let secondCenter = BackgroundPartitionShape.dividerCenter(for: 1, settings: settings, in: rect)
+            path.move(to: CGPoint(x: secondCenter.x - perpendicular.x * length, y: secondCenter.y - perpendicular.y * length))
+            path.addLine(to: CGPoint(x: secondCenter.x + perpendicular.x * length, y: secondCenter.y + perpendicular.y * length))
+        }
+        return path
     }
 }

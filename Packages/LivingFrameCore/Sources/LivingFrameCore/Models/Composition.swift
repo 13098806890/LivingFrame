@@ -34,9 +34,195 @@ public struct ElementTransform: Codable, Equatable {
 
 public enum ElementKind: Codable, Equatable {
     case clip(clipID: String)
+    case background(backgroundID: String)
     case decoration(decorationID: String)
     case effect(effectID: String)
     case text(textID: String)
+}
+
+/// 背景图片元素在画布中的预设占用区域。
+public enum BackgroundRegion: String, Codable, CaseIterable, Identifiable, Sendable {
+    case full
+    case upperHalf
+    case lowerHalf
+    case diagonal
+    case quarter
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .full: NSLocalizedString("全画布", comment: "Background region")
+        case .upperHalf: NSLocalizedString("上半", comment: "Background region")
+        case .lowerHalf: NSLocalizedString("下半", comment: "Background region")
+        case .diagonal: NSLocalizedString("对角", comment: "Background region")
+        case .quarter: NSLocalizedString("四分之一", comment: "Background region")
+        }
+    }
+
+    public func rect(in canvas: CGRect) -> CGRect {
+        switch self {
+        case .full, .diagonal:
+            return canvas
+        case .upperHalf:
+            return CGRect(x: canvas.minX, y: canvas.midY, width: canvas.width, height: canvas.height / 2)
+        case .lowerHalf:
+            return CGRect(x: canvas.minX, y: canvas.minY, width: canvas.width, height: canvas.height / 2)
+        case .quarter:
+            return CGRect(x: canvas.midX, y: canvas.midY, width: canvas.width / 2, height: canvas.height / 2)
+        }
+    }
+}
+
+/// 背景图片与画布交界处的边缘效果。
+public enum BackgroundEdgeStyle: String, Codable, CaseIterable, Identifiable, Sendable {
+    case flat
+    case torn
+    case comic
+    case zigzag
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .flat: NSLocalizedString("平整", comment: "Background edge")
+        case .torn: NSLocalizedString("手撕", comment: "Background edge")
+        case .comic: NSLocalizedString("漫画", comment: "Background edge")
+        case .zigzag: NSLocalizedString("锯齿", comment: "Background edge")
+        }
+    }
+}
+
+/// 背景图片的分区数量。新建分割线默认穿过画布中心，之后可平行移动。
+public enum BackgroundSplitCount: String, Codable, CaseIterable, Identifiable, Sendable {
+    case full
+    case two
+    case four
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .full: NSLocalizedString("整幅", comment: "Background split count")
+        case .two: NSLocalizedString("2区", comment: "Background split count")
+        case .four: NSLocalizedString("4区", comment: "Background split count")
+        }
+    }
+}
+
+/// 背景图片元素的独有设置。
+/// cropScale/cropOffset 只影响图片在区域内部的取景，不改变元素本身在画布上的位置。
+public struct BackgroundElementSettings: Codable, Equatable, Sendable {
+    public var region: BackgroundRegion
+    public var edgeStyle: BackgroundEdgeStyle
+    public var cropScale: CGFloat
+    public var cropOffset: CGPoint
+    /// 新版分割模式；full 时保留并使用旧 region 字段，兼容已有工程。
+    public var splitCount: BackgroundSplitCount
+    /// 第一条分割线角度（度）。4区模式的第二条线自动为 angle + 90°。
+    public var dividerAngle: CGFloat
+    /// 第一条分割线沿法线方向的偏移，单位为该方向可移动范围的比例（-0.85...0.85）。
+    public var primaryDividerOffset: CGFloat
+    /// 4 区模式下第二条分割线沿自身法线方向的独立偏移。
+    public var secondaryDividerOffset: CGFloat
+    /// 当前被填充的分区索引：2区为 0...1，4区为 0...3。
+    public var selectedPartition: Int
+    /// 背景图片的额外旋转次数，每次为顺时针 90°。
+    /// 图片导入时先按 EXIF 方向校正；这个值只记录用户后续的主动旋转。
+    public var rotationQuarterTurns: Int
+
+    public init(
+        region: BackgroundRegion = .full,
+        edgeStyle: BackgroundEdgeStyle = .flat,
+        cropScale: CGFloat = 1,
+        cropOffset: CGPoint = .zero,
+        splitCount: BackgroundSplitCount = .full,
+        dividerAngle: CGFloat = 45,
+        primaryDividerOffset: CGFloat = 0,
+        secondaryDividerOffset: CGFloat = 0,
+        selectedPartition: Int = 0,
+        rotationQuarterTurns: Int = 0
+    ) {
+        self.region = region
+        self.edgeStyle = edgeStyle
+        self.cropScale = cropScale
+        self.cropOffset = cropOffset
+        self.splitCount = splitCount
+        self.dividerAngle = dividerAngle
+        self.primaryDividerOffset = BackgroundDividerGeometry.clampedOffset(primaryDividerOffset)
+        self.secondaryDividerOffset = BackgroundDividerGeometry.clampedOffset(secondaryDividerOffset)
+        self.selectedPartition = selectedPartition
+        self.rotationQuarterTurns = rotationQuarterTurns
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case region, edgeStyle, cropScale, cropOffset, splitCount, dividerAngle, primaryDividerOffset, secondaryDividerOffset, selectedPartition, rotationQuarterTurns
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        region = try container.decodeIfPresent(BackgroundRegion.self, forKey: .region) ?? .full
+        edgeStyle = try container.decodeIfPresent(BackgroundEdgeStyle.self, forKey: .edgeStyle) ?? .flat
+        cropScale = try container.decodeIfPresent(CGFloat.self, forKey: .cropScale) ?? 1
+        cropOffset = try container.decodeIfPresent(CGPoint.self, forKey: .cropOffset) ?? .zero
+        splitCount = try container.decodeIfPresent(BackgroundSplitCount.self, forKey: .splitCount) ?? .full
+        dividerAngle = try container.decodeIfPresent(CGFloat.self, forKey: .dividerAngle) ?? 45
+        primaryDividerOffset = BackgroundDividerGeometry.clampedOffset(
+            try container.decodeIfPresent(CGFloat.self, forKey: .primaryDividerOffset) ?? 0
+        )
+        secondaryDividerOffset = BackgroundDividerGeometry.clampedOffset(
+            try container.decodeIfPresent(CGFloat.self, forKey: .secondaryDividerOffset) ?? 0
+        )
+        selectedPartition = try container.decodeIfPresent(Int.self, forKey: .selectedPartition) ?? 0
+        rotationQuarterTurns = try container.decodeIfPresent(Int.self, forKey: .rotationQuarterTurns) ?? 0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(region, forKey: .region)
+        try container.encode(edgeStyle, forKey: .edgeStyle)
+        try container.encode(cropScale, forKey: .cropScale)
+        try container.encode(cropOffset, forKey: .cropOffset)
+        try container.encode(splitCount, forKey: .splitCount)
+        try container.encode(dividerAngle, forKey: .dividerAngle)
+        try container.encode(primaryDividerOffset, forKey: .primaryDividerOffset)
+        try container.encode(secondaryDividerOffset, forKey: .secondaryDividerOffset)
+        try container.encode(selectedPartition, forKey: .selectedPartition)
+        try container.encode(rotationQuarterTurns, forKey: .rotationQuarterTurns)
+    }
+}
+
+/// 背景分割线在预览与导出间共用的偏移换算。
+/// offset 使用相对法线可移动范围的比例，因而不随画布比例变化而失真。
+public enum BackgroundDividerGeometry {
+    public static let maximumOffset: CGFloat = 0.85
+
+    public static func clampedOffset(_ offset: CGFloat) -> CGFloat {
+        guard offset.isFinite else { return 0 }
+        return min(max(offset, -maximumOffset), maximumOffset)
+    }
+
+    public static func offset(
+        for dividerIndex: Int,
+        settings: BackgroundElementSettings
+    ) -> CGFloat {
+        dividerIndex == 0 ? settings.primaryDividerOffset : settings.secondaryDividerOffset
+    }
+
+    /// 法线在当前坐标系下为单位向量（Core Image 与 SwiftUI 的 y 轴方向不同，调用方传入对应法线）。
+    public static func center(
+        in rect: CGRect,
+        normal: CGPoint,
+        offset: CGFloat
+    ) -> CGPoint {
+        let distance = clampedOffset(offset) * extent(in: rect, normal: normal)
+        return CGPoint(x: rect.midX + normal.x * distance, y: rect.midY + normal.y * distance)
+    }
+
+    /// 直线仍与画布相交时，中心沿法线方向可移动的最大距离。
+    public static func extent(in rect: CGRect, normal: CGPoint) -> CGFloat {
+        abs(normal.x) * rect.width / 2 + abs(normal.y) * rect.height / 2
+    }
 }
 
 /// 文字元素（画布上的文字，渲染为透明底图片后走通用变换）
@@ -114,6 +300,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     public var backgroundPattern: BackgroundPatternStyle?
     /// 滤镜（作用于元素内容，nil = 原图）
     public var filter: ElementFilter?
+    /// 仅对 background 元素生效；旧版本工程解码时为 nil。
+    public var backgroundSettings: BackgroundElementSettings?
 
     public init(
         id: UUID = UUID(),
@@ -126,7 +314,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         sourceStartTime: TimeInterval = 0,
         sourceEndTime: TimeInterval = .greatestFiniteMagnitude,
         backgroundPattern: BackgroundPatternStyle? = nil,
-        filter: ElementFilter? = nil
+        filter: ElementFilter? = nil,
+        backgroundSettings: BackgroundElementSettings? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -139,16 +328,18 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         self.sourceEndTime = sourceEndTime
         self.backgroundPattern = backgroundPattern
         self.filter = filter
+        self.backgroundSettings = backgroundSettings
     }
 
     public func isVisible(at time: TimeInterval) -> Bool {
         time >= startTime && time < endTime
     }
 
-    // MARK: - 解码兼容（filter 为新字段）
+    // MARK: - 解码兼容（filter/backgroundSettings 为新字段）
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, name, transform, zIndex, startTime, endTime, sourceStartTime, sourceEndTime, backgroundPattern, filter
+        case id, kind, name, transform, zIndex, startTime, endTime, sourceStartTime, sourceEndTime, backgroundPattern, filter,
+             backgroundSettings
     }
 
     public init(from decoder: Decoder) throws {
@@ -164,6 +355,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         sourceEndTime = try container.decodeIfPresent(TimeInterval.self, forKey: .sourceEndTime) ?? .greatestFiniteMagnitude
         backgroundPattern = try container.decodeIfPresent(BackgroundPatternStyle.self, forKey: .backgroundPattern)
         filter = try container.decodeIfPresent(ElementFilter.self, forKey: .filter)
+        backgroundSettings = try container.decodeIfPresent(BackgroundElementSettings.self, forKey: .backgroundSettings)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -179,6 +371,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         try container.encode(sourceEndTime, forKey: .sourceEndTime)
         try container.encode(backgroundPattern, forKey: .backgroundPattern)
         try container.encode(filter, forKey: .filter)
+        try container.encode(backgroundSettings, forKey: .backgroundSettings)
     }
 }
 

@@ -1,16 +1,58 @@
 import Combine
 import LivingFrameCore
+import Photos
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 编辑页素材选择器：从素材库文件夹中选择素材（可多选）加入画布
 struct AssetPickerView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var selectedIDs: Set<String> = []
+    @State private var selectedBackgroundIDs: Set<String> = []
+    @State private var pickerMode: PickerMode = .person
+    @State private var backgroundFilter: BackgroundFilter = .all
+    @State private var photoItems: [PhotosPickerItem] = []
+    @State private var isImportingBackground = false
+    @State private var backgroundImportProgress: Double?
+    @State private var backgroundImportCompletedCount = 0
+    @State private var backgroundImportTotalCount = 0
+    @State private var backgroundImportTask: Task<Void, Never>?
     /// 当前浏览的文件夹（nil = 全部素材），按钮直接切换，不依赖 NavigationLink
     @State private var folderID: String?
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 10)]
+
+    private enum PickerMode: String, CaseIterable, Identifiable {
+        case person
+        case background
+
+        var id: String { rawValue }
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .person: "人物素材"
+            case .background: "背景图片"
+            }
+        }
+    }
+
+    private enum BackgroundFilter: String, CaseIterable, Identifiable {
+        case all
+        case still
+        case animated
+
+        var id: String { rawValue }
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .all: "全部背景"
+            case .still: "静态"
+            case .animated: "动态"
+            }
+        }
+    }
 
     private var currentFolder: LibraryFolder? {
         appState.folders.first { $0.id == folderID }
@@ -20,11 +62,16 @@ struct AssetPickerView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
-                    folderBar
-                    if let folder = currentFolder, !appState.childFolders(of: folder.id).isEmpty {
-                        childFolderBar(folder)
+                    modePicker
+                    if pickerMode == .person {
+                        folderBar
+                        if let folder = currentFolder, !appState.childFolders(of: folder.id).isEmpty {
+                            childFolderBar(folder)
+                        }
+                        clipsGrid
+                    } else {
+                        backgroundGrid
                     }
-                    clipsGrid
                 }
                 .padding()
             }
@@ -37,19 +84,75 @@ struct AssetPickerView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        for clipID in selectedIDs {
-                            appState.addElementFromClipID(clipID)
+                        if pickerMode == .person {
+                            for clipID in selectedIDs {
+                                appState.addElementFromClipID(clipID)
+                            }
+                        } else {
+                            for backgroundID in selectedBackgroundIDs {
+                                appState.addBackgroundElement(mediaID: backgroundID)
+                            }
                         }
                         dismiss()
                     } label: {
-                        Text(selectedIDs.isEmpty ? "添加" : "添加(\(selectedIDs.count))")
+                        let count = pickerMode == .person ? selectedIDs.count : selectedBackgroundIDs.count
+                        Text(count == 0 ? "添加" : "添加(\(count))")
                             .fontWeight(.semibold)
                     }
-                    .disabled(selectedIDs.isEmpty)
+                    .disabled(pickerMode == .person ? selectedIDs.isEmpty : selectedBackgroundIDs.isEmpty)
                 }
             }
         }
         .presentationDetents([.medium, .large])
+        .onDisappear {
+            backgroundImportTask?.cancel()
+        }
+        .onChange(of: pickerMode) { _, _ in
+            selectedIDs.removeAll()
+            selectedBackgroundIDs.removeAll()
+        }
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            photoItems.removeAll()
+            backgroundImportTask?.cancel()
+            backgroundImportTask = Task { @MainActor in
+                isImportingBackground = true
+                backgroundImportProgress = 0
+                backgroundImportCompletedCount = 0
+                backgroundImportTotalCount = items.count
+                for (index, item) in items.enumerated() {
+                    guard !Task.isCancelled else { break }
+                    let imported = await BackgroundPhotoImporter.load(from: item) { progress in
+                        Task { @MainActor in
+                            guard backgroundImportTotalCount == items.count else { return }
+                            let completed = Double(index) / Double(max(items.count, 1))
+                            backgroundImportProgress = completed + progress / Double(max(items.count, 1))
+                        }
+                    }
+                    if let imported,
+                       let id = appState.importBackgroundMedia(
+                        data: imported.data,
+                        preferredFileExtension: imported.fileExtension,
+                        isVideo: imported.isVideo
+                       ) {
+                        selectedBackgroundIDs.insert(id)
+                    }
+                    backgroundImportCompletedCount = index + 1
+                    backgroundImportProgress = Double(index + 1) / Double(max(items.count, 1))
+                }
+                isImportingBackground = false
+                backgroundImportTask = nil
+            }
+        }
+    }
+
+    private var modePicker: some View {
+        Picker("素材类型", selection: $pickerMode) {
+            ForEach(PickerMode.allCases) { mode in
+                Text(mode.title).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
     }
 
     /// 顶层：全部素材 + 根文件夹
@@ -148,6 +251,276 @@ struct AssetPickerView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var backgroundGrid: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            PhotosPicker(
+                selection: $photoItems,
+                maxSelectionCount: 20,
+                matching: .any(of: [.images, .livePhotos]),
+                preferredItemEncoding: .current
+            ) {
+                HStack(spacing: 12) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.title2)
+                        .foregroundStyle(LF.accent)
+                        .frame(width: 42, height: 42)
+                        .background(LF.accentSoft, in: RoundedRectangle(cornerRadius: 12))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("从相册选择")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LF.textPrimary)
+                        Text("可多选图片或动态照片")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(LF.textSecondary)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(LF.surface2, in: RoundedRectangle(cornerRadius: 14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(LF.accent.opacity(0.35), lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isImportingBackground {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("正在下载原始动态照片")
+                            .font(.caption.weight(.semibold))
+                        Spacer()
+                        Text("\(backgroundImportCompletedCount)/\(backgroundImportTotalCount)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(LF.textSecondary)
+                    }
+                    if let backgroundImportProgress {
+                        ProgressView(value: backgroundImportProgress)
+                            .tint(LF.accent)
+                    } else {
+                        ProgressView()
+                            .tint(LF.accent)
+                    }
+                }
+                .padding(12)
+                .background(LF.accentSoft.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(BackgroundFilter.allCases) { filter in
+                        Button {
+                            backgroundFilter = filter
+                            selectedBackgroundIDs.removeAll()
+                        } label: {
+                            Text(filter.title)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 13)
+                                .padding(.vertical, 8)
+                                .background(
+                                    backgroundFilter == filter ? LF.accent : LF.surface2,
+                                    in: Capsule()
+                                )
+                                .foregroundStyle(backgroundFilter == filter ? .white : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            let media = appState.backgroundMedia.filter { item in
+                switch backgroundFilter {
+                case .all: true
+                case .still: !item.isAnimated
+                case .animated: item.isAnimated
+                }
+            }
+            if media.isEmpty {
+                EmptyStateView(
+                    icon: "photo.on.rectangle.angled",
+                    title: "暂无背景图片",
+                    message: "点击上方按钮从相册添加图片"
+                )
+            } else {
+                LazyVGrid(columns: columns, spacing: 10) {
+                    ForEach(media) { item in
+                        BackgroundAssetCell(
+                            item: item,
+                            isSelected: selectedBackgroundIDs.contains(item.id)
+                        ) {
+                            if selectedBackgroundIDs.contains(item.id) {
+                                selectedBackgroundIDs.remove(item.id)
+                            } else {
+                                selectedBackgroundIDs.insert(item.id)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// PhotosPicker 的 `Data` 对 Live Photo 通常只返回静态主照片。
+/// 用资源库中的 pairedVideo 取回原始 MOV，才能让背景在时间轴和导出中正常播放。
+private enum BackgroundPhotoImporter {
+    struct ImportedMedia {
+        let data: Data
+        let fileExtension: String?
+        let isVideo: Bool
+    }
+
+    static func load(
+        from item: PhotosPickerItem,
+        progress: @escaping (Double) -> Void
+    ) async -> ImportedMedia? {
+        // 与「提取素材」使用相同的优先级：先通过 PHAsset 请求原始视频，
+        // 再以 PHLivePhoto 的 pairedVideo 资源兜底。两条路径都允许 iCloud 下载。
+        if let imported = await livePhotoVideo(from: item, progress: progress) {
+            return imported
+        }
+
+        progress(0.15)
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return nil }
+        let type = item.supportedContentTypes.first
+        progress(1)
+        return ImportedMedia(data: data, fileExtension: type?.preferredFilenameExtension, isVideo: false)
+    }
+
+    private static func livePhotoVideo(
+        from item: PhotosPickerItem,
+        progress: @escaping (Double) -> Void
+    ) async -> ImportedMedia? {
+        if let identifier = item.itemIdentifier,
+           let status = await requestPhotoLibraryAccess(),
+           (status == .authorized || status == .limited),
+           let asset = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject,
+           asset.mediaSubtypes.contains(.photoLive),
+           let imported = await videoFromAsset(asset, progress: progress) {
+            return imported
+        }
+
+        // iCloud 或受限访问时 itemIdentifier 可能为空；PHLivePhoto 仍能给到 pairedVideo。
+        guard let livePhoto = try? await item.loadTransferable(type: PHLivePhoto.self),
+              let resource = PHAssetResource.assetResources(for: livePhoto)
+                .first(where: { $0.type == .pairedVideo }),
+              let data = await resourceData(resource, progress: progress) else {
+            return nil
+        }
+        return ImportedMedia(
+            data: data,
+            fileExtension: URL(fileURLWithPath: resource.originalFilename).pathExtension,
+            isVideo: true
+        )
+    }
+
+    private static func videoFromAsset(
+        _ asset: PHAsset,
+        progress: @escaping (Double) -> Void
+    ) async -> ImportedMedia? {
+        let options = PHVideoRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.progressHandler = { value, _, _, _ in progress(value) }
+        let url: URL? = await withCheckedContinuation { continuation in
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
+                continuation.resume(returning: (avAsset as? AVURLAsset)?.url)
+            }
+        }
+        guard let url, let data = try? Data(contentsOf: url) else { return nil }
+        progress(1)
+        return ImportedMedia(data: data, fileExtension: url.pathExtension, isVideo: true)
+    }
+
+    private static func resourceData(
+        _ resource: PHAssetResource,
+        progress: @escaping (Double) -> Void
+    ) async -> Data? {
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LF-background-\(UUID().uuidString)")
+            .appendingPathExtension(URL(fileURLWithPath: resource.originalFilename).pathExtension.isEmpty ? "mov" : URL(fileURLWithPath: resource.originalFilename).pathExtension)
+        let options = PHAssetResourceRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.progressHandler = progress
+        let error: Error? = await withCheckedContinuation { continuation in
+            PHAssetResourceManager.default().writeData(for: resource, toFile: destination, options: options) {
+                continuation.resume(returning: $0)
+            }
+        }
+        defer { try? FileManager.default.removeItem(at: destination) }
+        guard error == nil, let data = try? Data(contentsOf: destination) else { return nil }
+        progress(1)
+        return data
+    }
+
+    private static func requestPhotoLibraryAccess() async -> PHAuthorizationStatus? {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        switch status {
+        case .notDetermined:
+            return await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        default:
+            return status
+        }
+    }
+}
+
+private struct BackgroundAssetCell: View {
+    let item: BackgroundMediaItem
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack(alignment: .topTrailing) {
+                Group {
+                    if let image = BackgroundStore.shared.loadFrame(named: item.id, at: 0) {
+                        Image(decorative: image, scale: 1)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Color.black.opacity(0.2)
+                    }
+                }
+                .frame(height: 90)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                if item.isAnimated {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 24, height: 24)
+                        .background(.black.opacity(0.42), in: Circle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                        .padding(4)
+                }
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? LF.accent : .white.opacity(0.88))
+                    .shadow(color: .black.opacity(0.35), radius: 1)
+                    .padding(6)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onSelect)
+
+            HStack(spacing: 4) {
+                Text(item.isAnimated ? "动态图片" : "静态图片")
+                if item.isAnimated {
+                    Text("\(String(format: "%.1fs", item.duration))")
+                        .foregroundStyle(LF.textSecondary)
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(LF.textPrimary)
+            .lineLimit(1)
         }
     }
 }

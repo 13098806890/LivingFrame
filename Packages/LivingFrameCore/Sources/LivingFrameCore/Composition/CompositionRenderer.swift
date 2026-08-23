@@ -41,8 +41,15 @@ public struct CompositionRenderer {
             let size = rect.size
             let scale = min(1, frameMaxPixelSize / max(size.width, size.height))
             if scale < 1 {
+                // CI 的 cropped(to:) 会保留原画布坐标。预览分支随后以 (0, 0)
+                // 创建 CGImage，若画布已有裁剪偏移就会采到错误区域；导出不缩放，
+                // 因此只会在编辑预览中表现为背景层互相“串位”。先归一化再降采样。
                 let cropped = ci.cropped(to: rect)
-                let scaled = cropped.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                let normalized = cropped.transformed(by: CGAffineTransform(
+                    translationX: -rect.minX,
+                    y: -rect.minY
+                ))
+                let scaled = normalized.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
                 let scaledSize = CGSize(width: size.width * scale, height: size.height * scale)
                 return context.createCGImage(scaled, from: CGRect(origin: .zero, size: scaledSize))
             }
@@ -173,6 +180,20 @@ public struct CompositionRenderer {
         let source: CIImage?
         var fixScale: CGFloat = 1
         switch element.kind {
+        case .background(let backgroundID):
+            let settings = element.backgroundSettings ?? BackgroundElementSettings()
+            if let frame = BackgroundStore.shared.loadFrame(
+                named: backgroundID,
+                at: max(0, time - element.startTime)
+            ) {
+                source = backgroundImage(
+                    frame,
+                    settings: settings,
+                    canvas: canvas
+                )
+            } else {
+                source = nil
+            }
         case .clip(let clipID):
             if let clip = FrameCache.shared.clip(id: clipID) {
                 // 素材内时间：从源素材入点起算，再按素材倍速折算播放位置。
@@ -276,6 +297,11 @@ public struct CompositionRenderer {
         } else {
             ci = raw
         }
+        // 背景元素的 transform 由编辑器手势作为“图片在遮罩内的取景”处理，
+        // 不能再对已经生成的遮罩整体做一次元素变换，否则会把遮罩区域一起移动。
+        if case .background = element.kind {
+            return ci
+        }
         // CGAffineTransform 链为右乘：新变换先应用。
         // 目标应用顺序：平移到元素中心(-mid) → 缩放 → 旋转 → 平移到目标位置(position)。
         // 因此矩阵必须从"最后应用"的变换开始构造。
@@ -289,6 +315,78 @@ public struct CompositionRenderer {
         transform = transform.scaledBy(x: effectiveScale, y: effectiveScale)
         transform = transform.translatedBy(x: -ci.extent.midX, y: -ci.extent.midY)
         return ci.transformed(by: transform)
+    }
+
+    /// 背景媒体元素：先把图片 aspect-fill 到区域，再应用区域遮罩，最后交给通用元素变换。
+    private func backgroundImage(
+        _ cgImage: CGImage,
+        settings: BackgroundElementSettings,
+        canvas: CGRect
+    ) -> CIImage? {
+        // 图片始终先按完整画布尺寸 aspect-fill，区域只负责“露出多少”，
+        // 这样上半、下半、对角线、四分之一都不会把原图压缩成区域尺寸。
+        let localRect = CGRect(origin: .zero, size: canvas.size)
+        let rotatedImage = rotatedBackgroundImage(
+            CIImage(cgImage: cgImage),
+            quarterTurns: settings.rotationQuarterTurns
+        )
+        var image = rotatedImage.transformed(by: aspectFillTransform(
+            cgImageSize: imageSizeAfterBackgroundRotation(cgImage, quarterTurns: settings.rotationQuarterTurns),
+            target: localRect
+        ))
+
+        let cropScale = min(max(settings.cropScale.isFinite ? settings.cropScale : 1, 1), 4)
+        let center = CGPoint(x: localRect.midX, y: localRect.midY)
+        var cropTransform = CGAffineTransform(translationX: center.x, y: center.y)
+        cropTransform = cropTransform.scaledBy(x: cropScale, y: cropScale)
+        cropTransform = cropTransform.translatedBy(x: -center.x, y: -center.y)
+        image = image.transformed(by: cropTransform)
+        image = image.transformed(by: CGAffineTransform(
+            translationX: settings.cropOffset.x.isFinite ? settings.cropOffset.x : 0,
+            y: settings.cropOffset.y.isFinite ? settings.cropOffset.y : 0
+        ))
+
+        guard let maskCG = BackgroundMaskRenderer.maskImage(
+            size: localRect.size,
+            settings: settings
+        ) else { return nil }
+        let mask = CIImage(cgImage: maskCG).cropped(to: localRect)
+        let filter = CIFilter(name: "CIBlendWithMask")
+        filter?.setValue(image, forKey: kCIInputImageKey)
+        filter?.setValue(CIImage.clear.cropped(to: localRect), forKey: kCIInputBackgroundImageKey)
+        filter?.setValue(mask, forKey: kCIInputMaskImageKey)
+        guard var output = filter?.outputImage?.cropped(to: localRect) else { return nil }
+
+        if let edgeCG = BackgroundMaskRenderer.edgeImage(
+            size: localRect.size,
+            settings: settings
+        ) {
+            output = CIImage(cgImage: edgeCG).cropped(to: localRect).composited(over: output)
+        }
+
+        return output.transformed(by: CGAffineTransform(
+            translationX: canvas.minX,
+            y: canvas.minY
+        ))
+    }
+
+    /// Core Image 使用 y-up 坐标，正 90° 会对应界面里的顺时针旋转。
+    private func rotatedBackgroundImage(_ image: CIImage, quarterTurns: Int) -> CIImage {
+        let turns = ((quarterTurns % 4) + 4) % 4
+        guard turns != 0 else { return image }
+        let rotated = image.transformed(by: CGAffineTransform(rotationAngle: CGFloat(turns) * .pi / 2))
+        return rotated.transformed(by: CGAffineTransform(
+            translationX: -rotated.extent.minX,
+            y: -rotated.extent.minY
+        ))
+    }
+
+    private func imageSizeAfterBackgroundRotation(_ image: CGImage, quarterTurns: Int) -> CGSize {
+        let turns = ((quarterTurns % 4) + 4) % 4
+        if turns % 2 == 1 {
+            return CGSize(width: image.height, height: image.width)
+        }
+        return CGSize(width: image.width, height: image.height)
     }
 
     /// 文字元素渲染：CoreText 排版（自动换行）→ 透明底 CGContext 绘制 → CIImage
