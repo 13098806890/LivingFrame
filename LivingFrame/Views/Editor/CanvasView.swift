@@ -17,6 +17,8 @@ struct CanvasView: View {
     /// 背景取景交互状态，用于提示用户当前正在移动还是缩放图片。
     @State private var backgroundGestureKind: BackgroundGestureKind?
     @State private var isBackgroundInteracting = false
+    /// 画布直接操作期间使用轻量预览；松手后恢复高质量合成。
+    @State private var isCanvasManipulating = false
     /// 双指手势活跃中（防止同时触发拖动）
     @State private var isPinching = false
     /// 裁剪模式下的临时裁剪框（画布坐标系）
@@ -25,7 +27,7 @@ struct CanvasView: View {
     @State private var renderVersion = 0
     /// 是否有一个预览渲染正在执行；执行期间只保留最新请求，避免任务堆积或全部被跳过。
     @State private var isRenderInFlight = false
-    /// 多张背景分区叠加时，预览直接采用导出的最终输出路径，避免降采样阶段混合透明遮罩。
+    /// 背景分区预览直接采用导出的最终输出路径，避免降采样阶段混合透明遮罩。
     @State private var usesExactBackgroundPreview = false
     /// CI 渲染串行执行，避免多个元素同时渲染造成任务积压和结果互相覆盖。
     private static let renderQueue = DispatchQueue(
@@ -97,10 +99,19 @@ struct CanvasView: View {
             render()
         }
         .onChange(of: appState.composition) { _, _ in
+            // 时间轴移动/裁剪只影响某个时间点是否可见，不值得在每一个触摸事件
+            // 重做整张 CI 合成。拖拽结束时由 isTimelineEditing 的变化补一次最终预览。
+            guard !appState.isTimelineEditing else { return }
             if usesExactBackgroundPreview != needsExactBackgroundPreview {
                 refreshRendererScale()
             }
             render()
+        }
+        .onChange(of: appState.isTimelineEditing) { _, isEditing in
+            if !isEditing {
+                refreshRendererScale()
+                render()
+            }
         }
         .onChange(of: appState.currentTime) { _, _ in
             render()
@@ -115,6 +126,9 @@ struct CanvasView: View {
             render()
         }
         .onChange(of: appState.clipStyleVersion) { _, _ in
+            // 分区蒙版会改变 CI 的渲染图。重建预览 renderer，避免在已有其它素材时
+            // 复用旧的 Core Image 中间结果，造成要等到删/改其它素材才显示新分区。
+            refreshRendererScale()
             render()
         }
         .onChange(of: appState.isCropping) { _, cropping in
@@ -154,6 +168,15 @@ struct CanvasView: View {
     /// 旋转变换后的点-元素命中测试
     private func rotatedHitTest(element: CompositionElement, in comp: Composition, geometry: ViewportGeometry, at point: CGPoint) -> Bool {
         let frame = elementFrame(element, in: comp, geometry: geometry)
+        // 分区背景虽然使用整张画布尺寸生成图像，但画布中只有当前分区实际可见。
+        // 命中测试必须使用同一遮罩路径，否则点击空白分区会错误选中上层背景。
+        if case .background = element.kind {
+            let settings = element.backgroundSettings ?? BackgroundElementSettings()
+            return BackgroundPartitionShape(settings: settings)
+                .path(in: frame)
+                .cgPath
+                .contains(point)
+        }
         let center = CGPoint(x: frame.midX, y: frame.midY)
         let rotation = element.transform.rotation
         if rotation == 0 {
@@ -183,6 +206,7 @@ struct CanvasView: View {
                     snapshotTransforms(comp)
                 }
                 guard let snaps = gestureStartTransforms.snapshot else { return }
+                beginCanvasManipulation()
                 if selectedBackgroundElement != nil {
                     beginBackgroundInteraction(.moving)
                 }
@@ -213,7 +237,7 @@ struct CanvasView: View {
             .onEnded { _ in
                 gestureStartTransforms = [:]
                 gestureStartBackgroundSettings = [:]
-                endBackgroundInteraction()
+                endCanvasManipulation()
             }
     }
 
@@ -224,6 +248,7 @@ struct CanvasView: View {
             .onChanged { value in
                 guard !appState.isCropping, !appState.selectedElementIDs.isEmpty else { return }
                 isPinching = true
+                beginCanvasManipulation()
                 if selectedBackgroundElement != nil {
                     beginBackgroundInteraction(.scaling)
                 }
@@ -251,7 +276,7 @@ struct CanvasView: View {
                 gestureStartTransforms = [:]
                 gestureStartBackgroundSettings = [:]
                 isPinching = false
-                endBackgroundInteraction()
+                endCanvasManipulation()
             }
     }
 
@@ -262,6 +287,7 @@ struct CanvasView: View {
             .onChanged { value in
                 guard !appState.isCropping, !appState.selectedElementIDs.isEmpty else { return }
                 isPinching = true
+                beginCanvasManipulation()
                 if gestureStartTransforms.isEmpty {
                     snapshotTransforms(appState.composition)
                 }
@@ -282,7 +308,7 @@ struct CanvasView: View {
                 gestureStartTransforms = [:]
                 gestureStartBackgroundSettings = [:]
                 isPinching = false
-                endBackgroundInteraction()
+                endCanvasManipulation()
             }
     }
 
@@ -382,15 +408,24 @@ struct CanvasView: View {
             backgroundGestureKind = kind
             if !isBackgroundInteracting {
                 isBackgroundInteracting = true
-                refreshRendererScale()
+                beginCanvasManipulation()
             }
         }
     }
 
-    private func endBackgroundInteraction() {
-        guard isBackgroundInteracting || backgroundGestureKind != nil else { return }
+    private func beginCanvasManipulation() {
+        guard !isCanvasManipulating else { return }
+        isCanvasManipulating = true
+        appState.beginCanvasEdit()
+        refreshRendererScale()
+    }
+
+    private func endCanvasManipulation() {
+        guard isCanvasManipulating || isBackgroundInteracting || backgroundGestureKind != nil else { return }
         backgroundGestureKind = nil
         isBackgroundInteracting = false
+        isCanvasManipulating = false
+        appState.finishCanvasEdit()
         refreshRendererScale()
         render()
     }
@@ -529,6 +564,20 @@ struct CanvasView: View {
     /// 元素在视口中的框（画布坐标 → 视口，y 翻转；忽略旋转用于命中与框选）
     private func elementFrame(_ element: CompositionElement, in comp: Composition?, geometry: ViewportGeometry) -> CGRect {
         guard let comp else { return .zero }
+        // 分区背景的遮罩永远覆盖完整画布，且背景元素自身的 transform 不参与渲染。
+        // 因此交互框也必须忽略旧 region/position，和最终可见区域保持一致。
+        if case .background = element.kind,
+           (element.backgroundSettings ?? BackgroundElementSettings()).splitCount != .full {
+            let rect = comp.canvasRect
+            let width = rect.width * geometry.scale
+            let height = rect.height * geometry.scale
+            return CGRect(
+                x: geometry.offsetX,
+                y: geometry.offsetY,
+                width: width,
+                height: height
+            )
+        }
         let size = elementContentSize(element, in: comp)
         let w = size.width * element.transform.scale * geometry.scale
         let h = size.height * element.transform.scale * geometry.scale
@@ -571,7 +620,7 @@ struct CanvasView: View {
         // 把中间合成限制在 900px 内，避免渲染队列长期追不上播放时钟。
         let viewportMax = max(viewportSize.width, viewportSize.height)
         let maxPixel = viewportMax > 0
-            ? min(viewportMax * pixelScale * 1.1, isBackgroundInteracting ? 480 : 900)
+            ? min(viewportMax * pixelScale * 1.1, isCanvasManipulating ? 480 : 900)
             : 900
         renderer = CompositionRenderer(
             // 多张背景元素在画布中以透明遮罩相互拼接。预览若再对整图做 CI 仿射
@@ -584,9 +633,13 @@ struct CanvasView: View {
 
     private var needsExactBackgroundPreview: Bool {
         guard let elements = appState.composition?.elements else { return false }
-        return elements.reduce(into: 0) { count, element in
-            if case .background = element.kind { count += 1 }
-        } > 1
+        let backgrounds = elements.compactMap { element -> BackgroundElementSettings? in
+            guard case .background = element.kind else { return nil }
+            return element.backgroundSettings ?? BackgroundElementSettings()
+        }
+        // 分区遮罩必须与最终输出使用同一像素尺寸。单张背景也不能走预览降采样，
+        // 否则 CI 的透明遮罩在缩放后可能出现分区边界错位；普通整幅背景仍保留降采样。
+        return backgrounds.contains { $0.splitCount != .full } || backgrounds.count > 1
     }
 
     private func render() {

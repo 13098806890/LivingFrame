@@ -24,6 +24,8 @@ final class AppState: ObservableObject {
     @Published var composition: Composition? {
         willSet {
             guard !isApplyingHistory,
+                  !isCoalescingTimelineHistory,
+                  !isCoalescingCanvasHistory,
                   let current = composition,
                   let next = newValue,
                   current != next else { return }
@@ -35,6 +37,12 @@ final class AppState: ObservableObject {
     private var undoStack: [Composition] = []
     private var redoStack: [Composition] = []
     private var isApplyingHistory = false
+    /// 时间轴一次拖拽会产生数十次位置更新；只在手势开始时保留一份撤销快照。
+    private var isCoalescingTimelineHistory = false
+    /// 画布手势同样使用单次撤销快照，不能按触摸采样点堆叠历史。
+    private var isCoalescingCanvasHistory = false
+    /// 供画布区判断是否应跳过高成本合成。时间轴仍然按手指位置逐帧更新。
+    @Published private(set) var isTimelineEditing = false
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
     /// 素材属性（边缘/风格等）变更版本号，用于触发画布重渲染
@@ -156,7 +164,14 @@ final class AppState: ObservableObject {
         // 恢复持久化的素材与文件夹
         FrameCache.shared.reload()
         clips = FrameCache.shared.allClips()
-        backgroundMedia = BackgroundStore.shared.allUserMedia()
+        // 背景目录扫描会读取视频轨道和动图帧信息，放到后台避免启动时阻塞主线程。
+        Task { [weak self] in
+            let media = await Task.detached(priority: .utility) {
+                BackgroundStore.shared.allUserMedia()
+            }.value
+            guard !Task.isCancelled else { return }
+            self?.backgroundMedia = media
+        }
         folders = folderStore.load()
         let defaults = UserDefaults.standard
         if let raw = defaults.string(forKey: settingDefaultFormatKey),
@@ -488,9 +503,11 @@ final class AppState: ObservableObject {
               var comp = composition ?? defaultComposition() else { return }
         let settings = BackgroundElementSettings()
         let regionRect = backgroundRegionRect(settings.region, in: comp.canvasRect)
-        let duration = comp.duration > 0
-            ? comp.duration
-            : max(media.isAnimated ? media.duration : 1, 1)
+        // 动态背景的默认片段应当等于媒体自身完整播放时长，而不是已有工程时长。
+        // 后续若需要循环或延长，交给用户在时间轴中显式调整。
+        let duration = media.isAnimated
+            ? max(media.duration, 0.1)
+            : max(comp.duration, 1)
         let element = CompositionElement(
             kind: .background(backgroundID: media.id),
             name: media.name == media.id ? NSLocalizedString("背景图片", comment: "Background element") : media.name,
@@ -520,19 +537,31 @@ final class AppState: ObservableObject {
         let rect = backgroundRegionRect(region, in: comp.canvasRect)
         comp.elements[index].transform.position = CGPoint(x: rect.midX, y: rect.midY)
         composition = comp
+        // 背景区域是画布视觉内容，不依赖时间轴状态；显式通知主画布重渲染。
+        clipStyleVersion &+= 1
     }
 
     /// 设置分割数量；4 区会自动使用两条互相垂直、可独立平移的分割线。
     func setBackgroundSplitCount(_ elementID: UUID, _ count: BackgroundSplitCount) {
-        updateBackgroundElement(elementID) {
-            $0.splitCount = count
-            if count == .full {
-                $0.region = .full
-            } else {
-                let maximum = count == .two ? 1 : 3
-                $0.selectedPartition = min(max($0.selectedPartition, 0), maximum)
-            }
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        settings.splitCount = count
+        // 2/4 分区的遮罩定义在完整画布上。清除旧的半区/四分之一区域值，
+        // 让渲染、选框与命中测试都以同一个画布坐标系工作。
+        settings.region = .full
+        if count != .full {
+            let maximum = count == .two ? 1 : 3
+            settings.selectedPartition = min(max(settings.selectedPartition, 0), maximum)
         }
+        comp.elements[index].backgroundSettings = settings
+        comp.elements[index].transform.position = CGPoint(
+            x: comp.canvasRect.midX,
+            y: comp.canvasRect.midY
+        )
+        composition = comp
+        clipStyleVersion &+= 1
     }
 
     /// 设置第一条分割线角度，并在常用角度附近自动磁吸。
@@ -566,6 +595,21 @@ final class AppState: ObservableObject {
         updateBackgroundElement(elementID) { $0.edgeStyle = style }
     }
 
+    /// 画布外缘属于最终合成层，不随某一张背景元素被删除或移动而消失。
+    func setCanvasEdgeStyle(_ style: CanvasEdgeStyle) {
+        guard var comp = composition, comp.canvasEdgeStyle != style else { return }
+        comp.canvasEdgeStyle = style
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    func setCanvasEdgeWidth(_ width: CanvasEdgeWidth) {
+        guard var comp = composition, comp.canvasEdgeWidth != width else { return }
+        comp.canvasEdgeWidth = width
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
     func setBackgroundCropScale(_ elementID: UUID, _ scale: CGFloat) {
         updateBackgroundElement(elementID) { $0.cropScale = min(max(scale, 1), 4) }
     }
@@ -592,10 +636,14 @@ final class AppState: ObservableObject {
         mutate(&settings)
         comp.elements[index].backgroundSettings = settings
         composition = comp
+        // 分区、角度、边缘和取景等设置都只在 backgroundSettings 内变化。单独递增
+        // 视觉版本，避免 SwiftUI 合并 composition 发布或时间轴交互期间跳过刷新时，
+        // 画布停留在旧分区，直到其它元素改动才被动更新。
+        clipStyleVersion &+= 1
     }
 
     private func snappedBackgroundAngle(_ angle: CGFloat) -> CGFloat {
-        let safeAngle = angle.isFinite ? angle : 45
+        let safeAngle = angle.isFinite ? angle : 90
         let normalized = safeAngle.truncatingRemainder(dividingBy: 180)
         let value = normalized < 0 ? normalized + 180 : normalized
         let snapAngles: [CGFloat] = [0, 30, 45, 60, 90, 120, 135, 150]
@@ -715,6 +763,39 @@ final class AppState: ObservableObject {
         comp.elements[index].transform = sanitizedTransform(comp.elements[index].transform)
         composition = comp
         if shouldRecomputeDuration { recomputeDuration() }
+    }
+
+    /// 开始一次时间轴直接操作。高频位置更新会合并成一条可撤销记录，
+    /// 避免拖动时不断复制整个工程与触发画布重渲染。
+    func beginTimelineEdit() {
+        guard !isTimelineEditing else { return }
+        if let composition {
+            undoStack.append(composition)
+            if undoStack.count > 50 { undoStack.removeFirst() }
+            redoStack.removeAll()
+            isCoalescingTimelineHistory = true
+        }
+        isTimelineEditing = true
+    }
+
+    /// 结束时间轴直接操作；随后由调用方一次性重算时长、同步预览。
+    func finishTimelineEdit() {
+        isCoalescingTimelineHistory = false
+        isTimelineEditing = false
+    }
+
+    func beginCanvasEdit() {
+        guard !isCoalescingCanvasHistory else { return }
+        if let composition {
+            undoStack.append(composition)
+            if undoStack.count > 50 { undoStack.removeFirst() }
+            redoStack.removeAll()
+        }
+        isCoalescingCanvasHistory = true
+    }
+
+    func finishCanvasEdit() {
+        isCoalescingCanvasHistory = false
     }
 
     /// 时长跟随内容：总时长 = 所有元素结束时间 / 音频结束时间的最大者（自由放置，可重叠）

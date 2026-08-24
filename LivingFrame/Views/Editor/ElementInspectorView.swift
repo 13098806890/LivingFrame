@@ -89,6 +89,22 @@ struct ElementInspectorView: View {
                     .buttonStyle(.plain)
                 }
             }
+            inspectorChoiceRow(
+                title: "画布外缘",
+                items: CanvasEdgeStyle.allCases,
+                selected: appState.composition?.canvasEdgeStyle ?? .none
+            ) { style in
+                appState.setCanvasEdgeStyle(style)
+            }
+            if appState.composition?.canvasEdgeStyle != .none {
+                inspectorChoiceRow(
+                    title: "留白宽度",
+                    items: CanvasEdgeWidth.allCases,
+                    selected: appState.composition?.canvasEdgeWidth ?? .standard
+                ) { width in
+                    appState.setCanvasEdgeWidth(width)
+                }
+            }
             // 图案叠加（横线/斜线/网格/马赛克）
             Text("图案叠加")
                 .font(.caption2)
@@ -410,12 +426,18 @@ struct ElementInspectorView: View {
                 }
             }
 
-            inspectorChoiceRow(
-                title: "边缘",
-                items: BackgroundEdgeStyle.allCases,
-                selected: settings.edgeStyle
-            ) { style in
-                appState.setBackgroundEdgeStyle(element.id, style)
+            if settings.splitCount != .full {
+                inspectorChoiceRow(
+                    title: "分割边缘",
+                    items: BackgroundEdgeStyle.allCases,
+                    selected: settings.edgeStyle
+                ) { style in
+                    appState.setBackgroundEdgeStyle(element.id, style)
+                }
+            } else {
+                Text("选择分区后可设置分割边缘；画布外缘在“画布外缘”中统一设置。")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
             }
 
             VStack(alignment: .leading, spacing: 5) {
@@ -518,6 +540,8 @@ struct ElementInspectorView: View {
     private func itemTitle<T>(_ item: T) -> String {
         if let region = item as? BackgroundRegion { return region.title }
         if let edge = item as? BackgroundEdgeStyle { return edge.title }
+        if let edge = item as? CanvasEdgeStyle { return edge.title }
+        if let width = item as? CanvasEdgeWidth { return width.title }
         if let splitCount = item as? BackgroundSplitCount { return splitCount.title }
         return ""
     }
@@ -1133,7 +1157,8 @@ private struct BackgroundFillPreview: View {
     }
 }
 
-private struct BackgroundPartitionShape: Shape {
+/// 背景遮罩的 SwiftUI 对应路径；检查器预览与画布命中测试共用它，保证可见区域和可选区域一致。
+struct BackgroundPartitionShape: Shape {
     let settings: BackgroundElementSettings
 
     func path(in rect: CGRect) -> Path {
@@ -1148,7 +1173,7 @@ private struct BackgroundPartitionShape: Shape {
     }
 
     static func radians(_ degrees: CGFloat) -> CGFloat {
-        let normalized = (degrees.isFinite ? degrees : 45).truncatingRemainder(dividingBy: 180)
+        let normalized = (degrees.isFinite ? degrees : 90).truncatingRemainder(dividingBy: 180)
         return (normalized < 0 ? normalized + 180 : normalized) * .pi / 180
     }
 

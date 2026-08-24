@@ -435,7 +435,11 @@ private enum BackgroundPhotoImporter {
                 continuation.resume(returning: (avAsset as? AVURLAsset)?.url)
             }
         }
-        guard let url, let data = try? Data(contentsOf: url) else { return nil }
+        guard let url else { return nil }
+        let data = await Task.detached(priority: .utility) {
+            try? Data(contentsOf: url)
+        }.value
+        guard let data else { return nil }
         progress(1)
         return ImportedMedia(data: data, fileExtension: url.pathExtension, isVideo: true)
     }
@@ -456,7 +460,11 @@ private enum BackgroundPhotoImporter {
             }
         }
         defer { try? FileManager.default.removeItem(at: destination) }
-        guard error == nil, let data = try? Data(contentsOf: destination) else { return nil }
+        guard error == nil else { return nil }
+        let data = await Task.detached(priority: .utility) {
+            try? Data(contentsOf: destination)
+        }.value
+        guard let data else { return nil }
         progress(1)
         return data
     }
@@ -535,10 +543,6 @@ struct AnimatedClipPreview: View {
     /// 点击播放后一次性加载的小尺寸帧；播放期间只切换内存中的 CGImage，避免每帧重复解码。
     @State private var decodedFrames: [CGImage] = []
 
-    private var activeFrames: [Int] {
-        clip.activeFrameIndices
-    }
-
     private var playbackFrames: [Int] {
         clip.playbackFrameIndices
     }
@@ -574,12 +578,6 @@ struct AnimatedClipPreview: View {
             await playOnceIfNeeded()
         }
         .onAppear {
-            LogStore.log(
-                "clipPreview.appear id=\(clip.id) name=\(clip.name) "
-                    + "frameCount=\(clip.frameCount) activeFrames=\(activeFrames.count) "
-                    + "isDynamic=\(isDynamic) showsPlayButton=\(isDynamic) "
-                    + "fps=\(clip.fps) maxPixelSize=\(Int(maxPixelSize))"
-            )
         }
         .onDisappear {
             // 离开滚动区域时取消播放任务，避免不可见素材继续解码和刷新。
@@ -664,12 +662,6 @@ struct ClipPreviewPlayButton: View {
     var body: some View {
         if clip.frameCount > 1 {
             Button {
-                let action = isPlaying ? "pause" : "play"
-                LogStore.log(
-                    "clipPreview.buttonTapped id=\(clip.id) name=\(clip.name) "
-                        + "action=\(action) frameCount=\(clip.frameCount) "
-                        + "activeFrames=\(clip.activeFrameIndices.count)"
-                )
                 isPlaying.toggle()
             } label: {
                 ClipPreviewBadgeIcon(

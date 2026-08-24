@@ -48,8 +48,8 @@ enum EditorTool: String, CaseIterable, Identifiable {
 }
 
 /// 编辑页（参考 ImgPlay 布局）
-/// 自上而下：顶部信息 → 有层次的画布 → 播放控制 → 时间轴 → 紧凑工具栏
-/// 工具和选中元素的详细属性通过 sheet 覆盖画布显示
+/// 固定工作区：顶部信息 → 有层次的画布 → 播放控制 → 独立滚动时间轴 → 固定工具栏。
+/// 页面本身不再纵向滚动，避免与时间轴轨道列表争抢同方向手势。
 struct EditorView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showAssetPicker = false
@@ -66,39 +66,41 @@ struct EditorView: View {
     @State private var workSaveResult: WorkSaveResult?
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // 画布按屏幕宽度计算真实高度；竖屏比例较高时由外层滚动承载，
-            // 不再为了给底部面板让空间而把画布缩窄。
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // ① 顶部工程信息（参考 imgplay：标题和帧数居中）
-                    topBar
-                        .padding(.horizontal, 12)
-                        .padding(.top, 4)
-                        .padding(.bottom, 8)
+        GeometryReader { proxy in
+            let canvasSize = editorCanvasSize(in: proxy.size)
+            VStack(spacing: 0) {
+                // ① 顶部工程信息固定，时间轴滚动不会推走它。
+                topBar
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
+                    .padding(.bottom, 6)
 
-                    // ② 画布宽度始终铺满，比例只决定它的高度
-                    CanvasView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.clear)
+                // ② 画布在顶部保持可见；竖屏比例用高度上限换取足够的时间轴工作区。
+                CanvasView()
+                    .frame(width: canvasSize.width, height: canvasSize.height)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
 
-                    // ③ 播放控制贴在画布下方
-                    transportBar
+                // ③ 播放控制贴着画布，不随时间轴上下移动。
+                transportBar
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
 
-                    // ④ 时间轴放在画布和播放控制之后，符合视频编辑器的操作顺序
-                    timelineArea
-                        .padding(.horizontal, 12)
-                        .padding(.top, 6)
-                        .padding(.bottom, 6)
-                }
-                // 底部工具栏是覆盖层，滚动内容留出安全空间避免遮挡播放控制。
-                .padding(.bottom, 74)
+                // ④ 剩余空间全部交给时间轴；轨道上下浏览只发生在内部。
+                timelineArea
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .frame(maxHeight: .infinity)
+                    .layoutPriority(1)
             }
-
-            // ⑤ 底部只保留紧凑工具栏，详细编辑内容通过弹窗覆盖画布
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+        }
+        // ⑤ 固定的玻璃工具栏通过 safe-area inset 预留空间，不覆盖时间轴操作区。
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             editorToolbar
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                .padding(.bottom, 6)
         }
         .magicBackground()
         .onAppear {
@@ -119,7 +121,8 @@ struct EditorView: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .magicBackground()
             }
-            .presentationDetents([.medium, .large])
+            // 检查器覆盖时间轴下半部分，画布和播放控制仍可见；需要更多参数时可继续上拉。
+            .presentationDetents([.fraction(0.46), .large])
             .presentationDragIndicator(.visible)
         }
         .alert("清空编辑内容？", isPresented: $showClearConfirmation) {
@@ -277,11 +280,26 @@ struct EditorView: View {
         return "\(totalFrames)张 / \(String(format: "%.2f", duration))秒"
     }
 
+    /// 固定工作区内为时间轴预留至少一段可操作高度；画布比例只影响自身大小，不再把页面撑成长列表。
+    private func editorCanvasSize(in available: CGSize) -> CGSize {
+        let aspect: CGFloat = {
+            guard let rect = appState.composition?.renderRect, rect.height > 0 else { return 9 / 16 }
+            return rect.width / rect.height
+        }()
+        let maxWidth = max(1, available.width - 28)
+        let maximumHeight = min(max(190, available.height * 0.39), 360)
+        let width = min(maxWidth, maximumHeight * aspect)
+        return CGSize(width: width, height: width / max(aspect, 0.01))
+    }
+
     // MARK: - 时间轴区域（播放控制下方：双轨时间轴）
 
     private var timelineArea: some View {
-        TimelineView()
-            .padding(12)
+        TimelineView(onRequestInspector: {
+            showInspectorSheet = true
+        })
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -338,14 +356,20 @@ struct EditorView: View {
             } label: {
                 Image(systemName: appState.isPlaying ? "pause.fill" : "play.fill")
                     .font(.subheadline.weight(.semibold))
-                    .frame(width: 30, height: 30)
+                    .frame(width: 42, height: 42)
+                    .background(.regularMaterial, in: Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(Color.white.opacity(0.68), lineWidth: 0.8)
+                    }
+                    .shadow(color: LF.accent.opacity(0.12), radius: 7, y: 3)
             }
             .buttonStyle(.plain)
             .foregroundStyle(LF.textPrimary)
             .accessibilityLabel(appState.isPlaying ? "暂停" : "播放")
         }
         .padding(.horizontal, 16)
-        .frame(height: 30)
+        .frame(height: 46)
     }
 
     private func togglePlayback() {
@@ -359,33 +383,11 @@ struct EditorView: View {
 
     // MARK: - 底部区域
 
-    /// 有选中对象（元素/音频）时显示属性面板
-    private var hasSelection: Bool {
-        !appState.selectedElementIDs.isEmpty
-            || appState.selectedAudioID != nil
-    }
-
     // MARK: - 工具栏（ImgPlay 式：图标+文字，横排可滚动）
 
     private var editorToolbar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
-                if hasSelection {
-                    Button {
-                        showInspectorSheet = true
-                    } label: {
-                        VStack(spacing: 3) {
-                            Image(systemName: "slider.horizontal.3")
-                                .font(.title3)
-                                .frame(width: 28, height: 28)
-                            Text("调整")
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(LF.gold)
-                        .frame(width: 52)
-                    }
-                    .buttonStyle(.plain)
-                }
                 ForEach(EditorTool.visibleCases) { tool in
                     Button {
                         handleToolTap(tool)
@@ -403,15 +405,16 @@ struct EditorView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 8)
+            .frame(minWidth: 0, maxWidth: .infinity)
+            .padding(.horizontal, 10)
         }
-        .frame(height: 74)
-        .background(.regularMaterial)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color.white.opacity(0.45))
-                .frame(height: 0.8)
+        .frame(height: 70)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.68), lineWidth: 0.8)
         }
+        .shadow(color: Color.black.opacity(0.09), radius: 16, y: 5)
     }
 
     private func handleToolTap(_ tool: EditorTool) {
@@ -547,6 +550,50 @@ struct EditorView: View {
                             .allowsHitTesting(false)
                     }
                     .accessibilityLabel("更多背景颜色")
+                }
+                HStack(spacing: 8) {
+                    Text("外缘").font(.caption2).foregroundStyle(LF.textSecondary)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(CanvasEdgeStyle.allCases) { style in
+                                Button { appState.setCanvasEdgeStyle(style) } label: {
+                                    Text(style.title)
+                                        .font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            appState.composition?.canvasEdgeStyle == style ? LF.accent : LF.surface2,
+                                            in: Capsule()
+                                        )
+                                        .foregroundStyle(
+                                            appState.composition?.canvasEdgeStyle == style ? .white : LF.textPrimary
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                if appState.composition?.canvasEdgeStyle != .none {
+                    HStack(spacing: 8) {
+                        Text("留白").font(.caption2).foregroundStyle(LF.textSecondary)
+                        ForEach(CanvasEdgeWidth.allCases) { width in
+                            Button { appState.setCanvasEdgeWidth(width) } label: {
+                                Text(width.title)
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        appState.composition?.canvasEdgeWidth == width ? LF.accent : LF.surface2,
+                                        in: Capsule()
+                                    )
+                                    .foregroundStyle(
+                                        appState.composition?.canvasEdgeWidth == width ? .white : LF.textPrimary
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
                 // 图案叠加（横排：类型+参数一行搞定）
                 HStack(spacing: 8) {

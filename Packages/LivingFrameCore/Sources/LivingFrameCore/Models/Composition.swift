@@ -77,7 +77,12 @@ public enum BackgroundRegion: String, Codable, CaseIterable, Identifiable, Senda
 /// 背景图片与画布交界处的边缘效果。
 public enum BackgroundEdgeStyle: String, Codable, CaseIterable, Identifiable, Sendable {
     case flat
+    /// 兼容旧工程中的 `torn`；作为较柔和的手撕纸边继续保留。
     case torn
+    /// 纤维更明显、起伏更丰富的手撕纸边。
+    case tornFibrous
+    /// 带有轻微白色纸边和接触阴影的叠层手撕纸效果。
+    case tornLayered
     case comic
     case zigzag
 
@@ -86,9 +91,47 @@ public enum BackgroundEdgeStyle: String, Codable, CaseIterable, Identifiable, Se
     public var title: String {
         switch self {
         case .flat: NSLocalizedString("平整", comment: "Background edge")
-        case .torn: NSLocalizedString("手撕", comment: "Background edge")
+        case .torn: NSLocalizedString("柔和手撕", comment: "Background edge")
+        case .tornFibrous: NSLocalizedString("纤维手撕", comment: "Background edge")
+        case .tornLayered: NSLocalizedString("卷角相纸", comment: "Background edge")
         case .comic: NSLocalizedString("漫画", comment: "Background edge")
         case .zigzag: NSLocalizedString("锯齿", comment: "Background edge")
+        }
+    }
+}
+
+/// 工程级画布外缘。它在所有元素合成完成后绘制，和单个背景素材的分割边缘完全独立。
+public enum CanvasEdgeStyle: String, Codable, CaseIterable, Identifiable, Sendable {
+    case none
+    case tornSoft
+    case tornFibrous
+    case tornLayered
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .none: NSLocalizedString("无", comment: "Canvas edge")
+        case .tornSoft: NSLocalizedString("柔和手撕", comment: "Canvas edge")
+        case .tornFibrous: NSLocalizedString("纤维手撕", comment: "Canvas edge")
+        case .tornLayered: NSLocalizedString("卷角相纸", comment: "Canvas edge")
+        }
+    }
+}
+
+/// 画布相纸留白的宽度档位；以画布短边比例计算，横竖画幅观感一致。
+public enum CanvasEdgeWidth: String, Codable, CaseIterable, Identifiable, Sendable {
+    case narrow
+    case standard
+    case wide
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .narrow: NSLocalizedString("窄", comment: "Canvas edge width")
+        case .standard: NSLocalizedString("标准", comment: "Canvas edge width")
+        case .wide: NSLocalizedString("宽", comment: "Canvas edge width")
         }
     }
 }
@@ -137,7 +180,7 @@ public struct BackgroundElementSettings: Codable, Equatable, Sendable {
         cropScale: CGFloat = 1,
         cropOffset: CGPoint = .zero,
         splitCount: BackgroundSplitCount = .full,
-        dividerAngle: CGFloat = 45,
+        dividerAngle: CGFloat = 90,
         primaryDividerOffset: CGFloat = 0,
         secondaryDividerOffset: CGFloat = 0,
         selectedPartition: Int = 0,
@@ -166,7 +209,7 @@ public struct BackgroundElementSettings: Codable, Equatable, Sendable {
         cropScale = try container.decodeIfPresent(CGFloat.self, forKey: .cropScale) ?? 1
         cropOffset = try container.decodeIfPresent(CGPoint.self, forKey: .cropOffset) ?? .zero
         splitCount = try container.decodeIfPresent(BackgroundSplitCount.self, forKey: .splitCount) ?? .full
-        dividerAngle = try container.decodeIfPresent(CGFloat.self, forKey: .dividerAngle) ?? 45
+        dividerAngle = try container.decodeIfPresent(CGFloat.self, forKey: .dividerAngle) ?? 90
         primaryDividerOffset = BackgroundDividerGeometry.clampedOffset(
             try container.decodeIfPresent(CGFloat.self, forKey: .primaryDividerOffset) ?? 0
         )
@@ -470,6 +513,9 @@ public struct Composition: Identifiable, Codable, Equatable {
     public var elements: [CompositionElement]
     public var audioClips: [AudioClip]
     public var background: BackgroundPreset
+    /// 画布的最终外缘叠层，不隶属于任何动态背景/元素。
+    public var canvasEdgeStyle: CanvasEdgeStyle
+    public var canvasEdgeWidth: CanvasEdgeWidth
     public var templateID: String?
     /// 裁剪区域（画布坐标系，nil = 全画布）；元素可超出画布，最终输出只保留该区域
     public var cropRect: CGRect?
@@ -487,6 +533,8 @@ public struct Composition: Identifiable, Codable, Equatable {
         elements: [CompositionElement] = [],
         audioClips: [AudioClip] = [],
         background: BackgroundPreset = BackgroundPreset(kind: .solid, topColor: "FFFFFF", bottomColor: "FFFFFF"),
+        canvasEdgeStyle: CanvasEdgeStyle = .none,
+        canvasEdgeWidth: CanvasEdgeWidth = .standard,
         templateID: String? = nil,
         cropRect: CGRect? = nil,
         texts: [TextElement] = [],
@@ -500,6 +548,8 @@ public struct Composition: Identifiable, Codable, Equatable {
         self.elements = elements
         self.audioClips = audioClips
         self.background = background
+        self.canvasEdgeStyle = canvasEdgeStyle
+        self.canvasEdgeWidth = canvasEdgeWidth
         self.templateID = templateID
         self.cropRect = cropRect
         self.texts = texts
@@ -513,7 +563,7 @@ public struct Composition: Identifiable, Codable, Equatable {
     // MARK: - 解码兼容（texts/filter 为新字段，旧工程 JSON 无此 key）
 
     enum CodingKeys: String, CodingKey {
-        case id, name, canvas, duration, fps, elements, audioClips, background, templateID, cropRect, texts,
+        case id, name, canvas, duration, fps, elements, audioClips, background, canvasEdgeStyle, canvasEdgeWidth, templateID, cropRect, texts,
              excludedCompositionFrames
     }
 
@@ -528,6 +578,8 @@ public struct Composition: Identifiable, Codable, Equatable {
         audioClips = try container.decodeIfPresent([AudioClip].self, forKey: .audioClips) ?? []
         background = try container.decodeIfPresent(BackgroundPreset.self, forKey: .background)
             ?? BackgroundPreset(kind: .solid, topColor: "FFFFFF", bottomColor: "FFFFFF")
+        canvasEdgeStyle = try container.decodeIfPresent(CanvasEdgeStyle.self, forKey: .canvasEdgeStyle) ?? .none
+        canvasEdgeWidth = try container.decodeIfPresent(CanvasEdgeWidth.self, forKey: .canvasEdgeWidth) ?? .standard
         templateID = try container.decodeIfPresent(String.self, forKey: .templateID)
         cropRect = try container.decodeIfPresent(CGRect.self, forKey: .cropRect)
         texts = try container.decodeIfPresent([TextElement].self, forKey: .texts) ?? []

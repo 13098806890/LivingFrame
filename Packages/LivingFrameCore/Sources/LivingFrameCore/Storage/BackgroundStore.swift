@@ -49,16 +49,47 @@ public struct BackgroundMediaItem: Identifiable, Equatable {
 public struct BackgroundStore {
     public static let shared = BackgroundStore()
 
+    private final class VideoFrameSource: NSObject {
+        let asset: AVURLAsset
+        let generator: AVAssetImageGenerator
+        let duration: TimeInterval
+        private let lock = NSLock()
+
+        init(url: URL) {
+            let asset = AVURLAsset(url: url)
+            self.asset = asset
+            self.duration = max(CMTimeGetSeconds(asset.duration), 0.1)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            self.generator = generator
+        }
+
+        func copyFrame(at time: CMTime) -> CGImage? {
+            lock.lock()
+            defer { lock.unlock() }
+            return try? generator.copyCGImage(at: time, actualTime: nil)
+        }
+    }
+
     public let rootURL: URL
     /// 解码后的背景图内存缓存：渲染每帧都会 loadImage，避免反复解码 JPEG
     private static let imageCache: NSCache<NSString, CGImage> = {
         let cache = NSCache<NSString, CGImage>()
         cache.countLimit = 16
+        cache.totalCostLimit = 64 * 1024 * 1024
         return cache
     }()
     private static let frameCache: NSCache<NSString, CGImage> = {
         let cache = NSCache<NSString, CGImage>()
-        cache.countLimit = 64
+        cache.countLimit = 96
+        cache.totalCostLimit = 96 * 1024 * 1024
+        return cache
+    }()
+    private static let videoSourceCache: NSCache<NSString, VideoFrameSource> = {
+        let cache = NSCache<NSString, VideoFrameSource>()
+        cache.countLimit = 8
         return cache
     }()
     private static let orientationContext = CIContext(options: [.cacheIntermediates: false])
@@ -173,15 +204,12 @@ public struct BackgroundStore {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
         let oriented = applyingOrientation(to: image, source: source, index: 0)
-        Self.imageCache.setObject(oriented, forKey: key)
+        Self.imageCache.setObject(oriented, forKey: key, cost: imageCost(oriented))
         return oriented
     }
 
     /// 按媒体时间加载一帧。静态图片始终返回第一帧，GIF/APNG 按自身时长循环。
     public func loadFrame(named name: String, at time: TimeInterval) -> CGImage? {
-        if let cached = Self.imageCache.object(forKey: name as NSString) {
-            return cached
-        }
         let url = mediaURL(named: name)
         if isVideo(url: url) { return loadVideoFrame(named: name, url: url, at: time) }
         guard let source = imageSource(named: name) else { return nil }
@@ -203,7 +231,7 @@ public struct BackgroundStore {
         if let cached = Self.frameCache.object(forKey: key) { return cached }
         guard let image = CGImageSourceCreateImageAtIndex(source, selectedIndex, nil) else { return nil }
         let oriented = applyingOrientation(to: image, source: source, index: selectedIndex)
-        Self.frameCache.setObject(oriented, forKey: key)
+        Self.frameCache.setObject(oriented, forKey: key, cost: imageCost(oriented))
         return oriented
     }
 
@@ -243,22 +271,28 @@ public struct BackgroundStore {
     }
 
     private func loadVideoFrame(named name: String, url: URL, at time: TimeInterval) -> CGImage? {
-        let asset = AVURLAsset(url: url)
-        let duration = max(CMTimeGetSeconds(asset.duration), 0.1)
-        let bounded = time.isFinite ? max(time, 0).truncatingRemainder(dividingBy: duration) : 0
+        let sourceKey = url.path as NSString
+        let source: VideoFrameSource
+        if let cached = Self.videoSourceCache.object(forKey: sourceKey) {
+            source = cached
+        } else {
+            let created = VideoFrameSource(url: url)
+            Self.videoSourceCache.setObject(created, forKey: sourceKey)
+            source = created
+        }
+        let bounded = time.isFinite ? max(time, 0).truncatingRemainder(dividingBy: source.duration) : 0
         let frameIndex = Int((bounded * 30).rounded(.down))
         let key = "\(name)-video-\(frameIndex)" as NSString
         if let cached = Self.frameCache.object(forKey: key) { return cached }
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
-        guard let frame = try? generator.copyCGImage(
-            at: CMTime(seconds: bounded, preferredTimescale: 600),
-            actualTime: nil
+        guard let frame = source.copyFrame(
+            at: CMTime(seconds: bounded, preferredTimescale: 600)
         ) else { return nil }
-        Self.frameCache.setObject(frame, forKey: key)
+        Self.frameCache.setObject(frame, forKey: key, cost: imageCost(frame))
         return frame
+    }
+
+    private func imageCost(_ image: CGImage) -> Int {
+        max(image.width * image.height * 4, 1)
     }
 
     private func frameDurations(source: CGImageSource) -> [TimeInterval] {

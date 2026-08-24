@@ -102,6 +102,14 @@ public struct CompositionRenderer {
                 image = placed.composited(over: image)
             }
         }
+        // 画布外缘必须是最终合成层：它覆盖所有背景、贴纸和动图，但不属于任何元素。
+        if let canvasEdge = BackgroundMaskRenderer.canvasEdgeImage(
+            size: canvas.size,
+            style: composition.canvasEdgeStyle,
+            width: composition.canvasEdgeWidth
+        ) {
+            image = CIImage(cgImage: canvasEdge).cropped(to: canvas).composited(over: image)
+        }
         // 统一裁剪到画布：任何背景/元素 extent 异常都不会产生未覆盖黑块
         return image.cropped(to: canvas)
     }
@@ -351,7 +359,12 @@ public struct CompositionRenderer {
             settings: settings
         ) else { return nil }
         let mask = CIImage(cgImage: maskCG).cropped(to: localRect)
-        let filter = CIFilter(name: "CIBlendWithMask")
+        // 遮罩图是透明 RGBA 位图：分区外部的 RGB 值不属于遮罩语义，只有 alpha
+        // 才表示该背景元素应当露出的区域。`CIBlendWithMask` 会读取颜色亮度，多个
+        // 分区背景叠加时可能把透明像素的颜色也作为遮罩参与计算，造成所有图层像是
+        // 落在同一个分区。明确使用 alpha 遮罩，预览和导出都会按每个元素各自的
+        // selectedPartition 合成。
+        let filter = CIFilter(name: "CIBlendWithAlphaMask")
         filter?.setValue(image, forKey: kCIInputImageKey)
         filter?.setValue(CIImage.clear.cropped(to: localRect), forKey: kCIInputBackgroundImageKey)
         filter?.setValue(mask, forKey: kCIInputMaskImageKey)
