@@ -153,6 +153,7 @@ struct AssetPickerView: View {
             }
         }
         .pickerStyle(.segmented)
+        .tint(LF.actionPrimary)
     }
 
     /// 顶层：全部素材 + 根文件夹
@@ -179,14 +180,15 @@ struct AssetPickerView: View {
     }
 
     private func folderChip(title: String, id: String?) -> some View {
-        Button {
+        let isSelected = folderID == id
+        return Button {
             folderID = id
             selectedIDs.removeAll()
         } label: {
             HStack(spacing: 6) {
                 if id != nil {
                     Image(systemName: "folder.fill")
-                        .foregroundStyle(LF.gold)
+                        .foregroundStyle(LF.folderIcon)
                 }
                 Text(title)
                     .lineLimit(1)
@@ -194,7 +196,13 @@ struct AssetPickerView: View {
                    let folder = appState.folders.first(where: { $0.id == id }) {
                     Text("\(folder.clipIDs.count)")
                         .font(.caption2.monospacedDigit())
-                        .foregroundStyle(LF.textSecondary)
+                        .foregroundStyle(isSelected ? LF.folderIcon : LF.textSecondary)
+                }
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(LF.actionPrimary)
+                        .accessibilityLabel("已选中")
                 }
             }
             .font(.caption.weight(.semibold))
@@ -202,8 +210,16 @@ struct AssetPickerView: View {
             .padding(.vertical, 12)
             .frame(minHeight: 48)
             .contentShape(Capsule())
-            .background(folderID == id ? LF.gold : LF.surface2, in: Capsule())
-            .foregroundStyle(folderID == id ? .black : LF.textPrimary)
+            .background(isSelected ? LF.selectionSurface : LF.surface, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(
+                        isSelected ? LF.brandTint : LF.textSecondary.opacity(0.16),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            }
+            .shadow(color: isSelected ? LF.brandTint.opacity(0.16) : .clear, radius: 4, y: 2)
+            .foregroundStyle(LF.textPrimary)
         }
         .buttonStyle(.plain)
     }
@@ -235,7 +251,7 @@ struct AssetPickerView: View {
                         .overlay(alignment: .topTrailing) {
                             Image(systemName: selectedIDs.contains(clip.id) ? "checkmark.circle.fill" : "circle")
                                 .font(.title3)
-                                .foregroundStyle(selectedIDs.contains(clip.id) ? LF.gold : LF.textSecondary.opacity(0.5))
+                                .foregroundStyle(selectedIDs.contains(clip.id) ? LF.actionPrimary : LF.textSecondary.opacity(0.5))
                                 .padding(6)
                                 .allowsHitTesting(false)
                         }

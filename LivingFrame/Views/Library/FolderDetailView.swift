@@ -116,7 +116,7 @@ struct FolderDetailView: View {
                                 HStack(spacing: 7) {
                                     Image(systemName: "folder.fill")
                                         .font(.title3)
-                                        .foregroundStyle(LF.gold)
+                                        .foregroundStyle(LF.folderIcon)
                                     Text(child.name)
                                         .lineLimit(1)
                                     Text("\(child.clipIDs.count)")

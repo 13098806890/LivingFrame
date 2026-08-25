@@ -526,16 +526,16 @@ struct LibraryView: View {
                                     HStack(spacing: 7) {
                                         Image(systemName: "folder.fill")
                                             .font(.title2)
-                                            .foregroundStyle(dragOverFolderID == folder.id ? .black : LF.gold)
+                                            .foregroundStyle(LF.folderIcon)
                                         Text(folder.name)
                                             .lineLimit(1)
                                         Text("\(folder.clipIDs.count)")
                                             .font(.subheadline.monospacedDigit())
-                                            .foregroundStyle(dragOverFolderID == folder.id ? .black.opacity(0.6) : LF.textSecondary)
+                                            .foregroundStyle(dragOverFolderID == folder.id ? LF.folderIcon : LF.textSecondary)
                                         if appState.hasChildFolders(folder.id) {
                                             Image(systemName: "chevron.right")
                                                 .font(.caption2)
-                                                .foregroundStyle(dragOverFolderID == folder.id ? .black.opacity(0.5) : LF.textSecondary)
+                                                .foregroundStyle(dragOverFolderID == folder.id ? LF.folderIcon : LF.textSecondary)
                                         }
                                     }
                                     .font(.subheadline.weight(.semibold))
@@ -544,10 +544,17 @@ struct LibraryView: View {
                                     .frame(minHeight: 56)
                                     .contentShape(Capsule())
                                     .background(
-                                        dragOverFolderID == folder.id ? LF.gold : LF.surface2,
+                                        dragOverFolderID == folder.id ? LF.selectionSurface : LF.surface2,
                                         in: Capsule()
                                     )
-                                    .foregroundStyle(dragOverFolderID == folder.id ? .black : LF.textPrimary)
+                                    .overlay {
+                                        Capsule()
+                                            .stroke(
+                                                dragOverFolderID == folder.id ? LF.brandTint : .clear,
+                                                lineWidth: 2
+                                            )
+                                    }
+                                    .foregroundStyle(LF.textPrimary)
                                 }
                                 .buttonStyle(.plain)
                                 .contextMenu {
@@ -816,7 +823,7 @@ struct ClipMenuView: View {
                         } label: {
                             HStack {
                                 Image(systemName: "folder.fill")
-                                    .foregroundStyle(LF.gold)
+                                    .foregroundStyle(LF.folderIcon)
                                 Text(folder.name)
                                     .lineLimit(1)
                                 Spacer()

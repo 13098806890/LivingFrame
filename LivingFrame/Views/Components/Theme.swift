@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - 主题色（Cloud Glass：浅色系统背景 + iOS 蓝）
+// MARK: - 主题色（Macaron Sky：相纸暖白 + 可访问天空蓝）
 
 extension Color {
     init(hex: String) {
@@ -41,23 +41,30 @@ extension Color {
 }
 
 enum LF {
-    /// 使用系统语义色，浅色/深色模式和提高对比度设置都能自动适配。
-    static let background = Color(uiColor: .systemGroupedBackground)
-    static let surface = Color(uiColor: .secondarySystemGroupedBackground)
-    static let surface2 = Color(uiColor: .tertiarySystemFill)
-    static let accent = Color(uiColor: .systemBlue)
-    static let accentSoft = Color(hex: "DCEBFF")
-    static let accentDeep = Color(hex: "356DB5")
-    static let magic = Color(uiColor: .systemIndigo)
-    static let textPrimary = Color(uiColor: .label)
-    static let textSecondary = Color(uiColor: .secondaryLabel)
+    /// 色值均来自 Asset Catalog，因此会自动随浅色、深色和「增强对比度」切换。
+    /// 语义名只描述用途，视图层不应直接使用品牌色值或十六进制颜色。
+    static let background = Color("AppBackground")
+    static let surface = Color("AppSurface")
+    static let surface2 = Color("AppSurfaceSecondary")
+    static let actionPrimary = Color("BrandAction")
+    static let brandTint = Color("BrandTint")
+    static let selectionSurface = Color("SelectionSurface")
+    static let folderIcon = Color("FolderIcon")
+    static let destructive = Color("Destructive")
+    static let textPrimary = Color("TextPrimary")
+    static let textSecondary = Color("TextSecondary")
 
-    /// 兼容现有调用点：原 gold 语义统一映射到 iOS 蓝，不再使用黑金配色。
-    static let gold = accent
-    static let goldDeep = accentDeep
+    /// 兼容既有调用点。新代码请按用途使用 `actionPrimary`、`selectionSurface` 等语义 token。
+    static let accent = actionPrimary
+    static let accentSoft = selectionSurface
+    static let accentDeep = folderIcon
+    static let magic = brandTint
+    static let gold = actionPrimary
+    static let goldDeep = folderIcon
 
     static let accentGradient = LinearGradient(
-        colors: [Color(hex: "3D9BFF"), Color(hex: "0A84FF")],
+        // 两端都可承载白色按钮文字，避免把浅马卡龙蓝直接放在白字下面。
+        colors: [folderIcon, actionPrimary],
         startPoint: .topLeading, endPoint: .bottomTrailing
     )
 
