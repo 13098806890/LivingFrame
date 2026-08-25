@@ -64,10 +64,6 @@ struct CanvasView: View {
             }
             .aspectRatio(canvasAspect, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(LF.surface2, lineWidth: 1)
-            }
             .shadow(color: Color.black.opacity(0.14), radius: 18, x: 0, y: 9)
             .background(
                 GeometryReader { geo in
@@ -336,17 +332,58 @@ struct CanvasView: View {
                     let center = CGPoint(x: frame.midX, y: frame.midY)
                     // 画布 rotation 正值=逆时针；SwiftUI rotationEffect 屏幕坐标系正值=顺时针，需取反
                     let rotation = -element.transform.rotation
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.white.opacity(0.95), lineWidth: 1.5)
-                        .shadow(color: .black.opacity(0.5), radius: 1)
-                        .frame(width: frame.width, height: frame.height)
-                        .rotationEffect(.radians(rotation))
-                        .position(center)
+                    let isBackground = isBackgroundElement(element)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .stroke(LF.accent, lineWidth: 2)
+                            .shadow(color: LF.accent.opacity(0.28), radius: 3)
+
+                        // 前景素材使用四个小控制点，背景素材继续使用下方的
+                        // “背景取景”虚线框，避免在整张画布四角显示无意义的缩放点。
+                        if !isBackground {
+                            selectionHandles
+                        }
+                    }
+                    .frame(width: frame.width, height: frame.height)
+                    .rotationEffect(.radians(rotation))
+                    .position(center)
                 }
             }
             .allowsHitTesting(false)
         }
         .allowsHitTesting(false)
+    }
+
+    private var selectionHandles: some View {
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .topLeading) {
+            selectionHandle.offset(x: -5, y: -5)
+            }
+            .overlay(alignment: .topTrailing) {
+            selectionHandle.offset(x: 5, y: -5)
+            }
+            .overlay(alignment: .bottomLeading) {
+            selectionHandle.offset(x: -5, y: 5)
+            }
+            .overlay(alignment: .bottomTrailing) {
+            selectionHandle.offset(x: 5, y: 5)
+            }
+    }
+
+    private var selectionHandle: some View {
+        Circle()
+            .fill(Color.white)
+            .overlay {
+                Circle().stroke(LF.accent, lineWidth: 2)
+            }
+            .shadow(color: .black.opacity(0.18), radius: 2)
+            .frame(width: 10, height: 10)
+    }
+
+    private func isBackgroundElement(_ element: CompositionElement) -> Bool {
+        if case .background = element.kind { return true }
+        return false
     }
 
     private var selectedElements: [CompositionElement] {

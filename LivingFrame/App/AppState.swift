@@ -595,6 +595,10 @@ final class AppState: ObservableObject {
         updateBackgroundElement(elementID) { $0.edgeStyle = style }
     }
 
+    func setBackgroundEdgeWidth(_ elementID: UUID, _ width: CanvasEdgeWidth) {
+        updateBackgroundElement(elementID) { $0.edgeWidth = width }
+    }
+
     /// 画布外缘属于最终合成层，不随某一张背景元素被删除或移动而消失。
     func setCanvasEdgeStyle(_ style: CanvasEdgeStyle) {
         guard var comp = composition, comp.canvasEdgeStyle != style else { return }
@@ -1291,7 +1295,11 @@ final class AppState: ObservableObject {
         guard let composition else { throw AppStateError.noComposition }
         isExporting = true
         exportProgress = 0
-        defer { isExporting = false }
+        RenderMemoryController.prepareForExport()
+        defer {
+            RenderMemoryController.finishExport()
+            isExporting = false
+        }
         let start = Date()
         LogStore.log("export: start format=\(format.rawValue) fps=\(fps) duration=\(composition.duration)s elements=\(composition.elements.count) audioClips=\(composition.audioClips.count)")
         let url = FileManager.default.temporaryDirectory

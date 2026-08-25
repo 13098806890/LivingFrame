@@ -13,10 +13,49 @@ enum NativePaperEffectRenderer {
         .priorityRequestLow: true
     ])
 
+    static func clearCaches() {
+        context.clearCaches()
+    }
+
     static func canvasOverlay(
         size: CGSize,
         profile: TornEdgeProfile,
+        inset: CGFloat,
+        effectWidth: CanvasEdgeWidth = .standard
+    ) -> CGImage? {
+        canvasPaperImage(
+            size: size,
+            profile: profile,
+            inset: inset,
+            effectWidth: effectWidth,
+            includesOpeningEdge: true
+        )
+    }
+
+    /// Scalable paper body used beneath authored frame artwork. It expands the
+    /// actual paper surface on all four sides but deliberately omits another
+    /// contact edge, avoiding a doubled dark outline when the authored frame is
+    /// composited above it.
+    static func canvasBacking(
+        size: CGSize,
+        profile: TornEdgeProfile,
         inset: CGFloat
+    ) -> CGImage? {
+        canvasPaperImage(
+            size: size,
+            profile: profile,
+            inset: inset,
+            effectWidth: .standard,
+            includesOpeningEdge: false
+        )
+    }
+
+    private static func canvasPaperImage(
+        size: CGSize,
+        profile: TornEdgeProfile,
+        inset: CGFloat,
+        effectWidth: CanvasEdgeWidth,
+        includesOpeningEdge: Bool
     ) -> CGImage? {
         let rect = CGRect(origin: .zero, size: size)
         let openingRect = rect.insetBy(dx: inset, dy: inset)
@@ -30,7 +69,7 @@ enum NativePaperEffectRenderer {
               ) else { return nil }
 
         let paperMask = invertMask(openingMask, extent: rect)
-        let paperColor = CIImage(color: CIColor(red: 0.965, green: 0.948, blue: 0.900, alpha: 0.98))
+        let paperColor = CIImage(color: CIColor(red: 0.992, green: 0.985, blue: 0.965, alpha: 1))
             .cropped(to: rect)
         let texture = textureImage(size: size)
         let transparent = transparentImage(croppedTo: rect)
@@ -41,13 +80,16 @@ enum NativePaperEffectRenderer {
 
         // The contact edge is generated from the same displaced mask as the tear,
         // so the shadow cannot drift away from the actual opening.
-        let edge = edgeImage(
-            mask: openingMask,
-            extent: rect,
-            inset: inset,
-            profile: profile
-        )
-        if let edge { result = sourceOver(edge, over: result) }
+        if includesOpeningEdge {
+            let edge = edgeImage(
+                mask: openingMask,
+                extent: rect,
+                inset: inset,
+                profile: profile,
+                effectWidth: effectWidth
+            )
+            if let edge { result = sourceOver(edge, over: result) }
+        }
 
         // The torn paper is filtered in Core Image. The static corner is added
         // by the caller as a native Core Graphics layer so it can be clipped to
@@ -59,26 +101,115 @@ enum NativePaperEffectRenderer {
     static func tornEdgeOverlay(
         size: CGSize,
         path: CGPath,
-        profile: TornEdgeProfile
+        profile: TornEdgeProfile,
+        width: CanvasEdgeWidth = .standard
     ) -> CGImage? {
         let rect = CGRect(origin: .zero, size: size)
         let reference = max(rect.width, rect.height)
-        let nominalWidth = max(reference * (profile == .layered ? 0.014 : 0.010), 2)
+        let widthRatio: CGFloat
+        switch profile {
+        case .soft: widthRatio = 0.0075
+        case .fibrous: widthRatio = 0.0095
+        case .layered: widthRatio = 0.0110
+        }
+        let nominalWidth = max(reference * widthRatio * width.effectRenderScale, 2.5)
         guard let mask = displacedMask(
             size: size,
             path: path,
             profile: profile,
-            displacement: nominalWidth * (profile == .fibrous ? 1.8 : 1.2)
+            displacement: nominalWidth * (profile == .fibrous ? 1.25 : 0.72)
         ) else { return nil }
-        let gradient = morphologyGradient(mask, radius: nominalWidth * 0.90) ?? mask
-        let inside = multiply(gradient, by: mask) ?? gradient
-        let darkAlpha = colorize(inside, color: CIColor(red: 0.16, green: 0.13, blue: 0.09, alpha: 0.50))
-        let lightAlpha = colorize(inside, color: CIColor(red: 1.0, green: 0.985, blue: 0.93, alpha: profile == .layered ? 0.90 : 0.72))
-        let shadow = darkAlpha
-            .transformed(by: CGAffineTransform(translationX: nominalWidth * 0.16, y: -nominalWidth * 0.22))
-            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: nominalWidth * 0.45])
-        let result = sourceOver(lightAlpha, over: sourceOver(shadow, over: darkAlpha))
-        return render(result, extent: rect)
+        let gradient = morphologyGradient(mask, radius: nominalWidth * 0.82) ?? mask
+        let fiberCoreGradient = morphologyGradient(mask, radius: nominalWidth * 0.34) ?? gradient
+        let insideContactGradient = morphologyGradient(mask, radius: nominalWidth * 0.14) ?? gradient
+        let inside = multiply(insideContactGradient, by: mask) ?? insideContactGradient
+        let inverseMask = invertMask(mask, extent: rect)
+        let outside = multiply(gradient, by: inverseMask) ?? gradient
+        let outsideCore = multiply(fiberCoreGradient, by: inverseMask) ?? fiberCoreGradient
+        let contact = colorize(inside, color: CIColor(red: 0.16, green: 0.13, blue: 0.09, alpha: 0.045))
+        // Keep the generated paper on the paper/reveal side of the cut. The
+        // authored frame remains the visible top layer, avoiding a second
+        // smooth white outline over its original fibers.
+        let paperAlpha = colorize(outside, color: CIColor(
+            red: 1.0,
+            green: 0.988,
+            blue: 0.955,
+            alpha: profile == .soft ? 0.68 : 0.84
+        ))
+        let paperCore = colorize(outsideCore, color: CIColor(
+            red: 1.0,
+            green: 0.997,
+            blue: 0.985,
+            alpha: profile == .soft ? 0.82 : 0.96
+        ))
+        let underside = colorize(outside, color: CIColor(
+            red: 0.48,
+            green: 0.43,
+            blue: 0.34,
+            alpha: profile == .layered ? 0.10 : 0.06
+        ))
+        // A single global light comes from the upper-left. The paper therefore
+        // casts down and right (+x, -y in Core Image coordinates) regardless of
+        // which partition owns a divider segment.
+        let shiftedShadowMask = outside
+                .transformed(by: CGAffineTransform(
+                    translationX: nominalWidth * 0.24,
+                    y: -nominalWidth * 0.24
+                ))
+                .applyingFilter("CIGaussianBlur", parameters: [
+                    kCIInputRadiusKey: nominalWidth * 0.42
+                ])
+                .cropped(to: rect)
+        // The shadow is only allowed to fall into the photo. This removes the
+        // dark all-around stroke while preserving the upper-left light source.
+        let directionalShadowMask = multiply(shiftedShadowMask, by: mask) ?? shiftedShadowMask
+        let shadow = colorize(
+            directionalShadowMask,
+            color: CIColor(red: 0.10, green: 0.085, blue: 0.065, alpha: 0.27)
+        )
+        var paper = paperAlpha
+        if let texture = textureImage(size: size) {
+            let transparent = transparentImage(croppedTo: rect)
+            let clippedTexture = blend(texture, over: transparent, mask: outside)
+            paper = sourceOver(clippedTexture, over: paper)
+        }
+        let paperLayers = sourceOver(paperCore, over: sourceOver(paper, over: underside))
+        let result = sourceOver(contact, over: sourceOver(paperLayers, over: shadow))
+        // The path also contains canvas-perimeter segments needed to close the
+        // partition mask. Hide their treatment so only the internal dividers
+        // look torn; the canvas-level frame remains the sole outer border.
+        // Displacement and the two-sided fiber band can extend farther than the
+        // nominal radius. Keep that entire treatment away from the canvas
+        // perimeter so partition overlays never draw a second outer frame.
+        let perimeterInset = min(nominalWidth * 2.15, min(rect.width, rect.height) * 0.12)
+        let visibleResult: CIImage
+        if let interiorMask = interiorRectMask(size: size, inset: perimeterInset) {
+            let featheredMask = interiorMask
+                .applyingFilter("CIGaussianBlur", parameters: [
+                    kCIInputRadiusKey: max(nominalWidth * 0.28, 1.5)
+                ])
+                .cropped(to: rect)
+            visibleResult = blend(
+                result,
+                over: transparentImage(croppedTo: rect),
+                mask: featheredMask
+            )
+        } else {
+            visibleResult = result
+        }
+        return render(visibleResult, extent: rect)
+    }
+
+    private static func interiorRectMask(size: CGSize, inset: CGFloat) -> CIImage? {
+        let rect = CGRect(origin: .zero, size: size)
+        let interior = rect.insetBy(dx: inset, dy: inset)
+        guard interior.width > 1, interior.height > 1 else { return nil }
+        return ProceduralRasterRenderer.makeImage(size: size, transparent: false) { context, _ in
+            context.setFillColor(CGColor(gray: 0, alpha: 1))
+            context.fill(rect)
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(interior)
+        }.map(CIImage.init(cgImage:))
     }
 
     private static func displacedMask(
@@ -153,9 +284,11 @@ enum NativePaperEffectRenderer {
         mask: CIImage,
         extent: CGRect,
         inset: CGFloat,
-        profile: TornEdgeProfile
+        profile: TornEdgeProfile,
+        effectWidth: CanvasEdgeWidth
     ) -> CIImage? {
-        let radius = max(inset * (profile == .layered ? 0.090 : 0.065), 3)
+        let effectScale = effectWidth.effectRenderScale
+        let radius = max(inset * (profile == .layered ? 0.090 : 0.065) * effectScale, 3)
         guard let gradient = morphologyGradient(mask, radius: radius) else { return nil }
         let inside = multiply(gradient, by: mask) ?? gradient
         let outside = multiply(gradient, by: invertMask(mask, extent: extent)) ?? gradient
@@ -164,8 +297,13 @@ enum NativePaperEffectRenderer {
             color: CIColor(red: 0.15, green: 0.12, blue: 0.085, alpha: profile == .layered ? 0.38 : 0.26)
         )
         let contactShadow = contact
-            .transformed(by: CGAffineTransform(translationX: inset * 0.018, y: -inset * 0.022))
-            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: max(inset * 0.065, 1.5)])
+            .transformed(by: CGAffineTransform(
+                translationX: inset * 0.018 * effectScale,
+                y: -inset * 0.022 * effectScale
+            ))
+            .applyingFilter("CIGaussianBlur", parameters: [
+                kCIInputRadiusKey: max(inset * 0.065 * effectScale, 1.5)
+            ])
         let underside = colorize(
             outside,
             color: CIColor(red: 0.46, green: 0.42, blue: 0.35, alpha: profile == .layered ? 0.12 : 0.08)

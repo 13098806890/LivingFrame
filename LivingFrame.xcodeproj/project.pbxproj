@@ -494,7 +494,7 @@
 				CURRENT_PROJECT_VERSION = 5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "活影";
+				INFOPLIST_KEY_CFBundleDisplayName = GIFBloom;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "需要保存你制作的动图或视频到相册";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要访问相册，选择视频或 Live Photo 来制作动态照片";
@@ -525,7 +525,7 @@
 				CURRENT_PROJECT_VERSION = 5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "活影";
+				INFOPLIST_KEY_CFBundleDisplayName = GIFBloom;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "需要保存你制作的动图或视频到相册";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要访问相册，选择视频或 Live Photo 来制作动态照片";

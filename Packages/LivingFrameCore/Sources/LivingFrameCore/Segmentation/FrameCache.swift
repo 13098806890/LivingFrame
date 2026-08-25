@@ -72,6 +72,17 @@ public final class FrameCache {
         }
     }
 
+    /// Releases decoded frame pixels while preserving clip registrations and all
+    /// source files on disk. Export calls this before allocating full-size output
+    /// buffers so editor preview frames do not contribute to the export peak.
+    public func purgeDecodedFrames() {
+        frameLock.lock()
+        frameCache.removeAll(keepingCapacity: false)
+        frameOrder.removeAll(keepingCapacity: false)
+        frameCacheCost = 0
+        frameLock.unlock()
+    }
+
     /// 命中返回并标记最近使用；未命中则加载入缓存（超容量淘汰最久未使用的一条）
     private func hitOrLoad(key: String, load: () -> CGImage?) -> CGImage? {
         if let image = frameCache[key] {

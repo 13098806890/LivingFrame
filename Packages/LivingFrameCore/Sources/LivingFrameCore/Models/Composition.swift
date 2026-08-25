@@ -109,6 +109,13 @@ public enum CanvasEdgeStyle: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var id: String { rawValue }
 
+    /// Only the two authored transparent frame assets are user-facing. Keep
+    /// `tornFibrous` as a decoding-compatible legacy value and render it with
+    /// the tactile asset so old projects do not lose their paper edge.
+    public static var allCases: [CanvasEdgeStyle] {
+        [.none, .tornSoft, .tornLayered]
+    }
+
     public var title: String {
         switch self {
         case .none: NSLocalizedString("无", comment: "Canvas edge")
@@ -119,20 +126,34 @@ public enum CanvasEdgeStyle: String, Codable, CaseIterable, Identifiable, Sendab
     }
 }
 
-/// 画布相纸留白的宽度档位；以画布短边比例计算，横竖画幅观感一致。
+/// 兼容旧工程中的撕纸宽度字段。当前所有值统一按原始窄版效果渲染，
+/// 编辑界面不再提供宽度选项。
 public enum CanvasEdgeWidth: String, Codable, CaseIterable, Identifiable, Sendable {
-    case narrow
+    /// 旧版默认档位；现在作为用户可见的最窄档，保证已有工程观感不突变。
     case standard
+    case medium
     case wide
+    /// 兼容早期已经写入工程 JSON 的 `narrow`，不再单独显示为第四档。
+    case legacyNarrow = "narrow"
+
+    public static var allCases: [CanvasEdgeWidth] { [.standard] }
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
-        case .narrow: NSLocalizedString("窄", comment: "Canvas edge width")
-        case .standard: NSLocalizedString("标准", comment: "Canvas edge width")
+        case .standard, .legacyNarrow: NSLocalizedString("窄", comment: "Canvas edge width")
+        case .medium: NSLocalizedString("中", comment: "Canvas edge width")
         case .wide: NSLocalizedString("宽", comment: "Canvas edge width")
         }
+    }
+
+    var effectRenderScale: CGFloat {
+        1
+    }
+
+    var canonical: CanvasEdgeWidth {
+        .standard
     }
 }
 
@@ -158,6 +179,8 @@ public enum BackgroundSplitCount: String, Codable, CaseIterable, Identifiable, S
 public struct BackgroundElementSettings: Codable, Equatable, Sendable {
     public var region: BackgroundRegion
     public var edgeStyle: BackgroundEdgeStyle
+    /// 分割纸边与画布纸边共用的窄/中/宽档位。
+    public var edgeWidth: CanvasEdgeWidth
     public var cropScale: CGFloat
     public var cropOffset: CGPoint
     /// 新版分割模式；full 时保留并使用旧 region 字段，兼容已有工程。
@@ -177,6 +200,7 @@ public struct BackgroundElementSettings: Codable, Equatable, Sendable {
     public init(
         region: BackgroundRegion = .full,
         edgeStyle: BackgroundEdgeStyle = .flat,
+        edgeWidth: CanvasEdgeWidth = .standard,
         cropScale: CGFloat = 1,
         cropOffset: CGPoint = .zero,
         splitCount: BackgroundSplitCount = .full,
@@ -188,6 +212,7 @@ public struct BackgroundElementSettings: Codable, Equatable, Sendable {
     ) {
         self.region = region
         self.edgeStyle = edgeStyle
+        self.edgeWidth = edgeWidth
         self.cropScale = cropScale
         self.cropOffset = cropOffset
         self.splitCount = splitCount
@@ -199,13 +224,16 @@ public struct BackgroundElementSettings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case region, edgeStyle, cropScale, cropOffset, splitCount, dividerAngle, primaryDividerOffset, secondaryDividerOffset, selectedPartition, rotationQuarterTurns
+        case region, edgeStyle, edgeWidth, cropScale, cropOffset, splitCount, dividerAngle, primaryDividerOffset, secondaryDividerOffset, selectedPartition, rotationQuarterTurns
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         region = try container.decodeIfPresent(BackgroundRegion.self, forKey: .region) ?? .full
         edgeStyle = try container.decodeIfPresent(BackgroundEdgeStyle.self, forKey: .edgeStyle) ?? .flat
+        edgeWidth = (
+            try container.decodeIfPresent(CanvasEdgeWidth.self, forKey: .edgeWidth) ?? .standard
+        ).canonical
         cropScale = try container.decodeIfPresent(CGFloat.self, forKey: .cropScale) ?? 1
         cropOffset = try container.decodeIfPresent(CGPoint.self, forKey: .cropOffset) ?? .zero
         splitCount = try container.decodeIfPresent(BackgroundSplitCount.self, forKey: .splitCount) ?? .full
@@ -224,6 +252,7 @@ public struct BackgroundElementSettings: Codable, Equatable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(region, forKey: .region)
         try container.encode(edgeStyle, forKey: .edgeStyle)
+        try container.encode(edgeWidth, forKey: .edgeWidth)
         try container.encode(cropScale, forKey: .cropScale)
         try container.encode(cropOffset, forKey: .cropOffset)
         try container.encode(splitCount, forKey: .splitCount)
@@ -265,6 +294,23 @@ public enum BackgroundDividerGeometry {
     /// 直线仍与画布相交时，中心沿法线方向可移动的最大距离。
     public static func extent(in rect: CGRect, normal: CGPoint) -> CGFloat {
         abs(normal.x) * rect.width / 2 + abs(normal.y) * rect.height / 2
+    }
+
+    /// A torn divider needs a small reveal for paper fibers, but adjacent
+    /// partitions both contribute that reveal. Keep the per-side inset narrow
+    /// so the combined gap never becomes wider than the rendered paper edge.
+    public static func edgeInset(for style: BackgroundEdgeStyle, in rect: CGRect) -> CGFloat {
+        let shortSide = min(rect.width, rect.height)
+        switch style {
+        case .torn:
+            return min(max(shortSide * 0.0032, 2), 7)
+        case .tornFibrous:
+            return min(max(shortSide * 0.0040, 2.5), 8)
+        case .tornLayered:
+            return min(max(shortSide * 0.0048, 3), 9)
+        case .flat, .comic, .zigzag:
+            return 0
+        }
     }
 }
 
@@ -579,7 +625,9 @@ public struct Composition: Identifiable, Codable, Equatable {
         background = try container.decodeIfPresent(BackgroundPreset.self, forKey: .background)
             ?? BackgroundPreset(kind: .solid, topColor: "FFFFFF", bottomColor: "FFFFFF")
         canvasEdgeStyle = try container.decodeIfPresent(CanvasEdgeStyle.self, forKey: .canvasEdgeStyle) ?? .none
-        canvasEdgeWidth = try container.decodeIfPresent(CanvasEdgeWidth.self, forKey: .canvasEdgeWidth) ?? .standard
+        canvasEdgeWidth = (
+            try container.decodeIfPresent(CanvasEdgeWidth.self, forKey: .canvasEdgeWidth) ?? .standard
+        ).canonical
         templateID = try container.decodeIfPresent(String.self, forKey: .templateID)
         cropRect = try container.decodeIfPresent(CGRect.self, forKey: .cropRect)
         texts = try container.decodeIfPresent([TextElement].self, forKey: .texts) ?? []

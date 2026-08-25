@@ -3,6 +3,7 @@ import SwiftUI
 
 /// 编辑器工具类型（参考 ImgPlay 底部工具栏）
 enum EditorTool: String, CaseIterable, Identifiable {
+    case timeline   // 时间轴（展开/收起）
     case asset       // 素材（从素材库添加）
     case canvas      // 画布（比例 + 背景）
     case text        // 文本（添加/编辑文字）
@@ -17,6 +18,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
 
     var title: LocalizedStringKey {
         switch self {
+        case .timeline: "时间轴"
         case .asset: "素材"
         case .canvas: "画布"
         case .text: "文本"
@@ -31,6 +33,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .timeline: "timeline.selection"
         case .asset: "photo.badge.plus"
         case .canvas: "rectangle.on.rectangle"
         case .text: "textformat"
@@ -44,7 +47,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
     }
 
     /// 当前版本只把已完成且属于核心编辑流程的工具放进主工具栏。
-    static let visibleCases: [EditorTool] = [.asset, .canvas, .sticker, .border, .frame, .crop]
+    static let visibleCases: [EditorTool] = [.timeline, .asset, .canvas, .sticker, .frame, .crop]
 }
 
 /// 编辑页（参考 ImgPlay 布局）
@@ -64,10 +67,17 @@ struct EditorView: View {
     /// 主动保存作品的进行中/结果状态。
     @State private var isSavingWork = false
     @State private var workSaveResult: WorkSaveResult?
+    /// 时间轴默认显示；用户收起后记住选择，避免每次进入编辑页都重复操作。
+    @AppStorage("gifbloom.editor.showTimeline") private var showTimeline = true
 
     var body: some View {
         GeometryReader { proxy in
-            let canvasSize = editorCanvasSize(in: proxy.size)
+            let workspaceWidth = max(proxy.size.width - 24, 1)
+            let canvasSize = editorCanvasSize(
+                in: proxy.size,
+                timelineVisible: showTimeline,
+                maxWidth: workspaceWidth
+            )
             VStack(spacing: 0) {
                 // ① 顶部工程信息固定，时间轴滚动不会推走它。
                 topBar
@@ -75,23 +85,30 @@ struct EditorView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 6)
 
-                // ② 画布在顶部保持可见；竖屏比例用高度上限换取足够的时间轴工作区。
-                CanvasView()
-                    .frame(width: canvasSize.width, height: canvasSize.height)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+                // ② 纵向工作区：画布 → 播放控制 → 时间轴，避免手机屏幕横向拥挤。
+                VStack(spacing: 0) {
+                    CanvasView()
+                        .frame(width: canvasSize.width, height: canvasSize.height)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
 
-                // ③ 播放控制贴着画布，不随时间轴上下移动。
-                transportBar
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 8)
+                    // 播放控制贴着画布，不随时间轴内容滚动。
+                    transportBar
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 8)
 
-                // ④ 剩余空间全部交给时间轴；轨道上下浏览只发生在内部。
-                timelineArea
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .frame(maxHeight: .infinity)
-                    .layoutPriority(1)
+                    // 时间轴位于画布下方；轨道上下浏览只发生在时间轴内部。
+                    if showTimeline {
+                        timelineArea
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 8)
+                            .frame(maxHeight: .infinity)
+                            .layoutPriority(1)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .layoutPriority(1)
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
@@ -280,15 +297,20 @@ struct EditorView: View {
         return "\(totalFrames)张 / \(String(format: "%.2f", duration))秒"
     }
 
-    /// 固定工作区内为时间轴预留至少一段可操作高度；画布比例只影响自身大小，不再把页面撑成长列表。
-    private func editorCanvasSize(in available: CGSize) -> CGSize {
+    /// 根据时间轴状态计算画布尺寸：显示时为下方时间轴留出空间，隐藏时尽量放大画布。
+    private func editorCanvasSize(
+        in available: CGSize,
+        timelineVisible: Bool,
+        maxWidth: CGFloat
+    ) -> CGSize {
         let aspect: CGFloat = {
             guard let rect = appState.composition?.renderRect, rect.height > 0 else { return 9 / 16 }
             return rect.width / rect.height
         }()
-        let maxWidth = max(1, available.width - 28)
-        let maximumHeight = min(max(190, available.height * 0.39), 360)
-        let width = min(maxWidth, maximumHeight * aspect)
+        let maximumHeight = timelineVisible
+            ? min(max(190, available.height * 0.46), 420)
+            : min(max(220, available.height - 150), 620)
+        let width = min(max(1, maxWidth), maximumHeight * aspect)
         return CGSize(width: width, height: width / max(aspect, 0.01))
     }
 
@@ -389,6 +411,7 @@ struct EditorView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
                 ForEach(EditorTool.visibleCases) { tool in
+                    let isTimelineActive = tool == .timeline && showTimeline
                     Button {
                         handleToolTap(tool)
                     } label: {
@@ -399,10 +422,15 @@ struct EditorView: View {
                             Text(tool.title)
                                 .font(.caption2)
                         }
-                        .foregroundStyle(LF.textPrimary)
+                        .foregroundStyle(isTimelineActive ? LF.accent : LF.textPrimary)
                         .frame(width: 52)
+                        .background(
+                            isTimelineActive ? LF.accentSoft.opacity(0.78) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityValue(tool == .timeline ? (showTimeline ? "已显示" : "已隐藏") : "")
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity)
@@ -419,6 +447,10 @@ struct EditorView: View {
 
     private func handleToolTap(_ tool: EditorTool) {
         switch tool {
+        case .timeline:
+            withAnimation(.snappy(duration: 0.28)) {
+                showTimeline.toggle()
+            }
         case .asset:
             showAssetPicker = true
         case .text:
@@ -456,7 +488,7 @@ struct EditorView: View {
     private func toolPanel(_ tool: EditorTool) -> some View {
         Group {
             switch tool {
-            case .asset, .crop, .frame:
+            case .timeline, .asset, .crop, .frame:
                 EmptyView() // frame 走全屏 FrameGridView
             case .canvas:
                 canvasPanel
@@ -493,7 +525,7 @@ struct EditorView: View {
                                             .fill(selectedCanvasBackgroundColor)
                                             .overlay {
                                                 RoundedRectangle(cornerRadius: 4)
-                                                    .stroke(
+                                                    .strokeBorder(
                                                         appState.composition?.canvasRect.size == aspect.canvasSize ? LF.gold : LF.surface2,
                                                         lineWidth: appState.composition?.canvasRect.size == aspect.canvasSize ? 2 : 1
                                                     )
@@ -506,6 +538,7 @@ struct EditorView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                        .padding(.vertical, 2)
                     }
                 }
                 // 纯色背景（横排）
@@ -571,27 +604,6 @@ struct EditorView: View {
                                 }
                                 .buttonStyle(.plain)
                             }
-                        }
-                    }
-                }
-                if appState.composition?.canvasEdgeStyle != .none {
-                    HStack(spacing: 8) {
-                        Text("留白").font(.caption2).foregroundStyle(LF.textSecondary)
-                        ForEach(CanvasEdgeWidth.allCases) { width in
-                            Button { appState.setCanvasEdgeWidth(width) } label: {
-                                Text(width.title)
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(
-                                        appState.composition?.canvasEdgeWidth == width ? LF.accent : LF.surface2,
-                                        in: Capsule()
-                                    )
-                                    .foregroundStyle(
-                                        appState.composition?.canvasEdgeWidth == width ? .white : LF.textPrimary
-                                    )
-                            }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -832,7 +844,7 @@ struct EditorView: View {
                             toolSheet = nil
                         } label: {
                             VStack(spacing: 4) {
-                                AnimatedStickerPreview(decorationID: sticker.id)
+                                StickerPreview(decorationID: sticker.id)
                                     .frame(width: 58, height: 58)
                                 Text(sticker.name)
                                     .font(.caption2)
@@ -960,27 +972,22 @@ private enum WorkSaveResult: Identifiable {
     }
 }
 
-/// 贴纸面板中的轻量循环预览：只创建一个 SwiftUI TimelineView，帧图像由 DecorationRenderer 缓存。
-/// 视图离开面板后 TimelineView 自动停止刷新，异步加载任务也会被 SwiftUI 取消。
-private struct AnimatedStickerPreview: View {
+/// 贴纸面板预览：只显示贴纸第一帧（异步加载一次，静态展示）。
+/// 视图离开面板后异步加载任务会被 SwiftUI 取消。
+private struct StickerPreview: View {
     let decorationID: String
 
     @State private var frames: [CGImage] = []
-    @State private var animationStart = Date()
 
     var body: some View {
         Group {
-            if frames.isEmpty {
+            if let first = frames.first {
+                Image(decorative: first, scale: 1)
+                    .resizable()
+                    .scaledToFit()
+            } else {
                 Image(systemName: "sparkles")
                     .font(.title2)
-            } else {
-                SwiftUI.TimelineView(.periodic(from: .now, by: 0.1)) { context in
-                    let elapsed = max(0, context.date.timeIntervalSince(animationStart))
-                    let index = Int(elapsed / 0.1) % frames.count
-                    Image(decorative: frames[index], scale: 1)
-                        .resizable()
-                        .scaledToFit()
-                }
             }
         }
         .task(id: decorationID) {
@@ -990,7 +997,6 @@ private struct AnimatedStickerPreview: View {
             }.value
             guard !Task.isCancelled else { return }
             frames = loaded
-            animationStart = Date()
         }
         .onDisappear {
             // 释放当前视图对帧数组的引用；解码缓存仍由 Core 层统一复用。

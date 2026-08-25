@@ -17,7 +17,8 @@ public struct LivePhotoExporter {
     private let context = CIContext(options: [
         .workingColorSpace: NSNull(),
         .outputColorSpace: NSNull(),
-        .useSoftwareRenderer: true
+        .useSoftwareRenderer: true,
+        .cacheIntermediates: false
     ])
 
     public init() {}
@@ -82,6 +83,12 @@ public struct LivePhotoExporter {
                 kCVPixelBufferHeightKey as String: height
             ]
         )
+        defer {
+            context.clearCaches()
+            if let pool = adaptor.pixelBufferPool {
+                CVPixelBufferPoolFlush(pool, .excessBuffers)
+            }
+        }
 
         guard writer.startWriting() else {
             LogStore.log("LivePhotoExporter: startWriting failed status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
@@ -103,6 +110,8 @@ public struct LivePhotoExporter {
         let rect = composition.canvasRect
         let white = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 1)).cropped(to: rect)
         var coverData: Data?
+        var memory = ExportMemoryDiagnostics(exporter: "LivePhoto", frameCount: frameCount)
+        memory.log("start-video-track")
 
         for index in 0..<frameCount {
             let stallStart = Date()
@@ -129,22 +138,40 @@ public struct LivePhotoExporter {
                 await writer.finishWriting()
                 throw ExportError.cancelled
             }
-            guard let pool = adaptor.pixelBufferPool else { throw ExportError.renderFailed }
-            var pixelBuffer: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
-            guard let buffer = pixelBuffer else { throw ExportError.renderFailed }
-            // Live Photo 无透明通道：clear 背景填充为白色，保证不透明
-            let source = renderer.renderCIImage(composition, at: Double(index) / composition.fps)
-                ?? CIImage.clear.cropped(to: rect)
-            let ci = source.composited(over: white)
-            context.render(ci, to: buffer, bounds: rect, colorSpace: nil)
-            if index == 0 {
-                coverData = jpegData(from: ci, assetID: assetID)
+            let shouldLogMemory = memory.shouldLog(frame: index, totalFrames: frameCount)
+            if shouldLogMemory {
+                memory.log("before-buffer", frame: index + 1, totalFrames: frameCount)
             }
-            let time = CMTime(value: CMTimeValue(index), timescale: CMTimeScale(composition.fps))
-            guard adaptor.append(buffer, withPresentationTime: time) else {
-                LogStore.log("LivePhotoExporter: append failed index=\(index)/\(frameCount) status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
-                throw ExportError.renderFailed
+            let generatedCover = try autoreleasepool { () throws -> Data? in
+                guard let pool = adaptor.pixelBufferPool else { throw ExportError.renderFailed }
+                var pixelBuffer: CVPixelBuffer?
+                let createStatus = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
+                guard createStatus == kCVReturnSuccess, let buffer = pixelBuffer else {
+                    LogStore.log("LivePhotoExporter: pixel buffer allocation failed index=\(index) status=\(createStatus)")
+                    throw ExportError.renderFailed
+                }
+                // Live Photo 无透明通道：clear 背景填充为白色，保证不透明
+                let source = renderer.renderCIImage(composition, at: Double(index) / composition.fps)
+                    ?? CIImage.clear.cropped(to: rect)
+                let ci = source.composited(over: white)
+                context.render(ci, to: buffer, bounds: rect, colorSpace: nil)
+                let firstFrameCover = index == 0 ? jpegData(from: ci, assetID: assetID) : nil
+                let time = CMTime(value: CMTimeValue(index), timescale: CMTimeScale(composition.fps))
+                guard adaptor.append(buffer, withPresentationTime: time) else {
+                    LogStore.log("LivePhotoExporter: append failed index=\(index)/\(frameCount) status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
+                    throw ExportError.renderFailed
+                }
+                pixelBuffer = nil
+                return firstFrameCover
+            }
+            if let generatedCover {
+                coverData = generatedCover
+            }
+            if (index + 1).isMultiple(of: 10) {
+                context.clearCaches()
+            }
+            if shouldLogMemory {
+                memory.log("after-append", frame: index + 1, totalFrames: frameCount)
             }
             let fraction = Double(index + 1) / Double(frameCount)
             if index % 20 == 0 || index == frameCount - 1 {
@@ -152,8 +179,10 @@ public struct LivePhotoExporter {
             }
             progress(fraction)
         }
+        memory.log("before-finish-writing")
         videoInput.markAsFinished()
         await writer.finishWriting()
+        memory.log("after-finish-writing")
         guard writer.status == .completed else {
             LogStore.log("LivePhotoExporter: finishWriting failed status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
             throw ExportError.renderFailed

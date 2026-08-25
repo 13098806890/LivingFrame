@@ -2,16 +2,64 @@ import CoreGraphics
 import Foundation
 import ImageIO
 
-/// Renders the three paper styles extracted from the authored A/B/C reference.
+/// Renders the two authored transparent paper overlays.
 /// Once assembled, the result is cached by PaperEffectRenderer.
 enum PaperAssetRenderer {
+    static func destinationOpeningRect(
+        size: CGSize,
+        profile: TornEdgeProfile,
+        borderInset: CGFloat
+    ) -> CGRect {
+        let destination = CGRect(origin: .zero, size: size)
+        guard let frame = image(named: assetName(for: profile)) else {
+            let inset = min(max(borderInset, 1), min(size.width, size.height) * 0.34)
+            return destination.insetBy(dx: inset, dy: inset)
+        }
+
+        // Keep the authored frame's edge thickness uniform. The center opening
+        // may expand to the requested canvas, but the paper itself is never
+        // stretched independently on X and Y.
+        let sourceBounds = sourceFrameRect(
+            for: profile,
+            in: CGSize(width: frame.width, height: frame.height)
+        )
+        let sourceSize = sourceBounds.size
+        let opening = sourceOpeningRect(for: profile, in: sourceSize)
+        // The tactile asset contains an irregular bottom-right curl. Its
+        // opaque paper crosses into the nominal rectangular opening, so the
+        // opening must be mapped from the complete authored image rather than
+        // inferred from independent edge slices.
+        if profile == .layered {
+            return CGRect(
+                x: opening.minX / sourceSize.width * size.width,
+                y: (sourceSize.height - opening.maxY) / sourceSize.height * size.height,
+                width: opening.width / sourceSize.width * size.width,
+                height: opening.height / sourceSize.height * size.height
+            )
+        }
+        let scale = min(
+            size.width / sourceSize.width,
+            size.height / sourceSize.height
+        )
+        let left = opening.minX * scale
+        let right = (sourceSize.width - opening.maxX) * scale
+        let top = opening.minY * scale
+        let bottom = (sourceSize.height - opening.maxY) * scale
+        return CGRect(
+            x: left,
+            y: bottom,
+            width: max(size.width - left - right, 1),
+            height: max(size.height - top - bottom, 1)
+        )
+    }
+
     static func borderOverlay(
         size: CGSize,
         profile: TornEdgeProfile,
         borderInset: CGFloat,
         foldedCorner _: PaperFoldCorner?
     ) -> CGImage? {
-        guard let authoredFrame = image(named: "paper-mockup-\(profile.rawValue)-frame") else { return nil }
+        guard let authoredFrame = image(named: assetName(for: profile)) else { return nil }
         return authoredBorderOverlay(
             frame: authoredFrame,
             size: size,
@@ -20,34 +68,44 @@ enum PaperAssetRenderer {
         )
     }
 
-    /// The reference artwork is stored as a complete frame so its asymmetric
-    /// corners, fiber texture and cast shadow stay together. Only the four
-    /// straight edge spans are stretched; corners are scaled uniformly.
+    /// The transparent artwork is stored as a complete frame so its paper
+    /// texture, cast shadow and (for the tactile style) curled corner stay
+    /// together. Establish the edge thickness with a uniform scale, then
+    /// expand only the photo opening to fit the actual canvas.
     private static func authoredBorderOverlay(
         frame: CGImage,
         size: CGSize,
         profile: TornEdgeProfile,
         borderInset: CGFloat
     ) -> CGImage? {
-        let sourceSize = CGSize(width: frame.width, height: frame.height)
+        let sourceBounds = sourceFrameRect(
+            for: profile,
+            in: CGSize(width: frame.width, height: frame.height)
+        )
+        guard let croppedFrame = frame.cropping(to: sourceBounds.integral) else { return nil }
+        let sourceSize = sourceBounds.size
         let sourceOpening = sourceOpeningRect(for: profile, in: sourceSize)
         let destination = CGRect(origin: .zero, size: size)
-        let inset = max(borderInset, 1)
+        let destinationOpening = destinationOpeningRect(
+            size: size,
+            profile: profile,
+            borderInset: borderInset
+        )
 
         return ProceduralRasterRenderer.makeImage(size: size) { context, _ in
             context.interpolationQuality = .high
             if profile == .layered {
-                // C's curl, sheet underneath and long shadow cross both the
-                // right and bottom slice boundaries. Keep that artwork as one
-                // continuous layer so no rectangular seam can appear.
-                context.draw(frame, in: destination)
+                // Keep the authored curl in the same image as the frame. A
+                // nine-slice would discard the irregular portion that crosses
+                // into the rectangular photo opening.
+                context.draw(croppedFrame, in: destination)
             } else {
                 drawNineSlice(
-                    frame,
+                    croppedFrame,
                     sourceSize: sourceSize,
                     opening: sourceOpening,
                     destination: destination,
-                    inset: min(inset, min(destination.width, destination.height) * 0.34),
+                    destinationOpening: destinationOpening,
                     in: context
                 )
             }
@@ -59,15 +117,19 @@ enum PaperAssetRenderer {
         sourceSize: CGSize,
         opening: CGRect,
         destination: CGRect,
-        inset: CGFloat,
+        destinationOpening: CGRect,
         in context: CGContext
     ) {
         let sourceX = [CGFloat(0), opening.minX, opening.maxX, sourceSize.width]
         let sourceY = [CGFloat(0), opening.minY, opening.maxY, sourceSize.height]
-        let destinationX = [CGFloat(0), inset, destination.width - inset, destination.width]
-        // Destination rows are still expressed top-to-bottom; convert each
-        // row to the bitmap context's bottom-left origin when placing it.
-        let destinationY = [CGFloat(0), inset, destination.height - inset, destination.height]
+        let destinationX = [
+            CGFloat(0), destinationOpening.minX,
+            destinationOpening.maxX, destination.width
+        ]
+        let destinationY = [
+            CGFloat(0), destination.height - destinationOpening.maxY,
+            destination.height - destinationOpening.minY, destination.height
+        ]
 
         for row in 0..<3 {
             for column in 0..<3 where !(row == 1 && column == 1) {
@@ -77,14 +139,14 @@ enum PaperAssetRenderer {
                     width: sourceX[column + 1] - sourceX[column],
                     height: sourceY[row + 1] - sourceY[row]
                 )
-                let bottom = destination.height - destinationY[row + 1]
                 let target = CGRect(
                     x: destinationX[column],
-                    y: bottom,
+                    y: destination.height - destinationY[row + 1],
                     width: destinationX[column + 1] - destinationX[column],
                     height: destinationY[row + 1] - destinationY[row]
                 )
-                drawSlice(image, source: source, destination: target, in: context)
+                guard let slice = image.cropping(to: source.integral) else { continue }
+                context.draw(slice, in: target)
             }
         }
     }
@@ -93,29 +155,40 @@ enum PaperAssetRenderer {
     private static func sourceOpeningRect(for profile: TornEdgeProfile, in size: CGSize) -> CGRect {
         switch profile {
         case .soft:
-            CGRect(x: 40, y: 45, width: size.width - 70, height: size.height - 93)
+            // bb.png opening, measured from the cropped frame's top-left.
+            CGRect(x: 75, y: 86, width: 1040, height: 830)
         case .fibrous:
-            CGRect(x: 54, y: 59, width: size.width - 117, height: size.height - 119)
+            // b.png opening, measured from the cropped frame's top-left.
+            CGRect(x: 78, y: 94, width: 1053, height: 832)
         case .layered:
-            CGRect(x: 45, y: 41, width: size.width - 121, height: size.height - 109)
+            // Same rectangular envelope; b.png's alpha removes the
+            // irregular curled-corner area from its lower-right edge.
+            CGRect(x: 78, y: 94, width: 1053, height: 832)
         }
     }
 
-    private static func drawSlice(
-        _ image: CGImage,
-        source topLeftSource: CGRect,
-        destination: CGRect,
-        in context: CGContext
-    ) {
-        guard topLeftSource.width > 0,
-              topLeftSource.height > 0,
-              destination.width > 0,
-              destination.height > 0 else { return }
+    /// The generated PNGs contain transparent padding around the authored
+    /// artwork. Remove that padding before fitting the frame to the canvas;
+    /// otherwise the paper appears as a small card floating inside it.
+    private static func sourceFrameRect(for profile: TornEdgeProfile, in _: CGSize) -> CGRect {
+        switch profile {
+        case .soft:
+            // User-supplied bb.png alpha bounds: (175, 11) ... (1363, 1015)
+            CGRect(x: 175, y: 11, width: 1188, height: 1004)
+        case .fibrous, .layered:
+            // User-supplied b.png alpha bounds including the curled corner:
+            // (161, 0) ... (1374, 1011)
+            CGRect(x: 161, y: 0, width: 1213, height: 1011)
+        }
+    }
 
-        // ImageIO preserves the PNG's top-left pixel coordinates for CGImage
-        // cropping. Destination placement is converted separately above.
-        guard let slice = image.cropping(to: topLeftSource.integral) else { return }
-        context.draw(slice, in: destination)
+    private static func assetName(for profile: TornEdgeProfile) -> String {
+        switch profile {
+        case .soft:
+            "paper-transparent-soft-frame"
+        case .fibrous, .layered:
+            "paper-transparent-tactile-frame"
+        }
     }
 
     private static func image(named name: String) -> CGImage? {

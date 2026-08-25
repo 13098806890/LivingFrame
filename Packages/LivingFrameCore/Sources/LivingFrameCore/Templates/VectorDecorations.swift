@@ -52,6 +52,12 @@ public struct DecorationRenderer {
         return cache
     }()
 
+    static func clearSharedCaches() {
+        lock.lock()
+        stickerFrameCache.removeAllObjects()
+        lock.unlock()
+    }
+
     public static let stickerCatalog: [StickerDefinition] = [
         StickerDefinition(
             id: "sticker-firework", name: "烟花", category: .doodle,

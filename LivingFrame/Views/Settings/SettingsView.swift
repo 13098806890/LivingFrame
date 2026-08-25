@@ -92,7 +92,7 @@ struct SettingsView: View {
 
                     SectionCard(title: "关于") {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("活影 LivingFrame")
+                            Text("GIFBloom")
                                 .font(.headline)
                             Text("哈利波特风格动态照片制作工具")
                                 .font(.caption)

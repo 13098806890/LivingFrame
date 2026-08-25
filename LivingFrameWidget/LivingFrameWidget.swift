@@ -16,7 +16,7 @@ struct LivingFrameWidget: Widget {
         StaticConfiguration(kind: kind, provider: PosterProvider()) { entry in
             PosterEntryView(entry: entry)
         }
-        .configurationDisplayName("活影")
+        .configurationDisplayName("GIFBloom")
         .description("展示你的动态照片静态帧")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
@@ -97,7 +97,7 @@ struct PosterEntryView: View {
             Image(systemName: "wand.and.stars")
                 .font(.system(size: 28))
                 .foregroundStyle(Color(red: 0.91, green: 0.75, blue: 0.36))
-            Text("活影")
+            Text("GIFBloom")
                 .font(.headline)
                 .foregroundStyle(.white)
             Text("打开 App 制作你的动态照片")

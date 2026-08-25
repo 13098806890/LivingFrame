@@ -7,6 +7,7 @@ public enum CanvasAspect: String, CaseIterable, Identifiable {
     case portrait4x5
     case portrait3x4
     case square1x1
+    case landscape4x3
     case landscape16x9
 
     public var id: String { rawValue }
@@ -17,6 +18,7 @@ public enum CanvasAspect: String, CaseIterable, Identifiable {
         case .portrait4x5: NSLocalizedString("4:5 竖屏", comment: "Canvas aspect")
         case .portrait3x4: NSLocalizedString("3:4 竖屏", comment: "Canvas aspect")
         case .square1x1: NSLocalizedString("1:1 方形", comment: "Canvas aspect")
+        case .landscape4x3: NSLocalizedString("4:3 横屏", comment: "Canvas aspect")
         case .landscape16x9: NSLocalizedString("16:9 横屏", comment: "Canvas aspect")
         }
     }
@@ -28,6 +30,7 @@ public enum CanvasAspect: String, CaseIterable, Identifiable {
         case .portrait4x5: CGSize(width: 1080, height: 1350)
         case .portrait3x4: CGSize(width: 1080, height: 1440)
         case .square1x1: CGSize(width: 1080, height: 1080)
+        case .landscape4x3: CGSize(width: 1440, height: 1080)
         case .landscape16x9: CGSize(width: 1920, height: 1080)
         }
     }

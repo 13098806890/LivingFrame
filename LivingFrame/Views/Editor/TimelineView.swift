@@ -735,38 +735,56 @@ struct TimelineView: View {
             }
 
             if isSelected {
-                // 仿 iOS“照片”视频裁剪：只给当前展示范围画细黑框，未选区保持弱化。
+                // 当前有效播放范围使用统一的系统蓝选中态；未选中的完整素材
+                // 仍保持低透明度，用户可以清楚看到被裁掉的内容。
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(LF.accent.opacity(0.10))
+                    .frame(width: max(metrics.activeWidth, 8), height: barHeight)
+                    .offset(x: metrics.activeOffset)
+                    .allowsHitTesting(false)
+
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color.black, lineWidth: 1.5)
+                    .stroke(LF.accent, lineWidth: 2)
                     .frame(width: max(metrics.activeWidth, 8), height: barHeight)
                     .offset(x: metrics.activeOffset)
                     .allowsHitTesting(false)
 
                 // 两侧圆角拖拽柄略微超出胶片条，避免与缩略图融成一块。
                 HStack(spacing: 0) {
-                    Color.clear.frame(width: max(metrics.activeOffset - 2.5, 0))
+                    // 8pt 视觉手柄的中心必须和时间坐标边界重合。
+                    Color.clear.frame(width: max(metrics.activeOffset - 4, 0))
                     Capsule()
-                        .fill(isTrimmingStart ? LF.accent : Color.black)
-                        .frame(width: 5, height: barHeight + 8)
+                        .fill(LF.accent)
+                        .overlay {
+                            Capsule()
+                                .fill(Color.white.opacity(isTrimmingStart ? 0.95 : 0.72))
+                                .frame(width: 2, height: max(barHeight - 12, 12))
+                        }
+                        .frame(width: 8, height: barHeight + 10)
                         .shadow(
-                            color: isTrimmingStart ? LF.accent.opacity(0.7) : .clear,
-                            radius: isTrimmingStart ? 4 : 0
+                            color: LF.accent.opacity(isTrimmingStart ? 0.68 : 0.28),
+                            radius: isTrimmingStart ? 5 : 2
                         )
                     Spacer()
-                        .frame(width: max(metrics.activeWidth - 5, 0))
+                        .frame(width: max(metrics.activeWidth - 8, 0))
                     Capsule()
-                        .fill(isTrimmingEnd ? LF.accent : Color.black)
-                        .frame(width: 5, height: barHeight + 8)
+                        .fill(LF.accent)
+                        .overlay {
+                            Capsule()
+                                .fill(Color.white.opacity(isTrimmingEnd ? 0.95 : 0.72))
+                                .frame(width: 2, height: max(barHeight - 12, 12))
+                        }
+                        .frame(width: 8, height: barHeight + 10)
                         .shadow(
-                            color: isTrimmingEnd ? LF.accent.opacity(0.7) : .clear,
-                            radius: isTrimmingEnd ? 4 : 0
+                            color: LF.accent.opacity(isTrimmingEnd ? 0.68 : 0.28),
+                            radius: isTrimmingEnd ? 5 : 2
                         )
                 }
                 // 必须左对齐：barWidth 是完整素材范围，不能把缩短后的有效区间居中。
                 .frame(width: barWidth, height: barHeight, alignment: .leading)
                 .allowsHitTesting(false)
 
-                // 视觉上仍是 5pt 黑色手柄；这里是每侧最多 32pt 的透明热区。
+                // 视觉手柄现在更容易辨认；这里仍保留每侧最多 32pt 的透明热区。
                 // 该手势与纵向轨道滚动同时识别：只有真正横向移动时才会建立
                 // 裁剪会话并锁住横向时间内容，竖向移动永远保留给轨道列表。
                 Color.clear
@@ -972,7 +990,7 @@ struct TimelineView: View {
                 .frame(width: barWidth, height: rowHeight - 8)
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? Color.black : .clear, lineWidth: 1.5)
+                        .stroke(isSelected ? LF.accent : .clear, lineWidth: 2)
                 }
             HStack(spacing: 3) {
                 Image(systemName: "waveform")

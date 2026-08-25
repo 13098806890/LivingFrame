@@ -1,4 +1,5 @@
 import Foundation
+import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -27,22 +28,46 @@ public struct GIFExporter {
         ) else { throw ExportError.destinationFailed }
         let start = Date()
         LogStore.log("GIFExporter: start frames=\(frameCount) fps=\(fps) size=\(Int(composition.canvas.width))x\(Int(composition.canvas.height)) url=\(url.path)")
+        var memory = ExportMemoryDiagnostics(exporter: "GIF", frameCount: frameCount)
+        memory.log("start")
 
-        let renderer = CompositionRenderer()
+        let renderContext = CIContext(options: [
+            .workingColorSpace: NSNull(),
+            .outputColorSpace: NSNull(),
+            .cacheIntermediates: false
+        ])
+        let renderer = CompositionRenderer(context: renderContext)
+        defer { renderContext.clearCaches() }
         var skipped = 0
         for index in 0..<frameCount {
             if isCancelled() || Task.isCancelled {
                 throw ExportError.cancelled
             }
+            let shouldLogMemory = memory.shouldLog(frame: index, totalFrames: frameCount)
+            if shouldLogMemory {
+                memory.log("before-render", frame: index + 1, totalFrames: frameCount)
+            }
             let frameStart = Date()
-            guard let frame = renderer.render(composition, at: Double(index) / fps) else {
+            let added = autoreleasepool { () -> Bool in
+                guard let frame = renderer.render(composition, at: Double(index) / fps) else {
+                    return false
+                }
+                let frameProperties = [
+                    kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1.0 / fps]
+                ]
+                CGImageDestinationAddImage(destination, frame, frameProperties as CFDictionary)
+                return true
+            }
+            guard added else {
                 skipped += 1
                 continue
             }
-            let frameProperties = [
-                kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1.0 / fps]
-            ]
-            CGImageDestinationAddImage(destination, frame, frameProperties as CFDictionary)
+            if (index + 1).isMultiple(of: 10) {
+                renderContext.clearCaches()
+            }
+            if shouldLogMemory {
+                memory.log("after-add-image", frame: index + 1, totalFrames: frameCount)
+            }
             let frameCost = Date().timeIntervalSince(frameStart)
             if frameCost > 2 {
                 LogStore.log("GIFExporter: ⚠️ frame \(index) render slow cost=\(Int(frameCost))s")
@@ -54,10 +79,12 @@ public struct GIFExporter {
             progress(fraction)
         }
 
+        memory.log("before-finalize")
         guard CGImageDestinationFinalize(destination) else {
             LogStore.log("GIFExporter: Finalize failed")
             throw ExportError.destinationFailed
         }
+        memory.log("after-finalize")
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         LogStore.log("GIFExporter: done elapsed=\(Int(Date().timeIntervalSince(start)))s skipped=\(skipped) size=\(size) bytes")
     }

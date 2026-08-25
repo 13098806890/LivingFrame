@@ -114,11 +114,21 @@ public struct VideoExporter {
         writer.startSession(atSourceTime: .zero)
 
         // 导出用软件渲染，避免 CIContext GPU 工作与 VideoToolbox 编码器争用导致 writer 卡死
-        let renderer = CompositionRenderer(context: CIContext(options: [
+        let renderContext = CIContext(options: [
             .workingColorSpace: NSNull(),
             .outputColorSpace: NSNull(),
-            .useSoftwareRenderer: true
-        ]))
+            .useSoftwareRenderer: true,
+            .cacheIntermediates: false
+        ])
+        let renderer = CompositionRenderer(context: renderContext)
+        defer {
+            renderContext.clearCaches()
+            if let pool = adaptor.pixelBufferPool {
+                CVPixelBufferPoolFlush(pool, .excessBuffers)
+            }
+        }
+        var memory = ExportMemoryDiagnostics(exporter: "Video-\(format.rawValue)", frameCount: frameCount)
+        memory.log("start-video-track")
         for index in 0..<frameCount {
             let stallStart = Date()
             var lastStallLog = Date()
@@ -144,15 +154,31 @@ public struct VideoExporter {
                 await writer.finishWriting()
                 throw ExportError.cancelled
             }
-            let renderStart = Date()
-            guard let pool = adaptor.pixelBufferPool else {
-                LogStore.log("VideoExporter: pixelBufferPool is nil index=\(index) status=\(writer.status.rawValue)")
-                throw ExportError.renderFailed
+            let shouldLogMemory = memory.shouldLog(frame: index, totalFrames: frameCount)
+            if shouldLogMemory {
+                memory.log("before-buffer", frame: index + 1, totalFrames: frameCount)
             }
-            var pixelBuffer: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
-            guard let buffer = pixelBuffer else { throw ExportError.renderFailed }
-            let renderOK = renderer.render(composition, at: Double(index) / fps, into: buffer)
+            let renderStart = Date()
+            let renderOK = try autoreleasepool { () throws -> Bool in
+                guard let pool = adaptor.pixelBufferPool else {
+                    LogStore.log("VideoExporter: pixelBufferPool is nil index=\(index) status=\(writer.status.rawValue)")
+                    throw ExportError.renderFailed
+                }
+                var pixelBuffer: CVPixelBuffer?
+                let createStatus = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
+                guard createStatus == kCVReturnSuccess, let buffer = pixelBuffer else {
+                    LogStore.log("VideoExporter: pixel buffer allocation failed index=\(index) status=\(createStatus)")
+                    throw ExportError.renderFailed
+                }
+                let rendered = renderer.render(composition, at: Double(index) / fps, into: buffer)
+                let time = CMTime(seconds: Double(index) / fps, preferredTimescale: 600)
+                guard adaptor.append(buffer, withPresentationTime: time) else {
+                    LogStore.log("VideoExporter: append failed index=\(index)/\(frameCount) status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
+                    throw ExportError.renderFailed
+                }
+                pixelBuffer = nil
+                return rendered
+            }
             if !renderOK && index < 3 {
                 LogStore.log("VideoExporter: render(into:) 失败 index=\(index)")
             }
@@ -160,10 +186,11 @@ public struct VideoExporter {
             if renderCost > 2 {
                 LogStore.log("VideoExporter: ⚠️ frame \(index) render slow cost=\(Int(renderCost))s")
             }
-            let time = CMTime(seconds: Double(index) / fps, preferredTimescale: 600)
-            guard adaptor.append(buffer, withPresentationTime: time) else {
-                LogStore.log("VideoExporter: append failed index=\(index)/\(frameCount) status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
-                throw ExportError.renderFailed
+            if (index + 1).isMultiple(of: 10) {
+                renderContext.clearCaches()
+            }
+            if shouldLogMemory {
+                memory.log("after-append", frame: index + 1, totalFrames: frameCount)
             }
             let fraction = Double(index + 1) / Double(frameCount) * 0.95
             if index % 20 == 0 || index == frameCount - 1 {
@@ -171,9 +198,11 @@ public struct VideoExporter {
             }
             progress(fraction)
         }
+        memory.log("before-finish-writing")
         videoInput.markAsFinished()
 
         await writer.finishWriting()
+        memory.log("after-finish-writing")
         guard writer.status == .completed else {
             LogStore.log("VideoExporter: finishWriting failed status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
             throw ExportError.renderFailed

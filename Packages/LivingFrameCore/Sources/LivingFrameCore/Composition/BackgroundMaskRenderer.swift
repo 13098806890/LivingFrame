@@ -7,20 +7,94 @@ enum BackgroundMaskRenderer {
     private static let maskCache: NSCache<NSString, CGImage> = {
         let cache = NSCache<NSString, CGImage>()
         cache.countLimit = 12
+        cache.totalCostLimit = 32 * 1024 * 1024
         return cache
     }()
     private static let edgeCache: NSCache<NSString, CGImage> = {
         let cache = NSCache<NSString, CGImage>()
         cache.countLimit = 12
+        cache.totalCostLimit = 32 * 1024 * 1024
         return cache
     }()
-    /// 画布级手撕相纸叠层。图像内容仍铺满画布，只由最上层纸边覆盖外沿，
-    /// 不会改变任意元素的 transform、时间轴或分区位置。
+    private static let canvasContentMaskCache: NSCache<NSString, CGImage> = {
+        let cache = NSCache<NSString, CGImage>()
+        cache.countLimit = 6
+        cache.totalCostLimit = 24 * 1024 * 1024
+        return cache
+    }()
+
+    static func clearCaches() {
+        maskCache.removeAllObjects()
+        edgeCache.removeAllObjects()
+        canvasContentMaskCache.removeAllObjects()
+    }
+    /// 画布级手撕相纸叠层。照片开口固定，`width` 只改变纤维、撕裂层和阴影。
     static func canvasEdgeImage(
         size: CGSize,
         style: CanvasEdgeStyle,
         width: CanvasEdgeWidth
     ) -> CGImage? {
+        guard let parameters = canvasEdgeParameters(size: size, style: style) else {
+            return nil
+        }
+        return PaperEffectRenderer.borderOverlay(
+            size: size,
+            profile: parameters.profile,
+            borderInset: parameters.inset,
+            effectWidth: width,
+            foldedCorner: parameters.corner
+        )
+    }
+
+    /// Masks the already-composited canvas to the same opening used by the
+    /// authored paper frame. Without this, transparent pixels outside the torn
+    /// frame reveal the original full-bleed photo underneath the overlay.
+    static func canvasContentMaskImage(
+        size: CGSize,
+        style: CanvasEdgeStyle
+    ) -> CGImage? {
+        guard let parameters = canvasEdgeParameters(size: size, style: style) else {
+            return nil
+        }
+        let key = "canvas-content-mask-\(Int(size.width.rounded()))x\(Int(size.height.rounded()))-\(style.rawValue)" as NSString
+        if let cached = canvasContentMaskCache.object(forKey: key) { return cached }
+        let image = ProceduralRasterRenderer.makeImage(size: size) { context, rect in
+            let opening = PaperAssetRenderer.destinationOpeningRect(
+                size: size,
+                profile: parameters.profile,
+                borderInset: parameters.inset
+            )
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            // The transparent frame asset has a rectangular photo opening.
+            // Start with that opening, then remove every non-transparent pixel
+            // from the actual frame alpha. This is important for the curled
+            // corner, which crosses into the rectangular opening.
+            context.fill(opening)
+            if let frame = PaperAssetRenderer.borderOverlay(
+                size: size,
+                profile: parameters.profile,
+                borderInset: parameters.inset,
+                foldedCorner: parameters.corner
+            ) {
+                context.saveGState()
+                // Destination-out uses the frame's alpha as the eraser. The
+                // `.clear` blend mode would clear the entire draw rectangle,
+                // including the actual photo opening.
+                context.setBlendMode(.destinationOut)
+                context.draw(frame, in: rect)
+                context.restoreGState()
+            }
+        }
+        if let image {
+            canvasContentMaskCache.setObject(image, forKey: key, cost: imageCost(image))
+        }
+        return image
+    }
+
+    private static func canvasEdgeParameters(
+        size: CGSize,
+        style: CanvasEdgeStyle
+    ) -> (profile: TornEdgeProfile, inset: CGFloat, corner: PaperFoldCorner?)? {
         guard style != .none else { return nil }
         let profile: TornEdgeProfile
         let baseInset: CGFloat
@@ -30,25 +104,18 @@ enum BackgroundMaskRenderer {
             return nil
         case .tornSoft:
             profile = .soft
-            baseInset = min(max(shortSide * 0.032, 18), 48)
+            baseInset = min(max(shortSide * 0.040, 22), 60)
         case .tornFibrous:
             profile = .fibrous
-            baseInset = min(max(shortSide * 0.040, 24), 64)
+            baseInset = min(max(shortSide * 0.050, 30), 80)
         case .tornLayered:
             profile = .layered
-            baseInset = min(max(shortSide * 0.046, 28), 76)
+            baseInset = min(max(shortSide * 0.058, 34), 92)
         }
-        let widthMultiplier: CGFloat
-        switch width {
-        case .narrow: widthMultiplier = 0.72
-        case .standard: widthMultiplier = 1
-        case .wide: widthMultiplier = 1.45
-        }
-        return PaperEffectRenderer.borderOverlay(
-            size: size,
-            profile: profile,
-            borderInset: baseInset * widthMultiplier,
-            foldedCorner: style == .tornLayered ? .bottomRight : nil
+        return (
+            profile,
+            baseInset,
+            style == .tornLayered ? .bottomRight : nil
         )
     }
 
@@ -87,7 +154,7 @@ enum BackgroundMaskRenderer {
             context.addPath(path(for: settings, in: rect))
             context.fillPath()
         }
-        if let image { maskCache.setObject(image, forKey: key) }
+        if let image { maskCache.setObject(image, forKey: key, cost: imageCost(image)) }
         return image
     }
 
@@ -113,9 +180,10 @@ enum BackgroundMaskRenderer {
            let nativeImage = NativePaperEffectRenderer.tornEdgeOverlay(
                size: size,
                path: path(for: settings, in: CGRect(origin: .zero, size: size)),
-               profile: profile
+               profile: profile,
+               width: settings.edgeWidth
            ) {
-            edgeCache.setObject(nativeImage, forKey: key)
+            edgeCache.setObject(nativeImage, forKey: key, cost: imageCost(nativeImage))
             return nativeImage
         }
         let image = ProceduralRasterRenderer.makeImage(size: size) { context, rect in
@@ -146,8 +214,12 @@ enum BackgroundMaskRenderer {
                 }
             }
         }
-        if let image { edgeCache.setObject(image, forKey: key) }
+        if let image { edgeCache.setObject(image, forKey: key, cost: imageCost(image)) }
         return image
+    }
+
+    private static func imageCost(_ image: CGImage) -> Int {
+        max(image.bytesPerRow * image.height, 1)
     }
 
     private static func path(
@@ -188,7 +260,8 @@ enum BackgroundMaskRenderer {
                 in: rect,
                 center: center,
                 normal: normal,
-                sign: sign
+                sign: sign,
+                edgeStyle: settings.edgeStyle
             )
         }
 
@@ -216,7 +289,9 @@ enum BackgroundMaskRenderer {
             ),
             center: secondCenter,
             normal: secondNormal,
-            sign: secondSign
+            sign: secondSign,
+            edgeStyle: settings.edgeStyle,
+            canvas: rect
         )
     }
 
@@ -226,7 +301,8 @@ enum BackgroundMaskRenderer {
         return (normalized < 0 ? normalized + 180 : normalized) * .pi / 180
     }
 
-    /// 分割边缘只向素材自身一侧后退；两张相邻素材都选择手撕时，留白自然加宽。
+    /// 分割边缘只向素材自身一侧轻微后退。相邻两侧都会贡献内退距离，
+    /// 因此这里使用共用的窄缝参数，避免留白比纸张纹理本身还宽。
     private static func insetDividerCenter(
         _ center: CGPoint,
         normal: CGPoint,
@@ -234,8 +310,8 @@ enum BackgroundMaskRenderer {
         edgeStyle: BackgroundEdgeStyle,
         in rect: CGRect
     ) -> CGPoint {
-        guard tornProfile(for: edgeStyle) != nil else { return center }
-        let inset = min(max(min(rect.width, rect.height) * 0.012, 5), 16)
+        let inset = BackgroundDividerGeometry.edgeInset(for: edgeStyle, in: rect)
+        guard inset > 0 else { return center }
         return CGPoint(
             x: center.x + normal.x * sign * inset,
             y: center.y + normal.y * sign * inset
@@ -255,13 +331,16 @@ enum BackgroundMaskRenderer {
         in rect: CGRect,
         center: CGPoint,
         normal: CGPoint,
-        sign: CGFloat
+        sign: CGFloat,
+        edgeStyle: BackgroundEdgeStyle
     ) -> CGPath {
         clippedPath(
             rectanglePolygon(rect),
             center: center,
             normal: normal,
-            sign: sign
+            sign: sign,
+            edgeStyle: edgeStyle,
+            canvas: rect
         )
     }
 
@@ -269,7 +348,9 @@ enum BackgroundMaskRenderer {
         _ polygon: [CGPoint],
         center: CGPoint,
         normal: CGPoint,
-        sign: CGFloat
+        sign: CGFloat,
+        edgeStyle: BackgroundEdgeStyle,
+        canvas: CGRect
     ) -> CGPath {
         let clipped = clippedPolygon(
             polygon,
@@ -277,14 +358,46 @@ enum BackgroundMaskRenderer {
             normal: normal,
             sign: sign
         )
+        return paperPath(clipped, edgeStyle: edgeStyle, canvas: canvas)
+    }
+
+    /// Only divider segments receive the torn geometry. Segments coincident
+    /// with the canvas perimeter remain straight and are later covered by the
+    /// optional canvas frame, avoiding a second dark outline around the image.
+    private static func paperPath(
+        _ polygon: [CGPoint],
+        edgeStyle: BackgroundEdgeStyle,
+        canvas: CGRect
+    ) -> CGPath {
         let path = CGMutablePath()
-        guard let first = clipped.first else { return path }
+        guard let first = polygon.first else { return path }
         path.move(to: first)
-        for point in clipped.dropFirst() {
-            path.addLine(to: point)
+        let profile = tornProfile(for: edgeStyle)
+        for index in polygon.indices {
+            let start = polygon[index]
+            let end = polygon[(index + 1) % polygon.count]
+            if let profile, !isCanvasBoundary(from: start, to: end, in: canvas) {
+                TornEdgeGeometry.addLine(
+                    from: start,
+                    to: end,
+                    profile: profile,
+                    seed: 0xD1A1_D000 &+ UInt64(index) &* 0x9E37,
+                    in: path
+                )
+            } else {
+                path.addLine(to: end)
+            }
         }
         path.closeSubpath()
         return path
+    }
+
+    private static func isCanvasBoundary(from start: CGPoint, to end: CGPoint, in rect: CGRect) -> Bool {
+        let tolerance: CGFloat = 0.75
+        return (abs(start.x - rect.minX) < tolerance && abs(end.x - rect.minX) < tolerance)
+            || (abs(start.x - rect.maxX) < tolerance && abs(end.x - rect.maxX) < tolerance)
+            || (abs(start.y - rect.minY) < tolerance && abs(end.y - rect.minY) < tolerance)
+            || (abs(start.y - rect.maxY) < tolerance && abs(end.y - rect.maxY) < tolerance)
     }
 
     /// Sutherland-Hodgman 裁剪：保留分割线一侧的多边形区域。
@@ -414,7 +527,7 @@ enum BackgroundMaskRenderer {
         let angle = Int(settings.dividerAngle.isFinite ? settings.dividerAngle.rounded() : 90)
         let primaryOffset = Int((settings.primaryDividerOffset * 1_000).rounded())
         let secondaryOffset = Int((settings.secondaryDividerOffset * 1_000).rounded())
-        return "\(prefix)-\(Int(size.width.rounded()))x\(Int(size.height.rounded()))-\(settings.region.rawValue)-\(settings.edgeStyle.rawValue)-\(settings.splitCount.rawValue)-\(angle)-\(primaryOffset)-\(secondaryOffset)-\(settings.selectedPartition)" as NSString
+        return "\(prefix)-\(Int(size.width.rounded()))x\(Int(size.height.rounded()))-\(settings.region.rawValue)-\(settings.edgeStyle.rawValue)-\(settings.edgeWidth.canonical.rawValue)-\(settings.splitCount.rawValue)-\(angle)-\(primaryOffset)-\(secondaryOffset)-\(settings.selectedPartition)" as NSString
     }
 
     private static func addHorizontalBoundary(

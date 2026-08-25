@@ -23,6 +23,10 @@ public struct CompositionRenderer {
         self.isPlaybackReversed = isPlaybackReversed
     }
 
+    static func clearSharedCaches() {
+        LinePattern.clearCache()
+    }
+
     // MARK: - 输出
 
     public func render(
@@ -74,7 +78,8 @@ public struct CompositionRenderer {
         at time: TimeInterval
     ) -> CIImage? {
         let canvas = composition.canvasRect
-        var image = backgroundCIImage(composition.background, in: canvas)
+        let baseImage = backgroundCIImage(composition.background, in: canvas)
+        var image = baseImage
         // 同一 zIndex 的旧工程也要保持插入顺序，避免 Swift 的不稳定排序导致
         // 重叠元素在播放时层级随机变化，表现为某个元素像是“消失”。
         let orderedElements = composition.elements.enumerated().sorted { lhs, rhs in
@@ -103,6 +108,24 @@ public struct CompositionRenderer {
             }
         }
         // 画布外缘必须是最终合成层：它覆盖所有背景、贴纸和动图，但不属于任何元素。
+        // First clip the composed content to the paper opening. The base canvas
+        // remains visible outside it, so H.264 gets an opaque background while
+        // split-photo elements cannot leak through transparent frame pixels.
+        if let contentMask = BackgroundMaskRenderer.canvasContentMaskImage(
+            size: canvas.size,
+            style: composition.canvasEdgeStyle
+        ) {
+            let mask = CIImage(cgImage: contentMask).cropped(to: canvas)
+            let filter = CIFilter(name: "CIBlendWithAlphaMask")
+            filter?.setValue(image, forKey: kCIInputImageKey)
+            // The paper frame owns its fibers and shadow. Keep the area outside
+            // its opening transparent instead of leaving a rectangular copy of
+            // the composition background around the paper.
+            let outsideCanvas = CIImage.clear.cropped(to: canvas)
+            filter?.setValue(outsideCanvas, forKey: kCIInputBackgroundImageKey)
+            filter?.setValue(mask, forKey: kCIInputMaskImageKey)
+            image = filter?.outputImage?.cropped(to: canvas) ?? image
+        }
         if let canvasEdge = BackgroundMaskRenderer.canvasEdgeImage(
             size: canvas.size,
             style: composition.canvasEdgeStyle,
@@ -628,6 +651,12 @@ public struct CompositionRenderer {
 private enum LinePattern {
     static let lock = NSLock()
     static var cache: [String: CGImage] = [:]
+
+    static func clearCache() {
+        lock.lock()
+        cache.removeAll(keepingCapacity: false)
+        lock.unlock()
+    }
 
     static func image(width: Int, height: Int, style: BackgroundPatternStyle, transparentBackground: Bool = false) -> CGImage? {
         let key = "\(width)-\(height)-\(style.pattern.rawValue)-\(Int(style.lineWidth))-\(style.colorHex)-\(Int(style.spacing))-\(Int(style.angle))-\(transparentBackground ? 1 : 0)"

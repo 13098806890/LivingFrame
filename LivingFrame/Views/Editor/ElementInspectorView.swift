@@ -96,15 +96,6 @@ struct ElementInspectorView: View {
             ) { style in
                 appState.setCanvasEdgeStyle(style)
             }
-            if appState.composition?.canvasEdgeStyle != .none {
-                inspectorChoiceRow(
-                    title: "留白宽度",
-                    items: CanvasEdgeWidth.allCases,
-                    selected: appState.composition?.canvasEdgeWidth ?? .standard
-                ) { width in
-                    appState.setCanvasEdgeWidth(width)
-                }
-            }
             // 图案叠加（横线/斜线/网格/马赛克）
             Text("图案叠加")
                 .font(.caption2)
@@ -1230,7 +1221,7 @@ struct BackgroundPartitionShape: Shape {
         let angle = Self.radians(settings.dividerAngle)
         let direction = CGPoint(x: cos(angle), y: -sin(angle))
         let normal = CGPoint(x: -direction.y, y: direction.x)
-        let firstCenter = Self.dividerCenter(for: 0, settings: settings, in: rect)
+        let rawFirstCenter = Self.dividerCenter(for: 0, settings: settings, in: rect)
         let base = [
             CGPoint(x: rect.minX, y: rect.minY),
             CGPoint(x: rect.maxX, y: rect.minY),
@@ -1239,17 +1230,38 @@ struct BackgroundPartitionShape: Shape {
         ]
         if settings.splitCount == .two {
             let sign: CGFloat = settings.selectedPartition == 0 ? 1 : -1
+            let firstCenter = insetCenter(
+                rawFirstCenter,
+                normal: normal,
+                sign: sign,
+                in: rect
+            )
             return clipped(base, center: firstCenter, normal: normal, sign: sign)
         }
         let secondNormal = Self.normal(for: 1, settings: settings)
-        let secondCenter = Self.dividerCenter(for: 1, settings: settings, in: rect)
+        let rawSecondCenter = Self.dividerCenter(for: 1, settings: settings, in: rect)
         let firstSign: CGFloat = settings.selectedPartition == 0 || settings.selectedPartition == 3 ? 1 : -1
         let secondSign: CGFloat = settings.selectedPartition == 0 || settings.selectedPartition == 1 ? 1 : -1
+        let firstCenter = insetCenter(rawFirstCenter, normal: normal, sign: firstSign, in: rect)
+        let secondCenter = insetCenter(rawSecondCenter, normal: secondNormal, sign: secondSign, in: rect)
         return clipped(
             clipped(base, center: firstCenter, normal: normal, sign: firstSign),
             center: secondCenter,
             normal: secondNormal,
             sign: secondSign
+        )
+    }
+
+    private func insetCenter(
+        _ center: CGPoint,
+        normal: CGPoint,
+        sign: CGFloat,
+        in rect: CGRect
+    ) -> CGPoint {
+        let inset = BackgroundDividerGeometry.edgeInset(for: settings.edgeStyle, in: rect)
+        return CGPoint(
+            x: center.x + normal.x * sign * inset,
+            y: center.y + normal.y * sign * inset
         )
     }
 

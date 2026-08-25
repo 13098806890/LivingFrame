@@ -114,6 +114,15 @@ public struct BackgroundStore {
         generatePresetsIfNeeded()
     }
 
+    /// Drops decoded background pixels and frame generators without deleting any
+    /// imported media. They are recreated lazily by the next preview or export.
+    public func purgeDecodedMedia() {
+        Self.imageCache.removeAllObjects()
+        Self.frameCache.removeAllObjects()
+        Self.videoSourceCache.removeAllObjects()
+        Self.orientationContext.clearCaches()
+    }
+
     public func fileURL(named name: String) -> URL {
         rootURL.appendingPathComponent(name).appendingPathExtension("jpg")
     }
