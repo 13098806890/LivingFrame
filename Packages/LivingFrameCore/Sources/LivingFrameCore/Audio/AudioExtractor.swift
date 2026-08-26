@@ -11,7 +11,11 @@ public struct AudioExtractor {
     public init() {}
 
     /// 有音频轨则导出 m4a 并返回 true；无音频轨返回 false
-    public func extractAudio(from sourceURL: URL, to destinationURL: URL) async throws -> Bool {
+    public func extractAudio(
+        from sourceURL: URL,
+        to destinationURL: URL,
+        timeRange: CMTimeRange? = nil
+    ) async throws -> Bool {
         let asset = AVURLAsset(url: sourceURL)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard !tracks.isEmpty else { return false }
@@ -23,6 +27,9 @@ public struct AudioExtractor {
         session.outputURL = destinationURL
         session.outputFileType = .m4a
         session.shouldOptimizeForNetworkUse = false
+        if let timeRange {
+            session.timeRange = timeRange
+        }
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             session.exportAsynchronously {

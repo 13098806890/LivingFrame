@@ -68,6 +68,69 @@ enum PaperAssetRenderer {
         )
     }
 
+    /// Renders only an authored paper edge along internal partition dividers.
+    /// This deliberately does not use the complete canvas frame, so it cannot
+    /// introduce a second outer border or duplicate a curled corner.
+    static func internalDividerOverlay(
+        size: CGSize,
+        profile: TornEdgeProfile,
+        segments: [(CGPoint, CGPoint)],
+        effectWidth: CanvasEdgeWidth
+    ) -> CGImage? {
+        guard !segments.isEmpty,
+              let authoredFrame = image(named: assetName(for: profile)) else { return nil }
+
+        let sourceBounds = sourceFrameRect(
+            for: profile,
+            in: CGSize(width: authoredFrame.width, height: authoredFrame.height)
+        )
+        guard let croppedFrame = authoredFrame.cropping(to: sourceBounds.integral) else { return nil }
+        let sourceSize = sourceBounds.size
+        let sourceOpening = sourceOpeningRect(for: profile, in: sourceSize)
+        let sourceStrip = CGRect(
+            x: 0,
+            y: 0,
+            width: sourceSize.width,
+            height: max(sourceOpening.minY, 1)
+        ).integral
+        guard let strip = croppedFrame.cropping(to: sourceStrip) else { return nil }
+
+        let shortSide = min(size.width, size.height)
+        let thickness = min(
+            max(shortSide * 0.030 * effectWidth.effectRenderScale, 10),
+            30
+        )
+
+        return ProceduralRasterRenderer.makeImage(size: size) { context, _ in
+            context.interpolationQuality = .high
+            for (start, end) in segments {
+                let dx = end.x - start.x
+                let dy = end.y - start.y
+                let length = hypot(dx, dy)
+                guard length > 2 else { continue }
+
+                let midpoint = CGPoint(
+                    x: (start.x + end.x) * 0.5,
+                    y: (start.y + end.y) * 0.5
+                )
+                let angle = atan2(dy, dx)
+                context.saveGState()
+                context.translateBy(x: midpoint.x, y: midpoint.y)
+                context.rotate(by: angle)
+                context.draw(
+                    strip,
+                    in: CGRect(
+                        x: -length * 0.5,
+                        y: -thickness * 0.5,
+                        width: length,
+                        height: thickness
+                    )
+                )
+                context.restoreGState()
+            }
+        }
+    }
+
     /// The transparent artwork is stored as a complete frame so its paper
     /// texture, cast shadow and (for the tactile style) curled corner stay
     /// together. Establish the edge thickness with a uniform scale, then

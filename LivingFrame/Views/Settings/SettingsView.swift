@@ -41,6 +41,18 @@ struct SettingsView: View {
                         }
                     }
 
+                    SectionCard(title: "素材提取") {
+                        Picker("单个素材最长时长", selection: $appState.maxExtractionDuration) {
+                            Text("3 秒").tag(3.0)
+                            Text("5 秒（推荐）").tag(5.0)
+                            Text("8 秒").tag(8.0)
+                            Text("10 秒").tag(10.0)
+                        }
+                        Text("短视频默认从开头提取；超过 1 分钟的视频会先让你选择开始和结束位置。")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                    }
+
                     SectionCard(title: "抠图") {
                         Picker("处理分辨率", selection: $appState.maxDimension) {
                             Text("480p（最快）").tag(854.0)

@@ -43,6 +43,8 @@ public struct VideoSegmentationPipeline {
         name: String = NSLocalizedString("素材", comment: "Default clip name"),
         maxDimension: CGFloat = 1280,
         maxFPS: Double = 30,
+        startTime: TimeInterval = 0,
+        maxDuration: TimeInterval = 5,
         stillOrientation: CGImagePropertyOrientation = .up,
         progress: ProgressHandler? = nil,
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
@@ -52,7 +54,20 @@ public struct VideoSegmentationPipeline {
             LogStore.log("segmentVideo: no video track \(url.lastPathComponent)")
             throw SegmentationError.noVideoTrack
         }
-        let duration = try await asset.load(.duration)
+        let sourceDuration = try await asset.load(.duration)
+        let sourceSeconds = max(sourceDuration.seconds, 0.1)
+        let safeStartTime = min(
+            max(startTime.isFinite ? startTime : 0, 0),
+            max(sourceSeconds - 0.1, 0)
+        )
+        let availableSeconds = max(sourceSeconds - safeStartTime, 0.1)
+        let requestedMaxDuration = maxDuration.isFinite && maxDuration > 0
+            ? maxDuration
+            : availableSeconds
+        let duration = CMTime(
+            seconds: min(availableSeconds, requestedMaxDuration),
+            preferredTimescale: 600
+        )
         let frameRate = try await track.load(.nominalFrameRate)
         // AVAssetReader 输出的是未旋转的原始像素，需应用 preferredTransform 恢复拍摄方向
         let preferredTransform = try await track.load(.preferredTransform)
@@ -62,6 +77,11 @@ public struct VideoSegmentationPipeline {
         // 抽帧步长：目标帧率低于源帧率时，隔 N 帧处理 1 帧
         let frameStep = max(1, Int((safeFrameRate / maxFPS).rounded()))
         let outputFPS = max(1, safeFrameRate / Double(frameStep))
+        let timeRange = CMTimeRange(
+            start: CMTime(seconds: safeStartTime, preferredTimescale: 600),
+            duration: duration
+        )
+        LogStore.log("segmentVideo durationLimit: source=\(sourceSeconds)s start=\(safeStartTime)s processed=\(duration.seconds)s max=\(maxDuration)s")
         LogStore.log("segmentVideo input: name=\(url.lastPathComponent) size=\(Int(naturalSize.width))x\(Int(naturalSize.height)) duration=\(duration.seconds)s fps=\(safeFrameRate) step=\(frameStep) outputFPS=\(outputFPS) transform=\(preferredTransform) stillOrientation=\(stillOrientation.rawValue) derivedOrientation=\(preferredTransform.isIdentity ? (stillOrientation == .down ? "down(180°)" : "none") : "\(Self.orientation(from: preferredTransform).rawValue)")" )
 
         let reader = try AVAssetReader(asset: asset)
@@ -71,6 +91,7 @@ public struct VideoSegmentationPipeline {
         output.alwaysCopiesSampleData = false
         guard reader.canAdd(output) else { throw SegmentationError.readerUnavailable }
         reader.add(output)
+        reader.timeRange = timeRange
         guard reader.startReading() else { throw SegmentationError.readerUnavailable }
 
         let clipID = UUID().uuidString
@@ -187,7 +208,7 @@ public struct VideoSegmentationPipeline {
 
         // 提取音频（若有）
         let audioURL = folder.appendingPathComponent("audio.m4a")
-        if try await AudioExtractor().extractAudio(from: url, to: audioURL) {
+        if try await AudioExtractor().extractAudio(from: url, to: audioURL, timeRange: timeRange) {
             clip.audioURL = audioURL
         }
 

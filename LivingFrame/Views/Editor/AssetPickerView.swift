@@ -685,8 +685,9 @@ struct ClipPreviewPlayButton: View {
                 )
             }
             .buttonStyle(.plain)
-            .padding(4)
+            .frame(width: 44, height: 44)
             .contentShape(Rectangle())
+            .zIndex(2)
             .accessibilityLabel(isPlaying ? "暂停动态素材" : "播放动态素材")
         }
     }

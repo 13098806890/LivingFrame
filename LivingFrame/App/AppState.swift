@@ -6,6 +6,11 @@ import SwiftUI
 
 @MainActor
 final class AppState: ObservableObject {
+    private static func clampedExtractionDuration(_ value: Double) -> Double {
+        guard value.isFinite else { return 5 }
+        return min(max(value, 3), 10)
+    }
+
     // MARK: - 素材
 
     @Published var clips: [SegmentedClip] = []
@@ -144,6 +149,13 @@ final class AppState: ObservableObject {
     @Published var processingFPS: Double = 30 {
         didSet { UserDefaults.standard.set(processingFPS, forKey: settingProcessingFPSKey) }
     }
+    /// 单个视频/Live Photo 默认最多抠取的时长；超出部分从视频开头截断。
+    @Published var maxExtractionDuration: Double = 5 {
+        didSet {
+            maxExtractionDuration = Self.clampedExtractionDuration(maxExtractionDuration)
+            UserDefaults.standard.set(maxExtractionDuration, forKey: settingMaxExtractionDurationKey)
+        }
+    }
     /// 全局视觉皮肤；切换后所有使用 LF 语义色的页面会立即刷新。
     @Published var appTheme: AppTheme = .skyPetal {
         didSet {
@@ -156,6 +168,7 @@ final class AppState: ObservableObject {
     private let settingExportFPSKey = "setting.exportFPS"
     private let settingMaxDimensionKey = "setting.maxDimension"
     private let settingProcessingFPSKey = "setting.processingFPS"
+    private let settingMaxExtractionDurationKey = "setting.maxExtractionDuration"
     private let settingAppThemeKey = "setting.appTheme"
 
     // MARK: - 编辑交互
@@ -195,6 +208,11 @@ final class AppState: ObservableObject {
         if defaults.object(forKey: settingProcessingFPSKey) != nil {
             processingFPS = defaults.double(forKey: settingProcessingFPSKey)
         }
+        if defaults.object(forKey: settingMaxExtractionDurationKey) != nil {
+            maxExtractionDuration = Self.clampedExtractionDuration(
+                defaults.double(forKey: settingMaxExtractionDurationKey)
+            )
+        }
         if let rawTheme = defaults.string(forKey: settingAppThemeKey),
            let theme = AppTheme(rawValue: rawTheme) {
             appTheme = theme
@@ -211,7 +229,13 @@ final class AppState: ObservableObject {
 
     // MARK: - 素材
 
-    func startSegmenting(url: URL, name: String, stillOrientation: CGImagePropertyOrientation = .up) async {
+    func startSegmenting(
+        url: URL,
+        name: String,
+        sourceStartTime: TimeInterval = 0,
+        sourceEndTime: TimeInterval? = nil,
+        stillOrientation: CGImagePropertyOrientation = .up
+    ) async {
         isSegmenting = true
         segmentationProgress = 0
         segmentingName = name
@@ -224,6 +248,8 @@ final class AppState: ObservableObject {
                 name: name,
                 maxDimension: maxDimension,
                 maxFPS: processingFPS,
+                startTime: sourceStartTime,
+                maxDuration: sourceEndTime.map { max($0 - sourceStartTime, 0.1) } ?? maxExtractionDuration,
                 stillOrientation: stillOrientation
             ) { [weak self] info in
                 Task { @MainActor in self?.segmentationProgress = info.fraction }

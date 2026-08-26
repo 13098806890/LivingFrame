@@ -1,4 +1,5 @@
 import AVFoundation
+import AVKit
 import ImageIO
 import LivingFrameCore
 import Photos
@@ -22,6 +23,8 @@ struct LibraryView: View {
     @State private var frameEditClip: SegmentedClip?
     /// 提取方式选择弹窗（静态贴纸 / 动态贴纸）
     @State private var pendingExtract: PendingExtract?
+    /// 超过 1 分钟的视频，在动态提取前选择源视频范围。
+    @State private var pendingVideoRange: PendingVideoRange?
     @State private var importTask: Task<Void, Never>?
 
     /// 待用户确认提取方式的素材（视频/Live 均先询问）
@@ -31,6 +34,15 @@ struct LibraryView: View {
         let source: ImportSource
         /// true = 动态贴纸，false = 静态贴纸，nil = 取消
         var resume: (Bool?) -> Void
+    }
+
+    private struct PendingVideoRange: Identifiable {
+        let id = UUID()
+        let url: URL
+        let name: String
+        let duration: TimeInterval
+        let maxDuration: TimeInterval
+        var resume: (ClosedRange<TimeInterval>?) -> Void
     }
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
@@ -96,6 +108,25 @@ struct LibraryView: View {
                 }
             } message: {
                 Text(pendingExtract.map { "「\($0.name)」是视频/Live Photo，选择提取方式" } ?? "")
+            }
+            .sheet(item: $pendingVideoRange, onDismiss: {
+                pendingVideoRange?.resume(nil)
+                pendingVideoRange = nil
+            }) { request in
+                VideoRangePickerView(
+                    url: request.url,
+                    name: request.name,
+                    duration: request.duration,
+                    maxDuration: request.maxDuration,
+                    onCancel: {
+                        request.resume(nil)
+                        pendingVideoRange = nil
+                    },
+                    onConfirm: { range in
+                        request.resume(range)
+                        pendingVideoRange = nil
+                    }
+                )
             }
             .overlay {
                 if let clip = menuClip {
@@ -179,9 +210,31 @@ struct LibraryView: View {
                         guard let kind else { continue }
                         switch kind {
                         case .live:
-                            await appState.startSegmenting(
-                                url: url, name: name, stillOrientation: stillOrientation
-                            )
+                            let duration = await videoDuration(of: url)
+                            if duration > 60 {
+                                let range: ClosedRange<TimeInterval>? = await withCheckedContinuation { continuation in
+                                    pendingVideoRange = PendingVideoRange(
+                                        url: url,
+                                        name: name,
+                                        duration: duration,
+                                        maxDuration: appState.maxExtractionDuration
+                                    ) { selectedRange in
+                                        continuation.resume(returning: selectedRange)
+                                    }
+                                }
+                                guard let range else { continue }
+                                await appState.startSegmenting(
+                                    url: url,
+                                    name: name,
+                                    sourceStartTime: range.lowerBound,
+                                    sourceEndTime: range.upperBound,
+                                    stillOrientation: stillOrientation
+                                )
+                            } else {
+                                await appState.startSegmenting(
+                                    url: url, name: name, stillOrientation: stillOrientation
+                                )
+                            }
                         case .static:
                             if let cgImage = await firstFrame(of: url, stillURL: stillURL) {
                                 await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
@@ -199,6 +252,13 @@ struct LibraryView: View {
     private enum ExtractKind {
         case live
         case `static`
+    }
+
+    private func videoDuration(of url: URL) async -> TimeInterval {
+        let asset = AVURLAsset(url: url)
+        guard let duration = try? await asset.load(.duration) else { return 0 }
+        let seconds = duration.seconds
+        return seconds.isFinite ? max(seconds, 0) : 0
     }
 
     private var loadErrorMessage: String? {
@@ -606,6 +666,9 @@ struct LibraryView: View {
                 .font(.caption)
                 .foregroundStyle(LF.textSecondary)
                 .lineLimit(1)
+            Text("本次最多处理 \(Int(appState.maxExtractionDuration)) 秒，超出部分从开头截取")
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
             Button("取消抠图", role: .cancel) {
                 importTask?.cancel()
             }
@@ -629,20 +692,413 @@ struct LibraryView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(appState.clips) { clip in
-                            // 单击 = 弹出操作菜单；长按（系统手势仲裁） = 拖拽到文件夹
-                            ClipCell(clip: clip)
-                                .onTapGesture {
-                                    menuClip = clip
-                                }
-                                .draggable(clip.id) {
-                                    ClipDragPreview(clip: clip)
-                                }
+                            // 单击 = 弹出操作菜单；拖拽从右上角把手开始。
+                            ZStack(alignment: .topTrailing) {
+                                ClipCell(clip: clip)
+                                    .onTapGesture {
+                                        menuClip = clip
+                                    }
+
+                                // 拖入文件夹改为从明确的拖拽把手开始，避免播放按钮
+                                // 在素材缩略图尚未完成解码时被系统拖拽手势抢走。
+                                Image(systemName: "line.3.horizontal")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(LF.textSecondary)
+                                    .frame(width: 30, height: 30)
+                                    .background(.ultraThinMaterial, in: Circle())
+                                    .contentShape(Circle())
+                                    .draggable(clip.id) {
+                                        ClipDragPreview(clip: clip)
+                                    }
+                                    .accessibilityLabel("拖动到文件夹")
+                            }
                         }
                     }
                 }
                 .scrollIndicators(.hidden)
             }
         }
+    }
+}
+
+private struct VideoRangePickerView: View {
+    let url: URL
+    let name: String
+    let duration: TimeInterval
+    let maxDuration: TimeInterval
+    let onCancel: () -> Void
+    let onConfirm: (ClosedRange<TimeInterval>) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var startTime: TimeInterval
+    @State private var endTime: TimeInterval
+    @StateObject private var previewController: VideoRangePreviewController
+
+    init(
+        url: URL,
+        name: String,
+        duration: TimeInterval,
+        maxDuration: TimeInterval,
+        onCancel: @escaping () -> Void,
+        onConfirm: @escaping (ClosedRange<TimeInterval>) -> Void
+    ) {
+        let safeDuration = max(duration, 0.1)
+        let safeMaxDuration = max(maxDuration, 0.1)
+        self.url = url
+        self.name = name
+        self.duration = safeDuration
+        self.maxDuration = safeMaxDuration
+        self.onCancel = onCancel
+        self.onConfirm = onConfirm
+        _startTime = State(initialValue: 0)
+        _endTime = State(initialValue: min(safeDuration, safeMaxDuration))
+        _previewController = StateObject(wrappedValue: VideoRangePreviewController(url: url))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("选择要提取的视频片段")
+                            .font(.headline)
+                        Text(name)
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                            .lineLimit(1)
+                    }
+
+                    VideoPlayer(player: previewController.player)
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(alignment: .topLeading) {
+                            Label("预览选中片段", systemImage: "play.rectangle.fill")
+                                .font(.caption.weight(.medium))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(.black.opacity(0.58), in: Capsule())
+                                .foregroundStyle(.white)
+                                .padding(10)
+                        }
+
+                    VideoRangeTimeline(
+                        url: url,
+                        duration: duration,
+                        startTime: $startTime,
+                        endTime: $endTime,
+                        maxDuration: maxDuration
+                    )
+
+                    HStack(spacing: 10) {
+                        Label(
+                            "已选 \(formatTimestamp(endTime - startTime))",
+                            systemImage: "scissors"
+                        )
+                        Spacer(minLength: 8)
+                        Text("\(formatTimestamp(startTime)) – \(formatTimestamp(endTime))")
+                            .monospacedDigit()
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(LF.textSecondary)
+
+                    Button {
+                        if previewController.isPlaying {
+                            previewController.stop()
+                        } else {
+                            previewController.preview(start: startTime, end: endTime)
+                        }
+                    } label: {
+                        Label(
+                            previewController.isPlaying ? "停止预览" : "预览选中片段",
+                            systemImage: previewController.isPlaying ? "stop.fill" : "play.fill"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(LF.accent)
+                }
+                .padding(20)
+            }
+            .navigationTitle("视频范围")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("提取") {
+                        onConfirm(startTime...endTime)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .magicBackground()
+        }
+        .presentationDetents([.medium, .large])
+        .onChange(of: startTime) { _, _ in
+            if previewController.isPlaying { previewController.stop() }
+        }
+        .onChange(of: endTime) { _, _ in
+            if previewController.isPlaying { previewController.stop() }
+        }
+        .onDisappear {
+            previewController.stop()
+        }
+    }
+
+    private func formatTimestamp(_ value: TimeInterval) -> String {
+        let safeValue = max(value, 0)
+        return String(format: "%d:%04.1f", Int(safeValue) / 60, safeValue.truncatingRemainder(dividingBy: 60))
+    }
+}
+
+@MainActor
+private final class VideoRangePreviewController: ObservableObject {
+    let player: AVPlayer
+    @Published private(set) var isPlaying = false
+    private var boundaryObserver: Any?
+
+    init(url: URL) {
+        player = AVPlayer(url: url)
+        player.actionAtItemEnd = .pause
+    }
+
+    func preview(start: TimeInterval, end: TimeInterval) {
+        removeBoundaryObserver()
+        let startTime = CMTime(seconds: max(start, 0), preferredTimescale: 600)
+        let endTime = CMTime(seconds: max(end, start + 0.1), preferredTimescale: 600)
+        player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        boundaryObserver = player.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: endTime)],
+            queue: .main
+        ) { [weak self] in
+            guard let self else { return }
+            self.player.pause()
+            self.player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            self.isPlaying = false
+        }
+        isPlaying = true
+        player.play()
+    }
+
+    func stop() {
+        player.pause()
+        removeBoundaryObserver()
+        isPlaying = false
+    }
+
+    private func removeBoundaryObserver() {
+        if let boundaryObserver {
+            player.removeTimeObserver(boundaryObserver)
+            self.boundaryObserver = nil
+        }
+    }
+
+    deinit {
+        if let boundaryObserver {
+            player.removeTimeObserver(boundaryObserver)
+        }
+    }
+}
+
+private struct VideoRangeTimeline: View {
+    let url: URL
+    let duration: TimeInterval
+    @Binding var startTime: TimeInterval
+    @Binding var endTime: TimeInterval
+    let maxDuration: TimeInterval
+
+    @State private var thumbnails: [CGImage] = []
+    @State private var activeHandle: Handle?
+    @State private var dragStartTime: TimeInterval = 0
+    @State private var dragEndTime: TimeInterval = 0
+
+    private enum Handle {
+        case start
+        case end
+        case range
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("拖动边界选择片段")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("最多 \(formatTimestamp(maxDuration))")
+                    .font(.caption)
+                    .foregroundStyle(LF.textSecondary)
+            }
+
+            GeometryReader { proxy in
+                let width = max(proxy.size.width, 1)
+                let left = xPosition(for: startTime, width: width)
+                let right = xPosition(for: endTime, width: width)
+
+                ZStack(alignment: .leading) {
+                    thumbnailStrip
+                        .frame(width: width, height: 82)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    Rectangle()
+                        .fill(.black.opacity(0.48))
+                        .frame(width: left, height: 82)
+                    Rectangle()
+                        .fill(.black.opacity(0.48))
+                        .frame(width: max(width - right, 0), height: 82)
+                        .offset(x: right)
+
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(LF.accent, lineWidth: 3)
+                        .frame(width: max(right - left, 18), height: 86)
+                        .offset(x: left)
+                        .shadow(color: LF.accent.opacity(0.28), radius: 4)
+
+                    timelineHandle
+                        .offset(x: left - 8)
+                    timelineHandle
+                        .offset(x: right - 8)
+                }
+                .frame(height: 86)
+                .contentShape(Rectangle())
+                .gesture(dragGesture(width: width))
+            }
+            .frame(height: 86)
+
+            HStack {
+                Text(formatTimestamp(0))
+                Spacer()
+                Text(formatTimestamp(duration / 2))
+                Spacer()
+                Text(formatTimestamp(duration))
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(LF.textSecondary)
+        }
+        .task(id: url) {
+            await loadThumbnails()
+        }
+    }
+
+    private var thumbnailStrip: some View {
+        HStack(spacing: 1) {
+            let count = max(thumbnails.count, 12)
+            ForEach(0..<count, id: \.self) { index in
+                if index < thumbnails.count {
+                    Image(decorative: thumbnails[index], scale: 1)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                } else {
+                    LinearGradient(
+                        colors: [LF.accentSoft, LF.surface2],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        }
+        .background(LF.surface2)
+    }
+
+    private var timelineHandle: some View {
+        Capsule()
+            .fill(LF.accent)
+            .frame(width: 16, height: 96)
+            .overlay {
+                Capsule()
+                    .stroke(.white.opacity(0.9), lineWidth: 2)
+                    .padding(3)
+            }
+            .shadow(color: .black.opacity(0.22), radius: 3, y: 1)
+    }
+
+    private func dragGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if activeHandle == nil {
+                    dragStartTime = startTime
+                    dragEndTime = endTime
+                    activeHandle = handle(at: value.startLocation.x, width: width)
+                }
+
+                let time = time(at: value.location.x, width: width)
+                switch activeHandle {
+                case .start:
+                    let minimum = max(0, dragEndTime - maxDuration)
+                    let maximum = max(min(dragEndTime - 0.1, duration), minimum)
+                    startTime = min(max(time, minimum), maximum)
+                case .end:
+                    let minimum = min(duration, dragStartTime + 0.1)
+                    let maximum = min(duration, dragStartTime + maxDuration)
+                    endTime = min(max(time, minimum), max(maximum, minimum))
+                case .range:
+                    let length = dragEndTime - dragStartTime
+                    let delta = time - time(at: value.startLocation.x, width: width)
+                    let newStart = min(max(dragStartTime + delta, 0), max(duration - length, 0))
+                    startTime = newStart
+                    endTime = newStart + length
+                case nil:
+                    break
+                }
+            }
+            .onEnded { _ in
+                activeHandle = nil
+            }
+    }
+
+    private func handle(at x: CGFloat, width: CGFloat) -> Handle {
+        let left = xPosition(for: startTime, width: width)
+        let right = xPosition(for: endTime, width: width)
+        let hitSlop: CGFloat = 30
+        if abs(x - left) <= hitSlop { return .start }
+        if abs(x - right) <= hitSlop { return .end }
+        if x > left && x < right { return .range }
+        return abs(x - left) < abs(x - right) ? .start : .end
+    }
+
+    private func xPosition(for time: TimeInterval, width: CGFloat) -> CGFloat {
+        width * CGFloat(min(max(time / max(duration, 0.1), 0), 1))
+    }
+
+    private func time(at x: CGFloat, width: CGFloat) -> TimeInterval {
+        duration * TimeInterval(min(max(x / max(width, 1), 0), 1))
+    }
+
+    private func loadThumbnails() async {
+        let requestedURL = url
+        let requestedDuration = duration
+        let images = await Task.detached(priority: .utility) {
+            let asset = AVURLAsset(url: requestedURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 320, height: 180)
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            let count = 12
+            return (0..<count).compactMap { index -> CGImage? in
+                let progress = Double(index) / Double(max(count - 1, 1))
+                let time = CMTime(
+                    seconds: requestedDuration * progress,
+                    preferredTimescale: 600
+                )
+                return try? generator.copyCGImage(at: time, actualTime: nil)
+            }
+        }.value
+
+        guard !Task.isCancelled else { return }
+        thumbnails = images
+    }
+
+    private func formatTimestamp(_ value: TimeInterval) -> String {
+        let safeValue = max(value, 0)
+        return String(format: "%d:%04.1f", Int(safeValue) / 60, safeValue.truncatingRemainder(dividingBy: 60))
     }
 }
 

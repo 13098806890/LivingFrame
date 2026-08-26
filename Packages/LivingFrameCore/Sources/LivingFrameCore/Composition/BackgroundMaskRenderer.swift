@@ -213,6 +213,17 @@ enum BackgroundMaskRenderer {
         let key = cacheKey(prefix: "edge", size: size, settings: settings)
         if let cached = edgeCache.object(forKey: key) { return cached }
         if let profile = tornProfile(for: settings.edgeStyle),
+           settings.splitCount != .full,
+           let authoredImage = PaperAssetRenderer.internalDividerOverlay(
+               size: size,
+               profile: profile,
+               segments: internalDividerSegments(in: CGRect(origin: .zero, size: size), settings: settings),
+               effectWidth: settings.edgeWidth
+           ) {
+            edgeCache.setObject(authoredImage, forKey: key, cost: imageCost(authoredImage))
+            return authoredImage
+        }
+        if let profile = tornProfile(for: settings.edgeStyle),
            let nativeImage = NativePaperEffectRenderer.tornEdgeOverlay(
                size: size,
                path: path(for: settings, in: CGRect(origin: .zero, size: size)),
@@ -395,6 +406,96 @@ enum BackgroundMaskRenderer {
             sign: sign
         )
         return paperPath(clipped, edgeStyle: edgeStyle, canvas: canvas)
+    }
+
+    /// Returns only the internal sides of the selected partition. The existing
+    /// mask remains unchanged; this geometry is used only by the authored
+    /// transparent paper overlay.
+    private static func internalDividerSegments(
+        in rect: CGRect,
+        settings: BackgroundElementSettings
+    ) -> [(CGPoint, CGPoint)] {
+        guard settings.splitCount != .full else { return [] }
+
+        let angle = normalizedAngle(settings.dividerAngle)
+        let direction = CGPoint(x: cos(angle), y: sin(angle))
+        let normal = CGPoint(x: direction.y, y: -direction.x)
+        let partition = max(
+            0,
+            min(settings.selectedPartition, settings.splitCount == .two ? 1 : 3)
+        )
+
+        if settings.splitCount == .two {
+            let sign: CGFloat = partition == 0 ? 1 : -1
+            let center = insetDividerCenter(
+                BackgroundDividerGeometry.center(
+                    in: rect,
+                    normal: normal,
+                    offset: settings.primaryDividerOffset
+                ),
+                normal: normal,
+                sign: sign,
+                edgeStyle: settings.edgeStyle,
+                in: rect
+            )
+            return internalSegments(
+                of: clippedPolygon(rectanglePolygon(rect), center: center, normal: normal, sign: sign),
+                in: rect
+            )
+        }
+
+        let secondNormal = CGPoint(x: -direction.x, y: -direction.y)
+        let firstSign: CGFloat = partition == 0 || partition == 3 ? 1 : -1
+        let secondSign: CGFloat = partition == 0 || partition == 1 ? 1 : -1
+        let firstCenter = insetDividerCenter(
+            BackgroundDividerGeometry.center(
+                in: rect,
+                normal: normal,
+                offset: settings.primaryDividerOffset
+            ),
+            normal: normal,
+            sign: firstSign,
+            edgeStyle: settings.edgeStyle,
+            in: rect
+        )
+        let secondCenter = insetDividerCenter(
+            BackgroundDividerGeometry.center(
+                in: rect,
+                normal: secondNormal,
+                offset: settings.secondaryDividerOffset
+            ),
+            normal: secondNormal,
+            sign: secondSign,
+            edgeStyle: settings.edgeStyle,
+            in: rect
+        )
+        let firstClipped = clippedPolygon(
+            rectanglePolygon(rect),
+            center: firstCenter,
+            normal: normal,
+            sign: firstSign
+        )
+        let partitionPolygon = clippedPolygon(
+            firstClipped,
+            center: secondCenter,
+            normal: secondNormal,
+            sign: secondSign
+        )
+        return internalSegments(of: partitionPolygon, in: rect)
+    }
+
+    private static func internalSegments(
+        of polygon: [CGPoint],
+        in rect: CGRect
+    ) -> [(CGPoint, CGPoint)] {
+        guard polygon.count > 1 else { return [] }
+        return polygon.indices.compactMap { index in
+            let start = polygon[index]
+            let end = polygon[(index + 1) % polygon.count]
+            return isCanvasBoundary(from: start, to: end, in: rect)
+                ? nil
+                : (start, end)
+        }
     }
 
     /// Only divider segments receive the torn geometry. Segments coincident
