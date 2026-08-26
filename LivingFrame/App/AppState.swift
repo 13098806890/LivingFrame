@@ -144,11 +144,19 @@ final class AppState: ObservableObject {
     @Published var processingFPS: Double = 30 {
         didSet { UserDefaults.standard.set(processingFPS, forKey: settingProcessingFPSKey) }
     }
+    /// 全局视觉皮肤；切换后所有使用 LF 语义色的页面会立即刷新。
+    @Published var appTheme: AppTheme = .skyPetal {
+        didSet {
+            UserDefaults.standard.set(appTheme.rawValue, forKey: settingAppThemeKey)
+            LF.apply(appTheme)
+        }
+    }
 
     private let settingDefaultFormatKey = "setting.defaultFormat"
     private let settingExportFPSKey = "setting.exportFPS"
     private let settingMaxDimensionKey = "setting.maxDimension"
     private let settingProcessingFPSKey = "setting.processingFPS"
+    private let settingAppThemeKey = "setting.appTheme"
 
     // MARK: - 编辑交互
 
@@ -186,6 +194,12 @@ final class AppState: ObservableObject {
         }
         if defaults.object(forKey: settingProcessingFPSKey) != nil {
             processingFPS = defaults.double(forKey: settingProcessingFPSKey)
+        }
+        if let rawTheme = defaults.string(forKey: settingAppThemeKey),
+           let theme = AppTheme(rawValue: rawTheme) {
+            appTheme = theme
+        } else {
+            LF.apply(appTheme)
         }
         var systemInfo = utsname()
         uname(&systemInfo)
@@ -599,19 +613,61 @@ final class AppState: ObservableObject {
         updateBackgroundElement(elementID) { $0.edgeWidth = width }
     }
 
-    /// 画布外缘属于最终合成层，不随某一张背景元素被删除或移动而消失。
+    /// 设置画布边框外观，并确保它在时间轴中拥有一个可排序图层。
     func setCanvasEdgeStyle(_ style: CanvasEdgeStyle) {
-        guard var comp = composition, comp.canvasEdgeStyle != style else { return }
+        guard var comp = composition else { return }
         comp.canvasEdgeStyle = style
+        if style == .none {
+            comp.elements.removeAll { element in
+                if case .canvasEdge = element.kind { return true }
+                return false
+            }
+            selectedElementIDs = selectedElementIDs.filter { id in
+                comp.elements.contains { $0.id == id }
+            }
+            if let lastSelectedElementID,
+               !comp.elements.contains(where: { $0.id == lastSelectedElementID }) {
+                self.lastSelectedElementID = nil
+            }
+        } else {
+            ensureCanvasEdgeElement(in: &comp)
+        }
         composition = comp
         clipStyleVersion &+= 1
     }
 
     func setCanvasEdgeWidth(_ width: CanvasEdgeWidth) {
-        guard var comp = composition, comp.canvasEdgeWidth != width else { return }
+        guard var comp = composition else { return }
         comp.canvasEdgeWidth = width
+        if comp.canvasEdgeStyle != .none {
+            ensureCanvasEdgeElement(in: &comp)
+        }
         composition = comp
         clipStyleVersion &+= 1
+    }
+
+    /// 把全局画布边框样式同步为一个可排序的时间轴元素。样式/宽度仍保存在
+    /// Composition 上，元素只负责“它在第几层”和“覆盖整个工程时长”。
+    @discardableResult
+    private func ensureCanvasEdgeElement(in comp: inout Composition) -> UUID {
+        if let index = comp.elements.firstIndex(where: { element in
+            if case .canvasEdge = element.kind { return true }
+            return false
+        }) {
+            comp.elements[index].startTime = 0
+            comp.elements[index].endTime = max(comp.duration, 0.1)
+            comp.elements[index].name = NSLocalizedString("画布边框", comment: "Canvas edge timeline element")
+            return comp.elements[index].id
+        }
+        let element = CompositionElement(
+            kind: .canvasEdge,
+            name: NSLocalizedString("画布边框", comment: "Canvas edge timeline element"),
+            zIndex: nextElementZIndex(in: comp),
+            startTime: 0,
+            endTime: max(comp.duration, 0.1)
+        )
+        comp.elements.append(element)
+        return element.id
     }
 
     func setBackgroundCropScale(_ elementID: UUID, _ scale: CGFloat) {
@@ -711,6 +767,14 @@ final class AppState: ObservableObject {
         if composition == nil {
             _ = defaultComposition()
         }
+        guard var comp = composition, comp.canvasEdgeStyle != .none else { return }
+        let hasEdge = comp.elements.contains { element in
+            if case .canvasEdge = element.kind { return true }
+            return false
+        }
+        guard !hasEdge else { return }
+        _ = ensureCanvasEdgeElement(in: &comp)
+        composition = comp
     }
 
     /// 修改画布比例：以画布中心为锚点，等比缩放元素的位置和大小，避免纵横轴分别缩放造成偏移
@@ -810,6 +874,7 @@ final class AppState: ObservableObject {
         var autoFillStickerIndices: [Int] = []
         var autoFillBackgroundIndices: [Int] = []
         for e in comp.elements {
+            if case .canvasEdge = e.kind { continue }
             if e.endTime.isFinite { maxEnd = max(maxEnd, e.endTime) }
         }
         for a in comp.audioClips {
@@ -873,6 +938,15 @@ final class AppState: ObservableObject {
                 comp.elements[index].endTime = maxEnd
             }
         }
+
+        if let edgeIndex = comp.elements.firstIndex(where: { element in
+            if case .canvasEdge = element.kind { return true }
+            return false
+        }) {
+            // 边框是工程级图层，永远覆盖完整工程时长，不额外撑长工程。
+            comp.elements[edgeIndex].startTime = 0
+            comp.elements[edgeIndex].endTime = max(maxEnd, 0.1)
+        }
         if comp.duration != maxEnd {
             comp.duration = maxEnd
             composition = comp
@@ -908,7 +982,15 @@ final class AppState: ObservableObject {
 
     func deleteElement(_ id: UUID) {
         guard var comp = composition else { return }
+        let deletingCanvasEdge = comp.elements.contains { element in
+            guard element.id == id else { return false }
+            if case .canvasEdge = element.kind { return true }
+            return false
+        }
         comp.elements.removeAll { $0.id == id }
+        if deletingCanvasEdge {
+            comp.canvasEdgeStyle = .none
+        }
         composition = comp
         selectedElementIDs.remove(id)
         if lastSelectedElementID == id { lastSelectedElementID = nil }
@@ -916,7 +998,20 @@ final class AppState: ObservableObject {
     }
 
     private func nextElementZIndex(in composition: Composition) -> Int {
-        (composition.elements.map(\.zIndex).max() ?? -1) + 1
+        let normalElements = composition.elements.filter { element in
+            if case .canvasEdge = element.kind { return false }
+            return true
+        }
+        let normalMax = normalElements.map(\.zIndex).max() ?? -1
+        // 默认边框保持在普通内容之上，延续旧版“边框覆盖所有内容”的观感；
+        // 用户若已在时间轴把边框放到普通元素下方，新添加内容则正常放到最上层。
+        if let edgeZ = composition.elements.first(where: { element in
+            if case .canvasEdge = element.kind { return true }
+            return false
+        })?.zIndex, edgeZ >= normalMax {
+            return edgeZ - 1
+        }
+        return normalMax + 1
     }
 
     private func minimumElementZIndex(in composition: Composition) -> Int {
@@ -956,6 +1051,9 @@ final class AppState: ObservableObject {
         comp.audioClips.removeAll()
         comp.texts.removeAll()
         comp.duration = 0
+        if comp.canvasEdgeStyle != .none {
+            _ = ensureCanvasEdgeElement(in: &comp)
+        }
         composition = comp
         selectedElementIDs.removeAll()
         lastSelectedElementID = nil
@@ -1426,6 +1524,9 @@ final class AppState: ObservableObject {
         restoreClipSettings(from: work)
         var comp = work.composition
         migrateClipSourceRanges(in: &comp)
+        if comp.canvasEdgeStyle != .none {
+            _ = ensureCanvasEdgeElement(in: &comp)
+        }
         // 消毒历史工程中的非法变换值（NaN/Inf 会导致渲染失败）
         var sanitized = false
         for index in comp.elements.indices {

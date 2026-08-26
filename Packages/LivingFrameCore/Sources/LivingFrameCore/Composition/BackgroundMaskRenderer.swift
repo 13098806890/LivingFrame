@@ -22,11 +22,18 @@ enum BackgroundMaskRenderer {
         cache.totalCostLimit = 24 * 1024 * 1024
         return cache
     }()
+    private static let canvasOpeningMaskCache: NSCache<NSString, CGImage> = {
+        let cache = NSCache<NSString, CGImage>()
+        cache.countLimit = 6
+        cache.totalCostLimit = 24 * 1024 * 1024
+        return cache
+    }()
 
     static func clearCaches() {
         maskCache.removeAllObjects()
         edgeCache.removeAllObjects()
         canvasContentMaskCache.removeAllObjects()
+        canvasOpeningMaskCache.removeAllObjects()
     }
     /// 画布级手撕相纸叠层。照片开口固定，`width` 只改变纤维、撕裂层和阴影。
     static func canvasEdgeImage(
@@ -87,6 +94,35 @@ enum BackgroundMaskRenderer {
         }
         if let image {
             canvasContentMaskCache.setObject(image, forKey: key, cost: imageCost(image))
+        }
+        return image
+    }
+
+    /// 只限制到相纸的几何开口，不扣除边框 PNG 的 alpha。
+    ///
+    /// 这个 mask 专门用于支持画布边框的图层排序：当边框位于内容下方时，
+    /// 上层内容可以覆盖边框和卷角进入开口的部分；当边框位于内容上方时，
+    /// 边框自身的透明 PNG 会自然覆盖在内容之上。
+    static func canvasOpeningMaskImage(
+        size: CGSize,
+        style: CanvasEdgeStyle
+    ) -> CGImage? {
+        guard let parameters = canvasEdgeParameters(size: size, style: style) else {
+            return nil
+        }
+        let key = "canvas-opening-mask-\(Int(size.width.rounded()))x\(Int(size.height.rounded()))-\(style.rawValue)" as NSString
+        if let cached = canvasOpeningMaskCache.object(forKey: key) { return cached }
+        let image = ProceduralRasterRenderer.makeImage(size: size) { context, _ in
+            let opening = PaperAssetRenderer.destinationOpeningRect(
+                size: size,
+                profile: parameters.profile,
+                borderInset: parameters.inset
+            )
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(opening)
+        }
+        if let image {
+            canvasOpeningMaskCache.setObject(image, forKey: key, cost: imageCost(image))
         }
         return image
     }

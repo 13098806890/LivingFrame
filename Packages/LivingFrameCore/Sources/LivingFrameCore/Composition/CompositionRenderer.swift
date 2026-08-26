@@ -79,18 +79,73 @@ public struct CompositionRenderer {
     ) -> CIImage? {
         let canvas = composition.canvasRect
         let baseImage = backgroundCIImage(composition.background, in: canvas)
-        var image = baseImage
         // 同一 zIndex 的旧工程也要保持插入顺序，避免 Swift 的不稳定排序导致
         // 重叠元素在播放时层级随机变化，表现为某个元素像是“消失”。
-        let orderedElements = composition.elements.enumerated().sorted { lhs, rhs in
+        var orderedElements = composition.elements.enumerated().sorted { lhs, rhs in
             if lhs.element.zIndex != rhs.element.zIndex {
                 return lhs.element.zIndex < rhs.element.zIndex
             }
             return lhs.offset < rhs.offset
         }
-        for item in orderedElements {
+
+        // 兼容旧工程：旧版本只保存全局边框样式，没有 canvasEdge 元素。
+        // 在渲染时临时补一个置顶元素；编辑器打开工程时会把它持久化到时间轴。
+        if composition.canvasEdgeStyle != .none,
+           !orderedElements.contains(where: { element in
+               if case .canvasEdge = element.element.kind { return true }
+               return false
+           }) {
+            let zIndex = (orderedElements.map { $0.element.zIndex }.max() ?? -1) + 1
+            let edge = CompositionElement(
+                kind: .canvasEdge,
+                name: NSLocalizedString("画布边框", comment: "Canvas edge timeline element"),
+                zIndex: zIndex,
+                startTime: 0,
+                endTime: .greatestFiniteMagnitude
+            )
+            orderedElements.append((offset: composition.elements.count, element: edge))
+            orderedElements.sort { lhs, rhs in
+                if lhs.element.zIndex != rhs.element.zIndex {
+                    return lhs.element.zIndex < rhs.element.zIndex
+                }
+                return lhs.offset < rhs.offset
+            }
+        }
+
+        // 画布边框存在时，底图和普通元素都必须限制在相纸开口内；否则透明
+        // 边框 PNG 外的矩形背景会漏出来。这里必须使用“几何开口” mask，
+        // 不能使用会扣除边框 alpha 的 canvasContentMaskImage，否则普通元素
+        // 永远无法覆盖边框，时间轴排序看起来就不会生效。
+        let contentMask: CIImage? = BackgroundMaskRenderer.canvasOpeningMaskImage(
+            size: canvas.size,
+            style: composition.canvasEdgeStyle
+        ).map { CIImage(cgImage: $0).cropped(to: canvas) }
+
+        let canvasEdgeRenderIndex = orderedElements.firstIndex { item in
+            if case .canvasEdge = item.element.kind { return true }
+            return false
+        }
+
+        // 底图永远属于边框下方，先限制在相纸开口内；普通元素则根据它在
+        // 边框前/后的实际合成位置决定是否使用开口 mask。
+        var image = maskedToCanvasOpening(baseImage, mask: contentMask, canvas: canvas)
+        for (renderIndex, item) in orderedElements.enumerated() {
             let element = item.element
             guard element.isVisible(at: time) else { continue }
+
+            if case .canvasEdge = element.kind {
+                if let canvasEdge = BackgroundMaskRenderer.canvasEdgeImage(
+                    size: canvas.size,
+                    style: composition.canvasEdgeStyle,
+                    width: composition.canvasEdgeWidth
+                ) {
+                    image = CIImage(cgImage: canvasEdge)
+                        .cropped(to: canvas)
+                        .composited(over: image)
+                }
+                continue
+            }
+
             // 跳过非法变换的元素（NaN/Inf 会导致整个画布渲染失败）
             let t = element.transform
             guard t.position.x.isFinite, t.position.y.isFinite,
@@ -104,37 +159,29 @@ public struct CompositionRenderer {
                 canvas: canvas,
                 composition: composition
             ) {
-                image = placed.composited(over: image)
+                // 边框下方的素材不能漏出相纸；边框上方的素材必须允许
+                // 覆盖边框和卷角，否则时间轴层级变化在视觉上不会生效。
+                let layerIsBelowEdge = canvasEdgeRenderIndex.map { renderIndex < $0 } ?? false
+                let layerMask = layerIsBelowEdge ? contentMask : nil
+                image = maskedToCanvasOpening(placed, mask: layerMask, canvas: canvas)
+                    .composited(over: image)
             }
-        }
-        // 画布外缘必须是最终合成层：它覆盖所有背景、贴纸和动图，但不属于任何元素。
-        // First clip the composed content to the paper opening. The base canvas
-        // remains visible outside it, so H.264 gets an opaque background while
-        // split-photo elements cannot leak through transparent frame pixels.
-        if let contentMask = BackgroundMaskRenderer.canvasContentMaskImage(
-            size: canvas.size,
-            style: composition.canvasEdgeStyle
-        ) {
-            let mask = CIImage(cgImage: contentMask).cropped(to: canvas)
-            let filter = CIFilter(name: "CIBlendWithAlphaMask")
-            filter?.setValue(image, forKey: kCIInputImageKey)
-            // The paper frame owns its fibers and shadow. Keep the area outside
-            // its opening transparent instead of leaving a rectangular copy of
-            // the composition background around the paper.
-            let outsideCanvas = CIImage.clear.cropped(to: canvas)
-            filter?.setValue(outsideCanvas, forKey: kCIInputBackgroundImageKey)
-            filter?.setValue(mask, forKey: kCIInputMaskImageKey)
-            image = filter?.outputImage?.cropped(to: canvas) ?? image
-        }
-        if let canvasEdge = BackgroundMaskRenderer.canvasEdgeImage(
-            size: canvas.size,
-            style: composition.canvasEdgeStyle,
-            width: composition.canvasEdgeWidth
-        ) {
-            image = CIImage(cgImage: canvasEdge).cropped(to: canvas).composited(over: image)
         }
         // 统一裁剪到画布：任何背景/元素 extent 异常都不会产生未覆盖黑块
         return image.cropped(to: canvas)
+    }
+
+    private func maskedToCanvasOpening(
+        _ image: CIImage,
+        mask: CIImage?,
+        canvas: CGRect
+    ) -> CIImage {
+        guard let mask else { return image }
+        let filter = CIFilter(name: "CIBlendWithAlphaMask")
+        filter?.setValue(image, forKey: kCIInputImageKey)
+        filter?.setValue(CIImage.clear.cropped(to: canvas), forKey: kCIInputBackgroundImageKey)
+        filter?.setValue(mask, forKey: kCIInputMaskImageKey)
+        return filter?.outputImage?.cropped(to: canvas) ?? image
     }
 
     private func backgroundCIImage(_ preset: BackgroundPreset, in rect: CGRect) -> CIImage {
@@ -211,6 +258,8 @@ public struct CompositionRenderer {
         let source: CIImage?
         var fixScale: CGFloat = 1
         switch element.kind {
+        case .canvasEdge:
+            source = nil
         case .background(let backgroundID):
             let settings = element.backgroundSettings ?? BackgroundElementSettings()
             if let frame = BackgroundStore.shared.loadFrame(

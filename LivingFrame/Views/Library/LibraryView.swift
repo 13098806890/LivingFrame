@@ -51,19 +51,6 @@ struct LibraryView: View {
             .padding(.horizontal)
             .navigationTitle("素材库")
             .magicBackground()
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    PhotosPicker(
-                        selection: $pickerItems,
-                        maxSelectionCount: 5,
-                        matching: .any(of: [.videos, .livePhotos, .images])
-                    ) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(LF.gold)
-                    }
-                }
-            }
             .alert("新建文件夹", isPresented: $showNewFolderAlert) {
                 TextField("文件夹名称", text: $newFolderName)
                 Button("创建") {
@@ -832,7 +819,7 @@ struct ClipMenuView: View {
                                     .foregroundStyle(LF.textSecondary)
                                 Image(systemName: filed ? "minus.circle.fill" : "plus.circle.fill")
                                     .font(.title3)
-                                    .foregroundStyle(filed ? Color.red : LF.gold)
+                                .foregroundStyle(filed ? LF.destructive : LF.gold)
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)

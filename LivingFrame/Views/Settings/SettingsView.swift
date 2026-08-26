@@ -9,6 +9,26 @@ struct SettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    SectionCard(title: "外观") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("选择一套马卡龙皮肤，编辑器、素材库和检查器会同步更新。")
+                                .font(.caption)
+                                .foregroundStyle(LF.textSecondary)
+
+                            LazyVGrid(
+                                columns: [
+                                    GridItem(.flexible(), spacing: 10),
+                                    GridItem(.flexible(), spacing: 10)
+                                ],
+                                spacing: 10
+                            ) {
+                                ForEach(AppTheme.allCases) { theme in
+                                    themeCard(theme)
+                                }
+                            }
+                        }
+                    }
+
                     SectionCard(title: "导出") {
                         Picker("默认格式", selection: $appState.defaultFormat) {
                             ForEach(ExportFormat.allCases) { format in
@@ -108,6 +128,74 @@ struct SettingsView: View {
             .navigationTitle("设置")
             .magicBackground()
         }
+    }
+
+    private func themeCard(_ theme: AppTheme) -> some View {
+        let palette = theme.palette
+        let isSelected = appState.appTheme == theme
+        return Button {
+            withAnimation(.easeInOut(duration: 0.22)) {
+                appState.appTheme = theme
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 5) {
+                    ForEach(
+                        Array([
+                            palette.brandTint,
+                            palette.actionPrimary,
+                            palette.accent,
+                            palette.textPrimary,
+                            palette.surface2
+                        ].enumerated()),
+                        id: \.offset
+                    ) { _, color in
+                        Circle()
+                            .fill(color)
+                            .frame(width: 17, height: 17)
+                            .overlay {
+                                Circle().stroke(.white.opacity(0.7), lineWidth: 0.6)
+                            }
+                    }
+                    Spacer(minLength: 0)
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(palette.actionPrimary)
+                    }
+                }
+
+                Text(theme.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+                    .lineLimit(1)
+                Text(theme.subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
+            .background(
+                isSelected ? palette.selectionSurface : palette.surface,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(
+                        isSelected ? palette.actionPrimary : palette.surface2.opacity(0.8),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            }
+            .shadow(
+                color: isSelected ? palette.actionPrimary.opacity(0.16) : .clear,
+                radius: 7,
+                y: 3
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(theme.title)
+        .accessibilityValue(isSelected ? "已选中" : "未选中")
     }
 
     private var logSummary: String {

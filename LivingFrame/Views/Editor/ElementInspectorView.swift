@@ -310,7 +310,9 @@ struct ElementInspectorView: View {
                 .buttonStyle(.plain)
             }
 
-            if case .background = element.kind {
+            if case .canvasEdge = element.kind {
+                canvasEdgeElementInspector
+            } else if case .background = element.kind {
                 backgroundElementInspector(element)
             } else {
                 if case .clip(let clipID) = element.kind,
@@ -324,6 +326,21 @@ struct ElementInspectorView: View {
                 }
                 filterPicker(element)
                 elementBackgroundPicker(element)
+            }
+        }
+    }
+
+    private var canvasEdgeElementInspector: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("画布边框是透明图层，可在时间轴左侧长按拖动调整层级")
+                .font(.caption)
+                .foregroundStyle(LF.textSecondary)
+            inspectorChoiceRow(
+                title: "样式",
+                items: CanvasEdgeStyle.allCases,
+                selected: appState.composition?.canvasEdgeStyle ?? .none
+            ) { style in
+                appState.setCanvasEdgeStyle(style)
             }
         }
     }

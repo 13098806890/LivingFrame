@@ -130,6 +130,10 @@ enum PaperAssetRenderer {
             CGFloat(0), destination.height - destinationOpening.maxY,
             destination.height - destinationOpening.minY, destination.height
         ]
+        // CG 的高质量插值会从相邻切片的透明边缘取样，在四个角留下
+        // 1px 左右的接缝。让相邻纸片在目标空间轻微重叠，覆盖这些采样缝隙；
+        // 重叠量远小于纸边宽度，不会改变相纸开口的位置。
+        let overlap = min(1.25, max(0.5, min(destination.width, destination.height) * 0.0015))
 
         for row in 0..<3 {
             for column in 0..<3 where !(row == 1 && column == 1) {
@@ -139,12 +143,27 @@ enum PaperAssetRenderer {
                     width: sourceX[column + 1] - sourceX[column],
                     height: sourceY[row + 1] - sourceY[row]
                 )
-                let target = CGRect(
+                var target = CGRect(
                     x: destinationX[column],
                     y: destination.height - destinationY[row + 1],
                     width: destinationX[column + 1] - destinationX[column],
                     height: destinationY[row + 1] - destinationY[row]
                 )
+                if column > 0 {
+                    target.origin.x -= overlap
+                    target.size.width += overlap
+                }
+                if column < 2 {
+                    target.size.width += overlap
+                }
+                if row > 0 {
+                    target.origin.y -= overlap
+                    target.size.height += overlap
+                }
+                if row < 2 {
+                    target.size.height += overlap
+                }
+                target = target.intersection(destination)
                 guard let slice = image.cropping(to: source.integral) else { continue }
                 context.draw(slice, in: target)
             }

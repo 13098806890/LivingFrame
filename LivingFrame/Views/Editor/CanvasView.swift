@@ -150,6 +150,7 @@ struct CanvasView: View {
         let hit = comp.elements
             .sorted { $0.zIndex > $1.zIndex }
             .first { element in
+                if case .canvasEdge = element.kind { return false }
                 guard element.isVisible(at: time) else { return false }
                 return rotatedHitTest(element: element, in: comp, geometry: geometry, at: location)
             }
@@ -220,6 +221,8 @@ struct CanvasView: View {
                                 y: backgroundStart.cropOffset.y - dy
                             )
                         )
+                    } else if case .canvasEdge = element.kind {
+                        continue
                     } else {
                         appState.updateElement(id) { element in
                             element.transform.position = CGPoint(
@@ -261,6 +264,8 @@ struct CanvasView: View {
                             id,
                             backgroundStart.cropScale * value
                         )
+                    } else if case .canvasEdge = element.kind {
+                        continue
                     } else {
                         appState.updateElement(id) { element in
                             element.transform.scale = max(0.1, min(10, start.scale * value))
@@ -290,9 +295,9 @@ struct CanvasView: View {
                 guard let snaps = gestureStartTransforms.snapshot else { return }
                 for id in appState.selectedElementIDs {
                     guard let start = snaps[id] else { continue }
-                    if let element = appState.composition?.elements.first(where: { $0.id == id }),
-                       case .background = element.kind {
-                        continue
+                    if let element = appState.composition?.elements.first(where: { $0.id == id }) {
+                        if case .background = element.kind { continue }
+                        if case .canvasEdge = element.kind { continue }
                     }
                     appState.updateElement(id) { element in
                         // RotationGesture 正值=顺时针（屏幕 y 向下），画布 y 向上需取反
@@ -313,6 +318,7 @@ struct CanvasView: View {
         var snaps: [UUID: ElementTransform] = [:]
         for id in appState.selectedElementIDs {
             if let element = comp.elements.first(where: { $0.id == id }) {
+                if case .canvasEdge = element.kind { continue }
                 snaps[id] = element.transform
                 if case .background = element.kind {
                     gestureStartBackgroundSettings[id] = element.backgroundSettings ?? BackgroundElementSettings()
@@ -327,7 +333,10 @@ struct CanvasView: View {
     private var selectionOverlay: some View {
         GeometryReader { _ in
             ZStack {
-                ForEach(selectedElements) { element in
+                ForEach(selectedElements.filter { element in
+                    if case .canvasEdge = element.kind { return false }
+                    return true
+                }) { element in
                     let frame = elementFrame(element, in: appState.composition, geometry: viewportGeometry(for: appState.composition))
                     let center = CGPoint(x: frame.midX, y: frame.midY)
                     // 画布 rotation 正值=逆时针；SwiftUI rotationEffect 屏幕坐标系正值=顺时针，需取反
@@ -388,7 +397,11 @@ struct CanvasView: View {
 
     private var selectedElements: [CompositionElement] {
         guard let comp = appState.composition else { return [] }
-        return comp.elements.filter { appState.selectedElementIDs.contains($0.id) }
+        return comp.elements.filter { element in
+            guard appState.selectedElementIDs.contains(element.id) else { return false }
+            if case .canvasEdge = element.kind { return false }
+            return true
+        }
     }
 
     private var selectedBackgroundElement: CompositionElement? {

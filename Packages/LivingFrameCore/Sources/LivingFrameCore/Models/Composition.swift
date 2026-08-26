@@ -38,6 +38,9 @@ public enum ElementKind: Codable, Equatable {
     case decoration(decorationID: String)
     case effect(effectID: String)
     case text(textID: String)
+    /// 工程级画布边框。它没有独立素材内容，渲染时使用 Composition 的
+    /// canvasEdgeStyle/canvasEdgeWidth，但作为元素参与时间轴层级排序。
+    case canvasEdge
 }
 
 /// 背景图片元素在画布中的预设占用区域。
@@ -100,7 +103,8 @@ public enum BackgroundEdgeStyle: String, Codable, CaseIterable, Identifiable, Se
     }
 }
 
-/// 工程级画布外缘。它在所有元素合成完成后绘制，和单个背景素材的分割边缘完全独立。
+/// 工程级画布外缘的样式。实际绘制由 `ElementKind.canvasEdge` 图层决定其 zIndex，
+/// 和单个背景素材的分割边缘完全独立。
 public enum CanvasEdgeStyle: String, Codable, CaseIterable, Identifiable, Sendable {
     case none
     case tornSoft
@@ -559,7 +563,7 @@ public struct Composition: Identifiable, Codable, Equatable {
     public var elements: [CompositionElement]
     public var audioClips: [AudioClip]
     public var background: BackgroundPreset
-    /// 画布的最终外缘叠层，不隶属于任何动态背景/元素。
+    /// 画布外缘的外观参数；对应的 canvasEdge 元素负责时间轴层级。
     public var canvasEdgeStyle: CanvasEdgeStyle
     public var canvasEdgeWidth: CanvasEdgeWidth
     public var templateID: String?

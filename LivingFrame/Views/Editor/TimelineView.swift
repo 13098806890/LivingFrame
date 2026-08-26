@@ -296,7 +296,7 @@ struct TimelineView: View {
         HStack(spacing: 8) {
             Label("时间轴", systemImage: "film.stack")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(Color.black)
+                .foregroundStyle(LF.textPrimary)
 
             if hasSelection {
                 HStack(spacing: 6) {
@@ -317,7 +317,7 @@ struct TimelineView: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(.white)
                             .frame(width: 28, height: 28)
-                            .background(Color.red.opacity(0.9), in: Circle())
+                            .background(LF.destructive.opacity(0.9), in: Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("删除当前选中素材")
@@ -641,18 +641,23 @@ struct TimelineView: View {
 
     // MARK: - 元素行（帧缩略图拼贴）
 
+    @ViewBuilder
     private func elementRow(_ element: CompositionElement, spp: CGFloat) -> some View {
         let displayElement = elementWithTimelinePreview(element)
         let metrics = elementMetrics(displayElement, spp: spp)
         let barWidth = metrics.barWidth
         let barHeight = rowHeight - 8
+        let isCanvasEdge: Bool = {
+            if case .canvasEdge = element.kind { return true }
+            return false
+        }()
         let isSelected = appState.isElementSelected(element.id)
         let isLoopTrimDragging = isLoopTrimActive(for: element.id)
         let isTrimmingStart = isActiveTrim(element.id, mode: .trimStart)
         let isTrimmingEnd = isActiveTrim(element.id, mode: .trimEnd)
         // 短素材时左右热区平分有效范围，避免两个透明手势区域互相覆盖。
         let handleHitWidth = min(trimHandleTouchWidth, max(metrics.activeWidth / 2, 10))
-        return ZStack(alignment: .leading) {
+        let content = ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 8)
                 .fill(color(for: element).opacity(0.22))
                 .frame(width: barWidth, height: barHeight)
@@ -719,6 +724,24 @@ struct TimelineView: View {
                 .allowsHitTesting(false)
             }
 
+            if isCanvasEdge {
+                HStack(spacing: 5) {
+                    Image(systemName: elementSymbol(element))
+                        .font(.system(size: 10, weight: .bold))
+                    Text(displayName(for: element))
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text("固定")
+                        .font(.system(size: 8, weight: .medium))
+                        .opacity(0.72)
+                }
+                .foregroundStyle(.white.opacity(0.96))
+                .padding(.horizontal, 8)
+                .frame(width: max(barWidth - 12, 0), height: barHeight, alignment: .leading)
+                .allowsHitTesting(false)
+            }
+
             // 素材和贴纸帧条只展示内容，不再叠加名称或类型图标。
             if showsNameOnTimeline(element) {
                 HStack(spacing: 4) {
@@ -750,6 +773,7 @@ struct TimelineView: View {
                     .allowsHitTesting(false)
 
                 // 两侧圆角拖拽柄略微超出胶片条，避免与缩略图融成一块。
+                if !isCanvasEdge {
                 HStack(spacing: 0) {
                     // 8pt 视觉手柄的中心必须和时间坐标边界重合。
                     Color.clear.frame(width: max(metrics.activeOffset - 4, 0))
@@ -811,6 +835,7 @@ struct TimelineView: View {
                     .simultaneousGesture(
                         elementDragGesture(element, spp: spp, fixedMode: .trimEnd)
                     )
+                }
             }
 
             if isLoopTrimDragging,
@@ -828,11 +853,14 @@ struct TimelineView: View {
         }
         .frame(width: barWidth, height: barHeight)
         .contentShape(Rectangle())
-        // 素材条中部只负责整体移动；两端由上面的专用热区负责裁剪。
-        // 与纵向 ScrollView 同时识别，但热区会优先接管横向裁剪。
-        .simultaneousGesture(elementDragGesture(element, spp: spp, fixedMode: .move))
-        .onTapGesture {
-            appState.selectElement(element.id)
+
+        if isCanvasEdge {
+            content.onTapGesture { appState.selectElement(element.id) }
+        } else {
+            content
+                // 素材条中部只负责整体移动；两端由上面的专用热区负责裁剪。
+                .simultaneousGesture(elementDragGesture(element, spp: spp, fixedMode: .move))
+                .onTapGesture { appState.selectElement(element.id) }
         }
     }
 
@@ -896,7 +924,7 @@ struct TimelineView: View {
             guard let duration = DecorationRenderer.stickerDefinition(for: decorationID)?.defaultDuration,
                   duration.isFinite, duration > 0 else { return nil }
             return duration / spp
-        case .background, .effect, .text:
+        case .background, .effect, .text, .canvasEdge:
             return nil
         }
     }
@@ -982,7 +1010,7 @@ struct TimelineView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(
                     LinearGradient(
-                        colors: [Color.teal.opacity(0.92), Color.cyan.opacity(0.62)],
+                        colors: [LF.timelineAudio.opacity(0.92), LF.brandTint.opacity(0.62)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -1480,6 +1508,7 @@ struct TimelineView: View {
         case .decoration: EditorTool.sticker.icon
         case .effect: "sparkles"
         case .text: "textformat"
+        case .canvasEdge: "rectangle.inset.filled"
         }
     }
 
@@ -1498,16 +1527,19 @@ struct TimelineView: View {
             return false
         case .effect, .text:
             return true
+        case .canvasEdge:
+            return false
         }
     }
 
     private func color(for element: CompositionElement) -> Color {
         switch element.kind {
-        case .clip: Color(hex: "79C9EC").opacity(0.82)
-        case .background: Color(hex: "6B9FE8").opacity(0.82)
-        case .decoration: LF.accentDeep.opacity(0.82)
-        case .effect: Color.pink.opacity(0.75)
-        case .text: Color.blue.opacity(0.75)
+        case .clip: LF.timelineClip.opacity(0.82)
+        case .background: LF.timelineBackground.opacity(0.82)
+        case .decoration: LF.timelineSticker.opacity(0.82)
+        case .effect: LF.timelineEffect.opacity(0.75)
+        case .text: LF.textPrimary.opacity(0.75)
+        case .canvasEdge: LF.accent.opacity(0.9)
         }
     }
 }
