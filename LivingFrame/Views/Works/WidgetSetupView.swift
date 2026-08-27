@@ -89,7 +89,7 @@ struct WidgetSetupView: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("Widget 设置")
+            .lfNavigationTitle("Widget 设置")
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {

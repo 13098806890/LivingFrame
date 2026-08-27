@@ -75,6 +75,12 @@ struct TimelineView: View {
         let activeWidth: CGFloat
     }
 
+    private struct ClipSourceRange {
+        let duration: TimeInterval
+        let start: TimeInterval
+        let end: TimeInterval
+    }
+
     private struct ElementTiming {
         var start: TimeInterval
         var end: TimeInterval
@@ -162,8 +168,22 @@ struct TimelineView: View {
             return element.endTime
         }
         let speed = max(clip.playbackSpeed, 0.01)
-        let sourceStart = min(max(element.sourceStartTime, 0), clip.activeDuration)
-        return element.startTime - sourceStart / speed + clip.activeDuration / speed
+        let source = clipSourceRange(for: element, clip: clip)
+        let activeDuration = max(element.endTime - element.startTime, 0.1)
+        let rightSourceDuration = max(source.duration - source.end, 0) / speed
+        return element.startTime + activeDuration + rightSourceDuration
+    }
+
+    private func clipSourceRange(
+        for element: CompositionElement,
+        clip: SegmentedClip
+    ) -> ClipSourceRange {
+        let duration = max(clip.activeDuration, 0.001)
+        let start = min(max(element.sourceStartTime, 0), duration)
+        let end = element.sourceEndTime.isFinite
+            ? min(max(element.sourceEndTime, start), duration)
+            : duration
+        return ClipSourceRange(duration: duration, start: start, end: end)
     }
 
     var body: some View {
@@ -371,7 +391,7 @@ struct TimelineView: View {
                     .font(.caption.weight(.semibold))
                     .frame(width: 28, height: 28)
                     .background(
-                        appState.isReversed ? LF.accentSoft : Color.clear,
+                        appState.isReversed ? LF.selectionFill : Color.clear,
                         in: Circle()
                     )
             }
@@ -513,9 +533,9 @@ struct TimelineView: View {
                 .foregroundStyle(LF.textSecondary)
         }
         .font(.system(size: 12, weight: .semibold))
-        .foregroundStyle(isDragging ? LF.accentDeep : Color.black.opacity(0.78))
+        .foregroundStyle(isDragging ? LF.selectionText : Color.black.opacity(0.78))
         .frame(width: 36, height: 30)
-        .background(isDragging ? LF.accentSoft : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .background(isDragging ? LF.selectionFill : Color.clear, in: RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .onTapGesture {
             appState.selectElement(element.id)
@@ -616,21 +636,14 @@ struct TimelineView: View {
         }
 
         let speed = max(clip.playbackSpeed, 0.01)
-        let sourceDuration = max(clip.activeDuration, 0.001)
-        let sourceStart = min(max(element.sourceStartTime, 0), sourceDuration)
-        let sourceEnd = element.sourceEndTime.isFinite
-            ? min(max(element.sourceEndTime, sourceStart), sourceDuration)
-            : sourceDuration
+        let source = clipSourceRange(for: element, clip: clip)
         let activeTimelineDuration = max(element.endTime - element.startTime, 0.1)
-        let sourceCycleDuration = max((sourceEnd - sourceStart) / speed, 0.1)
-        let isLooping = activeTimelineDuration > sourceCycleDuration + 0.001
-        let activeOffset = isLooping ? 0 : max(sourceStart / speed / spp, 0)
-        let cycleTimelineDuration = sourceCycleDuration
-        let barWidth = max(
-            (activeOffset * spp + max(cycleTimelineDuration, activeTimelineDuration)) / spp,
-            20
-        )
+        let activeOffset = max(source.start / speed / spp, 0)
         let activeWidth = max(activeTimelineDuration / spp, 20)
+        // 胶片带始终展示完整源素材；activeOffset/activeWidth 只表示实际播放区间。
+        // 循环播放时，选区会变长，右侧未选区接在循环段之后，避免尾部原始帧消失。
+        let rightInactiveWidth = max((source.duration - source.end) / speed / spp, 0)
+        let barWidth = max(activeOffset + activeWidth + rightInactiveWidth, 20)
         return ElementTimelineMetrics(
             outerStart: element.startTime / spp - activeOffset,
             barWidth: barWidth,
@@ -655,8 +668,10 @@ struct TimelineView: View {
         let isLoopTrimDragging = isLoopTrimActive(for: element.id)
         let isTrimmingStart = isActiveTrim(element.id, mode: .trimStart)
         let isTrimmingEnd = isActiveTrim(element.id, mode: .trimEnd)
+        let hasTrimmedFrames = metrics.activeOffset > 0.5 || metrics.activeWidth < barWidth - 0.5
         // 短素材时左右热区平分有效范围，避免两个透明手势区域互相覆盖。
         let handleHitWidth = min(trimHandleTouchWidth, max(metrics.activeWidth / 2, 10))
+        let visualHandleWidth: CGFloat = 14
         let content = ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 8)
                 .fill(color(for: element).opacity(0.22))
@@ -666,42 +681,29 @@ struct TimelineView: View {
                let clip = FrameCache.shared.clip(id: clipID) {
                 let fullStrip = thumbnails(
                     for: clip,
-                    element: thumbnailElement(for: displayElement),
+                    element: displayElement,
                     metrics: metrics,
                     barWidth: barWidth,
                     spp: spp
                 )
                     .frame(width: barWidth, height: barHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                ZStack(alignment: .leading) {
-                    // 只有裁剪出入点之外仍有源帧时，才显示淡化的完整帧条。
-                    // 循环素材的 active 区域覆盖整个条，省略这一层可让循环段间的
-                    // 1pt 间距直接露出底色，和动态背景的分帧效果保持一致。
-                    if metrics.activeOffset > 0.5 || metrics.activeWidth < barWidth - 0.5 {
-                        fullStrip.opacity(0.28)
-                    }
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(color(for: element).opacity(0.46))
-                        .frame(width: metrics.activeWidth, height: barHeight)
-                        .offset(x: metrics.activeOffset)
-                    fullStrip
-                        .mask {
-                            HStack(spacing: 0) {
-                                Color.clear.frame(width: metrics.activeOffset)
-                                Color.white.frame(width: metrics.activeWidth)
-                                Color.clear.frame(width: max(0, barWidth - metrics.activeOffset - metrics.activeWidth))
-                            }
-                            .frame(width: barWidth, height: barHeight, alignment: .leading)
+                    // 暗化直接附着在胶片条自身上，而不是作为外层 ZStack 的兄弟层。
+                    // 这样在时间轴滚动容器重组、裁切时仍与帧图一同参与合成。
+                    .overlay(alignment: .leading) {
+                        if isSelected && hasTrimmedFrames {
+                            TimelineInactiveRangeMask(
+                                totalWidth: barWidth,
+                                leftWidth: metrics.activeOffset,
+                                rightWidth: barWidth - metrics.activeOffset - metrics.activeWidth,
+                                height: barHeight
+                            )
+                            .frame(width: barWidth, height: barHeight)
+                            .zIndex(10)
                         }
-                    LinearGradient(
-                        colors: [.black.opacity(0.02), .black.opacity(0.24)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(width: barWidth, height: barHeight)
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .frame(width: barWidth, height: barHeight)
+                // 只绘制一次完整帧带，避免同一帧被重复绘制后出现“选中区域也发灰”。
+                fullStrip
                 .allowsHitTesting(false)
             } else if case .decoration(let decorationID) = element.kind {
                 StickerTimelineStrip(
@@ -758,49 +760,55 @@ struct TimelineView: View {
             }
 
             if isSelected {
-                // 当前有效播放范围使用统一的系统蓝选中态；未选中的完整素材
-                // 仍保持低透明度，用户可以清楚看到被裁掉的内容。
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(LF.accent.opacity(0.10))
-                    .frame(width: max(metrics.activeWidth, 8), height: barHeight)
-                    .offset(x: metrics.activeOffset)
-                    .allowsHitTesting(false)
-
+                // 当前有效播放范围使用视频编辑器常见的高对比选区框；选中帧保持原色，
+                // 未选中的完整素材由两侧暗罩显示，用户可以清楚看到被裁掉的内容。
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(LF.accent, lineWidth: 2)
+                    .stroke(LF.selectionStroke, lineWidth: 3)
                     .frame(width: max(metrics.activeWidth, 8), height: barHeight)
                     .offset(x: metrics.activeOffset)
+                    .shadow(color: LF.selectionText.opacity(0.30), radius: 3, y: 1)
+                    .zIndex(20)
                     .allowsHitTesting(false)
 
                 // 两侧圆角拖拽柄略微超出胶片条，避免与缩略图融成一块。
                 if !isCanvasEdge {
                 HStack(spacing: 0) {
-                    // 8pt 视觉手柄的中心必须和时间坐标边界重合。
-                    Color.clear.frame(width: max(metrics.activeOffset - 4, 0))
+                    // 视觉手柄的中心必须和时间坐标边界重合。
+                    Color.clear.frame(width: max(metrics.activeOffset - visualHandleWidth / 2, 0))
                     Capsule()
-                        .fill(LF.accent)
+                        .fill(LF.selectionStroke)
                         .overlay {
-                            Capsule()
-                                .fill(Color.white.opacity(isTrimmingStart ? 0.95 : 0.72))
-                                .frame(width: 2, height: max(barHeight - 12, 12))
+                            HStack(spacing: 2) {
+                                Capsule()
+                                    .fill(LF.selectionText.opacity(isTrimmingStart ? 0.88 : 0.68))
+                                    .frame(width: 2, height: 14)
+                                Capsule()
+                                    .fill(LF.selectionText.opacity(isTrimmingStart ? 0.88 : 0.68))
+                                    .frame(width: 2, height: 14)
+                            }
                         }
-                        .frame(width: 8, height: barHeight + 10)
+                        .frame(width: visualHandleWidth, height: barHeight + 10)
                         .shadow(
-                            color: LF.accent.opacity(isTrimmingStart ? 0.68 : 0.28),
+                            color: LF.selectionText.opacity(isTrimmingStart ? 0.42 : 0.26),
                             radius: isTrimmingStart ? 5 : 2
                         )
                     Spacer()
-                        .frame(width: max(metrics.activeWidth - 8, 0))
+                        .frame(width: max(metrics.activeWidth - visualHandleWidth, 0))
                     Capsule()
-                        .fill(LF.accent)
+                        .fill(LF.selectionStroke)
                         .overlay {
-                            Capsule()
-                                .fill(Color.white.opacity(isTrimmingEnd ? 0.95 : 0.72))
-                                .frame(width: 2, height: max(barHeight - 12, 12))
+                            HStack(spacing: 2) {
+                                Capsule()
+                                    .fill(LF.selectionText.opacity(isTrimmingEnd ? 0.88 : 0.68))
+                                    .frame(width: 2, height: 14)
+                                Capsule()
+                                    .fill(LF.selectionText.opacity(isTrimmingEnd ? 0.88 : 0.68))
+                                    .frame(width: 2, height: 14)
+                            }
                         }
-                        .frame(width: 8, height: barHeight + 10)
+                        .frame(width: visualHandleWidth, height: barHeight + 10)
                         .shadow(
-                            color: LF.accent.opacity(isTrimmingEnd ? 0.68 : 0.28),
+                            color: LF.selectionText.opacity(isTrimmingEnd ? 0.42 : 0.26),
                             radius: isTrimmingEnd ? 5 : 2
                         )
                 }
@@ -864,16 +872,6 @@ struct TimelineView: View {
         }
     }
 
-    /// 裁剪时保持胶片带的取帧范围稳定，避免每一个手指采样点都取消并新建一批
-    /// 缩略图解码任务；外框与有效区宽度仍按实时数值一比一跟手。
-    private func thumbnailElement(for element: CompositionElement) -> CompositionElement {
-        guard let session = elementDragSession, session.id == element.id else { return element }
-        var stable = element
-        stable.sourceStartTime = session.anchor.sourceStart
-        stable.sourceEndTime = session.anchor.sourceEnd
-        return stable
-    }
-
     private func elementWithTimelinePreview(_ element: CompositionElement) -> CompositionElement {
         guard let preview = timelineElementPreviews[element.id] else { return element }
         var display = element
@@ -912,14 +910,9 @@ struct TimelineView: View {
         case .clip(let clipID):
             guard let clip = FrameCache.shared.clip(id: clipID) else { return nil }
             let speed = max(clip.playbackSpeed, 0.01)
-            let sourceDuration = max(clip.activeDuration, 0.001)
-            let sourceStart = min(max(element.sourceStartTime, 0), sourceDuration)
-            let sourceEnd = element.sourceEndTime.isFinite
-                ? min(max(element.sourceEndTime, sourceStart), sourceDuration)
-                : sourceDuration
-            let sourceCycleDuration = max((sourceEnd - sourceStart) / speed, 0.1)
-            let cycleDuration = sourceCycleDuration
-            return max(cycleDuration / spp, 0)
+            let source = clipSourceRange(for: element, clip: clip)
+            let sourceCycleDuration = max((source.end - source.start) / speed, 0.1)
+            return max(sourceCycleDuration / spp, 0)
         case .decoration(let decorationID):
             guard let duration = DecorationRenderer.stickerDefinition(for: decorationID)?.defaultDuration,
                   duration.isFinite, duration > 0 else { return nil }
@@ -929,8 +922,8 @@ struct TimelineView: View {
         }
     }
 
-    /// 素材条内帧缩略图拼贴（按实际播放顺序平铺，最多 24 个）。
-    /// 循环素材从第一次播放入点开始，回绕时从源区间起点继续，而不是每轮重启入点。
+    /// 素材条内帧缩略图拼贴（最多 24 个）。胶片带显示完整源素材，
+    /// 播放范围通过遮罩强调；循环素材只在实际播放区间内回绕。
     @ViewBuilder
     private func thumbnails(
         for clip: SegmentedClip,
@@ -944,61 +937,47 @@ struct TimelineView: View {
         let visibleCount = min(count, 24)
         let cellWidth = barWidth / CGFloat(visibleCount)
         let speed = max(clip.playbackSpeed, 0.01)
-        let sourceDuration = max(clip.activeDuration, 0.001)
-        let sourceStart = min(max(element.sourceStartTime, 0), sourceDuration)
-        let sourceEnd = element.sourceEndTime.isFinite
-            ? min(max(element.sourceEndTime, sourceStart), sourceDuration)
-            : sourceDuration
+        let source = clipSourceRange(for: element, clip: clip)
         let activeDuration = max(element.endTime - element.startTime, 0.1)
-        let sourceCycleDuration = max((sourceEnd - sourceStart) / speed, 0.1)
+        let sourceCycleDuration = max((source.end - source.start) / speed, 0.1)
         let isLooping = activeDuration > sourceCycleDuration + 0.001
-        if isLooping {
-            // 每一轮循环都是独立的帧缩略图段，沿用此前背景条的分段方式，
-            // 不再在一条连续胶片上额外画循环符号。
-            LoopingClipTimelineStrip(
-                clip: clip,
-                sourceStart: sourceStart,
-                sourceEnd: sourceEnd,
-                cycleWidth: max(sourceCycleDuration / spp, 1),
-                width: metrics.activeWidth,
-                height: rowHeight - 10
-            )
-        } else {
-            let indices = (0..<visibleCount).map { i -> Int in
-            let playbackFrames = clip.playbackFrameIndices
+        let playbackFrames = clip.playbackFrameIndices
+        let indices = (0..<visibleCount).map { i -> Int in
             guard !playbackFrames.isEmpty, clip.fps.isFinite, clip.fps > 0 else { return 0 }
 
-            let rangeStart = sourceStart
-            let startIndex = min(
-                max(Int((rangeStart * clip.fps).rounded(.down)), 0),
+            let x = (CGFloat(i) + 0.5) * cellWidth
+            let activeOffset = metrics.activeOffset
+            let activeEnd = activeOffset + metrics.activeWidth
+            let sourceTime: TimeInterval
+            if x < activeOffset {
+                // 左侧未选区：显示源素材从 0 到 sourceStart 的原始内容。
+                sourceTime = min(x * spp * speed, source.duration)
+            } else if x < activeEnd {
+                // 选中区：按实际播放方式取帧；循环时在选定源区间内回绕。
+                let elapsed = max((x - activeOffset) * spp * speed, 0)
+                let sourceOffset = isLooping
+                    ? elapsed.truncatingRemainder(dividingBy: sourceCycleDuration * speed)
+                    : min(elapsed, max((source.end - source.start), 0))
+                sourceTime = min(source.start + sourceOffset, source.duration)
+            } else {
+                // 右侧未选区：继续显示 sourceEnd 之后的原始内容。
+                let elapsed = max((x - activeEnd) * spp * speed, 0)
+                sourceTime = min(source.end + elapsed, source.duration)
+            }
+            let frameIndex = min(
+                max(Int((sourceTime * clip.fps).rounded(.down)), 0),
                 playbackFrames.count - 1
             )
-            let endIndex = min(
-                max(Int((sourceEnd * clip.fps).rounded(.up)), startIndex + 1),
-                playbackFrames.count
-            )
-            let cycleFrameCount = max(endIndex - startIndex, 1)
-
-            let x = (CGFloat(i) + 0.5) * cellWidth
-            let sourceTime: TimeInterval
-            if x < metrics.activeOffset {
-                sourceTime = x * spp * speed
-            } else {
-                let elapsed = (x - metrics.activeOffset) * spp
-                sourceTime = sourceStart + elapsed * speed
-            }
-            let relativeFrame = max(Int(((sourceTime - rangeStart) * clip.fps).rounded(.down)), 0)
-            return playbackFrames[startIndex + (relativeFrame % cycleFrameCount)]
-            }
-            HStack(spacing: 1) {
-                ForEach(0..<indices.count, id: \.self) { i in
-                    ClipThumbnailView(clip: clip, index: indices[i], maxPixelSize: 60)
-                        .frame(width: cellWidth, height: rowHeight - 10)
-                        .clipped()
-                }
-            }
-            .frame(width: barWidth, alignment: .leading)
+            return playbackFrames[frameIndex]
         }
+        HStack(spacing: 1) {
+            ForEach(0..<indices.count, id: \.self) { i in
+                ClipThumbnailView(clip: clip, index: indices[i], maxPixelSize: 60)
+                    .frame(width: cellWidth, height: rowHeight - 10)
+                    .clipped()
+            }
+        }
+        .frame(width: barWidth, alignment: .leading)
     }
 
     // MARK: - 音频行
@@ -1816,82 +1795,6 @@ private struct BackgroundTimelineStrip: View {
 
     private var previewTaskID: String {
         "\(media.id)-\(cellCount)"
-    }
-}
-
-/// 人物素材的循环帧条：每一轮都是独立缩略图段，循环起点由段间细缝自然表达。
-private struct LoopingClipTimelineStrip: View {
-    let clip: SegmentedClip
-    let sourceStart: TimeInterval
-    let sourceEnd: TimeInterval
-    let cycleWidth: CGFloat
-    let width: CGFloat
-    let height: CGFloat
-
-    var body: some View {
-        let cycleCount = max(Int(ceil(width / max(cycleWidth, 1))), 1)
-        // 复用动态背景帧条的分帧做法：每轮之间使用真实的 1pt HStack 间隙，
-        // 而不是通过 offset 叠放缩略图段来模拟分隔线。
-        HStack(spacing: 1) {
-            ForEach(0..<cycleCount, id: \.self) { cycle in
-                let remainingWidth = max(width - CGFloat(cycle) * cycleWidth, 0)
-                let nominalWidth = min(cycleWidth, remainingWidth)
-                let hasFollowingCycle = cycle < cycleCount - 1
-                // HStack 本身提供 1pt 间隙，段内容减去这 1pt 后仍与真实时间位置对齐。
-                let segmentWidth = max(nominalWidth - (hasFollowingCycle ? 1 : 0), 0)
-                if segmentWidth > 0 {
-                    LoopCycleThumbnailStrip(
-                        clip: clip,
-                        sourceStart: sourceStart,
-                        sourceEnd: sourceEnd,
-                        width: segmentWidth,
-                        height: height
-                    )
-                }
-            }
-        }
-        .frame(width: width, height: height, alignment: .leading)
-        .clipped()
-    }
-}
-
-private struct LoopCycleThumbnailStrip: View {
-    let clip: SegmentedClip
-    let sourceStart: TimeInterval
-    let sourceEnd: TimeInterval
-    let width: CGFloat
-    let height: CGFloat
-
-    var body: some View {
-        let frames = clip.playbackFrameIndices
-        let count = min(max(Int(width / 26), 1), 10)
-        let startIndex = min(
-            max(Int((sourceStart * clip.fps).rounded(.down)), 0),
-            max(frames.count - 1, 0)
-        )
-        let endIndex = min(
-            max(Int((sourceEnd * clip.fps).rounded(.up)), startIndex + 1),
-            frames.count
-        )
-        let span = max(endIndex - startIndex, 1)
-        // 让循环段内的帧间也露出 1pt 底色，避免 HStack 总宽超出并吞掉最后的间距。
-        let thumbnailWidth = max((width - CGFloat(max(count - 1, 0))) / CGFloat(count), 0)
-        HStack(spacing: 1) {
-            ForEach(0..<count, id: \.self) { index in
-                let offset = min(
-                    Int((Double(index) / Double(max(count - 1, 1)) * Double(span - 1)).rounded()),
-                    span - 1
-                )
-                ClipThumbnailView(
-                    clip: clip,
-                    index: frames.isEmpty ? 0 : frames[startIndex + offset],
-                    maxPixelSize: 60
-                )
-                .frame(width: thumbnailWidth, height: height)
-                .clipped()
-            }
-        }
-        .frame(width: width, height: height, alignment: .leading)
     }
 }
 

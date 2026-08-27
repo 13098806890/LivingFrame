@@ -29,7 +29,7 @@ struct BackgroundPickerView: View {
                 }
                 .padding()
             }
-            .navigationTitle("背景与画布")
+            .lfNavigationTitle("背景与画布")
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {
@@ -45,7 +45,7 @@ struct BackgroundPickerView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("预置图片")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(LF.textSecondary)
+                .foregroundStyle(LF.header)
                 .textCase(.uppercase)
                 .tracking(1.2)
             LazyVGrid(columns: columns, spacing: 10) {
@@ -96,7 +96,7 @@ struct BackgroundPickerView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("画布比例")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(LF.textSecondary)
+                .foregroundStyle(LF.header)
                 .textCase(.uppercase)
                 .tracking(1.2)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -110,10 +110,17 @@ struct BackgroundPickerView: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
                                 .background(
-                                    isCurrentAspect(aspect) ? LF.gold : LF.surface2,
+                                    isCurrentAspect(aspect) ? LF.selectionFill : LF.surface2,
                                     in: Capsule()
                                 )
-                                .foregroundStyle(isCurrentAspect(aspect) ? .black : LF.textPrimary)
+                                .overlay {
+                                    Capsule()
+                                        .stroke(
+                                            isCurrentAspect(aspect) ? LF.selectionStroke : .clear,
+                                            lineWidth: 1.5
+                                        )
+                                }
+                                .foregroundStyle(isCurrentAspect(aspect) ? LF.selectionText : LF.textPrimary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -133,7 +140,7 @@ struct BackgroundPickerView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("相册图片")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(LF.textSecondary)
+                .foregroundStyle(LF.header)
                 .textCase(.uppercase)
                 .tracking(1.2)
             PhotosPicker(selection: $pickerItems, maxSelectionCount: 1, matching: .images) {
@@ -201,7 +208,7 @@ struct BackgroundPickerView: View {
     private func selectedBorder(_ key: String) -> Color {
         guard let bg = appState.composition?.background else { return .clear }
         if case .solid = bg.kind, bg.topColor == key {
-            return LF.gold
+            return LF.selectionStroke
         }
         return .clear
     }

@@ -134,7 +134,7 @@ struct EditorView: View {
         .sheet(isPresented: $showInspectorSheet) {
             NavigationStack {
                 ElementInspectorView()
-                    .navigationTitle("调整")
+                    .lfNavigationTitle("调整")
                     .navigationBarTitleDisplayMode(.inline)
                     .magicBackground()
             }
@@ -199,7 +199,7 @@ struct EditorView: View {
             } else {
                 NavigationStack {
                     toolPanel(tool)
-                        .navigationTitle(tool.title)
+                        .lfNavigationTitle(tool.title)
                         .navigationBarTitleDisplayMode(.inline)
                         .magicBackground()
                         .toolbar {
@@ -222,6 +222,7 @@ struct EditorView: View {
             VStack(spacing: 0) {
                 Text("编辑")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LF.header)
                 if let comp = appState.composition {
                     Text(frameInfoText(comp))
                         .font(.caption2)
@@ -422,10 +423,10 @@ struct EditorView: View {
                             Text(tool.title)
                                 .font(.caption2)
                         }
-                        .foregroundStyle(isTimelineActive ? LF.accent : LF.textPrimary)
+                        .foregroundStyle(isTimelineActive ? LF.selectionStroke : LF.textPrimary)
                         .frame(width: 52)
                         .background(
-                            isTimelineActive ? LF.accentSoft.opacity(0.78) : Color.clear,
+                            isTimelineActive ? LF.selectionFill.opacity(0.78) : Color.clear,
                             in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                         )
                     }
@@ -515,7 +516,7 @@ struct EditorView: View {
             VStack(alignment: .leading, spacing: 10) {
                 // 画布比例（横排）
                 HStack(spacing: 8) {
-                    Text("比例").font(.caption2).foregroundStyle(LF.textSecondary)
+                    Text("比例").font(.caption2).foregroundStyle(LF.actionPrimary)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(CanvasAspect.allCases) { aspect in
@@ -526,7 +527,7 @@ struct EditorView: View {
                                             .overlay {
                                                 RoundedRectangle(cornerRadius: 4)
                                                     .strokeBorder(
-                                                        appState.composition?.canvasRect.size == aspect.canvasSize ? LF.gold : LF.surface2,
+                                                        appState.composition?.canvasRect.size == aspect.canvasSize ? LF.selectionStroke : LF.surface2,
                                                         lineWidth: appState.composition?.canvasRect.size == aspect.canvasSize ? 2 : 1
                                                     )
                                             }
@@ -543,7 +544,7 @@ struct EditorView: View {
                 }
                 // 纯色背景（横排）
                 HStack(spacing: 8) {
-                    Text("背景").font(.caption2).foregroundStyle(LF.textSecondary)
+                    Text("背景").font(.caption2).foregroundStyle(LF.header)
                     ForEach(bgColors, id: \.hex) { color in
                         Button { appState.setBackground(color: color.hex) } label: {
                             RoundedRectangle(cornerRadius: 8)
@@ -551,7 +552,7 @@ struct EditorView: View {
                                 .frame(width: 36, height: 36)
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 8)
-                                        .stroke(isBgColor(color.hex) ? LF.gold : LF.surface2, lineWidth: isBgColor(color.hex) ? 2.5 : 1)
+                                        .stroke(isBgColor(color.hex) ? LF.selectionStroke : LF.surface2, lineWidth: isBgColor(color.hex) ? 2.5 : 1)
                                 }
                         }
                         .buttonStyle(.plain)
@@ -585,7 +586,7 @@ struct EditorView: View {
                     .accessibilityLabel("更多背景颜色")
                 }
                 HStack(spacing: 8) {
-                    Text("外缘").font(.caption2).foregroundStyle(LF.textSecondary)
+                    Text("外缘").font(.caption2).foregroundStyle(LF.accent)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(CanvasEdgeStyle.allCases) { style in
@@ -595,11 +596,18 @@ struct EditorView: View {
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 5)
                                         .background(
-                                            appState.composition?.canvasEdgeStyle == style ? LF.accent : LF.surface2,
+                                            appState.composition?.canvasEdgeStyle == style ? LF.selectionFill : LF.surface2,
                                             in: Capsule()
                                         )
+                                        .overlay {
+                                            Capsule()
+                                                .stroke(
+                                                    appState.composition?.canvasEdgeStyle == style ? LF.selectionStroke : .clear,
+                                                    lineWidth: 1.5
+                                                )
+                                        }
                                         .foregroundStyle(
-                                            appState.composition?.canvasEdgeStyle == style ? .white : LF.textPrimary
+                                            appState.composition?.canvasEdgeStyle == style ? LF.selectionText : LF.textPrimary
                                         )
                                 }
                                 .buttonStyle(.plain)
@@ -609,14 +617,18 @@ struct EditorView: View {
                 }
                 // 图案叠加（横排：类型+参数一行搞定）
                 HStack(spacing: 8) {
-                    Text("图案").font(.caption2).foregroundStyle(LF.textSecondary)
+                    Text("图案").font(.caption2).foregroundStyle(LF.accent)
                     Button { appState.setBackgroundPattern(nil) } label: {
                         Text("无")
                             .font(.caption.weight(.semibold))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(bgOverlay == nil ? LF.gold : LF.surface2, in: Capsule())
-                            .foregroundStyle(bgOverlay == nil ? .black : LF.textPrimary)
+                            .background(bgOverlay == nil ? LF.selectionFill : LF.surface2, in: Capsule())
+                            .overlay {
+                                Capsule()
+                                    .stroke(bgOverlay == nil ? LF.selectionStroke : .clear, lineWidth: 1.5)
+                            }
+                            .foregroundStyle(bgOverlay == nil ? LF.selectionText : LF.textPrimary)
                     }
                     .buttonStyle(.plain)
                     ForEach(bgLinePatterns) { pattern in
@@ -634,8 +646,12 @@ struct EditorView: View {
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
-                                .background(bgOverlay?.pattern == pattern ? LF.gold : LF.surface2, in: Capsule())
-                                .foregroundStyle(bgOverlay?.pattern == pattern ? .black : LF.textPrimary)
+                                .background(bgOverlay?.pattern == pattern ? LF.selectionFill : LF.surface2, in: Capsule())
+                                .overlay {
+                                    Capsule()
+                                        .stroke(bgOverlay?.pattern == pattern ? LF.selectionStroke : .clear, lineWidth: 1.5)
+                                }
+                                .foregroundStyle(bgOverlay?.pattern == pattern ? LF.selectionText : LF.textPrimary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -653,8 +669,12 @@ struct EditorView: View {
                                     .font(.caption.weight(.semibold))
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 5)
-                                    .background(abs((bgOverlay?.lineWidth ?? 0) - opt.1) < 0.1 ? LF.gold : LF.surface2, in: Capsule())
-                                    .foregroundStyle(abs((bgOverlay?.lineWidth ?? 0) - opt.1) < 0.1 ? .black : LF.textPrimary)
+                                    .background(abs((bgOverlay?.lineWidth ?? 0) - opt.1) < 0.1 ? LF.selectionFill : LF.surface2, in: Capsule())
+                                    .overlay {
+                                        Capsule()
+                                            .stroke(abs((bgOverlay?.lineWidth ?? 0) - opt.1) < 0.1 ? LF.selectionStroke : .clear, lineWidth: 1.5)
+                                    }
+                                    .foregroundStyle(abs((bgOverlay?.lineWidth ?? 0) - opt.1) < 0.1 ? LF.selectionText : LF.textPrimary)
                             }
                             .buttonStyle(.plain)
                         }
@@ -669,8 +689,12 @@ struct EditorView: View {
                                         .font(.caption.weight(.semibold))
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 5)
-                                        .background(abs((bgOverlay?.spacing ?? 0) - opt.1) < 1 ? LF.gold : LF.surface2, in: Capsule())
-                                        .foregroundStyle(abs((bgOverlay?.spacing ?? 0) - opt.1) < 1 ? .black : LF.textPrimary)
+                                        .background(abs((bgOverlay?.spacing ?? 0) - opt.1) < 1 ? LF.selectionFill : LF.surface2, in: Capsule())
+                                        .overlay {
+                                            Capsule()
+                                                .stroke(abs((bgOverlay?.spacing ?? 0) - opt.1) < 1 ? LF.selectionStroke : .clear, lineWidth: 1.5)
+                                        }
+                                        .foregroundStyle(abs((bgOverlay?.spacing ?? 0) - opt.1) < 1 ? LF.selectionText : LF.textPrimary)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -688,7 +712,7 @@ struct EditorView: View {
                                     .frame(width: 22, height: 22)
                                     .overlay {
                                         Circle().stroke(
-                                            bgOverlay?.colorHex == color.hex ? LF.gold : LF.surface2,
+                                            bgOverlay?.colorHex == color.hex ? LF.selectionStroke : LF.surface2,
                                             lineWidth: bgOverlay?.colorHex == color.hex ? 2.5 : 1
                                         )
                                     }
@@ -707,7 +731,7 @@ struct EditorView: View {
                                 ),
                                 in: 0...180
                             )
-                            .tint(LF.gold)
+                            .tint(LF.selectionStroke)
                             .frame(maxWidth: .infinity)
                             Text("\(Int(bgOverlay?.angle ?? 0))°")
                                 .font(.caption2.monospacedDigit())

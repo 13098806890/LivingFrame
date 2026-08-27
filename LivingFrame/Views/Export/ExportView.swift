@@ -99,7 +99,7 @@ struct ExportView: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("导出")
+            .lfNavigationTitle("导出")
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {

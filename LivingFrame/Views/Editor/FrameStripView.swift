@@ -215,7 +215,7 @@ struct FrameGridView: View {
                     .transition(.opacity)
                 }
             }
-            .navigationTitle("编辑帧")
+            .lfNavigationTitle("编辑帧")
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {

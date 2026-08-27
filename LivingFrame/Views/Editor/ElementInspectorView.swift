@@ -61,10 +61,17 @@ struct ElementInspectorView: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(
-                                appState.composition?.canvasRect.size == aspect.canvasSize ? LF.gold : LF.surface2,
+                                appState.composition?.canvasRect.size == aspect.canvasSize ? LF.selectionFill : LF.surface2,
                                 in: Capsule()
                             )
-                            .foregroundStyle(appState.composition?.canvasRect.size == aspect.canvasSize ? .black : LF.textPrimary)
+                            .overlay {
+                                Capsule()
+                                    .stroke(
+                                        appState.composition?.canvasRect.size == aspect.canvasSize ? LF.selectionStroke : .clear,
+                                        lineWidth: 1.5
+                                    )
+                            }
+                            .foregroundStyle(appState.composition?.canvasRect.size == aspect.canvasSize ? LF.selectionText : LF.textPrimary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -81,7 +88,7 @@ struct ElementInspectorView: View {
                             .overlay {
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(
-                                        isBgColor(color.hex) ? LF.gold : LF.surface2,
+                                        isBgColor(color.hex) ? LF.selectionStroke : LF.surface2,
                                         lineWidth: isBgColor(color.hex) ? 2.5 : 1
                                     )
                             }
@@ -109,10 +116,14 @@ struct ElementInspectorView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(
-                            bgOverlay == nil ? LF.gold : LF.surface2,
+                            bgOverlay == nil ? LF.selectionFill : LF.surface2,
                             in: Capsule()
                         )
-                        .foregroundStyle(bgOverlay == nil ? .black : LF.textPrimary)
+                        .overlay {
+                            Capsule()
+                                .stroke(bgOverlay == nil ? LF.selectionStroke : .clear, lineWidth: 1.5)
+                        }
+                        .foregroundStyle(bgOverlay == nil ? LF.selectionText : LF.textPrimary)
                 }
                 .buttonStyle(.plain)
                 ForEach(linePatterns) { pattern in
@@ -136,10 +147,14 @@ struct ElementInspectorView: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(
-                                bgOverlay?.pattern == pattern ? LF.gold : LF.surface2,
+                                bgOverlay?.pattern == pattern ? LF.selectionFill : LF.surface2,
                                 in: Capsule()
                             )
-                            .foregroundStyle(bgOverlay?.pattern == pattern ? .black : LF.textPrimary)
+                            .overlay {
+                                Capsule()
+                                    .stroke(bgOverlay?.pattern == pattern ? LF.selectionStroke : .clear, lineWidth: 1.5)
+                            }
+                            .foregroundStyle(bgOverlay?.pattern == pattern ? LF.selectionText : LF.textPrimary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -158,10 +173,17 @@ struct ElementInspectorView: View {
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
                                 .background(
-                                    abs((bgOverlay?.lineWidth ?? 0) - option.1) < 0.1 ? LF.gold : LF.surface2,
+                                    abs((bgOverlay?.lineWidth ?? 0) - option.1) < 0.1 ? LF.selectionFill : LF.surface2,
                                     in: Capsule()
                                 )
-                                .foregroundStyle(abs((bgOverlay?.lineWidth ?? 0) - option.1) < 0.1 ? .black : LF.textPrimary)
+                                .overlay {
+                                    Capsule()
+                                        .stroke(
+                                            abs((bgOverlay?.lineWidth ?? 0) - option.1) < 0.1 ? LF.selectionStroke : .clear,
+                                            lineWidth: 1.5
+                                        )
+                                }
+                                .foregroundStyle(abs((bgOverlay?.lineWidth ?? 0) - option.1) < 0.1 ? LF.selectionText : LF.textPrimary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -180,10 +202,17 @@ struct ElementInspectorView: View {
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 5)
                                     .background(
-                                        abs((bgOverlay?.spacing ?? 0) - option.1) < 1 ? LF.gold : LF.surface2,
+                                        abs((bgOverlay?.spacing ?? 0) - option.1) < 1 ? LF.selectionFill : LF.surface2,
                                         in: Capsule()
                                     )
-                                    .foregroundStyle(abs((bgOverlay?.spacing ?? 0) - option.1) < 1 ? .black : LF.textPrimary)
+                                    .overlay {
+                                        Capsule()
+                                            .stroke(
+                                                abs((bgOverlay?.spacing ?? 0) - option.1) < 1 ? LF.selectionStroke : .clear,
+                                                lineWidth: 1.5
+                                            )
+                                    }
+                                    .foregroundStyle(abs((bgOverlay?.spacing ?? 0) - option.1) < 1 ? LF.selectionText : LF.textPrimary)
                             }
                             .buttonStyle(.plain)
                         }
@@ -201,7 +230,7 @@ struct ElementInspectorView: View {
                                 .frame(width: 22, height: 22)
                                 .overlay {
                                     Circle().stroke(
-                                        bgOverlay?.colorHex == color.hex ? LF.gold : LF.surface2,
+                                        bgOverlay?.colorHex == color.hex ? LF.selectionStroke : LF.surface2,
                                         lineWidth: bgOverlay?.colorHex == color.hex ? 2.5 : 1
                                     )
                                 }
@@ -226,7 +255,7 @@ struct ElementInspectorView: View {
                             ),
                             in: 0...180
                         )
-                        .tint(LF.gold)
+                        .tint(LF.selectionStroke)
                         Text("\(Int(bgOverlay?.angle ?? 0))°")
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(LF.textSecondary)
@@ -386,7 +415,7 @@ struct ElementInspectorView: View {
                         Spacer()
                         Text(String(format: "%.0f°", settings.dividerAngle))
                             .font(.caption2.monospacedDigit())
-                            .foregroundStyle(LF.accent)
+                            .foregroundStyle(LF.selectionStroke)
                     }
                     Slider(
                         value: Binding(
@@ -395,7 +424,7 @@ struct ElementInspectorView: View {
                         ),
                         in: 0...180
                     )
-                    .tint(LF.accent)
+                    .tint(LF.selectionStroke)
 
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
@@ -408,10 +437,19 @@ struct ElementInspectorView: View {
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 5)
                                         .background(
-                                            abs(settings.dividerAngle - angle) < 0.5 ? LF.accent : LF.surface2,
+                                            abs(settings.dividerAngle - angle) < 0.5 ? LF.selectionFill : LF.surface2,
                                             in: Capsule()
                                         )
-                                        .foregroundStyle(abs(settings.dividerAngle - angle) < 0.5 ? .white : LF.textPrimary)
+                                        .overlay {
+                                            Capsule()
+                                                .stroke(
+                                                    abs(settings.dividerAngle - angle) < 0.5 ? LF.selectionStroke : .clear,
+                                                    lineWidth: 1.5
+                                                )
+                                        }
+                                        .foregroundStyle(
+                                            abs(settings.dividerAngle - angle) < 0.5 ? LF.selectionText : LF.textPrimary
+                                        )
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -507,8 +545,12 @@ struct ElementInspectorView: View {
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(item == selected ? LF.accent : LF.surface2, in: Capsule())
-                                .foregroundStyle(item == selected ? .white : LF.textPrimary)
+                                .background(item == selected ? LF.selectionFill : LF.surface2, in: Capsule())
+                                .overlay {
+                                    Capsule()
+                                        .stroke(item == selected ? LF.selectionStroke : .clear, lineWidth: 1.5)
+                                }
+                                .foregroundStyle(item == selected ? LF.selectionText : LF.textPrimary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -535,8 +577,12 @@ struct ElementInspectorView: View {
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(partition == selected ? LF.accent : LF.surface2, in: Capsule())
-                                .foregroundStyle(partition == selected ? .white : LF.textPrimary)
+                                .background(partition == selected ? LF.selectionFill : LF.surface2, in: Capsule())
+                                .overlay {
+                                    Capsule()
+                                        .stroke(partition == selected ? LF.selectionStroke : .clear, lineWidth: 1.5)
+                                }
+                                .foregroundStyle(partition == selected ? LF.selectionText : LF.textPrimary)
                         }
                         .buttonStyle(.plain)
                     }

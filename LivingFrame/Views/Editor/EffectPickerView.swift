@@ -41,10 +41,10 @@ struct EffectPickerView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .navigationTitle("魔法特效")
+            .lfNavigationTitle("魔法特效")
             .navigationBarTitleDisplayMode(.inline)
             .scrollContentBackground(.hidden)
-            .background(LF.background)
+            .magicBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }

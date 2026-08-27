@@ -591,7 +591,7 @@ struct LibraryView: View {
                                     .frame(minHeight: 56)
                                     .contentShape(Capsule())
                                     .background(
-                                        dragOverFolderID == folder.id ? LF.selectionSurface : LF.surface2,
+                                        dragOverFolderID == folder.id ? LF.selectionFill : LF.surface2,
                                         in: Capsule()
                                     )
                                     .overlay {
@@ -732,6 +732,8 @@ private struct VideoRangePickerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var startTime: TimeInterval
     @State private var endTime: TimeInterval
+    @State private var selectedDetent: PresentationDetent = .large
+    @State private var videoAspectRatio: CGFloat = 16.0 / 9.0
     @StateObject private var previewController: VideoRangePreviewController
 
     init(
@@ -768,18 +770,26 @@ private struct VideoRangePickerView: View {
                             .lineLimit(1)
                     }
 
-                    VideoPlayer(player: previewController.player)
-                        .aspectRatio(16 / 9, contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(alignment: .topLeading) {
-                            Label("预览选中片段", systemImage: "play.rectangle.fill")
-                                .font(.caption.weight(.medium))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 7)
-                                .background(.black.opacity(0.58), in: Capsule())
-                                .foregroundStyle(.white)
-                                .padding(10)
-                        }
+                    ZStack(alignment: .topLeading) {
+                        VideoPlayer(player: previewController.player)
+                            .aspectRatio(videoAspectRatio, contentMode: .fit)
+                            .frame(maxWidth: .infinity)
+                            .background(.black)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(alignment: .topLeading) {
+                        Label("预览选中片段", systemImage: "play.rectangle.fill")
+                            .font(.caption.weight(.medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(.black.opacity(0.58), in: Capsule())
+                            .foregroundStyle(.white)
+                            .padding(10)
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(.white.opacity(0.16), lineWidth: 1)
+                    }
 
                     VideoRangeTimeline(
                         url: url,
@@ -819,7 +829,7 @@ private struct VideoRangePickerView: View {
                 }
                 .padding(20)
             }
-            .navigationTitle("视频范围")
+            .lfNavigationTitle("视频范围")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -837,8 +847,11 @@ private struct VideoRangePickerView: View {
                 }
             }
             .magicBackground()
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(LF.background.opacity(0.94), for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $selectedDetent)
         .onChange(of: startTime) { _, _ in
             if previewController.isPlaying { previewController.stop() }
         }
@@ -848,11 +861,29 @@ private struct VideoRangePickerView: View {
         .onDisappear {
             previewController.stop()
         }
+        .task(id: url) {
+            await loadVideoAspectRatio()
+        }
     }
 
     private func formatTimestamp(_ value: TimeInterval) -> String {
         let safeValue = max(value, 0)
         return String(format: "%d:%04.1f", Int(safeValue) / 60, safeValue.truncatingRemainder(dividingBy: 60))
+    }
+
+    private func loadVideoAspectRatio() async {
+        let asset = AVURLAsset(url: url)
+        guard let tracks = try? await asset.loadTracks(withMediaType: .video),
+              let track = tracks.first,
+              let naturalSize = try? await track.load(.naturalSize),
+              let preferredTransform = try? await track.load(.preferredTransform) else {
+            return
+        }
+        let transformedSize = naturalSize.applying(preferredTransform)
+        let width = abs(transformedSize.width)
+        let height = abs(transformedSize.height)
+        guard width > 0, height > 0, !Task.isCancelled else { return }
+        videoAspectRatio = width / height
     }
 }
 
@@ -916,6 +947,8 @@ private struct VideoRangeTimeline: View {
     @State private var activeHandle: Handle?
     @State private var dragStartTime: TimeInterval = 0
     @State private var dragEndTime: TimeInterval = 0
+    @State private var dragTimelineOffset: CGFloat = 0
+    @State private var timelineOffset: CGFloat = 0
 
     private enum Handle {
         case start
@@ -923,56 +956,103 @@ private struct VideoRangeTimeline: View {
         case range
     }
 
+    private var maximumSelectionDuration: TimeInterval {
+        min(max(maxDuration, 0.1), duration)
+    }
+
+    private var minimumSelectionDuration: TimeInterval { 0.1 }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("拖动边界选择片段")
+                Text("拖动视频选择片段")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LF.header)
                 Spacer()
-                Text("最多 \(formatTimestamp(maxDuration))")
+                Text("起点 \(formatTimestamp(startTime)) · 选中 \(formatTimestamp(endTime - startTime))")
                     .font(.caption)
                     .foregroundStyle(LF.textSecondary)
             }
 
             GeometryReader { proxy in
                 let width = max(proxy.size.width, 1)
-                let left = xPosition(for: startTime, width: width)
-                let right = xPosition(for: endTime, width: width)
+                let maximumSelectionWidth = min(width * 0.5, max(width - 36, 1))
+                let selectedDuration = min(
+                    max(endTime - startTime, minimumSelectionDuration),
+                    maximumSelectionDuration
+                )
+                let selectionWidth = min(
+                    max(28, maximumSelectionWidth * CGFloat(selectedDuration / maximumSelectionDuration)),
+                    max(width - 24, 28)
+                )
+                let timelinePadding: CGFloat = 12
+                let timelineScale = maximumSelectionWidth / CGFloat(maximumSelectionDuration)
+                let contentWidth = max(
+                    width,
+                    CGFloat(duration) * timelineScale
+                )
+                // bar 拖动时，bar 相对固定的缩略图轨道移动；
+                // 拖动 bar 以外的区域时，时间窗口固定，缩略图在窗口下方移动。
+                let selectionX = timelinePadding + CGFloat(startTime) * timelineScale + timelineOffset
+                let handleWidth: CGFloat = 18
 
                 ZStack(alignment: .leading) {
-                    thumbnailStrip
-                        .frame(width: width, height: 82)
+                    // 内容层单独裁切，避免贴近左边界的起始 bar 被圆角裁掉。
+                    thumbnailStrip(contentWidth: contentWidth, height: 82)
+                        .offset(x: timelineOffset)
+                        .frame(width: width, height: 86, alignment: .leading)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    Rectangle()
-                        .fill(.black.opacity(0.48))
-                        .frame(width: left, height: 82)
-                    Rectangle()
-                        .fill(.black.opacity(0.48))
-                        .frame(width: max(width - right, 0), height: 82)
-                        .offset(x: right)
+                    // 遮罩和选区框固定在 viewport 层，不能放进会随着完整视频宽度
+                    // 参与布局的 content 层。
+                    TimelineInactiveRangeMask(
+                        totalWidth: width,
+                        leftWidth: selectionX,
+                        rightWidth: width - selectionX - selectionWidth,
+                        height: 82
+                    )
+                    .frame(width: width, height: 82)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .zIndex(10)
 
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(LF.accent, lineWidth: 3)
-                        .frame(width: max(right - left, 18), height: 86)
-                        .offset(x: left)
-                        .shadow(color: LF.accent.opacity(0.28), radius: 4)
+                    // 选区边框放在遮罩之上。
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(LF.selectionStroke, lineWidth: 3)
+                        .frame(width: selectionWidth, height: 86)
+                        .offset(x: selectionX)
+                        .shadow(color: LF.selectionText.opacity(0.32), radius: 3, y: 1)
+                        .zIndex(20)
 
                     timelineHandle
-                        .offset(x: left - 8)
+                        .frame(width: handleWidth)
+                        .offset(x: selectionX - handleWidth / 2)
+                        .zIndex(30)
                     timelineHandle
-                        .offset(x: right - 8)
+                        .frame(width: handleWidth)
+                        .offset(x: selectionX + selectionWidth - handleWidth / 2)
+                        .zIndex(30)
                 }
-                .frame(height: 86)
+                .frame(width: width, height: 96)
                 .contentShape(Rectangle())
-                .gesture(dragGesture(width: width))
+                // 与外层纵向 ScrollView 同时接收事件；只有水平位移超过垂直位移
+                // 才建立时间轴拖动会话，避免轻微上下滑动被时间轴抢走。
+                .simultaneousGesture(
+                    dragGesture(
+                        selectionX: selectionX,
+                        selectionWidth: selectionWidth,
+                        timelineScale: timelineScale,
+                        contentWidth: contentWidth,
+                        viewportWidth: width
+                    )
+                )
             }
-            .frame(height: 86)
+            .frame(height: 96)
 
             HStack {
                 Text(formatTimestamp(0))
                 Spacer()
-                Text(formatTimestamp(duration / 2))
+                Label("拖动选区或边界", systemImage: "hand.draw")
+                    .foregroundStyle(LF.selectionStroke)
                 Spacer()
                 Text(formatTimestamp(duration))
             }
@@ -984,68 +1064,116 @@ private struct VideoRangeTimeline: View {
         }
     }
 
-    private var thumbnailStrip: some View {
-        HStack(spacing: 1) {
-            let count = max(thumbnails.count, 12)
+    private func thumbnailStrip(contentWidth: CGFloat, height: CGFloat) -> some View {
+        let count = max(thumbnails.count, 24)
+        let itemWidth = max((contentWidth - CGFloat(count - 1)) / CGFloat(count), 1)
+
+        return HStack(spacing: 1) {
             ForEach(0..<count, id: \.self) { index in
                 if index < thumbnails.count {
                     Image(decorative: thumbnails[index], scale: 1)
                         .resizable()
                         .scaledToFill()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(width: itemWidth, height: height)
                         .clipped()
                 } else {
                     LinearGradient(
-                        colors: [LF.accentSoft, LF.surface2],
+                        colors: [LF.selectionFill, LF.surface2],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(width: itemWidth, height: height)
                 }
             }
         }
+        .frame(width: contentWidth, height: height, alignment: .leading)
         .background(LF.surface2)
     }
 
     private var timelineHandle: some View {
         Capsule()
-            .fill(LF.accent)
-            .frame(width: 16, height: 96)
+            .fill(LF.selectionStroke)
+            .frame(width: 18, height: 96)
+            .overlay {
+                HStack(spacing: 3) {
+                    Capsule()
+                        .fill(LF.selectionText.opacity(0.72))
+                        .frame(width: 2, height: 14)
+                    Capsule()
+                        .fill(LF.selectionText.opacity(0.72))
+                        .frame(width: 2, height: 14)
+                }
+            }
             .overlay {
                 Capsule()
-                    .stroke(.white.opacity(0.9), lineWidth: 2)
-                    .padding(3)
+                    .stroke(LF.selectionFill, lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.22), radius: 3, y: 1)
+            .shadow(color: LF.selectionText.opacity(0.28), radius: 3, y: 1)
     }
 
-    private func dragGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 0)
+    private func dragGesture(
+        selectionX: CGFloat,
+        selectionWidth: CGFloat,
+        timelineScale: CGFloat,
+        contentWidth: CGFloat,
+        viewportWidth: CGFloat
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 8)
             .onChanged { value in
                 if activeHandle == nil {
+                    guard abs(value.translation.width) > abs(value.translation.height) else {
+                        return
+                    }
                     dragStartTime = startTime
                     dragEndTime = endTime
-                    activeHandle = handle(at: value.startLocation.x, width: width)
+                    dragTimelineOffset = timelineOffset
+                    activeHandle = handle(
+                        at: value.startLocation.x,
+                        selectionX: selectionX,
+                        selectionWidth: selectionWidth
+                    )
                 }
 
-                let time = time(at: value.location.x, width: width)
+                let delta = TimeInterval(value.translation.width / max(timelineScale, 1))
                 switch activeHandle {
-                case .start:
-                    let minimum = max(0, dragEndTime - maxDuration)
-                    let maximum = max(min(dragEndTime - 0.1, duration), minimum)
-                    startTime = min(max(time, minimum), maximum)
-                case .end:
-                    let minimum = min(duration, dragStartTime + 0.1)
-                    let maximum = min(duration, dragStartTime + maxDuration)
-                    endTime = min(max(time, minimum), max(maximum, minimum))
-                case .range:
+                case .some(.start):
+                    let proposedStart = min(max(dragStartTime + delta, 0), dragEndTime - minimumSelectionDuration)
+                    let maximumLengthStart = max(dragEndTime - maximumSelectionDuration, 0)
+                    if proposedStart < maximumLengthStart {
+                        // 从左侧继续拖动时已达到最大时长：两个 bar 一起向左移动。
+                        startTime = proposedStart
+                        endTime = min(proposedStart + maximumSelectionDuration, duration)
+                    } else {
+                        startTime = proposedStart
+                    }
+                case .some(.end):
+                    let minimum = min(duration, dragStartTime + minimumSelectionDuration)
+                    let proposedEnd = min(max(dragEndTime + delta, minimum), duration)
+                    let maximumLengthEnd = dragStartTime + maximumSelectionDuration
+                    if proposedEnd > maximumLengthEnd {
+                        // 达到最大时长后继续向右拖：整段选区一起向右移动，长度保持不变。
+                        let shiftedStart = min(
+                            proposedEnd - maximumSelectionDuration,
+                            max(duration - maximumSelectionDuration, 0)
+                        )
+                        startTime = max(shiftedStart, 0)
+                        endTime = min(startTime + maximumSelectionDuration, duration)
+                    } else {
+                        endTime = proposedEnd
+                    }
+                case .some(.range), nil:
                     let length = dragEndTime - dragStartTime
-                    let delta = time - time(at: value.startLocation.x, width: width)
-                    let newStart = min(max(dragStartTime + delta, 0), max(duration - length, 0))
+                    let maximumStart = max(duration - length, 0)
+                    // 时间轴平移方向与手势一致：手指向左，底部缩略图向左，
+                    // 选取窗口对应的时间向后移动。
+                    let timelineDelta = -delta
+                    let newStart = min(max(dragStartTime + timelineDelta, 0), maximumStart)
                     startTime = newStart
                     endTime = newStart + length
-                case nil:
-                    break
+                    // 通过反向移动缩略图，保持选区两侧 bar 的屏幕位置不变。
+                    let offset = dragTimelineOffset - CGFloat(newStart - dragStartTime) * timelineScale
+                    let minimumOffset = -max(contentWidth - viewportWidth, 0)
+                    timelineOffset = min(max(offset, minimumOffset), 0)
                 }
             }
             .onEnded { _ in
@@ -1053,22 +1181,18 @@ private struct VideoRangeTimeline: View {
             }
     }
 
-    private func handle(at x: CGFloat, width: CGFloat) -> Handle {
-        let left = xPosition(for: startTime, width: width)
-        let right = xPosition(for: endTime, width: width)
-        let hitSlop: CGFloat = 30
-        if abs(x - left) <= hitSlop { return .start }
-        if abs(x - right) <= hitSlop { return .end }
-        if x > left && x < right { return .range }
-        return abs(x - left) < abs(x - right) ? .start : .end
-    }
-
-    private func xPosition(for time: TimeInterval, width: CGFloat) -> CGFloat {
-        width * CGFloat(min(max(time / max(duration, 0.1), 0), 1))
-    }
-
-    private func time(at x: CGFloat, width: CGFloat) -> TimeInterval {
-        duration * TimeInterval(min(max(x / max(width, 1), 0), 1))
+    private func handle(at x: CGFloat, selectionX: CGFloat, selectionWidth: CGFloat) -> Handle {
+        let left = selectionX
+        let right = selectionX + selectionWidth
+        // 热区只略大于视觉 bar，把 bar 以外的区域留给时间窗口平移。
+        // 当选区很短、两侧热区重叠时，按距离最近的一侧处理，避免总是误判成起点。
+        let hitSlop: CGFloat = 10
+        let distanceToStart = abs(x - left)
+        let distanceToEnd = abs(x - right)
+        if distanceToStart <= hitSlop || distanceToEnd <= hitSlop {
+            return distanceToStart <= distanceToEnd ? .start : .end
+        }
+        return .range
     }
 
     private func loadThumbnails() async {
@@ -1078,10 +1202,10 @@ private struct VideoRangeTimeline: View {
             let asset = AVURLAsset(url: requestedURL)
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 320, height: 180)
+            generator.maximumSize = CGSize(width: 320, height: 320)
             generator.requestedTimeToleranceBefore = .zero
             generator.requestedTimeToleranceAfter = .zero
-            let count = 12
+            let count = 24
             return (0..<count).compactMap { index -> CGImage? in
                 let progress = Double(index) / Double(max(count - 1, 1))
                 let time = CMTime(

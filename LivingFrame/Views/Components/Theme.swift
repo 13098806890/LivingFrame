@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - 主题色
 
@@ -188,7 +189,13 @@ enum LF {
     static var surface2: Color { palette.surface2 }
     static var actionPrimary: Color { palette.actionPrimary }
     static var brandTint: Color { palette.brandTint }
-    static var selectionSurface: Color { palette.selectionSurface }
+    /// 所有编辑控件共用的选中态：浅色底、主题主色描边、深色文字。
+    /// 不直接复用 accent，避免外缘、图案和比例在不同主题下出现不同高亮颜色。
+    static var selectionFill: Color { palette.selectionSurface }
+    static var selectionStroke: Color { palette.actionPrimary }
+    static var selectionText: Color { palette.actionDeep }
+    /// 主题提供的第三色，用于页面标题、卡片标题和内容区块标题。
+    static var header: Color { palette.accent }
     static var folderIcon: Color { palette.folderIcon }
     static var destructive: Color { palette.destructive }
     static var textPrimary: Color { palette.textPrimary }
@@ -199,13 +206,9 @@ enum LF {
     static var timelineEffect: Color { palette.timelineEffect }
     static var timelineAudio: Color { palette.timelineAudio }
 
-    /// 兼容既有调用点。新代码请按用途使用语义 token。
+    /// 兼容尚未迁移的旧调用点。新代码请按用途使用语义 token。
     static var accent: Color { palette.accent }
-    static var accentSoft: Color { selectionSurface }
-    static var accentDeep: Color { palette.actionDeep }
-    static var magic: Color { brandTint }
     static var gold: Color { actionPrimary }
-    static var goldDeep: Color { palette.actionDeep }
 
     static var accentGradient: LinearGradient {
         LinearGradient(
@@ -214,9 +217,6 @@ enum LF {
             endPoint: .bottomTrailing
         )
     }
-
-    /// 兼容既有调用点。
-    static var goldGradient: LinearGradient { accentGradient }
 }
 
 // MARK: - 组件样式
@@ -252,7 +252,7 @@ struct SectionCard<Content: View>: View {
             if let title {
                 Text(title)
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(LF.textSecondary)
+                    .foregroundStyle(LF.header)
                     .textCase(.uppercase)
                     .tracking(1.2)
             }
@@ -260,7 +260,17 @@ struct SectionCard<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LF.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 16))
+        .background(
+            LinearGradient(
+                colors: [
+                    LF.surface.opacity(0.96),
+                    LF.brandTint.opacity(0.10)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 16)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(LF.brandTint.opacity(0.26), lineWidth: 0.8)
@@ -290,11 +300,94 @@ struct EmptyStateView: View {
     }
 }
 
+/// 时间轴选区外遮罩：中间选区保持完全透明，只有左右未选帧降低亮度。
+/// 编辑页与视频截取页共用，确保两处呈现相同的
+/// “未选帧（暗） | 选中帧（原色） | 未选帧（暗）”效果。
+struct TimelineInactiveRangeMask: UIViewRepresentable {
+    let totalWidth: CGFloat
+    let leftWidth: CGFloat
+    let rightWidth: CGFloat
+    let height: CGFloat
+
+    func makeUIView(context: Context) -> TimelineInactiveRangeMaskView {
+        let view = TimelineInactiveRangeMaskView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ view: TimelineInactiveRangeMaskView, context: Context) {
+        // 只有两个独立的覆盖层：左层从轨道左缘延伸到左 bar，右层从右 bar
+        // 延伸到轨道右缘。中间选区不画任何像素，始终保持原始亮度。
+        let safeLeft = min(max(leftWidth, 0), totalWidth)
+        let safeRight = min(max(rightWidth, 0), max(totalWidth - safeLeft, 0))
+        view.update(
+            totalWidth: totalWidth,
+            height: height,
+            leftWidth: safeLeft,
+            rightWidth: safeRight
+        )
+    }
+
+    final class TimelineInactiveRangeMaskView: UIView {
+        private var totalWidth: CGFloat = 0
+        private var maskHeight: CGFloat = 0
+        private var leftWidth: CGFloat = 0
+        private var rightWidth: CGFloat = 0
+
+        override func draw(_ rect: CGRect) {
+            guard let context = UIGraphicsGetCurrentContext() else { return }
+            context.setFillColor(UIColor.black.withAlphaComponent(0.62).cgColor)
+            if leftWidth > 0 {
+                context.fill(CGRect(x: 0, y: 0, width: leftWidth, height: maskHeight))
+            }
+            if rightWidth > 0 {
+                context.fill(
+                    CGRect(
+                        x: totalWidth - rightWidth,
+                        y: 0,
+                        width: rightWidth,
+                        height: maskHeight
+                    )
+                )
+            }
+        }
+
+        func update(
+            totalWidth: CGFloat,
+            height: CGFloat,
+            leftWidth: CGFloat,
+            rightWidth: CGFloat
+        ) {
+            self.totalWidth = totalWidth
+            maskHeight = height
+            self.leftWidth = leftWidth
+            self.rightWidth = rightWidth
+            isOpaque = false
+            contentMode = .redraw
+            setNeedsDisplay()
+        }
+    }
+}
+
 /// Cloud Glass 背景修饰：内容层使用系统背景，导航栏和 Tab 栏使用系统材质。
 struct MagicBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(LF.background.ignoresSafeArea())
+            .background {
+                ZStack {
+                    LF.background
+                    LinearGradient(
+                        colors: [
+                            LF.brandTint.opacity(0.13),
+                            LF.background.opacity(0)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .center
+                    )
+                    .ignoresSafeArea()
+                }
+            }
             .toolbarBackground(.regularMaterial, for: .navigationBar, .tabBar)
     }
 }
@@ -302,5 +395,28 @@ struct MagicBackground: ViewModifier {
 extension View {
     func magicBackground() -> some View {
         modifier(MagicBackground())
+    }
+
+    /// 使用主题第三色渲染导航栏标题，同时保留系统的返回按钮和导航行为。
+    func lfNavigationTitle(_ title: String) -> some View {
+        navigationTitle(title)
+            .lfNavigationTitleToolbar(Text(title))
+    }
+
+    /// 本地化标题重载，支持 EditorTool.title 等 LocalizedStringKey。
+    func lfNavigationTitle(_ title: LocalizedStringKey) -> some View {
+        navigationTitle(title)
+            .lfNavigationTitleToolbar(Text(title))
+    }
+
+    private func lfNavigationTitleToolbar(_ title: Text) -> some View {
+        toolbar {
+            ToolbarItem(placement: .principal) {
+                title
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(LF.header)
+                    .accessibilityAddTraits(.isHeader)
+            }
+        }
     }
 }

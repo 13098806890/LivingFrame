@@ -27,7 +27,7 @@ struct FolderDetailView: View {
             }
             .padding()
         }
-        .navigationTitle(folder.name)
+        .lfNavigationTitle(folder.name)
         .navigationBarTitleDisplayMode(.inline)
         .magicBackground()
         .toolbar {
@@ -217,7 +217,7 @@ private struct FolderAddClipsView: View {
                     .padding()
                 }
             }
-            .navigationTitle("添加素材")
+            .lfNavigationTitle("添加素材")
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {

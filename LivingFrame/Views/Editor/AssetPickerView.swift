@@ -75,7 +75,7 @@ struct AssetPickerView: View {
                 }
                 .padding()
             }
-            .navigationTitle(currentFolder?.name ?? "选择素材")
+            .lfNavigationTitle(currentFolder?.name ?? "选择素材")
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {
@@ -210,7 +210,7 @@ struct AssetPickerView: View {
             .padding(.vertical, 12)
             .frame(minHeight: 48)
             .contentShape(Capsule())
-            .background(isSelected ? LF.selectionSurface : LF.surface, in: Capsule())
+            .background(isSelected ? LF.selectionFill : LF.surface, in: Capsule())
             .overlay {
                 Capsule()
                     .stroke(
@@ -283,7 +283,7 @@ struct AssetPickerView: View {
                         .font(.title2)
                         .foregroundStyle(LF.accent)
                         .frame(width: 42, height: 42)
-                        .background(LF.accentSoft, in: RoundedRectangle(cornerRadius: 12))
+                        .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 3) {
                         Text("从相册选择")
                             .font(.subheadline.weight(.semibold))
@@ -327,7 +327,7 @@ struct AssetPickerView: View {
                     }
                 }
                 .padding(12)
-                .background(LF.accentSoft.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
+                .background(LF.selectionFill.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
