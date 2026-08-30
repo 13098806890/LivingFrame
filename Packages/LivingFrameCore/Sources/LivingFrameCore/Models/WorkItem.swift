@@ -72,12 +72,12 @@ public struct WorkItem: Codable, Identifiable, Equatable {
     public var id: UUID
     public var name: String
     public var createdAt: Date
-    /// 最近一次主动保存时间；旧版本作品没有该字段时回退到 createdAt。
-    public var updatedAt: Date?
+    /// 最近一次主动保存时间。
+    public var updatedAt: Date
     /// 完整工程快照
     public var composition: Composition
-    /// 素材级编辑设置；旧作品为 nil，继续使用素材库当前设置。
-    public var clipSettings: [WorkClipSettings]?
+    /// 素材级编辑设置。
+    public var clipSettings: [WorkClipSettings]
     /// 封面 PNG 数据
     public var posterData: Data
     public var format: ExportFormat
@@ -86,9 +86,9 @@ public struct WorkItem: Codable, Identifiable, Equatable {
         id: UUID = UUID(),
         name: String,
         createdAt: Date = Date(),
-        updatedAt: Date? = nil,
+        updatedAt: Date = Date(),
         composition: Composition,
-        clipSettings: [WorkClipSettings]? = nil,
+        clipSettings: [WorkClipSettings] = [],
         posterData: Data,
         format: ExportFormat
     ) {
@@ -102,5 +102,5 @@ public struct WorkItem: Codable, Identifiable, Equatable {
         self.format = format
     }
 
-    public var lastSavedAt: Date { updatedAt ?? createdAt }
+    public var lastSavedAt: Date { updatedAt }
 }

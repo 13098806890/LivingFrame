@@ -21,7 +21,8 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .timeline: "时间轴"
         case .asset: "素材"
         case .canvas: "画布"
-        case .text: "文本"
+        // 使用本地化 key：中文显示“文字”，英文等语言显示为“Text”。
+        case .text: "文字"
         case .sticker: "贴纸"
         case .border: "边框"
         case .draw: "涂鸦"
@@ -47,7 +48,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
     }
 
     /// 当前版本只把已完成且属于核心编辑流程的工具放进主工具栏。
-    static let visibleCases: [EditorTool] = [.timeline, .asset, .canvas, .sticker, .frame, .crop]
+    static let visibleCases: [EditorTool] = [.timeline, .asset, .canvas, .text, .sticker, .frame, .crop]
 }
 
 /// 编辑页（参考 ImgPlay 布局）
@@ -56,6 +57,10 @@ enum EditorTool: String, CaseIterable, Identifiable {
 struct EditorView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showAssetPicker = false
+    /// 从画布面板打开背景媒体选择器。
+    @State private var showBackgroundPicker = false
+    /// 长按贴纸后显示的动态预览。
+    @State private var previewSticker: StickerDefinition?
     /// 工具 sheet（点击工具栏弹出，遮住编辑页）
     @State private var toolSheet: EditorTool?
     /// 选中元素后的详细属性面板（不再常驻占用画布高度）
@@ -224,8 +229,14 @@ struct EditorView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(LF.header)
                 if let comp = appState.composition {
-                    Text(frameInfoText(comp))
-                        .font(.caption2)
+                    HStack(spacing: 5) {
+                        Text(frameInfoText(comp))
+                        if appState.hasUnsavedChanges {
+                            Text("未保存")
+                                .foregroundStyle(LF.header)
+                        }
+                    }
+                    .font(.caption2)
                     .foregroundStyle(LF.textSecondary)
                 }
             }
@@ -385,7 +396,7 @@ struct EditorView: View {
                         Circle()
                             .stroke(Color.white.opacity(0.68), lineWidth: 0.8)
                     }
-                    .shadow(color: LF.accent.opacity(0.12), radius: 7, y: 3)
+                    .shadow(color: LF.header.opacity(0.12), radius: 7, y: 3)
             }
             .buttonStyle(.plain)
             .foregroundStyle(LF.textPrimary)
@@ -455,10 +466,9 @@ struct EditorView: View {
         case .asset:
             showAssetPicker = true
         case .text:
-            if let existing = appState.composition?.elements.first(where: {
-                if case .text = $0.kind { return true }; return false
-            }) {
-                appState.selectElement(existing.id)
+            // 选中文字时打开当前文字；否则新增一个文字元素，支持叠加多段文字。
+            if let selected = appState.primarySelectedElement,
+               case .text = selected.kind {
                 toolSheet = .text
             } else {
                 appState.addTextElement()
@@ -585,8 +595,49 @@ struct EditorView: View {
                     }
                     .accessibilityLabel("更多背景颜色")
                 }
+                // 图片背景：沿用素材选择器已有的动态照片下载、背景媒体存储和多选逻辑。
+                Button {
+                    showBackgroundPicker = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.title3)
+                            .foregroundStyle(LF.actionPrimary)
+                            .frame(width: 34, height: 34)
+                            .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("图片背景")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(LF.textPrimary)
+                            Text("添加到画布，可叠加多张并分别编辑时间轴")
+                                .font(.caption2)
+                                .foregroundStyle(LF.textSecondary)
+                        }
+
+                        Spacer()
+
+                        if backgroundElementCount > 0 {
+                            Text("\(backgroundElementCount) 张")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(LF.textSecondary)
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(LF.textSecondary)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(LF.brandTint.opacity(0.45), lineWidth: 1)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("添加图片背景")
                 HStack(spacing: 8) {
-                    Text("外缘").font(.caption2).foregroundStyle(LF.accent)
+                    Text("外缘").font(.caption2).foregroundStyle(LF.header)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(CanvasEdgeStyle.allCases) { style in
@@ -617,7 +668,7 @@ struct EditorView: View {
                 }
                 // 图案叠加（横排：类型+参数一行搞定）
                 HStack(spacing: 8) {
-                    Text("图案").font(.caption2).foregroundStyle(LF.accent)
+                    Text("图案").font(.caption2).foregroundStyle(LF.header)
                     Button { appState.setBackgroundPattern(nil) } label: {
                         Text("无")
                             .font(.caption.weight(.semibold))
@@ -741,6 +792,18 @@ struct EditorView: View {
                 }
             }
         }
+        .sheet(isPresented: $showBackgroundPicker) {
+            AssetPickerView(backgroundOnly: true)
+                .environmentObject(appState)
+        }
+    }
+
+    private var backgroundElementCount: Int {
+        appState.composition?.elements.reduce(into: 0) { count, element in
+            if case .background = element.kind {
+                count += 1
+            }
+        } ?? 0
     }
 
     // MARK: - 背景面板（完整版：纯色+图案叠加+参数+更多）
@@ -785,48 +848,8 @@ struct EditorView: View {
             if let element = appState.primarySelectedElement,
                case .text(let textID) = element.kind,
                let text = appState.composition?.texts.first(where: { $0.id.uuidString == textID }) {
-                // 选中文字元素：内联编辑（内容/字号/颜色）
-                TextField("输入文字", text: Binding(
-                    get: { text.text },
-                    set: { newValue in appState.updateText(text.id) { $0.text = newValue } }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .font(.subheadline)
-
-                HStack(spacing: 10) {
-                    Text("字号")
-                        .font(.caption2)
-                        .foregroundStyle(LF.textSecondary)
-                    Slider(
-                        value: Binding(
-                            get: { Double(text.fontSize) },
-                            set: { newValue in appState.updateText(text.id) { $0.fontSize = CGFloat(newValue) } }
-                        ),
-                        in: 24...300
-                    )
-                    .tint(LF.gold)
-                    Text("\(Int(text.fontSize))")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(LF.textSecondary)
-                        .frame(width: 32, alignment: .trailing)
-                }
-
-                HStack(spacing: 10) {
-                    ForEach(textPanelColors, id: \.hex) { color in
-                        Button { appState.updateText(text.id) { $0.colorHex = color.hex } } label: {
-                            Circle()
-                                .fill(Color(hex: color.hex))
-                                .frame(width: 24, height: 24)
-                                .overlay {
-                                    Circle().stroke(
-                                        text.colorHex.uppercased() == color.hex ? LF.gold : LF.surface2,
-                                        lineWidth: text.colorHex.uppercased() == color.hex ? 2.5 : 1
-                                    )
-                                }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+                TextFormattingControls(text: text)
+                    .environmentObject(appState)
             } else {
                 Text("点击工具栏「文本」添加文字，选中文字后可编辑")
                     .font(.caption)
@@ -834,11 +857,6 @@ struct EditorView: View {
             }
         }
     }
-
-    private let textPanelColors: [(name: String, hex: String)] = [
-        ("白", "FFFFFF"), ("黑", "000000"), ("金", "E8C05C"), ("红", "E74C3C"),
-        ("粉", "FF9FF3"), ("蓝", "54A0FF"), ("绿", "1DD1A1"), ("紫", "8B7CF6")
-    ]
 
     private var stickerPanel: some View {
         let doodleStickers = DecorationRenderer.stickerCatalog.filter { $0.category == .doodle }
@@ -856,6 +874,9 @@ struct EditorView: View {
                     .foregroundStyle(.black)
                 Spacer()
             }
+            Text("轻点添加，长按预览动画")
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
 
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVGrid(
@@ -863,25 +884,23 @@ struct EditorView: View {
                     spacing: 10
                 ) {
                     ForEach(doodleStickers) { sticker in
-                        Button {
+                        StickerPickerCell(sticker: sticker) {
                             appState.addSticker(sticker.id)
                             toolSheet = nil
-                        } label: {
-                            VStack(spacing: 4) {
-                                StickerPreview(decorationID: sticker.id)
-                                    .frame(width: 58, height: 58)
-                                Text(sticker.name)
-                                    .font(.caption2)
-                                    .lineLimit(1)
-                            }
-                            .frame(width: 84, height: 88)
-                            .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12))
-                            .foregroundStyle(LF.gold)
+                        } onPreview: {
+                            previewSticker = sticker
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
+        }
+        .sheet(item: $previewSticker) { sticker in
+            StickerPreviewSheet(sticker: sticker) {
+                appState.addSticker(sticker.id)
+                previewSticker = nil
+                toolSheet = nil
+            }
+            .environmentObject(appState)
         }
     }
 
@@ -996,17 +1015,62 @@ private enum WorkSaveResult: Identifiable {
     }
 }
 
-/// 贴纸面板预览：只显示贴纸第一帧（异步加载一次，静态展示）。
-/// 视图离开面板后异步加载任务会被 SwiftUI 取消。
+/// 贴纸网格单元：轻点直接添加，长按打开动态预览。
+private struct StickerPickerCell: View {
+    let sticker: StickerDefinition
+    let onSelect: () -> Void
+    let onPreview: () -> Void
+
+    @State private var isPressing = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            StickerPreview(decorationID: sticker.id)
+                .frame(width: 58, height: 58)
+            Text(sticker.name)
+                .font(.caption2)
+                .lineLimit(1)
+        }
+        .frame(width: 84, height: 88)
+        .background(isPressing ? LF.selectionFill : LF.surface2, in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isPressing ? LF.selectionStroke : .clear, lineWidth: 2)
+        }
+        .foregroundStyle(LF.gold)
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .onTapGesture(perform: onSelect)
+        .onLongPressGesture(
+            minimumDuration: 0.45,
+            maximumDistance: 12,
+            pressing: { pressing in
+                withAnimation(.easeOut(duration: 0.12)) {
+                    isPressing = pressing
+                }
+            },
+            perform: onPreview
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("轻点添加，长按预览动画")
+        .accessibilityAction(named: "预览") {
+            onPreview()
+        }
+    }
+}
+
+/// 贴纸面板缩略图与长按预览共用同一套帧加载逻辑。
 private struct StickerPreview: View {
     let decorationID: String
+    var isPlaying = false
 
     @State private var frames: [CGImage] = []
+    @State private var frameIndex = 0
 
     var body: some View {
         Group {
-            if let first = frames.first {
-                Image(decorative: first, scale: 1)
+            if !frames.isEmpty {
+                Image(decorative: frames[min(frameIndex, frames.count - 1)], scale: 1)
                     .resizable()
                     .scaledToFit()
             } else {
@@ -1025,6 +1089,72 @@ private struct StickerPreview: View {
         .onDisappear {
             // 释放当前视图对帧数组的引用；解码缓存仍由 Core 层统一复用。
             frames.removeAll(keepingCapacity: false)
+            frameIndex = 0
         }
+        .task(id: "\(decorationID)-\(frames.count)-\(isPlaying)") {
+            guard isPlaying, frames.count > 1 else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled, !frames.isEmpty else { return }
+                frameIndex = (frameIndex + 1) % frames.count
+            }
+        }
+    }
+}
+
+/// 长按贴纸预览弹窗：默认自动播放，也支持暂停/继续和直接添加。
+private struct StickerPreviewSheet: View {
+    let sticker: StickerDefinition
+    let onAdd: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var isPlaying = true
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(LF.surface2.opacity(0.72))
+                    StickerPreview(decorationID: sticker.id, isPlaying: isPlaying)
+                        .padding(28)
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+
+                VStack(spacing: 5) {
+                    Text(sticker.name)
+                        .font(.headline)
+                    Text("长按预览 · \(sticker.frameCount) 帧 · 约 \(String(format: "%.1f", sticker.defaultDuration)) 秒")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+
+                HStack(spacing: 12) {
+                    Button {
+                        isPlaying.toggle()
+                    } label: {
+                        Label(isPlaying ? "暂停" : "播放", systemImage: isPlaying ? "pause.fill" : "play.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("添加贴纸", action: onAdd)
+                        .buttonStyle(.borderedProminent)
+                        .tint(LF.actionPrimary)
+                }
+            }
+            .padding(20)
+            .lfNavigationTitle("贴纸预览")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { dismiss() }
+                }
+            }
+            .magicBackground()
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }

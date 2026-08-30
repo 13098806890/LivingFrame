@@ -132,7 +132,7 @@ struct TimelineView: View {
         CGFloat(rows) * rowHeight + CGFloat(max(rows - 1, 0)) * rowSpacing
     }
 
-    /// 时间轴从上到下直接对应画布从上层到下层；同层级的旧工程按插入顺序稳定显示。
+    /// 时间轴从上到下直接对应画布从上层到下层；同层级按插入顺序稳定显示。
     private func timelineElements(_ comp: Composition) -> [CompositionElement] {
         comp.elements.enumerated()
             .sorted { lhs, rhs in
@@ -273,11 +273,7 @@ struct TimelineView: View {
                 }
                 .frame(maxHeight: .infinity)
             } else {
-                Text("添加素材后显示时间轴")
-                    .font(.caption)
-                    .foregroundStyle(LF.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(maxHeight: .infinity, alignment: .center)
+                timelineEmptyState
             }
         }
         .frame(maxHeight: .infinity)
@@ -377,7 +373,7 @@ struct TimelineView: View {
             .background(Color.white.opacity(0.72), in: Capsule())
             .overlay {
                 Capsule()
-                    .stroke(LF.accent.opacity(0.12), lineWidth: 1)
+                    .stroke(LF.header.opacity(0.12), lineWidth: 1)
             }
 
             Text(String(format: "%.2f / %.1f s", appState.currentTime, appState.composition?.duration ?? 0))
@@ -440,6 +436,31 @@ struct TimelineView: View {
             .onEnded { _ in
                 lastPinchZoom = zoom
             }
+    }
+
+    /// 空时间轴使用轻量的虚线引导框，避免提示文字孤零零地贴在左侧。
+    private var timelineEmptyState: some View {
+        VStack {
+            Spacer(minLength: 0)
+
+            Text("添加素材后显示时间轴")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(LF.textSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 30)
+                .background {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(
+                            LF.brandTint.opacity(0.28),
+                            style: StrokeStyle(lineWidth: 1, dash: [6, 5])
+                        )
+                }
+                .padding(.horizontal, 18)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - 刻度尺
@@ -997,7 +1018,7 @@ struct TimelineView: View {
                 .frame(width: barWidth, height: rowHeight - 8)
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? LF.accent : .clear, lineWidth: 2)
+                        .stroke(isSelected ? LF.header : .clear, lineWidth: 2)
                 }
             HStack(spacing: 3) {
                 Image(systemName: "waveform")
@@ -1097,14 +1118,14 @@ struct TimelineView: View {
                 )
                 ZStack(alignment: .top) {
                     Rectangle()
-                        .fill(LF.accent.opacity(0.9))
+                        .fill(LF.header.opacity(0.9))
                         .frame(width: 1.5, height: height + rulerHeight)
                     Text(String(format: "%.2fs", snapTime))
                         .font(.system(size: 10, weight: .bold).monospacedDigit())
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 3)
-                        .background(LF.accent, in: Capsule())
+                            .background(LF.header, in: Capsule())
                         .offset(y: -rulerHeight - 2)
                 }
                 .position(x: x, y: (height + rulerHeight) / 2)
@@ -1518,7 +1539,7 @@ struct TimelineView: View {
         case .decoration: LF.timelineSticker.opacity(0.82)
         case .effect: LF.timelineEffect.opacity(0.75)
         case .text: LF.textPrimary.opacity(0.75)
-        case .canvasEdge: LF.accent.opacity(0.9)
+        case .canvasEdge: LF.header.opacity(0.9)
         }
     }
 }
@@ -1709,7 +1730,7 @@ private struct TimelineHorizontalNavigator: View {
                         HStack(spacing: 3) {
                             ForEach(0..<8, id: \.self) { index in
                                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                    .fill(index.isMultiple(of: 2) ? LF.accent.opacity(0.22) : LF.gold.opacity(0.22))
+                                    .fill(index.isMultiple(of: 2) ? LF.header.opacity(0.22) : LF.gold.opacity(0.22))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, index.isMultiple(of: 3) ? 4 : 7)
                             }
@@ -1718,14 +1739,14 @@ private struct TimelineHorizontalNavigator: View {
                     }
 
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(LF.accent.opacity(0.18))
+                    .fill(LF.header.opacity(0.18))
                     .overlay {
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .stroke(LF.accent, lineWidth: 1.5)
+                            .stroke(LF.header, lineWidth: 1.5)
                     }
                     .frame(width: thumbWidth, height: 24)
                     .offset(x: progress * usableWidth)
-                    .shadow(color: LF.accent.opacity(0.18), radius: 3, y: 1)
+                    .shadow(color: LF.header.opacity(0.18), radius: 3, y: 1)
             }
             .frame(height: 26)
             .contentShape(Rectangle())

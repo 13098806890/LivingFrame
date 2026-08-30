@@ -5,99 +5,6 @@ import XCTest
 @testable import LivingFrameCore
 
 final class PaperEffectRendererSnapshotTests: XCTestCase {
-    func testRemovedWidthValuesRenderAsNarrow() throws {
-        let size = CGSize(width: 640, height: 400)
-        func edge(_ width: CanvasEdgeWidth) -> CGImage? {
-            BackgroundMaskRenderer.edgeImage(
-                size: size,
-                settings: BackgroundElementSettings(
-                    edgeStyle: .tornLayered,
-                    edgeWidth: width,
-                    splitCount: .four,
-                    dividerAngle: 90,
-                    selectedPartition: 0
-                )
-            )
-        }
-        guard let narrow = edge(.standard) else {
-            return XCTFail("Expected narrow edge")
-        }
-        for legacyWidth in [CanvasEdgeWidth.medium, .wide, .legacyNarrow] {
-            guard let rendered = edge(legacyWidth) else {
-                return XCTFail("Expected legacy width edge")
-            }
-            XCTAssertEqual(try pngData(narrow), try pngData(rendered))
-        }
-    }
-
-    func testEffectWidthDoesNotMovePartitionPhotoMask() throws {
-        let canvasSize = CGSize(width: 640, height: 400)
-        func mask(_ width: CanvasEdgeWidth) -> CGImage? {
-            BackgroundMaskRenderer.maskImage(
-                size: canvasSize,
-                settings: BackgroundElementSettings(
-                    edgeStyle: .tornLayered,
-                    edgeWidth: width,
-                    splitCount: .four,
-                    dividerAngle: 90,
-                    selectedPartition: 0
-                )
-            )
-        }
-        guard let narrow = mask(.standard), let wide = mask(.wide) else {
-            return XCTFail("Expected both partition masks")
-        }
-        XCTAssertEqual(try pngData(narrow), try pngData(wide))
-    }
-
-    func testWriteCanvasEdgeWidthComparisonWhenRequested() throws {
-        guard let outputPath = ProcessInfo.processInfo.environment["CANVAS_EDGE_WIDTHS_OUTPUT"] else {
-            throw XCTSkip("Set CANVAS_EDGE_WIDTHS_OUTPUT to write the width comparison")
-        }
-        let canvasSize = CGSize(width: 640, height: 400)
-        guard let source = solidImage(
-            size: canvasSize,
-            color: CGColor(red: 0.12, green: 0.55, blue: 0.82, alpha: 1)
-        ) else { return XCTFail("Expected source image") }
-        let store = BackgroundStore.shared
-        guard let imageID = store.saveUserImage(try pngData(source), preferredFileExtension: "png") else {
-            return XCTFail("Expected stored source image")
-        }
-        defer { try? FileManager.default.removeItem(at: store.mediaURL(named: imageID)) }
-
-        let widths = CanvasEdgeWidth.allCases
-        let cards = widths.compactMap { width -> CGImage? in
-            let composition = Composition(
-                name: width.title,
-                canvas: CanvasSpec(width: canvasSize.width, height: canvasSize.height),
-                duration: 1,
-                elements: [CompositionElement(
-                    kind: .background(backgroundID: imageID),
-                    name: width.title,
-                    startTime: 0,
-                    endTime: 1
-                )],
-                background: BackgroundPreset(kind: .solid, topColor: "DDE5EE", bottomColor: "DDE5EE"),
-                canvasEdgeStyle: .tornLayered,
-                canvasEdgeWidth: width
-            )
-            return CompositionRenderer().render(composition, at: 0)
-        }
-        XCTAssertEqual(cards.count, widths.count)
-        guard let preview = ProceduralRasterRenderer.makeImage(
-            size: CGSize(width: 2_080, height: 520),
-            transparent: false,
-            draw: { context, rect in
-                context.setFillColor(CGColor(red: 0.90, green: 0.93, blue: 0.96, alpha: 1))
-                context.fill(rect)
-                for (index, card) in cards.enumerated() {
-                    context.draw(card, in: CGRect(x: 40 + CGFloat(index) * 680, y: 60, width: 640, height: 400))
-                }
-            }
-        ) else { return XCTFail("Expected width comparison") }
-        try write(preview, to: URL(fileURLWithPath: outputPath))
-    }
-
     func testWritePartitionPaperEdgeWhenRequested() throws {
         guard let outputPath = ProcessInfo.processInfo.environment["PARTITION_PAPER_EDGE_OUTPUT"] else {
             throw XCTSkip("Set PARTITION_PAPER_EDGE_OUTPUT to write the partition preview")
@@ -119,32 +26,28 @@ final class PaperEffectRendererSnapshotTests: XCTestCase {
         }
         defer { imageIDs.forEach { try? FileManager.default.removeItem(at: store.mediaURL(named: $0)) } }
 
-        let cards = CanvasEdgeWidth.allCases.compactMap { width -> CGImage? in
-            let elements = imageIDs.enumerated().map { index, imageID in
-                CompositionElement(
-                    kind: .background(backgroundID: imageID),
-                    name: "partition-\(index)",
-                    zIndex: index,
-                    startTime: 0,
-                    endTime: 1,
-                    backgroundSettings: BackgroundElementSettings(
-                        edgeStyle: .tornLayered,
-                        edgeWidth: width,
-                        splitCount: .four,
-                        dividerAngle: 90,
-                        selectedPartition: index
-                    )
+        let elements = imageIDs.enumerated().map { index, imageID in
+            CompositionElement(
+                kind: .background(backgroundID: imageID),
+                name: "partition-\(index)",
+                zIndex: index,
+                startTime: 0,
+                endTime: 1,
+                backgroundSettings: BackgroundElementSettings(
+                    edgeStyle: .tornLayered,
+                    splitCount: .four,
+                    dividerAngle: 90,
+                    selectedPartition: index
                 )
-            }
-            let composition = Composition(
-                name: "Paper partitions \(width.title)",
-                canvas: CanvasSpec(width: canvasSize.width, height: canvasSize.height),
-                duration: 1,
-                elements: elements
             )
-            return CompositionRenderer().render(composition, at: 0)
         }
-        XCTAssertEqual(cards.count, CanvasEdgeWidth.allCases.count)
+        let composition = Composition(
+            name: "Paper partitions",
+            canvas: CanvasSpec(width: canvasSize.width, height: canvasSize.height),
+            duration: 1,
+            elements: elements
+        )
+        let cards = [CompositionRenderer().render(composition, at: 0)].compactMap { $0 }
         guard let preview = ProceduralRasterRenderer.makeImage(
             size: CGSize(width: 2_080, height: 520),
             transparent: false,
@@ -187,6 +90,13 @@ final class PaperEffectRendererSnapshotTests: XCTestCase {
                     name: "full bleed",
                     startTime: 0,
                     endTime: 1
+                ),
+                CompositionElement(
+                    kind: .canvasEdge,
+                    name: "canvas edge",
+                    zIndex: 1,
+                    startTime: 0,
+                    endTime: 1
                 )
             ],
             background: BackgroundPreset(
@@ -195,7 +105,6 @@ final class PaperEffectRendererSnapshotTests: XCTestCase {
                 bottomColor: "DDE5EE"
             ),
             canvasEdgeStyle: .tornLayered,
-            canvasEdgeWidth: .wide
         )
         guard let rendered = CompositionRenderer().render(composition, at: 0) else {
             return XCTFail("Expected rendered canvas")

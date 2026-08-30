@@ -3,7 +3,7 @@ import SwiftUI
 
 struct WorksView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var showWidgetSetup = false
+    @State private var showNewProjectConfirmation = false
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 12)]
 
@@ -26,30 +26,57 @@ struct WorksView: View {
                     .padding()
                 }
             }
-            .navigationTitle("作品")
-            .magicBackground()
+            .lfNavigationTitle("作品")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        showWidgetSetup = true
+                        requestNewProject()
                     } label: {
-                        Label("Widget", systemImage: "square.grid.2x2")
-                            .foregroundStyle(LF.gold)
+                        Label("新建", systemImage: "plus")
                     }
                 }
             }
-            .sheet(isPresented: $showWidgetSetup) {
-                WidgetSetupView()
-                    .environmentObject(appState)
+            .confirmationDialog("放弃未保存修改？", isPresented: $showNewProjectConfirmation, titleVisibility: .visible) {
+                Button("放弃并新建", role: .destructive) {
+                    createNewProject()
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("当前编辑内容尚未保存，继续新建会将其留在当前工程之外。")
             }
         }
+        .magicBackground()
+    }
+
+    private func requestNewProject() {
+        if appState.hasUnsavedChanges {
+            showNewProjectConfirmation = true
+        } else {
+            createNewProject()
+        }
+    }
+
+    private func createNewProject() {
+        let aspect = appState.composition.map { CanvasAspect.aspect(for: $0.canvasRect.size) } ?? .landscape16x9
+        appState.createComposition(aspect: aspect)
+        appState.selectedTab = .editor
     }
 }
 
 private struct WorkCell: View {
     @EnvironmentObject private var appState: AppState
     @State private var showDeleteConfirmation = false
+    @State private var showDiscardConfirmation = false
+    @State private var showRenameAlert = false
+    @State private var renameText = ""
+    @State private var pendingAction: WorkAction?
     let work: WorkItem
+
+    private enum WorkAction {
+        case edit
+        case export
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -79,8 +106,7 @@ private struct WorkCell: View {
 
             HStack(spacing: 8) {
                 Button {
-                    appState.reopen(work)
-                    appState.selectedTab = .editor
+                    request(.edit)
                 } label: {
                     Label("编辑", systemImage: "pencil")
                         .frame(maxWidth: .infinity)
@@ -106,15 +132,25 @@ private struct WorkCell: View {
         }
         .contextMenu {
             Button {
-                appState.reopen(work)
-                appState.selectedTab = .editor
+                request(.edit)
             } label: {
                 Label("编辑", systemImage: "pencil")
             }
             Button {
-                appState.savePosterForWidget(work)
+                request(.export)
             } label: {
-                Label("设为 Widget 画面", systemImage: "square.grid.2x2")
+                Label("重新导出", systemImage: "arrow.up.circle")
+            }
+            Button {
+                renameText = work.name
+                showRenameAlert = true
+            } label: {
+                Label("重命名", systemImage: "pencil.line")
+            }
+            Button {
+                _ = appState.duplicateWork(work)
+            } label: {
+                Label("复制作品", systemImage: "plus.square.on.square")
             }
             Button(role: .destructive) {
                 showDeleteConfirmation = true
@@ -129,6 +165,43 @@ private struct WorkCell: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("删除后无法恢复，素材库中的素材不会被删除。")
+        }
+        .confirmationDialog("放弃未保存修改？", isPresented: $showDiscardConfirmation, titleVisibility: .visible) {
+            Button("放弃并继续", role: .destructive) {
+                if let pendingAction {
+                    perform(pendingAction)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("当前编辑内容尚未保存，切换作品后这些修改会丢失。")
+        }
+        .alert("重命名作品", isPresented: $showRenameAlert) {
+            TextField("作品名称", text: $renameText)
+            Button("保存") {
+                appState.renameWork(work, to: renameText)
+            }
+            Button("取消", role: .cancel) {}
+        }
+    }
+
+    private func request(_ action: WorkAction) {
+        if appState.hasUnsavedChanges && appState.editingWorkID != work.id {
+            pendingAction = action
+            showDiscardConfirmation = true
+        } else {
+            perform(action)
+        }
+    }
+
+    private func perform(_ action: WorkAction) {
+        appState.reopen(work)
+        appState.selectedTab = .editor
+        if case .export = action {
+            Task { @MainActor in
+                await Task.yield()
+                appState.showExportView = true
+            }
         }
     }
 }

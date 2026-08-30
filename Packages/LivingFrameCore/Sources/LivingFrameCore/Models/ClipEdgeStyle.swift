@@ -49,9 +49,6 @@ public enum ClipEdgeStyle: String, Codable, CaseIterable, Identifiable {
     case glow
     case shadow
     case comic
-    // 旧版本 case 保留用于解码兼容（UI 不展示，统一映射为组合描边）
-    case whiteOutline, blackOutline, goldOutline
-    case outlineSolid, outlineDashed, outlineDotted
 
     public var id: String { rawValue }
 
@@ -62,21 +59,16 @@ public enum ClipEdgeStyle: String, Codable, CaseIterable, Identifiable {
         case .glow: NSLocalizedString("柔光", comment: "Edge style")
         case .shadow: NSLocalizedString("投影", comment: "Edge style")
         case .comic: NSLocalizedString("漫画", comment: "Edge style")
-        default: NSLocalizedString("描边", comment: "Edge style")
         }
     }
 
     /// 是否描边类（跟随组合描边设置）
     public var isOutline: Bool {
         switch self {
-        case .outline, .whiteOutline, .blackOutline, .goldOutline,
-             .outlineSolid, .outlineDashed, .outlineDotted:
-            return true
-        default:
-            return false
+        case .outline: return true
+        case .none, .glow, .shadow, .comic: return false
         }
     }
 
-    /// UI 展示的风格（不含旧兼容 case）
     public static let displayCases: [ClipEdgeStyle] = [.none, .outline, .comic]
 }

@@ -206,8 +206,6 @@ enum LF {
     static var timelineEffect: Color { palette.timelineEffect }
     static var timelineAudio: Color { palette.timelineAudio }
 
-    /// 兼容尚未迁移的旧调用点。新代码请按用途使用语义 token。
-    static var accent: Color { palette.accent }
     static var gold: Color { actionPrimary }
 
     static var accentGradient: LinearGradient {
@@ -235,7 +233,7 @@ struct MagicButtonStyle: ButtonStyle {
                     .fill(prominent ? AnyShapeStyle(LF.accentGradient) : AnyShapeStyle(Color.clear))
                     .overlay {
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(LF.accent.opacity(prominent ? 0 : 0.5), lineWidth: 1)
+                            .stroke(LF.header.opacity(prominent ? 0 : 0.5), lineWidth: 1)
                     }
             }
             .opacity(configuration.isPressed ? 0.7 : 1)
@@ -370,7 +368,7 @@ struct TimelineInactiveRangeMask: UIViewRepresentable {
     }
 }
 
-/// Cloud Glass 背景修饰：内容层使用系统背景，导航栏和 Tab 栏使用系统材质。
+/// Cloud Glass 背景修饰：内容层使用主题背景，导航栏和 Tab 栏保持同一套颜色。
 struct MagicBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
@@ -388,7 +386,10 @@ struct MagicBackground: ViewModifier {
                     .ignoresSafeArea()
                 }
             }
-            .toolbarBackground(.regularMaterial, for: .navigationBar, .tabBar)
+            // 仅使用 regularMaterial 时，列表/ScrollView 滚动后系统会自动把导航栏
+            // 提升成灰色不透明材质。显式指定主题背景，确保各 Tab 滚动前后视觉一致。
+            .toolbarBackground(.visible, for: .navigationBar, .tabBar)
+            .toolbarBackground(LF.background.opacity(0.96), for: .navigationBar, .tabBar)
     }
 }
 
@@ -397,7 +398,7 @@ extension View {
         modifier(MagicBackground())
     }
 
-    /// 使用主题第三色渲染导航栏标题，同时保留系统的返回按钮和导航行为。
+    /// 使用统一的高对比度主文字色渲染导航栏标题，同时保留系统的返回按钮和导航行为。
     func lfNavigationTitle(_ title: String) -> some View {
         navigationTitle(title)
             .lfNavigationTitleToolbar(Text(title))
@@ -414,7 +415,7 @@ extension View {
             ToolbarItem(placement: .principal) {
                 title
                     .font(.headline.weight(.semibold))
-                    .foregroundStyle(LF.header)
+                    .foregroundStyle(LF.textPrimary)
                     .accessibilityAddTraits(.isHeader)
             }
         }

@@ -137,9 +137,10 @@ struct SettingsView: View {
                 }
                 .padding()
             }
-            .navigationTitle("设置")
-            .magicBackground()
+            .lfNavigationTitle("设置")
+            .navigationBarTitleDisplayMode(.inline)
         }
+        .magicBackground()
     }
 
     private func themeCard(_ theme: AppTheme) -> some View {

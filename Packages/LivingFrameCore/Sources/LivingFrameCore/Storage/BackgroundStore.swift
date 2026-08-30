@@ -127,7 +127,7 @@ public struct BackgroundStore {
         rootURL.appendingPathComponent(name).appendingPathExtension("jpg")
     }
 
-    /// 新导入媒体保留自身扩展名；旧工程仍可通过 `fileURL` 找到 .jpg 文件。
+    /// 新导入媒体保留自身扩展名。
     public func mediaURL(named name: String) -> URL {
         let extensions = ["mov", "mp4", "m4v", "gif", "png", "heic", "heif", "jpeg", "jpg"]
         for fileExtension in extensions {

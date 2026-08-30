@@ -17,23 +17,20 @@ struct LibraryView: View {
     @State private var newFolderName = ""
     /// 当前拖拽悬停的目标文件夹（用于高亮）
     @State private var dragOverFolderID: String?
-    /// 单击素材弹出的操作菜单（nil = 不显示）
+    /// 单击素材打开的详情页（nil = 不显示）
     @State private var menuClip: SegmentedClip?
-    /// 帧编辑（素材库"编辑帧"）
-    @State private var frameEditClip: SegmentedClip?
-    /// 提取方式选择弹窗（静态贴纸 / 动态贴纸）
-    @State private var pendingExtract: PendingExtract?
+    /// 素材库按用途分组，背景媒体不再和抠图人物混在同一个网格里。
+    @State private var libraryMode: LibraryMode = .people
+    /// 下载完成后统一配置本批素材的提取方式。
+    @State private var pendingPreparation: PendingPreparation?
     /// 超过 1 分钟的视频，在动态提取前选择源视频范围。
     @State private var pendingVideoRange: PendingVideoRange?
     @State private var importTask: Task<Void, Never>?
 
-    /// 待用户确认提取方式的素材（视频/Live 均先询问）
-    private struct PendingExtract: Identifiable {
+    /// 已经下载完成、等待用户统一配置的导入批次。
+    private struct PendingPreparation: Identifiable {
         let id = UUID()
-        let name: String
-        let source: ImportSource
-        /// true = 动态贴纸，false = 静态贴纸，nil = 取消
-        var resume: (Bool?) -> Void
+        let sources: [ImportSource]
     }
 
     private struct PendingVideoRange: Identifiable {
@@ -45,20 +42,39 @@ struct LibraryView: View {
         var resume: (ClosedRange<TimeInterval>?) -> Void
     }
 
+    private enum LibraryMode: String, CaseIterable, Identifiable, Hashable {
+        case people
+        case backgrounds
+
+        var id: String { rawValue }
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .people: "人物素材"
+            case .backgrounds: "背景库"
+            }
+        }
+    }
+
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                pickerSection
-                foldersSection
-                if isDownloading {
-                    downloadCard
+                libraryModePicker
+                if libraryMode == .people {
+                    pickerSection
+                    foldersSection
+                    if isDownloading {
+                        downloadCard
+                    }
+                    if appState.isSegmenting {
+                        segmentationCard
+                    }
+                    clipsSection
+                } else {
+                    backgroundLibrarySection
                 }
-                if appState.isSegmenting {
-                    segmentationCard
-                }
-                clipsSection
             }
             .padding(.horizontal)
             .navigationTitle("素材库")
@@ -89,25 +105,18 @@ struct LibraryView: View {
             } message: {
                 Text(loadErrorMessage ?? "")
             }
-            .confirmationDialog(
-                "提取方式",
-                isPresented: Binding(
-                    get: { pendingExtract != nil },
-                    set: { if !$0 { pendingExtract = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("动态贴纸（跟随画面变化）") {
-                    pendingExtract?.resume(true)
-                }
-                Button("静态贴纸（单张）") {
-                    pendingExtract?.resume(false)
-                }
-                Button("取消", role: .cancel) {
-                    pendingExtract?.resume(nil)
-                }
-            } message: {
-                Text(pendingExtract.map { "「\($0.name)」是视频/Live Photo，选择提取方式" } ?? "")
+            .sheet(item: $pendingPreparation) { preparation in
+                ImportPreparationView(
+                    sources: preparation.sources,
+                    onCancel: {
+                        pendingPreparation = nil
+                    },
+                    onConfirm: { kinds in
+                        pendingPreparation = nil
+                        startExtraction(sources: preparation.sources, kinds: kinds)
+                    }
+                )
+                .environmentObject(appState)
             }
             .sheet(item: $pendingVideoRange, onDismiss: {
                 pendingVideoRange?.resume(nil)
@@ -128,23 +137,64 @@ struct LibraryView: View {
                     }
                 )
             }
-            .overlay {
-                if let clip = menuClip {
-                    ClipMenuView(
-                        clip: clip,
-                        onClose: { menuClip = nil },
-                        onEditFrames: { frameEditClip = clip }
-                    )
-                    .environmentObject(appState)
-                    .transition(.opacity)
-                }
-            }
-            .sheet(item: $frameEditClip) { clip in
-                FrameGridView(clipID: clip.id)
-                    .environmentObject(appState)
+            .sheet(item: $menuClip) { clip in
+                ClipMenuView(
+                    clip: clip,
+                    onClose: { menuClip = nil }
+                )
+                .environmentObject(appState)
             }
             .onDisappear {
                 importTask?.cancel()
+            }
+        }
+    }
+
+    private var libraryModePicker: some View {
+        Picker("素材类型", selection: $libraryMode) {
+            ForEach(LibraryMode.allCases) { mode in
+                Text(mode.title).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .tint(LF.actionPrimary)
+    }
+
+    private var backgroundLibrarySection: some View {
+        SectionCard(title: "背景库") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .foregroundStyle(LF.actionPrimary)
+                    Text("在编辑页打开“画布 → 图片背景”添加背景")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+
+                if appState.backgroundMedia.isEmpty {
+                    EmptyStateView(
+                        icon: "photo.on.rectangle.angled",
+                        title: "还没有背景",
+                        message: "在编辑页的“画布”中添加图片或动态照片"
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(appState.backgroundMedia) { item in
+                                BackgroundAssetCell(
+                                    item: item,
+                                    isSelected: false,
+                                    onSelect: {},
+                                    showsSelection: false
+                                )
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                    .frame(maxHeight: 520)
+                }
             }
         }
     }
@@ -178,80 +228,214 @@ struct LibraryView: View {
             pickerItems.removeAll()
             importTask = Task { @MainActor in
                 // 1. 并行下载所有选中素材（iCloud 下载可多线程加速）
-                var sources: [ImportSource] = []
+                var downloadedSources: [(index: Int, source: ImportSource)] = []
                 isDownloading = true
                 downloadProgress = nil
-                await withTaskGroup(of: ImportSource?.self) { group in
-                    for item in items {
-                        group.addTask { await load(item) }
+                await withTaskGroup(of: (Int, ImportSource?).self) { group in
+                    for (index, item) in items.enumerated() {
+                        group.addTask { (index, await load(item)) }
                     }
-                    for await source in group {
-                        if let source { sources.append(source) }
+                    for await result in group {
+                        if let source = result.1 {
+                            downloadedSources.append((result.0, source))
+                        }
                     }
                 }
                 // 下载完成即隐藏下载进度条（抠图阶段由「正在抠图」卡片展示）
                 isDownloading = false
-                // 2. 串行提取：视频/Live 先询问 静态/动态，照片直接静态
-                for source in sources {
-                    guard !Task.isCancelled else { break }
-                    switch source {
-                    case .video(let url, let name, let stillOrientation, let stillURL):
-                        // 视频类（Live Photo / 普通视频）：询问提取方式
-                        let kind: ExtractKind? = await withCheckedContinuation { continuation in
-                            pendingExtract = PendingExtract(name: name, source: source) { extractLive in
-                                guard let extractLive else {
-                                    continuation.resume(returning: nil)
-                                    return
-                                }
-                                continuation.resume(returning: extractLive ? .live : .static)
-                            }
-                        }
-                        pendingExtract = nil
-                        guard let kind else { continue }
-                        switch kind {
-                        case .live:
-                            let duration = await videoDuration(of: url)
-                            if duration > 60 {
-                                let range: ClosedRange<TimeInterval>? = await withCheckedContinuation { continuation in
-                                    pendingVideoRange = PendingVideoRange(
-                                        url: url,
-                                        name: name,
-                                        duration: duration,
-                                        maxDuration: appState.maxExtractionDuration
-                                    ) { selectedRange in
-                                        continuation.resume(returning: selectedRange)
-                                    }
-                                }
-                                guard let range else { continue }
-                                await appState.startSegmenting(
-                                    url: url,
-                                    name: name,
-                                    sourceStartTime: range.lowerBound,
-                                    sourceEndTime: range.upperBound,
-                                    stillOrientation: stillOrientation
-                                )
-                            } else {
-                                await appState.startSegmenting(
-                                    url: url, name: name, stillOrientation: stillOrientation
-                                )
-                            }
-                        case .static:
-                            if let cgImage = await firstFrame(of: url, stillURL: stillURL) {
-                                await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
-                            }
-                        }
-                    case .photo(let cgImage, let name):
-                        await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
-                    }
+                let sources = downloadedSources
+                    .sorted { $0.index < $1.index }
+                    .map(\.source)
+                guard !Task.isCancelled, !sources.isEmpty else { return }
+
+                // 2. 先一次性配置本批素材，避免多选时连续弹出多个确认框。
+                if sources.contains(where: isVideoSource) {
+                    pendingPreparation = PendingPreparation(sources: sources)
+                } else {
+                    startExtraction(
+                        sources: sources,
+                        kinds: sources.map { _ in .static }
+                    )
                 }
-                isDownloading = false
             }
         }
     }
 
-    private enum ExtractKind {
+    private enum ExtractKind: Hashable {
         case live
         case `static`
+    }
+
+    /// 批量导入的统一配置页：用户可以在一个页面里决定每个视频类素材的提取方式。
+    private struct ImportPreparationView: View {
+        let sources: [ImportSource]
+        let onCancel: () -> Void
+        let onConfirm: ([ExtractKind]) -> Void
+
+        @Environment(\.dismiss) private var dismiss
+        @State private var kinds: [ExtractKind]
+
+        init(
+            sources: [ImportSource],
+            onCancel: @escaping () -> Void,
+            onConfirm: @escaping ([ExtractKind]) -> Void
+        ) {
+            self.sources = sources
+            self.onCancel = onCancel
+            self.onConfirm = onConfirm
+            _kinds = State(
+                initialValue: sources.map { source in
+                    if case .video = source { return .live }
+                    return .static
+                }
+            )
+        }
+
+        var body: some View {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("先设置这批素材，再开始抠图")
+                                .font(.headline)
+                                .foregroundStyle(LF.header)
+                            Text("动态贴纸会保留画面变化；静态贴纸只提取一张画面，适合做固定元素。")
+                                .font(.subheadline)
+                                .foregroundStyle(LF.textSecondary)
+                        }
+
+                        VStack(spacing: 10) {
+                            ForEach(Array(sources.enumerated()), id: \.offset) { index, source in
+                                sourceRow(source, index: index)
+                            }
+                        }
+                    }
+                    .padding(20)
+                }
+                .lfNavigationTitle("准备提取")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("取消") {
+                            onCancel()
+                            dismiss()
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("开始提取") {
+                            onConfirm(kinds)
+                            dismiss()
+                        }
+                        .fontWeight(.semibold)
+                    }
+                }
+                .magicBackground()
+            }
+            .presentationDetents([.medium, .large])
+        }
+
+        @ViewBuilder
+        private func sourceRow(_ source: ImportSource, index: Int) -> some View {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Image(systemName: isVideo(source) ? "film" : "photo")
+                        .font(.title3)
+                        .foregroundStyle(LF.gold)
+                        .frame(width: 36, height: 36)
+                        .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(sourceName(source))
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Text(isVideo(source) ? "视频 / Live Photo" : "照片")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                if isVideo(source) {
+                    Picker("提取方式", selection: $kinds[index]) {
+                        Text("动态贴纸").tag(ExtractKind.live)
+                        Text("静态贴纸").tag(ExtractKind.static)
+                    }
+                    .pickerStyle(.segmented)
+                } else {
+                    Label("固定画面 · 自动按静态素材处理", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+            }
+            .padding(14)
+            .background(LF.surface2.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+
+        private func isVideo(_ source: ImportSource) -> Bool {
+            if case .video = source { return true }
+            return false
+        }
+
+        private func sourceName(_ source: ImportSource) -> String {
+            switch source {
+            case .video(_, let name, _, _), .photo(_, let name):
+                return name
+            }
+        }
+    }
+
+    private func isVideoSource(_ source: ImportSource) -> Bool {
+        if case .video = source { return true }
+        return false
+    }
+
+    /// 按用户在准备页选择的方式串行提取，保留原有的方向、首帧和长视频范围逻辑。
+    private func startExtraction(sources: [ImportSource], kinds: [ExtractKind]) {
+        importTask?.cancel()
+        importTask = Task { @MainActor in
+            for (source, kind) in zip(sources, kinds) {
+                guard !Task.isCancelled else { break }
+                switch source {
+                case .video(let url, let name, let stillOrientation, let stillURL):
+                    switch kind {
+                    case .live:
+                        let duration = await videoDuration(of: url)
+                        if duration > 60 {
+                            let range: ClosedRange<TimeInterval>? = await withCheckedContinuation { continuation in
+                                pendingVideoRange = PendingVideoRange(
+                                    url: url,
+                                    name: name,
+                                    duration: duration,
+                                    maxDuration: appState.maxExtractionDuration
+                                ) { selectedRange in
+                                    continuation.resume(returning: selectedRange)
+                                }
+                            }
+                            guard let range else { continue }
+                            await appState.startSegmenting(
+                                url: url,
+                                name: name,
+                                sourceStartTime: range.lowerBound,
+                                sourceEndTime: range.upperBound,
+                                stillOrientation: stillOrientation
+                            )
+                        } else {
+                            await appState.startSegmenting(
+                                url: url,
+                                name: name,
+                                stillOrientation: stillOrientation
+                            )
+                        }
+                    case .static:
+                        if let cgImage = await firstFrame(of: url, stillURL: stillURL) {
+                            await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
+                        }
+                    }
+                case .photo(let cgImage, let name):
+                    await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
+                }
+            }
+        }
     }
 
     private func videoDuration(of url: URL) async -> TimeInterval {
@@ -692,12 +876,11 @@ struct LibraryView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(appState.clips) { clip in
-                            // 单击 = 弹出操作菜单；拖拽从右上角把手开始。
+                            // 单击 = 打开素材详情；拖拽从右上角把手开始。
                             ZStack(alignment: .topTrailing) {
-                                ClipCell(clip: clip)
-                                    .onTapGesture {
-                                        menuClip = clip
-                                    }
+                                ClipCell(clip: clip) {
+                                    menuClip = clip
+                                }
 
                                 // 拖入文件夹改为从明确的拖拽把手开始，避免播放按钮
                                 // 在素材缩略图尚未完成解码时被系统拖拽手势抢走。
@@ -825,7 +1008,7 @@ private struct VideoRangePickerView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(LF.accent)
+                    .tint(LF.header)
                 }
                 .padding(20)
             }
@@ -1228,7 +1411,13 @@ private struct VideoRangeTimeline: View {
 
 struct ClipCell: View {
     let clip: SegmentedClip
+    let onOpen: (() -> Void)?
     @State private var isPlaying = false
+
+    init(clip: SegmentedClip, onOpen: (() -> Void)? = nil) {
+        self.clip = clip
+        self.onOpen = onOpen
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -1238,7 +1427,14 @@ struct ClipCell: View {
             .frame(height: 120)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(alignment: .bottomLeading) {
-                ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
+                if clip.frameCount > 1 {
+                    // 这里只负责显示，真正的点击分流由预览区的 SpatialTapGesture 处理，
+                    // 避免外层详情点击手势再次抢走播放入口。
+                    ClipPreviewBadgeIcon(
+                        systemName: isPlaying ? "pause.fill" : "play.fill"
+                    )
+                    .frame(width: 44, height: 44)
+                }
             }
             .overlay(alignment: .bottomTrailing) {
                 if clip.audioURL != nil {
@@ -1264,6 +1460,17 @@ struct ClipCell: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(LF.surface2, lineWidth: 1)
             }
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .highPriorityGesture(
+                SpatialTapGesture().onEnded { value in
+                    let playArea = CGRect(x: 0, y: 56, width: 72, height: 64)
+                    if clip.frameCount > 1, playArea.contains(value.location) {
+                        isPlaying.toggle()
+                    } else {
+                        onOpen?()
+                    }
+                }
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(clip.name)
@@ -1275,158 +1482,200 @@ struct ClipCell: View {
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onOpen?()
+            }
         }
     }
 }
 
-/// 素材操作菜单浮层：单击素材时弹出（边缘样式 / 描边参数 / 移动到文件夹 / 删除）
-/// 文件夹列表：素材已在的文件夹显示减号（点击移出），不在的显示加号（点击加入）
+/// 素材详情页的预览按源素材比例展示，不复用素材库的固定高度卡片。
+private struct ClipDetailPreview: View {
+    let clip: SegmentedClip
+    @Binding var isPlaying: Bool
+
+    /// 详情页只负责检查原始素材，不在这里模拟编辑器/导出的边缘效果。
+    private var unstyledClip: SegmentedClip {
+        var value = clip
+        value.edgeStyle = .none
+        return value
+    }
+
+    private var aspectRatio: CGFloat {
+        CGFloat(max(clip.width, 1)) / CGFloat(max(clip.height, 1))
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            AnimatedClipPreview(clip: unstyledClip, maxPixelSize: 640, isPlaying: $isPlaying)
+                .aspectRatio(aspectRatio, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            if clip.frameCount > 1 {
+                ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
+                    .padding(4)
+            }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(LF.surface2, lineWidth: 1)
+        }
+    }
+}
+
+/// 素材详情页：单击素材后进入，集中处理原始预览、帧编辑和文件夹管理。
 struct ClipMenuView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     let clip: SegmentedClip
     let onClose: () -> Void
-    /// 编辑帧入口回调（素材库弹出帧编辑页）
-    var onEditFrames: () -> Void = {}
+    @State private var showFrameEditor = false
+    @State private var isPlayingPreview = false
+    @State private var showDeleteConfirmation = false
+    @State private var showReferencedWorkAlert = false
+    @State private var referencedWorkNames: [String] = []
 
-    private let colors: [(name: String, hex: String)] = [
-        ("白", "FFFFFF"), ("黑", "000000"), ("灰", "B8BDC9"), ("金", "E8C05C"),
-        ("红", "E74C3C"), ("粉", "FF9FF3"), ("蓝", "54A0FF"),
-        ("绿", "1DD1A1"), ("紫", "8B7CF6")
-    ]
+    /// 读取最新值，避免详情页打开后修改样式仍显示旧状态。
+    private var currentClip: SegmentedClip {
+        appState.clips.first(where: { $0.id == clip.id }) ?? clip
+    }
 
-    /// 素材是否已在指定文件夹
+    /// 素材当前是否已在指定文件夹。
     private func isFiled(_ folderID: String) -> Bool {
         appState.folders.contains { $0.id == folderID && $0.clipIDs.contains(clip.id) }
     }
 
+    private func close() {
+        onClose()
+        dismiss()
+    }
+
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.3)
-                .ignoresSafeArea()
-                .onTapGesture { onClose() }
-            VStack(spacing: 12) {
-                // 边缘样式
-                HStack(spacing: 8) {
-                    ForEach(ClipEdgeStyle.displayCases) { style in
-                        Button {
-                            appState.setClipEdgeStyle(clip.id, style)
-                            onClose()
-                        } label: {
-                            Text(style.title)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(clip.edgeStyle == style ? LF.gold : LF.surface2, in: Capsule())
-                                .foregroundStyle(clip.edgeStyle == style ? .black : LF.textPrimary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                // 描边参数（粗细 / 颜色）
-                if clip.edgeStyle.isOutline {
-                    HStack(spacing: 8) {
-                        ForEach(EdgeThickness.allCases) { thickness in
-                            Button {
-                                appState.setClipEdgeThickness(clip.id, thickness)
-                            } label: {
-                                Text(thickness.title)
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(clip.edgeThickness == thickness ? LF.gold : LF.surface2, in: Capsule())
-                                    .foregroundStyle(clip.edgeThickness == thickness ? .black : LF.textPrimary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    HStack(spacing: 10) {
-                        ForEach(colors, id: \.hex) { color in
-                            Button {
-                                appState.setClipEdgeColor(clip.id, color.hex)
-                            } label: {
-                                Circle()
-                                    .fill(Color(hex: color.hex))
-                                    .frame(width: 24, height: 24)
-                                    .overlay {
-                                        Circle().stroke(
-                                            clip.edgeColorHex.uppercased() == color.hex ? LF.gold : LF.surface2,
-                                            lineWidth: clip.edgeColorHex.uppercased() == color.hex ? 2.5 : 1
-                                        )
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                Divider()
-                // 编辑帧（取舍帧序）
-                Button {
-                    onEditFrames()
-                    onClose()
-                } label: {
-                    HStack {
-                        Image(systemName: "square.grid.3x3")
-                            .foregroundStyle(LF.gold)
-                        Text("编辑帧")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(LF.textPrimary)
-                        Spacer()
-                        Text("取舍帧，加速播放")
-                            .font(.caption2)
-                            .foregroundStyle(LF.textSecondary)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(LF.surface2.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-                Divider()
-                // 移动到文件夹（加减号切换）
-                VStack(spacing: 6) {
-                    ForEach(appState.folders) { folder in
-                        let filed = isFiled(folder.id)
-                        Button {
-                            appState.moveClip(clip.id, toFolder: filed ? nil : folder.id)
-                        } label: {
-                            HStack {
-                                Image(systemName: "folder.fill")
-                                    .foregroundStyle(LF.folderIcon)
-                                Text(folder.name)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text("\(folder.clipIDs.count)")
-                                    .font(.caption.monospacedDigit())
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    ClipDetailPreview(clip: currentClip, isPlaying: $isPlayingPreview)
+
+                    Button {
+                        showFrameEditor = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "square.grid.3x3")
+                                .foregroundStyle(LF.gold)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("编辑帧")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("取舍帧，让动态素材更轻、更顺")
+                                    .font(.caption)
                                     .foregroundStyle(LF.textSecondary)
-                                Image(systemName: filed ? "minus.circle.fill" : "plus.circle.fill")
-                                    .font(.title3)
-                                .foregroundStyle(filed ? LF.destructive : LF.gold)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(LF.surface2.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(LF.textSecondary)
                         }
-                        .buttonStyle(.plain)
+                        .padding(14)
+                        .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
                     }
+                    .buttonStyle(.plain)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("文件夹")
+                                .font(.headline)
+                                .foregroundStyle(LF.header)
+                            Spacer()
+                            Text("选择后会移动到该文件夹")
+                                .font(.caption2)
+                                .foregroundStyle(LF.textSecondary)
+                        }
+
+                        if appState.folders.isEmpty {
+                            Text("还没有文件夹，可先在素材库创建")
+                                .font(.subheadline)
+                                .foregroundStyle(LF.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(14)
+                                .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
+                        } else {
+                            ForEach(appState.folders) { folder in
+                                let filed = isFiled(folder.id)
+                                Button {
+                                    appState.moveClip(clip.id, toFolder: filed ? nil : folder.id)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: filed ? "folder.fill" : "folder")
+                                            .foregroundStyle(LF.folderIcon)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(folder.name)
+                                                .lineLimit(1)
+                                            Text("\(folder.clipIDs.count) 个素材")
+                                                .font(.caption2)
+                                                .foregroundStyle(LF.textSecondary)
+                                        }
+                                        Spacer()
+                                        Image(systemName: filed ? "checkmark.circle.fill" : "circle")
+                                            .font(.title3)
+                                            .foregroundStyle(filed ? LF.gold : LF.textSecondary)
+                                    }
+                                    .padding(14)
+                                    .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    Button {
+                        requestDeleteClip()
+                    } label: {
+                        Label("删除素材", systemImage: "trash")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.top, 2)
                 }
-                Divider()
-                Button(role: .destructive) {
-                    appState.deleteClip(clip.id)
-                    onClose()
-                } label: {
-                    Label("删除素材", systemImage: "trash")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
+                .padding(20)
+            }
+            .lfNavigationTitle("素材详情")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { close() }
                 }
-                .buttonStyle(.bordered)
             }
-            .padding(16)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(LF.surface2, lineWidth: 1)
+            .magicBackground()
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .sheet(isPresented: $showFrameEditor) {
+            FrameGridView(clipID: clip.id)
+                .environmentObject(appState)
+        }
+        .confirmationDialog("删除素材？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+            Button("删除", role: .destructive) {
+                appState.deleteClip(clip.id)
+                close()
             }
-            .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
-            .padding(.horizontal, 36)
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("删除后无法恢复，但不会影响素材库中的其他内容。")
+        }
+        .alert("素材正在使用中", isPresented: $showReferencedWorkAlert) {
+            Button("知道了", role: .cancel) {}
+        } message: {
+            Text("请先从以下作品中移除它，再删除素材：\n\(referencedWorkNames.joined(separator: "、"))")
+        }
+    }
+
+    private func requestDeleteClip() {
+        referencedWorkNames = appState.worksReferencingClip(clip.id).map(\.name)
+        if referencedWorkNames.isEmpty {
+            showDeleteConfirmation = true
+        } else {
+            showReferencedWorkAlert = true
         }
     }
 }

@@ -34,13 +34,11 @@ enum PaperEffectRenderer {
         size: CGSize,
         profile: TornEdgeProfile,
         borderInset: CGFloat,
-        effectWidth: CanvasEdgeWidth = .standard,
         foldedCorner: PaperFoldCorner? = nil
     ) -> CGImage? {
         let safeInset = max(borderInset, 1)
-        let resolvedWidth = effectWidth.canonical
         let cornerKey = foldedCorner?.rawValue ?? "none"
-        let key = "paper-overlay-\(Int(size.width.rounded()))x\(Int(size.height.rounded()))-\(profile.rawValue)-\(Int((safeInset * 100).rounded()))-\(resolvedWidth.rawValue)-\(cornerKey)" as NSString
+        let key = "paper-overlay-\(Int(size.width.rounded()))x\(Int(size.height.rounded()))-\(profile.rawValue)-\(Int((safeInset * 100).rounded()))-\(cornerKey)" as NSString
         if let cached = overlayCache.object(forKey: key) { return cached }
 
         if let assetImage = PaperAssetRenderer.borderOverlay(
@@ -56,8 +54,7 @@ enum PaperEffectRenderer {
         if let nativeImage = NativePaperEffectRenderer.canvasOverlay(
             size: size,
             profile: profile,
-            inset: safeInset,
-            effectWidth: resolvedWidth
+            inset: safeInset
         ) {
             let image = foldedCorner.map { corner in
                 ProceduralRasterRenderer.makeImage(size: size) { context, rect in
@@ -67,8 +64,7 @@ enum PaperEffectRenderer {
                         in: context,
                         path: openingPath,
                         inset: safeInset,
-                        profile: profile,
-                        effectWidth: resolvedWidth
+                        profile: profile
                     )
                     drawFoldedCorner(in: context, canvas: rect, inset: safeInset, corner: corner)
                 }
@@ -79,8 +75,7 @@ enum PaperEffectRenderer {
                     in: context,
                     path: openingPath,
                     inset: safeInset,
-                    profile: profile,
-                    effectWidth: resolvedWidth
+                    profile: profile
                 )
             }
             if let image { overlayCache.setObject(image, forKey: key, cost: imageCost(image)) }
@@ -106,8 +101,7 @@ enum PaperEffectRenderer {
                 in: context,
                 path: openingPath,
                 inset: safeInset,
-                profile: profile,
-                effectWidth: resolvedWidth
+                profile: profile
             )
 
             if let foldedCorner {
@@ -159,11 +153,9 @@ enum PaperEffectRenderer {
         in context: CGContext,
         path: CGPath,
         inset: CGFloat,
-        profile: TornEdgeProfile,
-        effectWidth: CanvasEdgeWidth
+        profile: TornEdgeProfile
     ) {
         let isLayered = profile == .layered
-        let effectScale = effectWidth.effectRenderScale
         context.saveGState()
         // 阴影只允许进入照片开口，纸面一侧保持干净。
         context.addPath(path)
@@ -179,20 +171,20 @@ enum PaperEffectRenderer {
             blue: 0.08,
             alpha: isLayered ? 0.30 : 0.20
         ))
-        context.setLineWidth(max(inset * 0.050 * effectScale, 2.5))
+        context.setLineWidth(max(inset * 0.050, 2.5))
         context.strokePath()
 
         context.setShadow(
             offset: CGSize(
-                width: inset * 0.018 * effectScale,
-                height: -inset * 0.022 * effectScale
+                width: inset * 0.018,
+                height: -inset * 0.022
             ),
-            blur: inset * (isLayered ? 0.20 : 0.14) * effectScale,
+            blur: inset * (isLayered ? 0.20 : 0.14),
             color: CGColor(gray: 0.03, alpha: isLayered ? 0.48 : 0.30)
         )
         context.addPath(path)
         context.setStrokeColor(CGColor(red: 0.28, green: 0.25, blue: 0.20, alpha: 0.10))
-        context.setLineWidth(max(inset * 0.055 * effectScale, 2.5))
+        context.setLineWidth(max(inset * 0.055, 2.5))
         context.strokePath()
         context.restoreGState()
 
@@ -201,14 +193,14 @@ enum PaperEffectRenderer {
         context.setLineJoin(.round)
         context.setLineCap(.round)
         context.setStrokeColor(CGColor(red: 1, green: 0.995, blue: 0.96, alpha: 0.86))
-        context.setLineWidth(max(inset * 0.025 * effectScale, 1.25))
+        context.setLineWidth(max(inset * 0.025, 1.25))
         context.strokePath()
 
         if profile != .soft {
             context.addPath(path)
             context.setLineDash(phase: 0.4, lengths: [0.8, 2.2, 1.4, 3.1])
             context.setStrokeColor(CGColor(red: 0.50, green: 0.44, blue: 0.34, alpha: 0.40))
-            context.setLineWidth(max(inset * 0.010 * effectScale, 0.8))
+            context.setLineWidth(max(inset * 0.010, 0.8))
             context.strokePath()
             context.setLineDash(phase: 0, lengths: [])
         }

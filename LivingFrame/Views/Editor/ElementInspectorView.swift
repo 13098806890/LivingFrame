@@ -498,7 +498,7 @@ struct ElementInspectorView: View {
                         ),
                         in: 1...4
                     )
-                    .tint(LF.accent)
+                    .tint(LF.header)
                     Text(String(format: "%.1f×", settings.cropScale))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(LF.textSecondary)
@@ -514,14 +514,14 @@ struct ElementInspectorView: View {
                         appState.setBackgroundCropOffset(element.id, .zero)
                     }
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(LF.accent)
+                    .foregroundStyle(LF.header)
                     Button {
                         appState.rotateBackground90(element.id)
                     } label: {
                         Label("旋转90°", systemImage: "rotate.right")
                     }
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(LF.accent)
+                    .foregroundStyle(LF.header)
                 }
             }
         }
@@ -595,7 +595,6 @@ struct ElementInspectorView: View {
         if let region = item as? BackgroundRegion { return region.title }
         if let edge = item as? BackgroundEdgeStyle { return edge.title }
         if let edge = item as? CanvasEdgeStyle { return edge.title }
-        if let width = item as? CanvasEdgeWidth { return width.title }
         if let splitCount = item as? BackgroundSplitCount { return splitCount.title }
         return ""
     }
@@ -637,52 +636,10 @@ struct ElementInspectorView: View {
             Text("文字")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
-            TextField("输入文字", text: Binding(
-                get: { text.text },
-                set: { newValue in
-                    appState.updateText(text.id) { $0.text = newValue }
-                }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .font(.subheadline)
-            HStack(spacing: 12) {
-                slider(
-                    label: "字号",
-                    value: Binding(
-                        get: { Double(text.fontSize) },
-                        set: { value in
-                            appState.updateText(text.id) { $0.fontSize = CGFloat(value) }
-                        }
-                    ),
-                    range: 24...300,
-                    text: "\(Int(text.fontSize))"
-                )
-            }
-            HStack(spacing: 10) {
-                ForEach(textColors, id: \.hex) { color in
-                    Button {
-                        appState.updateText(text.id) { $0.colorHex = color.hex }
-                    } label: {
-                        Circle()
-                            .fill(Color(hex: color.hex))
-                            .frame(width: 24, height: 24)
-                            .overlay {
-                                Circle().stroke(
-                                    text.colorHex.uppercased() == color.hex ? LF.gold : LF.surface2,
-                                    lineWidth: text.colorHex.uppercased() == color.hex ? 2.5 : 1
-                                )
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            TextFormattingControls(text: text)
+                .environmentObject(appState)
         }
     }
-
-    private let textColors: [(name: String, hex: String)] = [
-        ("白", "FFFFFF"), ("黑", "000000"), ("金", "E8C05C"), ("红", "E74C3C"),
-        ("粉", "FF9FF3"), ("蓝", "54A0FF"), ("绿", "1DD1A1"), ("紫", "8B7CF6")
-    ]
 
     // MARK: - 元素背景图案
 
@@ -1057,7 +1014,7 @@ private struct BackgroundFillPreview: View {
                         .clipShape(BackgroundPartitionShape(settings: settings))
 
                     BackgroundDividerShape(settings: settings)
-                        .stroke(LF.accent.opacity(0.85), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                        .stroke(LF.header.opacity(0.85), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
 
                     if settings.splitCount != .full {
                         ForEach(0..<dividerCount, id: \.self) { index in
@@ -1069,14 +1026,14 @@ private struct BackgroundFillPreview: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 4)
-                            .background(LF.accent, in: Capsule())
+                        .background(LF.header, in: Capsule())
                             .position(selectedLabelPosition(in: rect))
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay {
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(LF.accent.opacity(0.45), lineWidth: 1)
+                        .stroke(LF.header.opacity(0.45), lineWidth: 1)
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { location in
@@ -1143,7 +1100,7 @@ private struct BackgroundFillPreview: View {
         let point = BackgroundPartitionShape.dividerCenter(for: index, settings: settings, in: rect)
         let isActive = activeDividerIndex == index
         Circle()
-            .fill(isActive ? LF.gold : LF.accent)
+            .fill(isActive ? LF.gold : LF.header)
             .frame(width: isActive ? 22 : 18, height: isActive ? 22 : 18)
             .overlay {
                 Image(systemName: "arrow.left.and.right")

@@ -142,16 +142,6 @@ public final class FrameCache {
             guard let data = try? Data(contentsOf: manifestURL(for: id)),
                   let manifest = try? JSONDecoder().decode(ClipManifest.self, from: data) else { continue }
             let audioURL = manifest.audioFilename.map { dir.appendingPathComponent($0) }
-            // 旧版本边缘样式迁移：blackOutline/goldOutline 映射颜色，outlineDashed/Dotted 映射线型
-            let edgeStyle = manifest.edgeStyle ?? .none
-            var edgeColor = manifest.edgeColorHex ?? "FFFFFF"
-            var edgeLine = manifest.edgeLineStyle ?? .solid
-            switch edgeStyle {
-            case .blackOutline: edgeColor = "000000"
-            case .goldOutline: edgeColor = "E8C05C"
-            case .outlineDashed, .outlineDotted: edgeLine = .dashed
-            default: break
-            }
             loaded[id] = SegmentedClip(
                 id: manifest.id,
                 name: manifest.name,
@@ -161,13 +151,13 @@ public final class FrameCache {
                 height: manifest.height,
                 folderURL: dir,
                 audioURL: audioURL,
-                edgeStyle: edgeStyle,
-                edgeLineStyle: edgeLine,
-                edgeThickness: manifest.edgeThickness ?? .medium,
-                edgeColorHex: edgeColor,
-                stickerStyle: manifest.stickerStyle ?? .none,
-                playbackSpeed: manifest.playbackSpeed ?? 1,
-                excludedFrames: manifest.excludedFrames.map { Set($0) } ?? []
+                edgeStyle: manifest.edgeStyle,
+                edgeLineStyle: manifest.edgeLineStyle,
+                edgeThickness: manifest.edgeThickness,
+                edgeColorHex: manifest.edgeColorHex,
+                stickerStyle: manifest.stickerStyle,
+                playbackSpeed: manifest.playbackSpeed,
+                excludedFrames: Set(manifest.excludedFrames)
             )
         }
         registryLock.lock()
@@ -275,7 +265,7 @@ public final class FrameCache {
             edgeColorHex: clip.edgeColorHex,
             stickerStyle: clip.stickerStyle,
             playbackSpeed: clip.playbackSpeed,
-            excludedFrames: clip.excludedFrames.isEmpty ? nil : Array(clip.excludedFrames).sorted()
+            excludedFrames: Array(clip.excludedFrames).sorted()
         )
         guard let data = try? JSONEncoder().encode(manifest) else { return }
         try? data.write(to: manifestURL(for: clip.id))
@@ -292,15 +282,105 @@ private struct ClipManifest: Codable {
     let height: Int
     let createdAt: Date
     let audioFilename: String?
-    let edgeStyle: ClipEdgeStyle?
-    let edgeLineStyle: EdgeLineStyle?
-    let edgeThickness: EdgeThickness?
-    let edgeColorHex: String?
-    let stickerStyle: StickerStyle?
-    /// 播放倍速（nil = 1x）
-    let playbackSpeed: Double?
-    /// 排除的帧索引（nil = 无排除）
-    let excludedFrames: [Int]?
+    let edgeStyle: ClipEdgeStyle
+    let edgeLineStyle: EdgeLineStyle
+    let edgeThickness: EdgeThickness
+    let edgeColorHex: String
+    let stickerStyle: StickerStyle
+    let playbackSpeed: Double
+    let excludedFrames: [Int]
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, fps, frameCount, width, height, createdAt, audioFilename
+        case edgeStyle, edgeLineStyle, edgeThickness, edgeColorHex, stickerStyle
+        case playbackSpeed, excludedFrames
+    }
+
+    init(
+        id: String,
+        name: String,
+        fps: Double,
+        frameCount: Int,
+        width: Int,
+        height: Int,
+        createdAt: Date,
+        audioFilename: String?,
+        edgeStyle: ClipEdgeStyle,
+        edgeLineStyle: EdgeLineStyle,
+        edgeThickness: EdgeThickness,
+        edgeColorHex: String,
+        stickerStyle: StickerStyle,
+        playbackSpeed: Double,
+        excludedFrames: [Int]
+    ) {
+        self.id = id
+        self.name = name
+        self.fps = fps
+        self.frameCount = frameCount
+        self.width = width
+        self.height = height
+        self.createdAt = createdAt
+        self.audioFilename = audioFilename
+        self.edgeStyle = edgeStyle
+        self.edgeLineStyle = edgeLineStyle
+        self.edgeThickness = edgeThickness
+        self.edgeColorHex = edgeColorHex
+        self.stickerStyle = stickerStyle
+        self.playbackSpeed = playbackSpeed
+        self.excludedFrames = excludedFrames
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        fps = try values.decode(Double.self, forKey: .fps)
+        frameCount = try values.decode(Int.self, forKey: .frameCount)
+        width = try values.decode(Int.self, forKey: .width)
+        height = try values.decode(Int.self, forKey: .height)
+        // 创建时间只影响排序；旧的本地目录没有该字段时仍可恢复素材。
+        createdAt = try values.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        audioFilename = try values.decodeIfPresent(String.self, forKey: .audioFilename)
+
+        let encodedEdgeStyle = try values.decodeIfPresent(String.self, forKey: .edgeStyle)
+        var recoveredEdgeStyle = ClipEdgeStyle(rawValue: encodedEdgeStyle ?? "") ?? .none
+        var recoveredLineStyle = EdgeLineStyle.solid
+        var recoveredColor = try values.decodeIfPresent(String.self, forKey: .edgeColorHex) ?? "FFFFFF"
+
+        // 仅用于恢复本机已经存在的旧清单；不会把这些旧值重新写回公共模型。
+        switch encodedEdgeStyle {
+        case "whiteOutline":
+            recoveredEdgeStyle = .outline
+            recoveredColor = "FFFFFF"
+        case "blackOutline":
+            recoveredEdgeStyle = .outline
+            recoveredColor = "000000"
+        case "goldOutline":
+            recoveredEdgeStyle = .outline
+            recoveredColor = "E8C05C"
+        case "outlineSolid":
+            recoveredEdgeStyle = .outline
+            recoveredLineStyle = .solid
+        case "outlineDashed", "outlineDotted":
+            recoveredEdgeStyle = .outline
+            recoveredLineStyle = .dashed
+        default:
+            break
+        }
+        if let rawLineStyle = try values.decodeIfPresent(String.self, forKey: .edgeLineStyle),
+           let lineStyle = EdgeLineStyle(rawValue: rawLineStyle) {
+            recoveredLineStyle = lineStyle
+        }
+        edgeStyle = recoveredEdgeStyle
+        edgeLineStyle = recoveredLineStyle
+        let rawThickness = try values.decodeIfPresent(String.self, forKey: .edgeThickness) ?? ""
+        edgeThickness = EdgeThickness(rawValue: rawThickness) ?? .medium
+        edgeColorHex = recoveredColor
+        let rawStickerStyle = try values.decodeIfPresent(String.self, forKey: .stickerStyle) ?? ""
+        stickerStyle = StickerStyle(rawValue: rawStickerStyle) ?? .none
+        playbackSpeed = try values.decodeIfPresent(Double.self, forKey: .playbackSpeed) ?? 1
+        excludedFrames = try values.decodeIfPresent([Int].self, forKey: .excludedFrames) ?? []
+    }
 }
 
 /// 将 CGImage 写入 PNG 文件（跨平台，不依赖 UIKit）

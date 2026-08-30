@@ -22,12 +22,7 @@ struct ExportView: View {
                 }
 
                 SectionCard(title: "导出格式") {
-                    Picker("格式", selection: $format) {
-                        ForEach(ExportFormat.allCases) { format in
-                            Text(format.title).tag(format)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                    exportFormatPicker
 
                     Text(format.subtitle)
                         .font(.caption)
@@ -116,9 +111,17 @@ struct ExportView: View {
                     Button {
                         export()
                     } label: {
-                        Label("导出", systemImage: "square.and.arrow.up")
+                        Label("导出", systemImage: "arrow.up")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LF.actionPrimary)
+                            .padding(.horizontal, 12)
+                            .frame(height: 34)
+                            .background(.regularMaterial, in: Capsule())
+                            .overlay {
+                                Capsule()
+                                    .stroke(LF.brandTint.opacity(0.48), lineWidth: 1)
+                            }
                     }
-                    .buttonStyle(MagicButtonStyle())
                     .disabled(appState.isExporting)
                 }
             }
@@ -131,6 +134,48 @@ struct ExportView: View {
         .onDisappear {
             exportTask?.cancel()
         }
+    }
+
+    /// 两列胶囊比四等分 segmented picker 更适合较长的中文格式名称，
+    /// 也能保持每个选项的完整可读性。
+    private var exportFormatPicker: some View {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+            spacing: 8
+        ) {
+            ForEach(ExportFormat.allCases) { option in
+                Button {
+                    format = option
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: format == option ? "checkmark.circle.fill" : "circle")
+                            .font(.subheadline)
+                        Text(option.title)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.78)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .foregroundStyle(format == option ? LF.selectionText : LF.textPrimary)
+                    .padding(.horizontal, 11)
+                    .frame(minHeight: 46, alignment: .leading)
+                    .background(
+                        format == option ? LF.selectionFill : LF.surface2,
+                        in: Capsule()
+                    )
+                    .overlay {
+                        Capsule()
+                            .stroke(
+                                format == option ? LF.selectionStroke : LF.brandTint.opacity(0.2),
+                                lineWidth: format == option ? 1.8 : 1
+                            )
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private func summaryCard(_ comp: Composition) -> some View {

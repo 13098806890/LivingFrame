@@ -9,6 +9,8 @@ import UniformTypeIdentifiers
 struct AssetPickerView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    /// 从“画布 > 背景”进入时只展示背景，不再让用户在人物素材和背景之间二次判断。
+    private let backgroundOnly: Bool
     @State private var selectedIDs: Set<String> = []
     @State private var selectedBackgroundIDs: Set<String> = []
     @State private var pickerMode: PickerMode = .person
@@ -23,6 +25,11 @@ struct AssetPickerView: View {
     @State private var folderID: String?
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 10)]
+
+    init(backgroundOnly: Bool = false) {
+        self.backgroundOnly = backgroundOnly
+        _pickerMode = State(initialValue: backgroundOnly ? .background : .person)
+    }
 
     private enum PickerMode: String, CaseIterable, Identifiable {
         case person
@@ -62,20 +69,22 @@ struct AssetPickerView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
-                    modePicker
-                    if pickerMode == .person {
+                    if !backgroundOnly {
+                        modePicker
+                    }
+                    if !backgroundOnly && pickerMode == .person {
                         folderBar
                         if let folder = currentFolder, !appState.childFolders(of: folder.id).isEmpty {
                             childFolderBar(folder)
                         }
                         clipsGrid
-                    } else {
+                    } else if backgroundOnly || pickerMode == .background {
                         backgroundGrid
                     }
                 }
                 .padding()
             }
-            .lfNavigationTitle(currentFolder?.name ?? "选择素材")
+            .lfNavigationTitle(backgroundOnly ? "添加背景" : (currentFolder?.name ?? "选择素材"))
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {
@@ -274,21 +283,22 @@ struct AssetPickerView: View {
         VStack(alignment: .leading, spacing: 12) {
             PhotosPicker(
                 selection: $photoItems,
-                maxSelectionCount: 20,
+                // 单次相册操作最多选择 5 张；之后仍可继续分批添加，作品总数不设上限。
+                maxSelectionCount: 5,
                 matching: .any(of: [.images, .livePhotos]),
                 preferredItemEncoding: .current
             ) {
                 HStack(spacing: 12) {
                     Image(systemName: "photo.on.rectangle.angled")
                         .font(.title2)
-                        .foregroundStyle(LF.accent)
+                        .foregroundStyle(LF.header)
                         .frame(width: 42, height: 42)
                         .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 3) {
                         Text("从相册选择")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(LF.textPrimary)
-                        Text("可多选图片或动态照片")
+                        Text("一次最多选择 5 张，可继续分批添加")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                     }
@@ -301,7 +311,7 @@ struct AssetPickerView: View {
                 .background(LF.surface2, in: RoundedRectangle(cornerRadius: 14))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14)
-                        .stroke(LF.accent.opacity(0.35), lineWidth: 1)
+                        .stroke(LF.header.opacity(0.35), lineWidth: 1)
                 }
             }
             .buttonStyle(.plain)
@@ -320,10 +330,10 @@ struct AssetPickerView: View {
                     }
                     if let backgroundImportProgress {
                         ProgressView(value: backgroundImportProgress)
-                            .tint(LF.accent)
+                        .tint(LF.header)
                     } else {
                         ProgressView()
-                            .tint(LF.accent)
+                        .tint(LF.header)
                     }
                 }
                 .padding(12)
@@ -342,7 +352,7 @@ struct AssetPickerView: View {
                                 .padding(.horizontal, 13)
                                 .padding(.vertical, 8)
                                 .background(
-                                    backgroundFilter == filter ? LF.accent : LF.surface2,
+                                    backgroundFilter == filter ? LF.header : LF.surface2,
                                     in: Capsule()
                                 )
                                 .foregroundStyle(backgroundFilter == filter ? .white : LF.textPrimary)
@@ -496,10 +506,12 @@ private enum BackgroundPhotoImporter {
     }
 }
 
-private struct BackgroundAssetCell: View {
+/// 背景媒体缩略图：选择器与素材库共用，保证预览和动态标识一致。
+struct BackgroundAssetCell: View {
     let item: BackgroundMediaItem
     let isSelected: Bool
     let onSelect: () -> Void
+    var showsSelection = true
 
     var body: some View {
         VStack(spacing: 4) {
@@ -526,14 +538,20 @@ private struct BackgroundAssetCell: View {
                         .padding(4)
                 }
 
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? LF.accent : .white.opacity(0.88))
-                    .shadow(color: .black.opacity(0.35), radius: 1)
-                    .padding(6)
+                if showsSelection {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(isSelected ? LF.header : .white.opacity(0.88))
+                        .shadow(color: .black.opacity(0.35), radius: 1)
+                        .padding(6)
+                }
             }
             .contentShape(Rectangle())
-            .onTapGesture(perform: onSelect)
+            .onTapGesture {
+                if showsSelection {
+                    onSelect()
+                }
+            }
 
             HStack(spacing: 4) {
                 Text(item.isAnimated ? "动态图片" : "静态图片")
@@ -583,9 +601,7 @@ struct AnimatedClipPreview: View {
         ZStack {
             CheckerboardView()
             if let decodedFrame {
-                Image(decorative: decodedFrame, scale: 1)
-                    .resizable()
-                    .scaledToFill()
+                ClipPreviewImage(image: decodedFrame, clip: clip)
             } else {
                 ClipThumbnailView(clip: clip, index: previewFrame, maxPixelSize: maxPixelSize)
             }
@@ -677,17 +693,23 @@ struct ClipPreviewPlayButton: View {
 
     var body: some View {
         if clip.frameCount > 1 {
-            Button {
-                isPlaying.toggle()
-            } label: {
-                ClipPreviewBadgeIcon(
-                    systemName: isPlaying ? "pause.fill" : "play.fill"
-                )
-            }
-            .buttonStyle(.plain)
+            // 预览卡片外层可能还有“打开详情/选择素材”的 tap gesture。
+            // 使用高优先级手势让左下角播放入口始终优先响应，不再被外层点击抢走。
+            ClipPreviewBadgeIcon(
+                systemName: isPlaying ? "pause.fill" : "play.fill"
+            )
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
+            .highPriorityGesture(
+                TapGesture().onEnded {
+                    isPlaying.toggle()
+                }
+            )
             .zIndex(2)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction {
+                isPlaying.toggle()
+            }
             .accessibilityLabel(isPlaying ? "暂停动态素材" : "播放动态素材")
         }
     }
@@ -730,9 +752,7 @@ struct ClipThumbnailView: View {
     var body: some View {
         Group {
             if let image {
-                Image(decorative: image, scale: 1)
-                    .resizable()
-                    .scaledToFill()
+                ClipPreviewImage(image: image, clip: clip)
             } else {
                 Color.black.opacity(0.25)
             }
@@ -749,5 +769,55 @@ struct ClipThumbnailView: View {
             guard !Task.isCancelled else { return }
             image = loaded
         }
+    }
+}
+
+/// 在素材库和编辑页缩略图中复现已保存的边缘效果。
+/// 导出仍使用 CompositionRenderer 的完整轮廓算法；这里使用透明帧的柔化轮廓，
+/// 让用户在浏览素材时能一眼看出素材是否已经设置过描边/漫画/柔光/投影。
+struct ClipPreviewImage: View {
+    let image: CGImage
+    let clip: SegmentedClip
+
+    private var outlineColor: Color {
+        Color(hex: clip.edgeColorHex)
+    }
+
+    private var haloRadius: CGFloat {
+        max(3, min(clip.edgeThickness.radius / 6, 16))
+    }
+
+    var body: some View {
+        ZStack {
+            switch clip.edgeStyle {
+            case .outline:
+                halo(color: outlineColor, radius: haloRadius, opacity: 0.95)
+            case .comic:
+                halo(color: .black, radius: haloRadius + 4, opacity: 0.95)
+                halo(color: .white, radius: max(2, haloRadius - 1), opacity: 0.95)
+            case .glow:
+                halo(color: LF.gold, radius: haloRadius + 4, opacity: 0.72)
+            case .shadow:
+                halo(color: .black, radius: max(2, haloRadius - 1), opacity: 0.55)
+                    .offset(x: 3, y: 4)
+            case .none:
+                EmptyView()
+            }
+
+            baseImage
+        }
+    }
+
+    private var baseImage: some View {
+        Image(decorative: image, scale: 1)
+            .resizable()
+            .scaledToFill()
+    }
+
+    private func halo(color: Color, radius: CGFloat, opacity: Double) -> some View {
+        baseImage
+            .colorMultiply(color)
+            .blur(radius: radius)
+            .opacity(opacity)
     }
 }

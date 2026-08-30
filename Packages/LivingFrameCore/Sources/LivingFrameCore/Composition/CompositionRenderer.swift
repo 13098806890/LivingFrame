@@ -79,37 +79,13 @@ public struct CompositionRenderer {
     ) -> CIImage? {
         let canvas = composition.canvasRect
         let baseImage = backgroundCIImage(composition.background, in: canvas)
-        // 同一 zIndex 的旧工程也要保持插入顺序，避免 Swift 的不稳定排序导致
+        // 同一 zIndex 保持插入顺序，避免 Swift 的不稳定排序导致
         // 重叠元素在播放时层级随机变化，表现为某个元素像是“消失”。
-        var orderedElements = composition.elements.enumerated().sorted { lhs, rhs in
+        let orderedElements = composition.elements.enumerated().sorted { lhs, rhs in
             if lhs.element.zIndex != rhs.element.zIndex {
                 return lhs.element.zIndex < rhs.element.zIndex
             }
             return lhs.offset < rhs.offset
-        }
-
-        // 兼容旧工程：旧版本只保存全局边框样式，没有 canvasEdge 元素。
-        // 在渲染时临时补一个置顶元素；编辑器打开工程时会把它持久化到时间轴。
-        if composition.canvasEdgeStyle != .none,
-           !orderedElements.contains(where: { element in
-               if case .canvasEdge = element.element.kind { return true }
-               return false
-           }) {
-            let zIndex = (orderedElements.map { $0.element.zIndex }.max() ?? -1) + 1
-            let edge = CompositionElement(
-                kind: .canvasEdge,
-                name: NSLocalizedString("画布边框", comment: "Canvas edge timeline element"),
-                zIndex: zIndex,
-                startTime: 0,
-                endTime: .greatestFiniteMagnitude
-            )
-            orderedElements.append((offset: composition.elements.count, element: edge))
-            orderedElements.sort { lhs, rhs in
-                if lhs.element.zIndex != rhs.element.zIndex {
-                    return lhs.element.zIndex < rhs.element.zIndex
-                }
-                return lhs.offset < rhs.offset
-            }
         }
 
         // 画布边框存在时，底图和普通元素都必须限制在相纸开口内；否则透明
@@ -136,8 +112,7 @@ public struct CompositionRenderer {
             if case .canvasEdge = element.kind {
                 if let canvasEdge = BackgroundMaskRenderer.canvasEdgeImage(
                     size: canvas.size,
-                    style: composition.canvasEdgeStyle,
-                    width: composition.canvasEdgeWidth
+                    style: composition.canvasEdgeStyle
                 ) {
                     image = CIImage(cgImage: canvasEdge)
                         .cropped(to: canvas)
@@ -476,21 +451,7 @@ public struct CompositionRenderer {
 
     /// 文字元素渲染：CoreText 排版（自动换行）→ 透明底 CGContext 绘制 → CIImage
     private func textImage(_ text: TextElement, maxWidth: CGFloat) -> CIImage? {
-        let font = CTFontCreateWithName((text.fontName ?? "HelveticaNeue-Bold") as CFString, text.fontSize, nil)
-        let components = text.colorHex.hexComponents()
-        let color = CGColor(red: components.r, green: components.g, blue: components.b, alpha: 1)
-        let attributed = NSAttributedString(string: text.text, attributes: [
-            NSAttributedString.Key(kCTFontAttributeName as String): font,
-            NSAttributedString.Key(kCTForegroundColorAttributeName as String): color
-        ])
-        let framesetter = CTFramesetterCreateWithAttributedString(attributed)
-        let size = CTFramesetterSuggestFrameSizeWithConstraints(
-            framesetter,
-            CFRange(),
-            nil,
-            CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
-            nil
-        )
+        let size = TextLayout.measuredSize(for: text, maxWidth: maxWidth)
         let width = max(Int(ceil(size.width)), 1)
         let height = max(Int(ceil(size.height)), 1)
         guard let ctx = CGContext(
@@ -499,13 +460,13 @@ public struct CompositionRenderer {
             space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
-        // CoreText 默认 y-up，翻转绘制为像素坐标（与 CGImage 一致）
         ctx.textMatrix = .identity
-        ctx.translateBy(x: 0, y: CGFloat(height))
-        ctx.scaleBy(x: 1, y: -1)
-        let path = CGPath(rect: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)), transform: nil)
-        let frame = CTFramesetterCreateFrame(framesetter, CFRange(), path, nil)
-        CTFrameDraw(frame, ctx)
+        TextLayout.draw(
+            text,
+            in: ctx,
+            maxWidth: maxWidth,
+            size: CGSize(width: width, height: height)
+        )
         guard let cg = ctx.makeImage() else { return nil }
         return CIImage(cgImage: cg)
     }
@@ -583,8 +544,7 @@ public struct CompositionRenderer {
         switch style {
         case .none:
             return image
-        case .outline, .whiteOutline, .blackOutline, .goldOutline,
-             .outlineSolid, .outlineDashed, .outlineDotted:
+        case .outline:
             // 组合描边：样式 × 粗细 × 颜色
             return outlined(image, radius: thickness.radius / s, color: color, lineStyle: lineStyle, fixScale: s, clipID: clipID, frameIndex: frameIndex)
         case .glow:
@@ -787,23 +747,6 @@ private enum LinePattern {
         }
         ctx.strokePath()
         return ctx.makeImage()
-    }
-}
-
-extension String {
-    /// hex 颜色字符串拆分为 RGB 分量；非法输入回退为中灰
-    fileprivate func hexComponents() -> (r: CGFloat, g: CGFloat, b: CGFloat) {
-        var hex = trimmingCharacters(in: .whitespacesAndNewlines)
-        hex = hex.replacingOccurrences(of: "#", with: "")
-        var value: UInt64 = 0
-        guard hex.count == 6, Scanner(string: hex).scanHexInt64(&value) else {
-            return (0.5, 0.5, 0.5)
-        }
-        return (
-            CGFloat((value >> 16) & 0xFF) / 255,
-            CGFloat((value >> 8) & 0xFF) / 255,
-            CGFloat(value & 0xFF) / 255
-        )
     }
 }
 

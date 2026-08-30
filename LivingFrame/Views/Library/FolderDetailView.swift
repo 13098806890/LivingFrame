@@ -12,10 +12,8 @@ struct FolderDetailView: View {
     @State private var showAddClips = false
     @State private var showNewFolderAlert = false
     @State private var newFolderName = ""
-    /// 单击素材弹出的操作菜单
+    /// 单击素材打开的详情页
     @State private var menuClip: SegmentedClip?
-    /// 帧编辑（"编辑帧"入口）
-    @State private var frameEditClip: SegmentedClip?
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
@@ -80,20 +78,12 @@ struct FolderDetailView: View {
             FolderAddClipsView(folder: folder)
                 .environmentObject(appState)
         }
-        .overlay {
-            if let clip = menuClip {
-                ClipMenuView(
-                    clip: clip,
-                    onClose: { menuClip = nil },
-                    onEditFrames: { frameEditClip = clip }
-                )
-                .environmentObject(appState)
-                .transition(.opacity)
-            }
-        }
-        .sheet(item: $frameEditClip) { clip in
-            FrameGridView(clipID: clip.id)
-                .environmentObject(appState)
+        .sheet(item: $menuClip) { clip in
+            ClipMenuView(
+                clip: clip,
+                onClose: { menuClip = nil }
+            )
+            .environmentObject(appState)
         }
     }
 
@@ -167,13 +157,23 @@ struct FolderDetailView: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(folderClips) { clip in
-                        ClipCell(clip: clip)
-                            .onTapGesture {
-                                menuClip = clip
-                            }
-                            .draggable(clip.id) {
-                                ClipDragPreview(clip: clip)
-                            }
+                        ZStack(alignment: .topTrailing) {
+                            ClipCell(clip: clip)
+                                .onTapGesture {
+                                    menuClip = clip
+                                }
+
+                            Image(systemName: "line.3.horizontal")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(LF.textSecondary)
+                                .frame(width: 30, height: 30)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .contentShape(Circle())
+                                .draggable(clip.id) {
+                                    ClipDragPreview(clip: clip)
+                                }
+                                .accessibilityLabel("拖动到文件夹")
+                        }
                     }
                 }
             }

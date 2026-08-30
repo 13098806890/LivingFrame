@@ -74,8 +74,7 @@ enum PaperAssetRenderer {
     static func internalDividerOverlay(
         size: CGSize,
         profile: TornEdgeProfile,
-        segments: [(CGPoint, CGPoint)],
-        effectWidth: CanvasEdgeWidth
+        segments: [(CGPoint, CGPoint)]
     ) -> CGImage? {
         guard !segments.isEmpty,
               let authoredFrame = image(named: assetName(for: profile)) else { return nil }
@@ -97,7 +96,7 @@ enum PaperAssetRenderer {
 
         let shortSide = min(size.width, size.height)
         let thickness = min(
-            max(shortSide * 0.030 * effectWidth.effectRenderScale, 10),
+            max(shortSide * 0.030, 10),
             30
         )
 

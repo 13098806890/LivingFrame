@@ -35,11 +35,10 @@ enum BackgroundMaskRenderer {
         canvasContentMaskCache.removeAllObjects()
         canvasOpeningMaskCache.removeAllObjects()
     }
-    /// 画布级手撕相纸叠层。照片开口固定，`width` 只改变纤维、撕裂层和阴影。
+    /// 画布级手撕相纸叠层。
     static func canvasEdgeImage(
         size: CGSize,
-        style: CanvasEdgeStyle,
-        width: CanvasEdgeWidth
+        style: CanvasEdgeStyle
     ) -> CGImage? {
         guard let parameters = canvasEdgeParameters(size: size, style: style) else {
             return nil
@@ -48,7 +47,6 @@ enum BackgroundMaskRenderer {
             size: size,
             profile: parameters.profile,
             borderInset: parameters.inset,
-            effectWidth: width,
             foldedCorner: parameters.corner
         )
     }
@@ -141,9 +139,6 @@ enum BackgroundMaskRenderer {
         case .tornSoft:
             profile = .soft
             baseInset = min(max(shortSide * 0.040, 22), 60)
-        case .tornFibrous:
-            profile = .fibrous
-            baseInset = min(max(shortSide * 0.050, 30), 80)
         case .tornLayered:
             profile = .layered
             baseInset = min(max(shortSide * 0.058, 34), 92)
@@ -217,8 +212,7 @@ enum BackgroundMaskRenderer {
            let authoredImage = PaperAssetRenderer.internalDividerOverlay(
                size: size,
                profile: profile,
-               segments: internalDividerSegments(in: CGRect(origin: .zero, size: size), settings: settings),
-               effectWidth: settings.edgeWidth
+               segments: internalDividerSegments(in: CGRect(origin: .zero, size: size), settings: settings)
            ) {
             edgeCache.setObject(authoredImage, forKey: key, cost: imageCost(authoredImage))
             return authoredImage
@@ -227,8 +221,7 @@ enum BackgroundMaskRenderer {
            let nativeImage = NativePaperEffectRenderer.tornEdgeOverlay(
                size: size,
                path: path(for: settings, in: CGRect(origin: .zero, size: size)),
-               profile: profile,
-               width: settings.edgeWidth
+               profile: profile
            ) {
             edgeCache.setObject(nativeImage, forKey: key, cost: imageCost(nativeImage))
             return nativeImage
@@ -664,7 +657,7 @@ enum BackgroundMaskRenderer {
         let angle = Int(settings.dividerAngle.isFinite ? settings.dividerAngle.rounded() : 90)
         let primaryOffset = Int((settings.primaryDividerOffset * 1_000).rounded())
         let secondaryOffset = Int((settings.secondaryDividerOffset * 1_000).rounded())
-        return "\(prefix)-\(Int(size.width.rounded()))x\(Int(size.height.rounded()))-\(settings.region.rawValue)-\(settings.edgeStyle.rawValue)-\(settings.edgeWidth.canonical.rawValue)-\(settings.splitCount.rawValue)-\(angle)-\(primaryOffset)-\(secondaryOffset)-\(settings.selectedPartition)" as NSString
+        return "\(prefix)-\(Int(size.width.rounded()))x\(Int(size.height.rounded()))-\(settings.region.rawValue)-\(settings.edgeStyle.rawValue)-\(settings.splitCount.rawValue)-\(angle)-\(primaryOffset)-\(secondaryOffset)-\(settings.selectedPartition)" as NSString
     }
 
     private static func addHorizontalBoundary(
@@ -713,7 +706,7 @@ enum BackgroundMaskRenderer {
 
     private static func tornProfile(for edgeStyle: BackgroundEdgeStyle) -> TornEdgeProfile? {
         switch edgeStyle {
-        case .torn: return .soft
+        case .tornSoft: return .soft
         case .tornFibrous: return .fibrous
         case .tornLayered: return .layered
         case .flat, .comic, .zigzag: return nil

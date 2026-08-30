@@ -38,7 +38,13 @@ final class AppState: ObservableObject {
             if undoStack.count > 50 { undoStack.removeFirst() }
             redoStack.removeAll()
         }
+        didSet {
+            hasUnsavedChanges = composition != cleanCompositionSnapshot
+        }
     }
+    /// 当前工程是否有尚未保存到“作品”的修改。
+    @Published private(set) var hasUnsavedChanges = false
+    private var cleanCompositionSnapshot: Composition?
     private var undoStack: [Composition] = []
     private var redoStack: [Composition] = []
     private var isApplyingHistory = false
@@ -227,6 +233,15 @@ final class AppState: ObservableObject {
         LogStore.log("launch: device=\(machine) system=\(UIDevice.current.systemName) \(UIDevice.current.systemVersion) app=\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "?")")
     }
 
+    private func markProjectClean() {
+        cleanCompositionSnapshot = composition
+        hasUnsavedChanges = false
+    }
+
+    private func markProjectDirty() {
+        hasUnsavedChanges = true
+    }
+
     // MARK: - 素材
 
     func startSegmenting(
@@ -331,6 +346,8 @@ final class AppState: ObservableObject {
 
     /// 删除单个素材（磁盘 + 文件夹 + 工程引用）
     func deleteClip(_ clipID: String) {
+        // 已保存作品只保存素材 ID；删除仍被作品引用的素材会让旧作品无法完整恢复。
+        guard worksReferencingClip(clipID).isEmpty else { return }
         clips.removeAll { $0.id == clipID }
         FrameCache.shared.removeClip(id: clipID)
         removeClipReferences(from: clipID)
@@ -353,6 +370,18 @@ final class AppState: ObservableObject {
         if let selectedAudioID,
            composition?.audioClips.contains(where: { $0.id == selectedAudioID }) != true {
             self.selectedAudioID = nil
+        }
+    }
+
+    /// 返回仍引用指定素材的已保存作品，用于删除前的轻量保护提示。
+    func worksReferencingClip(_ clipID: String) -> [WorkItem] {
+        works.filter { work in
+            work.composition.elements.contains { element in
+                if case .clip(let referencedID) = element.kind {
+                    return referencedID == clipID
+                }
+                return false
+            }
         }
     }
 
@@ -445,6 +474,7 @@ final class AppState: ObservableObject {
         clips[index].edgeStyle = style
         FrameCache.shared.register(clips[index])
         clipStyleVersion += 1
+        markProjectDirty()
     }
 
     /// 设置描边颜色（持久化到 clip.json）
@@ -453,6 +483,7 @@ final class AppState: ObservableObject {
         clips[index].edgeColorHex = hex
         FrameCache.shared.register(clips[index])
         clipStyleVersion += 1
+        markProjectDirty()
     }
 
     /// 设置描边粗细（持久化到 clip.json）
@@ -461,6 +492,7 @@ final class AppState: ObservableObject {
         clips[index].edgeThickness = thickness
         FrameCache.shared.register(clips[index])
         clipStyleVersion += 1
+        markProjectDirty()
     }
 
     /// 设置素材贴纸风格（持久化到 clip.json）
@@ -469,6 +501,7 @@ final class AppState: ObservableObject {
         clips[index].stickerStyle = style
         FrameCache.shared.register(clips[index])
         clipStyleVersion += 1
+        markProjectDirty()
     }
 
     /// 设置素材的排除帧（帧选择功能），持久化到 clip.json
@@ -477,6 +510,7 @@ final class AppState: ObservableObject {
         clips[index].excludedFrames = excluded
         FrameCache.shared.register(clips[index])
         clipStyleVersion += 1
+        markProjectDirty()
     }
 
     /// 设置整张画布的排除帧；与单个素材的帧选择相互独立。
@@ -635,10 +669,6 @@ final class AppState: ObservableObject {
         updateBackgroundElement(elementID) { $0.edgeStyle = style }
     }
 
-    func setBackgroundEdgeWidth(_ elementID: UUID, _ width: CanvasEdgeWidth) {
-        updateBackgroundElement(elementID) { $0.edgeWidth = width }
-    }
-
     /// 设置画布边框外观，并确保它在时间轴中拥有一个可排序图层。
     func setCanvasEdgeStyle(_ style: CanvasEdgeStyle) {
         guard var comp = composition else { return }
@@ -662,17 +692,7 @@ final class AppState: ObservableObject {
         clipStyleVersion &+= 1
     }
 
-    func setCanvasEdgeWidth(_ width: CanvasEdgeWidth) {
-        guard var comp = composition else { return }
-        comp.canvasEdgeWidth = width
-        if comp.canvasEdgeStyle != .none {
-            ensureCanvasEdgeElement(in: &comp)
-        }
-        composition = comp
-        clipStyleVersion &+= 1
-    }
-
-    /// 把全局画布边框样式同步为一个可排序的时间轴元素。样式/宽度仍保存在
+    /// 把全局画布边框样式同步为一个可排序的时间轴元素。样式仍保存在
     /// Composition 上，元素只负责“它在第几层”和“覆盖整个工程时长”。
     @discardableResult
     private func ensureCanvasEdgeElement(in comp: inout Composition) -> UUID {
@@ -762,6 +782,7 @@ final class AppState: ObservableObject {
     }
 
     private func defaultComposition() -> Composition? {
+        pause()
         let comp = Composition(
             name: NSLocalizedString("我的动态照片", comment: "Default composition name"),
             canvas: CanvasSpec(width: 1920, height: 1080),
@@ -769,7 +790,11 @@ final class AppState: ObservableObject {
             fps: 30
         )
         editingWorkID = nil
+        undoStack.removeAll()
+        redoStack.removeAll()
         composition = comp
+        currentTime = 0
+        markProjectClean()
         return comp
     }
 
@@ -777,6 +802,7 @@ final class AppState: ObservableObject {
 
     /// 创建指定比例的画布工程
     func createComposition(aspect: CanvasAspect) {
+        pause()
         let size = aspect.canvasSize
         let comp = Composition(
             name: NSLocalizedString("我的动态照片", comment: "Default composition name"),
@@ -785,7 +811,17 @@ final class AppState: ObservableObject {
             fps: 30
         )
         editingWorkID = nil
+        undoStack.removeAll()
+        redoStack.removeAll()
         composition = comp
+        selectedElementIDs.removeAll()
+        lastSelectedElementID = nil
+        selectedAudioID = nil
+        selectedBackground = true
+        isCropping = false
+        currentTime = 0
+        syncAudioPreview()
+        markProjectClean()
     }
 
     /// 确保有一个默认工程（直接添加素材/背景时调用）
@@ -793,14 +829,6 @@ final class AppState: ObservableObject {
         if composition == nil {
             _ = defaultComposition()
         }
-        guard var comp = composition, comp.canvasEdgeStyle != .none else { return }
-        let hasEdge = comp.elements.contains { element in
-            if case .canvasEdge = element.kind { return true }
-            return false
-        }
-        guard !hasEdge else { return }
-        _ = ensureCanvasEdgeElement(in: &comp)
-        composition = comp
     }
 
     /// 修改画布比例：以画布中心为锚点，等比缩放元素的位置和大小，避免纵横轴分别缩放造成偏移
@@ -1088,6 +1116,11 @@ final class AppState: ObservableObject {
         isCropping = false
         currentTime = 0
         syncAudioPreview()
+        // “清空”同时结束当前作品的编辑会话，后续保存应创建新作品，不能覆盖旧作品。
+        editingWorkID = nil
+        undoStack.removeAll()
+        redoStack.removeAll()
+        markProjectClean()
     }
 
     func moveElementZ(_ id: UUID, up: Bool) {
@@ -1232,6 +1265,7 @@ final class AppState: ObservableObject {
             composition = comp
         }
         clipStyleVersion += 1
+        markProjectDirty()
         recomputeDuration()
     }
 
@@ -1532,11 +1566,54 @@ final class AppState: ObservableObject {
             try worksStore.save(work)
             editingWorkID = work.id
             works = worksStore.loadWorks()
+            markProjectClean()
             LogStore.log("work.save done id=\(work.id) updated=\(existing != nil)")
             return true
         } catch {
             LogStore.log("work.save failed: \(error)")
             return false
+        }
+    }
+
+    /// 复制已保存作品，保留工程内容但使用新的作品和工程 ID。
+    @discardableResult
+    func duplicateWork(_ work: WorkItem) -> Bool {
+        var copy = work
+        let now = Date()
+        copy.id = UUID()
+        copy.name = "\(work.name) 副本"
+        copy.createdAt = now
+        copy.updatedAt = now
+        copy.composition.id = UUID()
+        copy.composition.name = copy.name
+        do {
+            try worksStore.save(copy)
+            works = worksStore.loadWorks()
+            return true
+        } catch {
+            LogStore.log("work.duplicate failed: \(error)")
+            return false
+        }
+    }
+
+    /// 重命名作品；当前正在编辑的工程同步更新名称，但仍需用户主动保存内容。
+    func renameWork(_ work: WorkItem, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var renamed = work
+        renamed.name = trimmed
+        renamed.updatedAt = Date()
+        do {
+            try worksStore.save(renamed)
+            works = worksStore.loadWorks()
+            if editingWorkID == work.id, var comp = composition {
+                let wasDirty = hasUnsavedChanges
+                comp.name = trimmed
+                composition = comp
+                if !wasDirty { markProjectClean() }
+            }
+        } catch {
+            LogStore.log("work.rename failed: \(error)")
         }
     }
 
@@ -1549,11 +1626,7 @@ final class AppState: ObservableObject {
     func reopen(_ work: WorkItem) {
         restoreClipSettings(from: work)
         var comp = work.composition
-        migrateClipSourceRanges(in: &comp)
-        if comp.canvasEdgeStyle != .none {
-            _ = ensureCanvasEdgeElement(in: &comp)
-        }
-        // 消毒历史工程中的非法变换值（NaN/Inf 会导致渲染失败）
+        // 消毒工程中的非法变换值（NaN/Inf 会导致渲染失败）
         var sanitized = false
         for index in comp.elements.indices {
             let before = comp.elements[index].transform
@@ -1581,10 +1654,11 @@ final class AppState: ObservableObject {
             FrameCache.shared.register(clip)
         }
         clipStyleVersion += 1
+        markProjectClean()
     }
 
     private func restoreClipSettings(from work: WorkItem) {
-        for settings in work.clipSettings ?? [] {
+        for settings in work.clipSettings {
             guard let index = clips.firstIndex(where: { $0.id == settings.clipID }) else { continue }
             clips[index].edgeStyle = settings.edgeStyle
             clips[index].edgeLineStyle = settings.edgeLineStyle
@@ -1593,36 +1667,6 @@ final class AppState: ObservableObject {
             clips[index].stickerStyle = settings.stickerStyle
             clips[index].playbackSpeed = settings.playbackSpeed
             clips[index].excludedFrames = settings.excludedFrames
-        }
-    }
-
-    /// 为旧版本工程补齐素材源范围。
-    /// 旧版本只有时间轴 start/end，默认从素材第 0 帧开始播放；保留这个行为，
-    /// 同时把源出点限制到旧工程实际播放的素材时长，避免打开工程后画面突然变化。
-    private func migrateClipSourceRanges(in comp: inout Composition) {
-        for index in comp.elements.indices {
-            guard case .clip(let clipID) = comp.elements[index].kind,
-                  let clip = clips.first(where: { $0.id == clipID }) else { continue }
-
-            let sourceDuration = max(clip.activeDuration, 0.001)
-            let speed = max(clip.playbackSpeed, 0.01)
-            if !comp.elements[index].sourceEndTime.isFinite {
-                let oldTimelineDuration = max(
-                    comp.elements[index].endTime - comp.elements[index].startTime,
-                    1 / max(clip.fps, 1)
-                )
-                comp.elements[index].sourceStartTime = 0
-                comp.elements[index].sourceEndTime = min(sourceDuration, oldTimelineDuration * speed)
-            } else {
-                comp.elements[index].sourceStartTime = min(
-                    max(comp.elements[index].sourceStartTime, 0),
-                    sourceDuration
-                )
-                comp.elements[index].sourceEndTime = min(
-                    max(comp.elements[index].sourceEndTime, comp.elements[index].sourceStartTime),
-                    sourceDuration
-                )
-            }
         }
     }
 

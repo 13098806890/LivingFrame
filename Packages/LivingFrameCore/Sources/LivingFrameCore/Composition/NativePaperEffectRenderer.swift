@@ -20,14 +20,12 @@ enum NativePaperEffectRenderer {
     static func canvasOverlay(
         size: CGSize,
         profile: TornEdgeProfile,
-        inset: CGFloat,
-        effectWidth: CanvasEdgeWidth = .standard
+        inset: CGFloat
     ) -> CGImage? {
         canvasPaperImage(
             size: size,
             profile: profile,
             inset: inset,
-            effectWidth: effectWidth,
             includesOpeningEdge: true
         )
     }
@@ -45,7 +43,6 @@ enum NativePaperEffectRenderer {
             size: size,
             profile: profile,
             inset: inset,
-            effectWidth: .standard,
             includesOpeningEdge: false
         )
     }
@@ -54,7 +51,6 @@ enum NativePaperEffectRenderer {
         size: CGSize,
         profile: TornEdgeProfile,
         inset: CGFloat,
-        effectWidth: CanvasEdgeWidth,
         includesOpeningEdge: Bool
     ) -> CGImage? {
         let rect = CGRect(origin: .zero, size: size)
@@ -85,8 +81,7 @@ enum NativePaperEffectRenderer {
                 mask: openingMask,
                 extent: rect,
                 inset: inset,
-                profile: profile,
-                effectWidth: effectWidth
+                profile: profile
             )
             if let edge { result = sourceOver(edge, over: result) }
         }
@@ -101,8 +96,7 @@ enum NativePaperEffectRenderer {
     static func tornEdgeOverlay(
         size: CGSize,
         path: CGPath,
-        profile: TornEdgeProfile,
-        width: CanvasEdgeWidth = .standard
+        profile: TornEdgeProfile
     ) -> CGImage? {
         let rect = CGRect(origin: .zero, size: size)
         let reference = max(rect.width, rect.height)
@@ -112,7 +106,7 @@ enum NativePaperEffectRenderer {
         case .fibrous: widthRatio = 0.0095
         case .layered: widthRatio = 0.0110
         }
-        let nominalWidth = max(reference * widthRatio * width.effectRenderScale, 2.5)
+        let nominalWidth = max(reference * widthRatio, 2.5)
         guard let mask = displacedMask(
             size: size,
             path: path,
@@ -284,11 +278,9 @@ enum NativePaperEffectRenderer {
         mask: CIImage,
         extent: CGRect,
         inset: CGFloat,
-        profile: TornEdgeProfile,
-        effectWidth: CanvasEdgeWidth
+        profile: TornEdgeProfile
     ) -> CIImage? {
-        let effectScale = effectWidth.effectRenderScale
-        let radius = max(inset * (profile == .layered ? 0.090 : 0.065) * effectScale, 3)
+        let radius = max(inset * (profile == .layered ? 0.090 : 0.065), 3)
         guard let gradient = morphologyGradient(mask, radius: radius) else { return nil }
         let inside = multiply(gradient, by: mask) ?? gradient
         let outside = multiply(gradient, by: invertMask(mask, extent: extent)) ?? gradient
@@ -298,11 +290,11 @@ enum NativePaperEffectRenderer {
         )
         let contactShadow = contact
             .transformed(by: CGAffineTransform(
-                translationX: inset * 0.018 * effectScale,
-                y: -inset * 0.022 * effectScale
+                translationX: inset * 0.018,
+                y: -inset * 0.022
             ))
             .applyingFilter("CIGaussianBlur", parameters: [
-                kCIInputRadiusKey: max(inset * 0.065 * effectScale, 1.5)
+                kCIInputRadiusKey: max(inset * 0.065, 1.5)
             ])
         let underside = colorize(
             outside,
