@@ -163,6 +163,16 @@ public struct DecorationRenderer {
             id: "sticker-doodle-kite", name: "风筝", category: .doodle,
             resourceName: "doodle-kite", resourceExtension: "gif",
             isFrameSequence: false, frameCount: 3
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-cake", name: "蛋糕", category: .doodle,
+            resourceName: "doodle-cake", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 8
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-calendar-clock", name: "日历时钟", category: .doodle,
+            resourceName: "doodle-calendar-clock", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 108
         )
     ]
 
