@@ -163,7 +163,7 @@ struct BackgroundPickerView: View {
                 pickerItems.removeAll()
                 Task {
                     if let data = try? await item.loadTransferable(type: Data.self) {
-                        appState.setBackground(imageData: data)
+                        await appState.setBackground(imageData: data)
                         dismiss()
                     }
                 }

@@ -141,6 +141,9 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .magicBackground()
+        .task {
+            appState.refreshCacheSize()
+        }
     }
 
     private func themeCard(_ theme: AppTheme) -> some View {

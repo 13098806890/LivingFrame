@@ -237,9 +237,23 @@ public struct CompositionRenderer {
             source = nil
         case .background(let backgroundID):
             let settings = element.backgroundSettings ?? BackgroundElementSettings()
+            let sourceDuration = max(
+                BackgroundStore.shared.media(named: backgroundID)?.duration ?? 0.1,
+                0.1
+            )
+            let sourceRange = SourcePlaybackRange(
+                duration: sourceDuration,
+                start: element.sourceStartTime,
+                end: element.sourceEndTime
+            )
+            let elapsed = max(0, time - element.startTime)
+            let sourceTime = sourceRange.sourceTime(
+                at: elapsed,
+                looping: element.endTime - element.startTime > sourceRange.span + 0.001
+            )
             if let frame = BackgroundStore.shared.loadFrame(
                 named: backgroundID,
-                at: max(0, time - element.startTime)
+                at: sourceTime
             ) {
                 source = backgroundImage(
                     frame,
@@ -253,26 +267,31 @@ public struct CompositionRenderer {
             if let clip = FrameCache.shared.clip(id: clipID) {
                 // 素材内时间：从源素材入点起算，再按素材倍速折算播放位置。
                 // 时间轴上的 start/end 只表示当前播放区间，不能再决定素材从第几帧开始。
-                let sourceDuration = clip.activeDuration
-                let sourceStart = min(max(element.sourceStartTime, 0), sourceDuration)
-                let sourceEnd = element.sourceEndTime.isFinite
-                    ? min(max(element.sourceEndTime, sourceStart), sourceDuration)
-                    : sourceDuration
+                let sourceDuration = clip.playbackSourceDuration
+                let sourceRange = SourcePlaybackRange(
+                    duration: sourceDuration,
+                    start: element.sourceStartTime,
+                    end: element.sourceEndTime
+                )
                 let elapsed = max(0, time - element.startTime)
                 let sourceCycleDuration = max(
-                    (sourceEnd - sourceStart) / max(clip.playbackSpeed, 0.01),
+                    sourceRange.span / max(clip.playbackSpeed, 0.01),
                     0.1
                 )
                 let isLooping = element.endTime - element.startTime > sourceCycleDuration + 0.001
                 // 循环素材的第一次播放可以从裁剪后的入点开始，但循环回绕必须回到
                 // 源区间的起点（例如 3,4,5,6,1,2...），不能每轮都从 3 重启。
-                let playbackRangeStart = isLooping ? 0 : sourceStart
-                let playTime = sourceStart + elapsed * clip.playbackSpeed
+                let playbackRangeStart = isLooping ? 0 : sourceRange.start
+                let playTime = sourceRange.sourceTime(
+                    at: elapsed,
+                    playbackRate: clip.playbackSpeed,
+                    looping: isLooping
+                )
                 if let frame = clipFrameImage(
                     clipID: clipID,
                     at: playTime,
                     sourceStart: playbackRangeStart,
-                    sourceEnd: sourceEnd
+                    sourceEnd: sourceRange.end
                 ) {
                 // 预览用缩略图（尺寸 < 素材实际像素）。不把源图放大回全尺寸——
                 // 放大插值会在人物边缘产生半透明残留像素（贴边时形成"阴影线"）。
@@ -327,14 +346,18 @@ public struct CompositionRenderer {
                 for: decorationID,
                 canvas: canvas,
                 at: max(0, time - element.startTime),
-                duration: element.endTime - element.startTime
+                duration: element.endTime - element.startTime,
+                sourceStartTime: element.sourceStartTime,
+                sourceEndTime: element.sourceEndTime
             )
         case .effect(let effectID):
             source = decorationRenderer.image(
                 for: effectID,
                 canvas: canvas,
                 at: max(0, time - element.startTime),
-                duration: element.endTime - element.startTime
+                duration: element.endTime - element.startTime,
+                sourceStartTime: element.sourceStartTime,
+                sourceEndTime: element.sourceEndTime
             )
         case .text(let textID):
             if let text = composition.texts.first(where: { $0.id.uuidString == textID }) {
@@ -486,7 +509,7 @@ public struct CompositionRenderer {
             }
             return nil
         }
-        let sourceDuration = max(clip.activeDuration, 0)
+        let sourceDuration = clip.playbackSourceDuration
         let boundedStart = min(max(sourceStart.isFinite ? sourceStart : 0, 0), sourceDuration)
         let boundedEnd = min(
             max(sourceEnd?.isFinite == true ? sourceEnd! : sourceDuration, boundedStart),

@@ -139,7 +139,7 @@ struct AssetPickerView: View {
                         }
                     }
                     if let imported,
-                       let id = appState.importBackgroundMedia(
+                       let id = await appState.importBackgroundMedia(
                         data: imported.data,
                         preferredFileExtension: imported.fileExtension,
                         isVideo: imported.isVideo
@@ -149,6 +149,7 @@ struct AssetPickerView: View {
                     backgroundImportCompletedCount = index + 1
                     backgroundImportProgress = Double(index + 1) / Double(max(items.count, 1))
                 }
+                appState.reloadBackgroundMedia()
                 isImportingBackground = false
                 backgroundImportTask = nil
             }

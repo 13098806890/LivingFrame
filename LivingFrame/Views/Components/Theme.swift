@@ -306,6 +306,8 @@ struct TimelineInactiveRangeMask: UIViewRepresentable {
     let leftWidth: CGFloat
     let rightWidth: CGFloat
     let height: CGFloat
+    /// 未选中轨道也要保留源范围信息，但视觉强度低于当前选中轨道。
+    var opacity: CGFloat = 0.62
 
     func makeUIView(context: Context) -> TimelineInactiveRangeMaskView {
         let view = TimelineInactiveRangeMaskView()
@@ -323,7 +325,8 @@ struct TimelineInactiveRangeMask: UIViewRepresentable {
             totalWidth: totalWidth,
             height: height,
             leftWidth: safeLeft,
-            rightWidth: safeRight
+            rightWidth: safeRight,
+            opacity: min(max(opacity, 0), 1)
         )
     }
 
@@ -332,10 +335,11 @@ struct TimelineInactiveRangeMask: UIViewRepresentable {
         private var maskHeight: CGFloat = 0
         private var leftWidth: CGFloat = 0
         private var rightWidth: CGFloat = 0
+        private var maskOpacity: CGFloat = 0.62
 
         override func draw(_ rect: CGRect) {
             guard let context = UIGraphicsGetCurrentContext() else { return }
-            context.setFillColor(UIColor.black.withAlphaComponent(0.62).cgColor)
+            context.setFillColor(UIColor.black.withAlphaComponent(maskOpacity).cgColor)
             if leftWidth > 0 {
                 context.fill(CGRect(x: 0, y: 0, width: leftWidth, height: maskHeight))
             }
@@ -355,12 +359,14 @@ struct TimelineInactiveRangeMask: UIViewRepresentable {
             totalWidth: CGFloat,
             height: CGFloat,
             leftWidth: CGFloat,
-            rightWidth: CGFloat
+            rightWidth: CGFloat,
+            opacity: CGFloat
         ) {
             self.totalWidth = totalWidth
             maskHeight = height
             self.leftWidth = leftWidth
             self.rightWidth = rightWidth
+            maskOpacity = opacity
             isOpaque = false
             contentMode = .redraw
             setNeedsDisplay()

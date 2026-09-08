@@ -301,7 +301,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     /// 时间轴出现/消失（秒）
     public var startTime: TimeInterval
     public var endTime: TimeInterval
-    /// 素材源内容的入点/出点（秒）。只对 clip 元素生效；默认覆盖完整素材。
+    /// 素材源内容的入点/出点（秒）。对视频、动态贴纸和动态背景生效；
+    /// 静态文字/效果没有独立源帧时仅保留默认值。
     public var sourceStartTime: TimeInterval
     public var sourceEndTime: TimeInterval
     /// 元素级背景图案（垫在元素内容下层，nil = 无）

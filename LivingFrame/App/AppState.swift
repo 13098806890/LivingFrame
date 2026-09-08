@@ -4,6 +4,44 @@ import LivingFrameCore
 import Photos
 import SwiftUI
 
+/// 作品文件的唯一写入入口。actor 保证保存、复制、重命名和删除按调用顺序执行，
+/// 避免多个后台任务互相覆盖，也让磁盘操作脱离主线程。
+private actor WorkPersistenceCoordinator {
+    private let store: WorksStore
+
+    init(store: WorksStore) {
+        self.store = store
+    }
+
+    func saveAndLoad(_ work: WorkItem) -> (Bool, [WorkItem]) {
+        do {
+            try store.save(work)
+            return (true, store.loadWorks())
+        } catch {
+            LogStore.log("work.save failed: \(error)")
+            return (false, [])
+        }
+    }
+
+    func load() -> [WorkItem] {
+        store.loadWorks()
+    }
+
+    func save(_ work: WorkItem, failureMessage: String) -> Bool {
+        do {
+            try store.save(work)
+            return true
+        } catch {
+            LogStore.log("\(failureMessage): \(error)")
+            return false
+        }
+    }
+
+    func delete(_ work: WorkItem) {
+        store.delete(work)
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     private static func clampedExtractionDuration(_ value: Double) -> Double {
@@ -23,6 +61,8 @@ final class AppState: ObservableObject {
     @Published var segmentationError: String?
     /// 素材文件夹（按创建时间倒序）
     @Published var folders: [LibraryFolder] = []
+    /// 设置页展示的素材占用；异步计算，避免每次 SwiftUI 刷新都扫描磁盘。
+    @Published private(set) var cacheSizeText = "计算中…"
 
     // MARK: - 工程
 
@@ -127,6 +167,7 @@ final class AppState: ObservableObject {
     // MARK: - 作品
 
     @Published var works: [WorkItem] = []
+    @Published private(set) var isLoadingWorks = true
     /// 当前编辑页来自哪个已保存作品。nil 表示尚未保存的新工程。
     @Published private(set) var editingWorkID: UUID?
 
@@ -185,9 +226,19 @@ final class AppState: ObservableObject {
     private let worksStore = WorksStore()
     private let folderStore = LibraryFolderStore()
     private let audioEngine = AudioPreviewEngine()
+    private let workPersistence: WorkPersistenceCoordinator
+    private var backgroundMediaReloadTask: Task<Void, Never>?
+    private var cacheSizeTask: Task<Void, Never>?
 
     init() {
-        works = worksStore.loadWorks()
+        workPersistence = WorkPersistenceCoordinator(store: worksStore)
+        let persistence = workPersistence
+        Task { [weak self] in
+            let loaded = await persistence.load()
+            guard let self, !Task.isCancelled else { return }
+            self.works = loaded
+            self.isLoadingWorks = false
+        }
         // 恢复持久化的素材与文件夹
         FrameCache.shared.reload()
         clips = FrameCache.shared.allClips()
@@ -320,7 +371,7 @@ final class AppState: ObservableObject {
         let removed = offsets.map { clips[$0] }
         clips.remove(atOffsets: offsets)
         for clip in removed {
-            FrameCache.shared.removeClip(id: clip.id)
+            FrameCache.shared.removeClipInBackground(id: clip.id)
             removeClipReferences(from: clip.id)
             guard var comp = composition else { continue }
             comp.elements.removeAll { element in
@@ -349,7 +400,7 @@ final class AppState: ObservableObject {
         // 已保存作品只保存素材 ID；删除仍被作品引用的素材会让旧作品无法完整恢复。
         guard worksReferencingClip(clipID).isEmpty else { return }
         clips.removeAll { $0.id == clipID }
-        FrameCache.shared.removeClip(id: clipID)
+        FrameCache.shared.removeClipInBackground(id: clipID)
         removeClipReferences(from: clipID)
         if var comp = composition {
             comp.elements.removeAll { element in
@@ -470,45 +521,36 @@ final class AppState: ObservableObject {
 
     /// 设置素材边缘效果（持久化到 clip.json）
     func setClipEdgeStyle(_ clipID: String, _ style: ClipEdgeStyle) {
-        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
-        clips[index].edgeStyle = style
-        FrameCache.shared.register(clips[index])
-        clipStyleVersion += 1
-        markProjectDirty()
+        updateClip(clipID) { $0.edgeStyle = style }
     }
 
     /// 设置描边颜色（持久化到 clip.json）
     func setClipEdgeColor(_ clipID: String, _ hex: String) {
-        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
-        clips[index].edgeColorHex = hex
-        FrameCache.shared.register(clips[index])
-        clipStyleVersion += 1
-        markProjectDirty()
+        updateClip(clipID) { $0.edgeColorHex = hex }
     }
 
     /// 设置描边粗细（持久化到 clip.json）
     func setClipEdgeThickness(_ clipID: String, _ thickness: EdgeThickness) {
-        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
-        clips[index].edgeThickness = thickness
-        FrameCache.shared.register(clips[index])
-        clipStyleVersion += 1
-        markProjectDirty()
+        updateClip(clipID) { $0.edgeThickness = thickness }
     }
 
     /// 设置素材贴纸风格（持久化到 clip.json）
     func setClipStickerStyle(_ clipID: String, _ style: StickerStyle) {
-        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
-        clips[index].stickerStyle = style
-        FrameCache.shared.register(clips[index])
-        clipStyleVersion += 1
-        markProjectDirty()
+        updateClip(clipID) { $0.stickerStyle = style }
     }
 
     /// 设置素材的排除帧（帧选择功能），持久化到 clip.json
     func setExcludedFrames(_ clipID: String, _ excluded: Set<Int>) {
+        updateClip(clipID) { $0.excludedFrames = excluded }
+    }
+
+    /// 统一处理素材属性更新、清单持久化和画布刷新，避免多个设置入口行为不一致。
+    private func updateClip(_ clipID: String, _ update: (inout SegmentedClip) -> Void) {
         guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
-        clips[index].excludedFrames = excluded
-        FrameCache.shared.register(clips[index])
+        var clip = clips[index]
+        update(&clip)
+        clips[index] = clip
+        FrameCache.shared.registerInBackground(clip)
         clipStyleVersion += 1
         markProjectDirty()
     }
@@ -542,8 +584,11 @@ final class AppState: ObservableObject {
     }
 
     /// 设置背景为相册图片（写入 Backgrounds 目录后引用）
-    func setBackground(imageData: Data) {
-        guard let fileName = BackgroundStore.shared.saveUserImage(imageData) else { return }
+    func setBackground(imageData: Data) async {
+        let fileName = await Task.detached(priority: .utility) {
+            BackgroundStore.shared.saveUserImage(imageData)
+        }.value
+        guard let fileName else { return }
         guard var comp = composition ?? defaultComposition() else { return }
         comp.background = BackgroundPreset(
             kind: .image, topColor: "FFFFFF", bottomColor: "FFFFFF", imageFileName: fileName
@@ -553,7 +598,14 @@ final class AppState: ObservableObject {
 
     /// 刷新背景媒体列表。素材选择器导入相册图片后调用。
     func reloadBackgroundMedia() {
-        backgroundMedia = BackgroundStore.shared.allUserMedia()
+        backgroundMediaReloadTask?.cancel()
+        backgroundMediaReloadTask = Task { [weak self] in
+            let media = await Task.detached(priority: .utility) {
+                BackgroundStore.shared.allUserMedia()
+            }.value
+            guard !Task.isCancelled else { return }
+            self?.backgroundMedia = media
+        }
     }
 
     /// 保存一张相册图片/动态图片，返回可用于创建元素的媒体 ID。
@@ -562,12 +614,13 @@ final class AppState: ObservableObject {
         data: Data,
         preferredFileExtension: String? = nil,
         isVideo: Bool = false
-    ) -> String? {
-        let id = isVideo
-            ? BackgroundStore.shared.saveUserVideo(data, preferredFileExtension: preferredFileExtension)
-            : BackgroundStore.shared.saveUserImage(data, preferredFileExtension: preferredFileExtension)
+    ) async -> String? {
+        let id = await Task.detached(priority: .utility) {
+            isVideo
+                ? BackgroundStore.shared.saveUserVideo(data, preferredFileExtension: preferredFileExtension)
+                : BackgroundStore.shared.saveUserImage(data, preferredFileExtension: preferredFileExtension)
+        }.value
         guard let id else { return nil }
-        reloadBackgroundMedia()
         return id
     }
 
@@ -593,6 +646,8 @@ final class AppState: ObservableObject {
             zIndex: minimumElementZIndex(in: comp),
             startTime: 0,
             endTime: duration,
+            sourceStartTime: 0,
+            sourceEndTime: media.isAnimated ? max(media.duration, 0.1) : duration,
             backgroundSettings: settings
         )
         comp.elements.append(element)
@@ -1168,7 +1223,9 @@ final class AppState: ObservableObject {
             ),
             zIndex: nextElementZIndex(in: comp),
             startTime: 0,
-            endTime: max(comp.duration, 1)
+            endTime: max(comp.duration, 1),
+            sourceStartTime: 0,
+            sourceEndTime: max(comp.duration, 1)
         )
         comp.elements.append(element)
         composition = comp
@@ -1231,7 +1288,7 @@ final class AppState: ObservableObject {
             startTime: 0,
             endTime: clip.effectiveDuration.isFinite ? clip.effectiveDuration : 1,
             sourceStartTime: 0,
-            sourceEndTime: clip.activeDuration.isFinite ? clip.activeDuration : 1
+            sourceEndTime: clip.playbackSourceDuration
         )
         comp.elements.append(element)
         extendDefaultStickerDurations(in: &comp, to: max(comp.duration, element.endTime))
@@ -1245,7 +1302,7 @@ final class AppState: ObservableObject {
         guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
         guard clips[index].playbackSpeed != speed else { return }
         clips[index].playbackSpeed = speed
-        FrameCache.shared.register(clips[index])
+        FrameCache.shared.registerInBackground(clips[index])
         // 引用该素材的元素结束时间 = 起始时间 + 当前源范围时长 / 倍速
         if var comp = composition {
             for i in comp.elements.indices {
@@ -1439,7 +1496,9 @@ final class AppState: ObservableObject {
             ),
             zIndex: nextElementZIndex(in: comp),
             startTime: 0,
-            endTime: max(comp.duration, stickerDuration)
+            endTime: max(comp.duration, stickerDuration),
+            sourceStartTime: 0,
+            sourceEndTime: stickerDuration
         )
         comp.elements.append(element)
         composition = comp
@@ -1562,22 +1621,18 @@ final class AppState: ObservableObject {
             posterData: posterData,
             format: existing?.format ?? defaultFormat
         )
-        do {
-            try worksStore.save(work)
-            editingWorkID = work.id
-            works = worksStore.loadWorks()
-            markProjectClean()
-            LogStore.log("work.save done id=\(work.id) updated=\(existing != nil)")
-            return true
-        } catch {
-            LogStore.log("work.save failed: \(error)")
-            return false
-        }
+        let persistence = await workPersistence.saveAndLoad(work)
+        guard persistence.0 else { return false }
+        editingWorkID = work.id
+        works = persistence.1
+        markProjectClean()
+        LogStore.log("work.save done id=\(work.id) updated=\(existing != nil)")
+        return true
     }
 
     /// 复制已保存作品，保留工程内容但使用新的作品和工程 ID。
     @discardableResult
-    func duplicateWork(_ work: WorkItem) -> Bool {
+    func duplicateWork(_ work: WorkItem) async -> Bool {
         var copy = work
         let now = Date()
         copy.id = UUID()
@@ -1586,41 +1641,38 @@ final class AppState: ObservableObject {
         copy.updatedAt = now
         copy.composition.id = UUID()
         copy.composition.name = copy.name
-        do {
-            try worksStore.save(copy)
-            works = worksStore.loadWorks()
-            return true
-        } catch {
-            LogStore.log("work.duplicate failed: \(error)")
-            return false
-        }
+        let saved = await workPersistence.save(copy, failureMessage: "work.duplicate failed")
+        guard saved else { return false }
+        works.insert(copy, at: 0)
+        return true
     }
 
     /// 重命名作品；当前正在编辑的工程同步更新名称，但仍需用户主动保存内容。
-    func renameWork(_ work: WorkItem, to name: String) {
+    func renameWork(_ work: WorkItem, to name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         var renamed = work
         renamed.name = trimmed
         renamed.updatedAt = Date()
-        do {
-            try worksStore.save(renamed)
-            works = worksStore.loadWorks()
-            if editingWorkID == work.id, var comp = composition {
-                let wasDirty = hasUnsavedChanges
-                comp.name = trimmed
-                composition = comp
-                if !wasDirty { markProjectClean() }
-            }
-        } catch {
-            LogStore.log("work.rename failed: \(error)")
+        let saved = await workPersistence.save(renamed, failureMessage: "work.rename failed")
+        guard saved else { return }
+        if let index = works.firstIndex(where: { $0.id == work.id }) {
+            works[index] = renamed
+        }
+        if editingWorkID == work.id, var comp = composition {
+            let wasDirty = hasUnsavedChanges
+            comp.name = trimmed
+            composition = comp
+            if !wasDirty { markProjectClean() }
         }
     }
 
     func deleteWork(_ work: WorkItem) {
-        worksStore.delete(work)
+        works.removeAll { $0.id == work.id }
         if editingWorkID == work.id { editingWorkID = nil }
-        works = worksStore.loadWorks()
+        Task {
+            await self.workPersistence.delete(work)
+        }
     }
 
     func reopen(_ work: WorkItem) {
@@ -1651,7 +1703,7 @@ final class AppState: ObservableObject {
         isCropping = false
         // 重新注册仍存在的缓存素材
         for clip in clips {
-            FrameCache.shared.register(clip)
+            FrameCache.shared.registerInBackground(clip)
         }
         clipStyleVersion += 1
         markProjectClean()
@@ -1689,19 +1741,32 @@ final class AppState: ObservableObject {
     /// 清理临时文件：素材（含文件夹内外的所有抠图结果）一律保留，只删导入/导出产生的临时文件
     func clearCache() {
         let tmp = FileManager.default.temporaryDirectory
-        if let items = try? FileManager.default.contentsOfDirectory(
-            at: tmp, includingPropertiesForKeys: nil
-        ) {
-            for item in items where item.lastPathComponent.hasPrefix("LF-") {
-                try? FileManager.default.removeItem(at: item)
+        Task.detached(priority: .utility) {
+            if let items = try? FileManager.default.contentsOfDirectory(
+                at: tmp, includingPropertiesForKeys: nil
+            ) {
+                for item in items where item.lastPathComponent.hasPrefix("LF-") {
+                    try? FileManager.default.removeItem(at: item)
+                }
             }
+            LogStore.log("clearCache: 已清理临时文件，素材全部保留")
         }
-        LogStore.log("clearCache: 已清理临时文件，素材全部保留")
     }
 
-    var cacheSizeText: String {
-        let bytes = FrameCache.shared.totalSizeBytes
-        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    /// 异步刷新素材占用，避免设置页 body 计算属性反复遍历素材目录。
+    func refreshCacheSize() {
+        cacheSizeTask?.cancel()
+        cacheSizeText = "计算中…"
+        cacheSizeTask = Task { [weak self] in
+            let bytes = await Task.detached(priority: .utility) {
+                FrameCache.shared.totalSizeBytes
+            }.value
+            guard !Task.isCancelled else { return }
+            self?.cacheSizeText = ByteCountFormatter.string(
+                fromByteCount: bytes,
+                countStyle: .file
+            )
+        }
     }
 }
 

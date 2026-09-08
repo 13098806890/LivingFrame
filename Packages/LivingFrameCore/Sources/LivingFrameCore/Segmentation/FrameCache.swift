@@ -21,6 +21,8 @@ public final class FrameCache {
     private let frameCacheMaxCount = 256
     /// 素材占用空间缓存（clipID → bytes）
     private var clipSizes: [String: Int64] = [:]
+    /// 清单写入串行化，避免连续修改素材属性时出现旧状态覆盖新状态。
+    private let manifestQueue = DispatchQueue(label: "livingframe.frame-cache.manifest", qos: .utility)
 
     private init() {
         rootURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -35,10 +37,28 @@ public final class FrameCache {
     }
 
     public func register(_ clip: SegmentedClip) {
+        registerInMemory(clip)
+        persistManifest(for: clip)
+    }
+
+    /// 更新内存状态并异步保存清单，适合编辑器中的属性修改。
+    /// UI 不应因为写入 clip.json 而等待磁盘。
+    public func registerInBackground(_ clip: SegmentedClip) {
+        registerInMemory(clip)
+        guard let data = manifestData(for: clip) else { return }
+        let url = manifestURL(for: clip.id)
+        manifestQueue.async {
+            try? data.write(to: url)
+        }
+    }
+
+    /// Registers a restored clip for the current process without rewriting the manifest.
+    /// UI fallback paths may call this when the AppState has the clip but the in-memory
+    /// registry has not been repopulated yet.
+    public func registerInMemory(_ clip: SegmentedClip) {
         registryLock.lock()
         registered[clip.id] = clip
         registryLock.unlock()
-        saveManifest(for: clip)
     }
 
     public func clip(id: String) -> SegmentedClip? {
@@ -137,7 +157,7 @@ public final class FrameCache {
             registryLock.unlock()
             return
         }
-        for dir in entries where dir.hasDirectoryPath {
+        for dir in entries where dir.hasDirectoryPath && dir.lastPathComponent != ".trash" {
             let id = dir.lastPathComponent
             guard let data = try? Data(contentsOf: manifestURL(for: id)),
                   let manifest = try? JSONDecoder().decode(ClipManifest.self, from: data) else { continue }
@@ -172,6 +192,25 @@ public final class FrameCache {
     }
 
     public func removeClip(id: String) {
+        removeClipFromMemory(id: id)
+        deleteClipFolder(id: id)
+    }
+
+    /// 立即释放注册信息和解码缓存，磁盘目录放到后台删除，避免素材库主线程卡顿。
+    ///
+    /// 删除素材时列表和详情页应先完成响应；素材目录通常包含大量 PNG，
+    /// FileManager.removeItem 可能持续数百毫秒甚至更久，不能阻塞 SwiftUI 交互。
+    public func removeClipInBackground(id: String) {
+        removeClipFromMemory(id: id)
+        let folderURL = rootURL.appendingPathComponent(id)
+        let trashURL = quarantineClipFolder(id: id)
+        // 与异步清单写入共用串行队列，避免“删除目录”和最后一次属性保存互相覆盖。
+        manifestQueue.async {
+            try? FileManager.default.removeItem(at: trashURL ?? folderURL)
+        }
+    }
+
+    private func removeClipFromMemory(id: String) {
         registryLock.lock()
         registered[id] = nil
         registryLock.unlock()
@@ -187,7 +226,29 @@ public final class FrameCache {
         }
         frameOrder.removeAll { $0.hasPrefix(prefix) }
         frameLock.unlock()
-        try? FileManager.default.removeItem(at: rootURL.appendingPathComponent(id))
+    }
+
+    private func deleteClipFolder(id: String) {
+        manifestQueue.sync {
+            try? FileManager.default.removeItem(at: rootURL.appendingPathComponent(id))
+        }
+    }
+
+    /// 先把目录原子移动到隐藏回收区，再异步删除内容。
+    /// 即使 App 在后台删除前被终止，启动扫描也不会把已删除素材恢复出来。
+    private func quarantineClipFolder(id: String) -> URL? {
+        manifestQueue.sync {
+            let fileManager = FileManager.default
+            let sourceURL = rootURL.appendingPathComponent(id)
+            guard fileManager.fileExists(atPath: sourceURL.path) else { return nil }
+            let trashRoot = rootURL.appendingPathComponent(".trash", isDirectory: true)
+            try? fileManager.createDirectory(at: trashRoot, withIntermediateDirectories: true)
+            let destinationURL = trashRoot.appendingPathComponent("\(id)-\(UUID().uuidString)")
+            guard (try? fileManager.moveItem(at: sourceURL, to: destinationURL)) != nil else {
+                return nil
+            }
+            return destinationURL
+        }
     }
 
     /// 素材占用磁盘空间（缓存计算，删除素材时失效）
@@ -223,8 +284,12 @@ public final class FrameCache {
         clipSizes.removeAll()
         frameLock.unlock()
         // 直接清空整个素材目录（含未注册的残留目录）
-        try? FileManager.default.removeItem(at: rootURL)
-        try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        // 等待已经排队的清单写入完成，再清空目录；否则旧的异步写入可能在清空后
+        // 重新创建 clip.json，导致“清空后素材又回来”。
+        manifestQueue.sync {
+            try? FileManager.default.removeItem(at: rootURL)
+            try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        }
     }
 
     public var totalSizeBytes: Int64 {
@@ -234,6 +299,8 @@ public final class FrameCache {
         }
         var total: Int64 = 0
         for case let url as URL in enumerator {
+            // .trash 中是等待后台删除的目录，不属于当前素材库占用。
+            if url.pathComponents.contains(".trash") { continue }
             if let values = try? url.resourceValues(forKeys: Set(keys)),
                values.isDirectory != true,
                let size = values.fileSize {
@@ -249,7 +316,14 @@ public final class FrameCache {
         rootURL.appendingPathComponent(id).appendingPathComponent("clip.json")
     }
 
-    private func saveManifest(for clip: SegmentedClip) {
+    private func persistManifest(for clip: SegmentedClip) {
+        guard let data = manifestData(for: clip) else { return }
+        manifestQueue.sync {
+            try? data.write(to: manifestURL(for: clip.id))
+        }
+    }
+
+    private func manifestData(for clip: SegmentedClip) -> Data? {
         let manifest = ClipManifest(
             id: clip.id,
             name: clip.name,
@@ -267,8 +341,7 @@ public final class FrameCache {
             playbackSpeed: clip.playbackSpeed,
             excludedFrames: Array(clip.excludedFrames).sorted()
         )
-        guard let data = try? JSONEncoder().encode(manifest) else { return }
-        try? data.write(to: manifestURL(for: clip.id))
+        return try? JSONEncoder().encode(manifest)
     }
 }
 

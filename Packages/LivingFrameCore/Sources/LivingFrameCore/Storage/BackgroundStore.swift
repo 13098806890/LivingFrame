@@ -92,6 +92,9 @@ public struct BackgroundStore {
         cache.countLimit = 8
         return cache
     }()
+    /// 元数据查询会被预览逐帧调用，不能每次都重新枚举目录并读取 AVAsset/CGImageSource。
+    private static let metadataLock = NSLock()
+    private static var metadataCache: [String: BackgroundMediaItem] = [:]
     private static let orientationContext = CIContext(options: [.cacheIntermediates: false])
     /// 预置背景列表（文件名 → 显示名）
     public let presets: [(fileName: String, title: String)] = [
@@ -145,6 +148,9 @@ public struct BackgroundStore {
         let url = rootURL.appendingPathComponent(fileName).appendingPathExtension(fileExtension)
         guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
         Self.imageCache.removeObject(forKey: fileName as NSString)
+        Self.metadataLock.lock()
+        Self.metadataCache.removeValue(forKey: fileName)
+        Self.metadataLock.unlock()
         return fileName
     }
 
@@ -158,6 +164,9 @@ public struct BackgroundStore {
         let url = rootURL.appendingPathComponent(fileName).appendingPathExtension(fileExtension)
         guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
         Self.imageCache.removeObject(forKey: fileName as NSString)
+        Self.metadataLock.lock()
+        Self.metadataCache.removeValue(forKey: fileName)
+        Self.metadataLock.unlock()
         return fileName
     }
 
@@ -172,35 +181,7 @@ public struct BackgroundStore {
         return urls.compactMap { url in
             let id = url.deletingPathExtension().lastPathComponent
             guard id.hasPrefix("user-") else { return nil }
-            let dates = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
-            let createdAt = dates?.creationDate ?? dates?.contentModificationDate ?? .distantPast
-            if isVideo(url: url) {
-                let asset = AVURLAsset(url: url)
-                let duration = max(CMTimeGetSeconds(asset.duration), 0.1)
-                let naturalSize = asset.tracks(withMediaType: .video).first?.naturalSize ?? .zero
-                let transform = asset.tracks(withMediaType: .video).first?.preferredTransform ?? .identity
-                let size = naturalSize.applying(transform)
-                return BackgroundMediaItem(
-                    id: id, name: id, frameCount: max(Int((duration * 30).rounded()), 1), duration: duration,
-                    width: Int(abs(size.width)), height: Int(abs(size.height)), createdAt: createdAt, mediaType: .video
-                )
-            }
-            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-            let frameCount = max(CGImageSourceGetCount(source), 1)
-            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-            let width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
-            let height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
-            let duration = frameDurations(source: source).reduce(0, +)
-            return BackgroundMediaItem(
-                id: id,
-                name: id,
-                frameCount: frameCount,
-                duration: max(duration, frameCount > 1 ? 0.1 : 0),
-                width: width,
-                height: height,
-                createdAt: createdAt,
-                mediaType: .image
-            )
+            return metadataItem(for: url, id: id)
         }
         .sorted { $0.createdAt > $1.createdAt }
     }
@@ -245,7 +226,69 @@ public struct BackgroundStore {
     }
 
     public func media(named name: String) -> BackgroundMediaItem? {
-        allUserMedia().first { $0.id == name }
+        Self.metadataLock.lock()
+        let cached = Self.metadataCache[name]
+        Self.metadataLock.unlock()
+        if let cached { return cached }
+
+        let url = mediaURL(named: name)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return metadataItem(for: url, id: name)
+    }
+
+    private func metadataItem(for url: URL, id: String) -> BackgroundMediaItem? {
+        Self.metadataLock.lock()
+        if let cached = Self.metadataCache[id] {
+            Self.metadataLock.unlock()
+            return cached
+        }
+        Self.metadataLock.unlock()
+
+        let dates = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+        let createdAt = dates?.creationDate ?? dates?.contentModificationDate ?? .distantPast
+        let item: BackgroundMediaItem?
+        if isVideo(url: url) {
+            let asset = AVURLAsset(url: url)
+            let duration = max(CMTimeGetSeconds(asset.duration), 0.1)
+            let naturalSize = asset.tracks(withMediaType: .video).first?.naturalSize ?? .zero
+            let transform = asset.tracks(withMediaType: .video).first?.preferredTransform ?? .identity
+            let size = naturalSize.applying(transform)
+            item = BackgroundMediaItem(
+                id: id,
+                name: id,
+                frameCount: max(Int((duration * 30).rounded()), 1),
+                duration: duration,
+                width: Int(abs(size.width)),
+                height: Int(abs(size.height)),
+                createdAt: createdAt,
+                mediaType: .video
+            )
+        } else if let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
+            let frameCount = max(CGImageSourceGetCount(source), 1)
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+            let width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+            let height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+            let duration = frameDurations(source: source).reduce(0, +)
+            item = BackgroundMediaItem(
+                id: id,
+                name: id,
+                frameCount: frameCount,
+                duration: max(duration, frameCount > 1 ? 0.1 : 0),
+                width: width,
+                height: height,
+                createdAt: createdAt,
+                mediaType: .image
+            )
+        } else {
+            item = nil
+        }
+
+        if let item {
+            Self.metadataLock.lock()
+            Self.metadataCache[id] = item
+            Self.metadataLock.unlock()
+        }
+        return item
     }
 
     private func imageSource(named name: String) -> CGImageSource? {

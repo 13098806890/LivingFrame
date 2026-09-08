@@ -199,10 +199,25 @@ public struct DecorationRenderer {
     /// 装饰 id 约定：frame-gold / corners / vignette / glow-soft / glow-orb / dust / wand-beam（矢量）
     /// 以及 sticker-*（Bundle 内的动图贴纸，需要时间参数）
     /// - Parameter localTime: 元素内时间（秒，从元素起始时间起算）
-    /// - Parameter duration: 元素时长（秒），动图贴纸把全部帧铺满整个时间段
-    public func image(for decorationID: String, canvas: CGRect, at localTime: TimeInterval = 0, duration: TimeInterval = 0) -> CIImage? {
+    /// - Parameter duration: 元素时长（秒），用于判断选定源区间是否需要循环
+    /// - Parameter sourceStartTime: 源动画入点（秒）
+    /// - Parameter sourceEndTime: 源动画出点（秒）
+    public func image(
+        for decorationID: String,
+        canvas: CGRect,
+        at localTime: TimeInterval = 0,
+        duration: TimeInterval = 0,
+        sourceStartTime: TimeInterval = 0,
+        sourceEndTime: TimeInterval = .greatestFiniteMagnitude
+    ) -> CIImage? {
         if decorationID.hasPrefix("sticker-") {
-            return stickerImage(decorationID: decorationID, localTime: localTime, duration: duration)
+            return stickerImage(
+                decorationID: decorationID,
+                localTime: localTime,
+                duration: duration,
+                sourceStartTime: sourceStartTime,
+                sourceEndTime: sourceEndTime
+            )
         }
         let key = "\(decorationID)-\(Int(canvas.width))x\(Int(canvas.height))" as NSString
         if let cached = cache.object(forKey: key) {
@@ -273,9 +288,30 @@ public struct DecorationRenderer {
 
     /// 按固定 0.1s/帧播放，拉长时间轴时帧循环补满（不减速）：
     /// 默认时长=一帧循环（9 帧×0.1s=0.9s）时即"播放一次"
-    private func stickerImage(decorationID: String, localTime: TimeInterval, duration: TimeInterval) -> CIImage? {
+    private func stickerImage(
+        decorationID: String,
+        localTime: TimeInterval,
+        duration: TimeInterval,
+        sourceStartTime: TimeInterval,
+        sourceEndTime: TimeInterval
+    ) -> CIImage? {
         guard let frames = frames(for: decorationID), !frames.isEmpty else { return nil }
-        let frameIndex = Int((max(localTime, 0) / 0.1).rounded(.down)) % frames.count
+        guard let definition = Self.stickerDefinition(for: decorationID) else { return nil }
+        let sourceDuration = max(definition.defaultDuration, 0.1)
+        let sourceRange = SourcePlaybackRange(
+            duration: sourceDuration,
+            start: sourceStartTime,
+            end: sourceEndTime
+        )
+        let elapsed = max(localTime, 0)
+        let sourceTime = sourceRange.sourceTime(
+            at: elapsed,
+            looping: duration > sourceRange.span + 0.001
+        )
+        let frameIndex = min(
+            max(Int((sourceTime / 0.1).rounded(.down)), 0),
+            frames.count - 1
+        )
         return CIImage(cgImage: frames[frameIndex])
     }
 

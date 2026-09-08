@@ -1535,6 +1535,7 @@ struct ClipMenuView: View {
     @State private var showDeleteConfirmation = false
     @State private var showReferencedWorkAlert = false
     @State private var referencedWorkNames: [String] = []
+    @State private var isDeletingClip = false
 
     /// 读取最新值，避免详情页打开后修改样式仍显示旧状态。
     private var currentClip: SegmentedClip {
@@ -1630,11 +1631,16 @@ struct ClipMenuView: View {
                     Button {
                         requestDeleteClip()
                     } label: {
-                        Label("删除素材", systemImage: "trash")
+                        if isDeletingClip {
+                            Label("正在删除…", systemImage: "hourglass")
+                        } else {
+                            Label("删除素材", systemImage: "trash")
+                        }
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
+                    .disabled(isDeletingClip)
                     .padding(.top, 2)
                 }
                 .padding(20)
@@ -1656,6 +1662,8 @@ struct ClipMenuView: View {
         }
         .confirmationDialog("删除素材？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
             Button("删除", role: .destructive) {
+                guard !isDeletingClip else { return }
+                isDeletingClip = true
                 appState.deleteClip(clip.id)
                 close()
             }

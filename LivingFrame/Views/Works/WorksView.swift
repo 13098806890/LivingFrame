@@ -10,7 +10,11 @@ struct WorksView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                if appState.works.isEmpty {
+                if appState.isLoadingWorks {
+                    ProgressView("正在加载作品…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 80)
+                } else if appState.works.isEmpty {
                     EmptyStateView(
                         icon: "photo.stack",
                         title: "还没有作品",
@@ -148,7 +152,7 @@ private struct WorkCell: View {
                 Label("重命名", systemImage: "pencil.line")
             }
             Button {
-                _ = appState.duplicateWork(work)
+                Task { _ = await appState.duplicateWork(work) }
             } label: {
                 Label("复制作品", systemImage: "plus.square.on.square")
             }
@@ -179,7 +183,7 @@ private struct WorkCell: View {
         .alert("重命名作品", isPresented: $showRenameAlert) {
             TextField("作品名称", text: $renameText)
             Button("保存") {
-                appState.renameWork(work, to: renameText)
+                Task { await appState.renameWork(work, to: renameText) }
             }
             Button("取消", role: .cancel) {}
         }
