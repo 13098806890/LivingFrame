@@ -208,13 +208,24 @@ public struct VideoSegmentationPipeline {
 
         // 提取音频（若有）
         let audioURL = folder.appendingPathComponent("audio.m4a")
-        if try await AudioExtractor().extractAudio(from: url, to: audioURL, timeRange: timeRange) {
-            clip.audioURL = audioURL
+        do {
+            if try await AudioExtractor().extractAudio(from: url, to: audioURL, timeRange: timeRange) {
+                clip.audioURL = audioURL
+            }
+        } catch is CancellationError {
+            throw SegmentationError.cancelled
+        } catch {
+            // 可选音轨失败不能让已提取的全部 PNG 被失败清理逻辑删除。
+            LogStore.log("segmentVideo audio.failed: keeping silent clip=\(clipID) error=\(error)")
+            try? FileManager.default.removeItem(at: audioURL)
+        }
+        if isCancelled() || Task.isCancelled {
+            throw SegmentationError.cancelled
         }
 
         LogStore.log("segmentVideo done: clip=\(clipID) name=\(name) frames=\(clip.frameCount) fps=\(clip.fps) size=\(clip.width)x\(clip.height) duration=\(clip.duration)s audio=\(clip.audioURL != nil)")
         LogStore.trimIfNeeded()
-        FrameCache.shared.register(clip)
+        try FrameCache.shared.register(clip)
         succeeded = true
         return clip
     }
@@ -237,6 +248,12 @@ public struct VideoSegmentationPipeline {
 
         let clipID = UUID().uuidString
         let folder = try FrameCache.shared.makeClipFolder(id: clipID)
+        var succeeded = false
+        defer {
+            if !succeeded {
+                try? FileManager.default.removeItem(at: folder)
+            }
+        }
         let frameURL = folder.appendingPathComponent("00000.png")
         guard writePNG(segmented, to: frameURL) else { throw SegmentationError.noFrames }
 
@@ -251,7 +268,8 @@ public struct VideoSegmentationPipeline {
         )
         LogStore.log("segmentPhoto done: clip=\(clipID) name=\(name) input=\(sourceImage.extent.width)x\(sourceImage.extent.height) output=\(segmented.width)x\(segmented.height)")
         LogStore.trimIfNeeded()
-        FrameCache.shared.register(clip)
+        try FrameCache.shared.register(clip)
+        succeeded = true
         return clip
     }
 }

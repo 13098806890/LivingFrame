@@ -173,6 +173,11 @@ public struct DecorationRenderer {
             id: "sticker-doodle-calendar-clock", name: "日历时钟", category: .doodle,
             resourceName: "doodle-calendar-clock", resourceExtension: "gif",
             isFrameSequence: false, frameCount: 108
+        ),
+        StickerDefinition(
+            id: "sticker-doodle-simple-clock", name: "简单时钟", category: .doodle,
+            resourceName: "doodle-simple-clock", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 108
         )
     ]
 
@@ -196,6 +201,25 @@ public struct DecorationRenderer {
         frames(for: decorationID) ?? []
     }
 
+    /// 范围编辑器只需要少量采样帧，不为它解码整段高清 GIF。
+    public static func previewThumbnail(for id: String, at time: TimeInterval,
+                                        maxPixelSize: Int = 160) -> CGImage? {
+        guard time.isFinite, let definition = stickerDefinition(for: id) else { return nil }
+        let index = min(max(Int(max(time, 0) / 0.1), 0), max(definition.frameCount - 1, 0))
+        let name = definition.isFrameSequence
+            ? String(format: definition.resourceName, index)
+            : definition.resourceName
+        guard let url = Bundle.module.url(forResource: name, withExtension: definition.resourceExtension),
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              CGImageSourceGetCount(source) > 0 else { return nil }
+        let frame = definition.isFrameSequence ? 0 : min(index, CGImageSourceGetCount(source) - 1)
+        return CGImageSourceCreateThumbnailAtIndex(source, frame, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(maxPixelSize, 1),
+            kCGImageSourceCreateThumbnailWithTransform: true
+        ] as CFDictionary)
+    }
+
     /// 装饰 id 约定：frame-gold / corners / vignette / glow-soft / glow-orb / dust / wand-beam（矢量）
     /// 以及 sticker-*（Bundle 内的动图贴纸，需要时间参数）
     /// - Parameter localTime: 元素内时间（秒，从元素起始时间起算）
@@ -208,7 +232,8 @@ public struct DecorationRenderer {
         at localTime: TimeInterval = 0,
         duration: TimeInterval = 0,
         sourceStartTime: TimeInterval = 0,
-        sourceEndTime: TimeInterval = .greatestFiniteMagnitude
+        sourceEndTime: TimeInterval = .greatestFiniteMagnitude,
+        playbackCount: Int? = nil
     ) -> CIImage? {
         if decorationID.hasPrefix("sticker-") {
             return stickerImage(
@@ -216,7 +241,8 @@ public struct DecorationRenderer {
                 localTime: localTime,
                 duration: duration,
                 sourceStartTime: sourceStartTime,
-                sourceEndTime: sourceEndTime
+                sourceEndTime: sourceEndTime,
+                playbackCount: playbackCount
             )
         }
         let key = "\(decorationID)-\(Int(canvas.width))x\(Int(canvas.height))" as NSString
@@ -286,14 +312,14 @@ public struct DecorationRenderer {
         return loaded
     }
 
-    /// 按固定 0.1s/帧播放，拉长时间轴时帧循环补满（不减速）：
-    /// 默认时长=一帧循环（9 帧×0.1s=0.9s）时即"播放一次"
+    /// 按固定 0.1s/帧播放；由显式次数决定是否重复选定片段。
     private func stickerImage(
         decorationID: String,
         localTime: TimeInterval,
         duration: TimeInterval,
         sourceStartTime: TimeInterval,
-        sourceEndTime: TimeInterval
+        sourceEndTime: TimeInterval,
+        playbackCount: Int?
     ) -> CIImage? {
         guard let frames = frames(for: decorationID), !frames.isEmpty else { return nil }
         guard let definition = Self.stickerDefinition(for: decorationID) else { return nil }
@@ -306,7 +332,7 @@ public struct DecorationRenderer {
         let elapsed = max(localTime, 0)
         let sourceTime = sourceRange.sourceTime(
             at: elapsed,
-            looping: duration > sourceRange.span + 0.001
+            looping: playbackCount.map { $0 > 1 } ?? (duration > sourceRange.span + 0.001)
         )
         let frameIndex = min(
             max(Int((sourceTime / 0.1).rounded(.down)), 0),

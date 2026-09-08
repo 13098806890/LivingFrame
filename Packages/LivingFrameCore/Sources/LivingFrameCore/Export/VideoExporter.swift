@@ -18,12 +18,13 @@ public struct VideoExporter {
         sourceResolver: @escaping (String) -> URL?,
         to url: URL,
         fps: Double? = nil,
+        maxPixelSize: CGFloat? = nil,
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws {
-        let renderSize = composition.renderRect.size
-        let width = max(2, Int(renderSize.width))
-        let height = max(2, Int(renderSize.height))
+        let renderSize = outputSize(for: composition.renderRect.size, maxPixelSize: maxPixelSize)
+        let width = Int(renderSize.width)
+        let height = Int(renderSize.height)
         try? FileManager.default.removeItem(at: url)
         let start = Date()
         let exportFPS = fps.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? composition.fps
@@ -34,7 +35,8 @@ public struct VideoExporter {
         // 1. 视频轨（进度 0~0.95）
         try await writeVideoTrack(
             composition, format: format, to: url,
-            fps: exportFPS, frameCount: frameCount, progress: progress, isCancelled: isCancelled
+            fps: exportFPS, frameCount: frameCount, renderSize: renderSize,
+            progress: progress, isCancelled: isCancelled
         )
         LogStore.log("VideoExporter: video track done elapsed=\(Int(Date().timeIntervalSince(start)))s")
 
@@ -74,37 +76,51 @@ public struct VideoExporter {
         to url: URL,
         fps: Double,
         frameCount: Int,
+        renderSize: CGSize,
         progress: @escaping (Double) -> Void,
         isCancelled: @escaping () -> Bool
     ) async throws {
-        let renderSize = composition.renderRect.size
-        let width = max(2, Int(renderSize.width))
-        let height = max(2, Int(renderSize.height))
+        let width = Int(renderSize.width)
+        let height = Int(renderSize.height)
         let start = Date()
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let codec: AVVideoCodecType = format == .h264 ? .h264 : .hevcWithAlpha
+        // HEVC-alpha 通过 codec 本身启用透明编码；不要传入 muxa 不支持的
+        // VideoToolbox compression properties（会在 input 初始化时抛 NSException）。
+        let compressionProperties: [String: Any] = [
+            AVVideoAverageBitRateKey: recommendedBitRate(
+                width: width,
+                height: height,
+                fps: fps,
+                format: format
+            )
+        ]
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: codec,
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
-            AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 8_000_000
-            ]
+            AVVideoCompressionPropertiesKey: compressionProperties
         ]
+        guard writer.canApply(outputSettings: videoSettings, forMediaType: .video) else {
+            LogStore.log("VideoExporter: unsupported output settings codec=\(codec.rawValue) size=\(width)x\(height)")
+            throw ExportError.renderFailed
+        }
         let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         videoInput.expectsMediaDataInRealTime = false
         videoInput.mediaTimeScale = 600
         guard writer.canAdd(videoInput) else { throw ExportError.renderFailed }
         writer.add(videoInput)
 
+        // 像素池负责 BGRA 格式和尺寸，alpha 模式通过帧级 attachment 指定。
+        let pixelBufferAttributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height
+        ]
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: videoInput,
-            sourcePixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: width,
-                kCVPixelBufferHeightKey as String: height
-            ]
+            sourcePixelBufferAttributes: pixelBufferAttributes
         )
 
         guard writer.startWriting() else {
@@ -170,7 +186,15 @@ public struct VideoExporter {
                     LogStore.log("VideoExporter: pixel buffer allocation failed index=\(index) status=\(createStatus)")
                     throw ExportError.renderFailed
                 }
-                let rendered = renderer.render(composition, at: Double(index) / fps, into: buffer)
+                if format == .hevcAlpha {
+                    prepareAlphaPixelBuffer(buffer)
+                }
+                let rendered = renderer.render(
+                    composition,
+                    at: Double(index) / fps,
+                    into: buffer,
+                    outputSize: renderSize
+                )
                 let time = CMTime(seconds: Double(index) / fps, preferredTimescale: 600)
                 guard adaptor.append(buffer, withPresentationTime: time) else {
                     LogStore.log("VideoExporter: append failed index=\(index)/\(frameCount) status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
@@ -207,6 +231,39 @@ public struct VideoExporter {
             LogStore.log("VideoExporter: finishWriting failed status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
             throw ExportError.renderFailed
         }
+    }
+
+    private func outputSize(for source: CGSize, maxPixelSize: CGFloat?) -> CGSize {
+        let longest = max(source.width, source.height, 1)
+        let scale = maxPixelSize.map { min($0 / longest, 1) } ?? 1
+        let width = max(Int((source.width * scale).rounded()) / 2 * 2, 2)
+        let height = max(Int((source.height * scale).rounded()) / 2 * 2, 2)
+        return CGSize(width: width, height: height)
+    }
+
+    /// 分辨率和帧率降低时，同步降低码率，避免低清预设反而生成异常大的文件。
+    private func recommendedBitRate(width: Int, height: Int, fps: Double, format: ExportFormat) -> Int {
+        let bitsPerPixel = format == .hevcAlpha ? 0.16 : 0.12
+        let calculated = Double(width * height) * max(fps, 1) * bitsPerPixel
+        return min(max(Int(calculated.rounded()), 1_500_000), 12_000_000)
+    }
+
+    /// Clears a newly allocated destination buffer and marks its alpha mode.
+    /// A pool is allowed to recycle memory; without this, transparent pixels can
+    /// retain opaque/black bytes from a previous frame on some devices.
+    private func prepareAlphaPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        if let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) {
+            let byteCount = CVPixelBufferGetBytesPerRow(pixelBuffer) * CVPixelBufferGetHeight(pixelBuffer)
+            memset(baseAddress, 0, byteCount)
+        }
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+        CVBufferSetAttachment(
+            pixelBuffer,
+            kCVImageBufferAlphaChannelModeKey,
+            kCVImageBufferAlphaChannelMode_PremultipliedAlpha,
+            .shouldPropagate
+        )
     }
 
     // MARK: - 音视频合并

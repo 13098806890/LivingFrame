@@ -1554,97 +1554,7 @@ struct ClipMenuView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    ClipDetailPreview(clip: currentClip, isPlaying: $isPlayingPreview)
-
-                    Button {
-                        showFrameEditor = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "square.grid.3x3")
-                                .foregroundStyle(LF.gold)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("编辑帧")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("取舍帧，让动态素材更轻、更顺")
-                                    .font(.caption)
-                                    .foregroundStyle(LF.textSecondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(LF.textSecondary)
-                        }
-                        .padding(14)
-                        .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
-                    }
-                    .buttonStyle(.plain)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("文件夹")
-                                .font(.headline)
-                                .foregroundStyle(LF.header)
-                            Spacer()
-                            Text("选择后会移动到该文件夹")
-                                .font(.caption2)
-                                .foregroundStyle(LF.textSecondary)
-                        }
-
-                        if appState.folders.isEmpty {
-                            Text("还没有文件夹，可先在素材库创建")
-                                .font(.subheadline)
-                                .foregroundStyle(LF.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(14)
-                                .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
-                        } else {
-                            ForEach(appState.folders) { folder in
-                                let filed = isFiled(folder.id)
-                                Button {
-                                    appState.moveClip(clip.id, toFolder: filed ? nil : folder.id)
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        Image(systemName: filed ? "folder.fill" : "folder")
-                                            .foregroundStyle(LF.folderIcon)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(folder.name)
-                                                .lineLimit(1)
-                                            Text("\(folder.clipIDs.count) 个素材")
-                                                .font(.caption2)
-                                                .foregroundStyle(LF.textSecondary)
-                                        }
-                                        Spacer()
-                                        Image(systemName: filed ? "checkmark.circle.fill" : "circle")
-                                            .font(.title3)
-                                            .foregroundStyle(filed ? LF.gold : LF.textSecondary)
-                                    }
-                                    .padding(14)
-                                    .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-
-                    Button {
-                        requestDeleteClip()
-                    } label: {
-                        if isDeletingClip {
-                            Label("正在删除…", systemImage: "hourglass")
-                        } else {
-                            Label("删除素材", systemImage: "trash")
-                        }
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isDeletingClip)
-                    .padding(.top, 2)
-                }
-                .padding(20)
-            }
+            detailScrollView
             .lfNavigationTitle("素材详情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1676,6 +1586,115 @@ struct ClipMenuView: View {
         } message: {
             Text("请先从以下作品中移除它，再删除素材：\n\(referencedWorkNames.joined(separator: "、"))")
         }
+    }
+
+    private var detailScrollView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                ClipDetailPreview(clip: currentClip, isPlaying: $isPlayingPreview)
+                frameEditorButton
+                foldersSection
+                deleteClipButton
+            }
+            .padding(20)
+        }
+    }
+
+    private var frameEditorButton: some View {
+        Button {
+            showFrameEditor = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "square.grid.3x3")
+                    .foregroundStyle(LF.gold)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("编辑帧")
+                        .font(.subheadline.weight(.semibold))
+                    Text("取舍帧，让动态素材更轻、更顺")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LF.textSecondary)
+            }
+            .padding(14)
+            .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var foldersSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("文件夹")
+                    .font(.headline)
+                    .foregroundStyle(LF.header)
+                Spacer()
+                Text("选择后会移动到该文件夹")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+            }
+
+            if appState.folders.isEmpty {
+                Text("还没有文件夹，可先在素材库创建")
+                    .font(.subheadline)
+                    .foregroundStyle(LF.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
+            } else {
+                ForEach(appState.folders) { folder in
+                    folderButton(folder)
+                }
+            }
+        }
+    }
+
+    private func folderButton(_ folder: LibraryFolder) -> some View {
+        let filed = isFiled(folder.id)
+        return Button {
+            appState.moveClip(clip.id, toFolder: filed ? nil : folder.id)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: filed ? "folder.fill" : "folder")
+                    .foregroundStyle(LF.folderIcon)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(folder.name)
+                        .lineLimit(1)
+                    Text("\(folder.clipIDs.count) 个素材")
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                }
+                Spacer()
+                Image(systemName: filed ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(filed ? LF.gold : LF.textSecondary)
+            }
+            .padding(14)
+            .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var deleteClipButton: some View {
+        Button {
+            requestDeleteClip()
+        } label: {
+            Group {
+                if isDeletingClip {
+                    Label("正在删除…", systemImage: "hourglass")
+                } else {
+                    Label("删除素材", systemImage: "trash")
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .disabled(isDeletingClip)
+        .padding(.top, 2)
     }
 
     private func requestDeleteClip() {

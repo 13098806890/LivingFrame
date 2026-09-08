@@ -61,13 +61,35 @@ public struct CompositionRenderer {
         return context.createCGImage(ci, from: rect)
     }
 
-    public func render(_ composition: Composition, at time: TimeInterval, into pixelBuffer: CVPixelBuffer) -> Bool {
+    public func render(
+        _ composition: Composition,
+        at time: TimeInterval,
+        into pixelBuffer: CVPixelBuffer,
+        outputSize: CGSize? = nil
+    ) -> Bool {
         let playbackTime = composition.compositionPlaybackTime(
             for: time,
             reversed: isPlaybackReversed
         )
         guard let ci = renderCIImage(composition, at: playbackTime) else { return false }
-        context.render(ci, to: pixelBuffer, bounds: composition.renderRect, colorSpace: nil)
+        let sourceRect = composition.renderRect
+        let targetSize = outputSize ?? sourceRect.size
+        if targetSize != sourceRect.size {
+            // Pixel buffer 的尺寸可能小于工程画布。先裁成画布、归一化到零原点，再等比
+            // 缩放到目标尺寸，避免 CIContext 直接渲染时发生错位或裁切。
+            let normalized = ci.cropped(to: sourceRect).transformed(by: CGAffineTransform(
+                translationX: -sourceRect.minX,
+                y: -sourceRect.minY
+            ))
+            let scaled = normalized.transformed(by: CGAffineTransform(
+                scaleX: targetSize.width / sourceRect.width,
+                y: targetSize.height / sourceRect.height
+            ))
+            context.render(scaled, to: pixelBuffer,
+                           bounds: CGRect(origin: .zero, size: targetSize), colorSpace: nil)
+        } else {
+            context.render(ci, to: pixelBuffer, bounds: sourceRect, colorSpace: nil)
+        }
         return true
     }
 
@@ -249,7 +271,7 @@ public struct CompositionRenderer {
             let elapsed = max(0, time - element.startTime)
             let sourceTime = sourceRange.sourceTime(
                 at: elapsed,
-                looping: element.endTime - element.startTime > sourceRange.span + 0.001
+                looping: element.shouldLoop(cycleDuration: sourceRange.span)
             )
             if let frame = BackgroundStore.shared.loadFrame(
                 named: backgroundID,
@@ -276,12 +298,9 @@ public struct CompositionRenderer {
                 let elapsed = max(0, time - element.startTime)
                 let sourceCycleDuration = max(
                     sourceRange.span / max(clip.playbackSpeed, 0.01),
-                    0.1
+                    0.001
                 )
-                let isLooping = element.endTime - element.startTime > sourceCycleDuration + 0.001
-                // 循环素材的第一次播放可以从裁剪后的入点开始，但循环回绕必须回到
-                // 源区间的起点（例如 3,4,5,6,1,2...），不能每轮都从 3 重启。
-                let playbackRangeStart = isLooping ? 0 : sourceRange.start
+                let isLooping = element.shouldLoop(cycleDuration: sourceCycleDuration)
                 let playTime = sourceRange.sourceTime(
                     at: elapsed,
                     playbackRate: clip.playbackSpeed,
@@ -290,7 +309,7 @@ public struct CompositionRenderer {
                 if let frame = clipFrameImage(
                     clipID: clipID,
                     at: playTime,
-                    sourceStart: playbackRangeStart,
+                    sourceStart: sourceRange.start,
                     sourceEnd: sourceRange.end
                 ) {
                 // 预览用缩略图（尺寸 < 素材实际像素）。不把源图放大回全尺寸——
@@ -314,6 +333,8 @@ public struct CompositionRenderer {
                 } else {
                     content = applyStickerStyle(
                         clip.stickerStyle,
+                        thickness: clip.edgeThickness,
+                        fixScale: fixScale,
                         to: applyEdgeStyle(
                             clip.edgeStyle,
                             lineStyle: clip.edgeLineStyle,
@@ -348,7 +369,8 @@ public struct CompositionRenderer {
                 at: max(0, time - element.startTime),
                 duration: element.endTime - element.startTime,
                 sourceStartTime: element.sourceStartTime,
-                sourceEndTime: element.sourceEndTime
+                sourceEndTime: element.sourceEndTime,
+                playbackCount: element.playbackCount
             )
         case .effect(let effectID):
             source = decorationRenderer.image(
@@ -357,7 +379,8 @@ public struct CompositionRenderer {
                 at: max(0, time - element.startTime),
                 duration: element.endTime - element.startTime,
                 sourceStartTime: element.sourceStartTime,
-                sourceEndTime: element.sourceEndTime
+                sourceEndTime: element.sourceEndTime,
+                playbackCount: element.playbackCount
             )
         case .text(let textID):
             if let text = composition.texts.first(where: { $0.id.uuidString == textID }) {
@@ -583,7 +606,12 @@ public struct CompositionRenderer {
 
     // MARK: - 贴纸风格（参照 iOS 贴纸 STKStickerEffect）
 
-    private func applyStickerStyle(_ style: StickerStyle, to image: CIImage) -> CIImage {
+    private func applyStickerStyle(
+        _ style: StickerStyle,
+        thickness: EdgeThickness,
+        fixScale: CGFloat,
+        to image: CIImage
+    ) -> CIImage {
         // 苹果描边/漫画宽度与主体尺寸成比例（约短边 3%/7%），预览与导出表现一致
         let base = min(image.extent.width, image.extent.height)
         switch style {
@@ -599,10 +627,12 @@ public struct CompositionRenderer {
                 .cropped(to: image.extent)
             return image.composited(over: soft)
         case .comic:
-            // 漫画贴纸：黑粗外描边（≈短边 7%）+ 白色细边紧贴主体内侧。
-            // 白层半径略小于黑层，盖住主体边缘 1-2px，形成主体边缘白边 + 外圈黑边的漫画线稿感
-            let blackRadius = max(10, min(base * 0.07, 40))
-            let whiteRadius = max(3, blackRadius - 4)
+            // 漫画贴纸：黑色外描边 + 白色内描边。
+            // 现在跟自定义描边共用三档粗细，且按预览缩略图比例换算，
+            // 这样用户在两种风格之间切换时，粗细控制不会失效。
+            let scale = max(fixScale, 0.001)
+            let blackRadius = max(1, thickness.radius / scale)
+            let whiteRadius = max(1, thickness.radius * 0.5 / scale)
             let black = outlineLayer(image, radius: blackRadius, color: CIColor(hex: "000000"), lineStyle: .solid)
             let white = outlineLayer(image, radius: whiteRadius, color: CIColor(hex: "FFFFFF"), lineStyle: .solid)
             return image.composited(over: white.composited(over: black))
@@ -640,8 +670,24 @@ public struct CompositionRenderer {
     /// 生成描边层：整图形态学膨胀（alpha 同步外扩）→ 染成纯色。
     /// 统一用实线算法（线段未实现的调试代码已移除）
     private func outlineLayer(_ image: CIImage, radius: CGFloat, color: CIColor, lineStyle: EdgeLineStyle, fixScale: CGFloat = 1, clipID: String = "", frameIndex: Int = 0) -> CIImage {
-        let expanded = image.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: radius])
+        let expanded = morphologyExpanded(image, radius: radius)
         return tinted(expanded, color: color)
+    }
+
+    /// Core Image 对单次 morphology radius 在部分系统上有上限。
+    /// 分段膨胀可以保持大号描边的完整宽度，避免“粗”档被系统截断。
+    private func morphologyExpanded(_ image: CIImage, radius: CGFloat) -> CIImage {
+        var remaining = max(radius, 0)
+        var result = image
+        while remaining > 0 {
+            let step = min(remaining, 100)
+            result = result.applyingFilter(
+                "CIMorphologyMaximum",
+                parameters: [kCIInputRadiusKey: step]
+            )
+            remaining -= step
+        }
+        return result
     }
 
     /// 柔光：人物在上，光晕层（膨胀+模糊+染色）垫在下层（光晕不裁剪，避免贴边被截断）

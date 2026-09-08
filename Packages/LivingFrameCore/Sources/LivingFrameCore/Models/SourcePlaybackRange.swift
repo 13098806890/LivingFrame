@@ -52,3 +52,38 @@ public extension SegmentedClip {
         return full.isFinite && full > 0.001 ? full : 0.001
     }
 }
+
+/// 有限动态源的共同时间信息。静态元素没有此信息，只编辑显示时长。
+public struct ElementPlaybackSource: Equatable, Sendable {
+    public let duration: TimeInterval
+    public let playbackRate: Double
+
+    public init(duration: TimeInterval, playbackRate: Double = 1) {
+        self.duration = duration.isFinite ? max(duration, 0.001) : 0.001
+        self.playbackRate = playbackRate.isFinite ? max(playbackRate, 0.01) : 1
+    }
+
+    public func range(for element: CompositionElement) -> SourcePlaybackRange {
+        SourcePlaybackRange(duration: duration, start: element.sourceStartTime, end: element.sourceEndTime)
+    }
+
+    public func cycleDuration(for element: CompositionElement) -> TimeInterval {
+        range(for: element).span / playbackRate
+    }
+}
+
+public extension CompositionElement {
+    func shouldLoop(cycleDuration: TimeInterval) -> Bool {
+        if let playbackCount { return playbackCount > 1 }
+        // 旧工程仍按原来的时长播放，不在打开工程时擅自缩短。
+        return endTime - startTime > cycleDuration + 0.001
+    }
+
+    func resolvedPlaybackCount(cycleDuration: TimeInterval) -> Int {
+        if let playbackCount { return max(playbackCount, 1) }
+        guard shouldLoop(cycleDuration: cycleDuration) else { return 1 }
+        let ratio = (endTime - startTime) / max(cycleDuration, 0.001)
+        guard ratio.isFinite else { return 1 }
+        return Int(min(max(ceil(ratio - 0.000001), 1), 10_000))
+    }
+}

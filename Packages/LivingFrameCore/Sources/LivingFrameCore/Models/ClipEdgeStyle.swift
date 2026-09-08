@@ -31,12 +31,13 @@ public enum EdgeThickness: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// 描边半径（像素）
+    /// 描边半径（像素）。`CIMorphologyMaximum` 会从主体轮廓向外扩展，
+    /// 因此这个值就是用户看到的外描边宽度基准。
     public var radius: CGFloat {
         switch self {
-        case .thin: 18
-        case .medium: 36
-        case .thick: 60
+        case .thin: 9
+        case .medium: 18
+        case .thick: 30
         }
     }
 }

@@ -2,7 +2,7 @@ import LivingFrameCore
 import PhotosUI
 import SwiftUI
 
-/// 背景选择器：相册图片 / 纯色（白色、微信聊天背景色、黑色）
+/// 背景选择器：相册图片 / 纯色 / 透明背景。
 struct BackgroundPickerView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -181,6 +181,7 @@ struct BackgroundPickerView: View {
                 .textCase(.uppercase)
                 .tracking(1.2)
             HStack(spacing: 10) {
+                transparentBackgroundCell
                 ForEach(colors, id: \.hex) { color in
                     Button {
                         appState.setBackground(color: color.hex)
@@ -203,6 +204,31 @@ struct BackgroundPickerView: View {
                 }
             }
         }
+    }
+
+    private var transparentBackgroundCell: some View {
+        Button {
+            appState.setTransparentBackground()
+            dismiss()
+        } label: {
+            VStack(spacing: 6) {
+                CheckerboardView()
+                    .frame(width: 70, height: 70)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isTransparentSelected ? LF.selectionStroke : .clear, lineWidth: 2)
+                    }
+                Text("透明")
+                    .font(.caption)
+                    .foregroundStyle(LF.textPrimary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var isTransparentSelected: Bool {
+        appState.composition?.background.kind == .clear
     }
 
     private func selectedBorder(_ key: String) -> Color {

@@ -41,6 +41,7 @@ struct TimelineView: View {
     @State private var zoom: CGFloat = 1
     @State private var lastPinchZoom: CGFloat = 1
     @State private var elementDragSession: ElementDragSession?
+    @State private var didReachSourceBoundary = false
     @State private var layerReorderSession: LayerReorderSession?
     @State private var audioDragAnchors: [UUID: TimeInterval] = [:]
     @State private var playheadDragStart: TimeInterval?
@@ -73,13 +74,10 @@ struct TimelineView: View {
         let barWidth: CGFloat
         let activeOffset: CGFloat
         let activeWidth: CGFloat
-        let activeDuration: TimeInterval
+        let isLooping: Bool
     }
 
-    private struct TimelineSourceInfo {
-        let duration: TimeInterval
-        let playbackRate: TimeInterval
-    }
+    private typealias TimelineSourceInfo = ElementPlaybackSource
 
     private struct ElementTiming {
         var start: TimeInterval
@@ -206,27 +204,7 @@ struct TimelineView: View {
     }
 
     private func timelineSourceInfo(for element: CompositionElement) -> TimelineSourceInfo? {
-        switch element.kind {
-        case .clip(let clipID):
-            guard let clip = timelineClip(id: clipID) else { return nil }
-            return TimelineSourceInfo(
-                duration: clipSourceDuration(clip),
-                playbackRate: max(clip.playbackSpeed, 0.01)
-            )
-        case .decoration(let decorationID):
-            guard let duration = DecorationRenderer.stickerDefinition(for: decorationID)?.defaultDuration,
-                  duration.isFinite, duration > 0 else { return nil }
-            return TimelineSourceInfo(duration: duration, playbackRate: 1)
-        case .background(let backgroundID):
-            guard let media = timelineBackgroundMedia(id: backgroundID),
-                  media.isAnimated,
-                  media.duration.isFinite, media.duration > 0 else { return nil }
-            return TimelineSourceInfo(duration: media.duration, playbackRate: 1)
-        case .effect, .text, .canvasEdge:
-            return nil
-        @unknown default:
-            return nil
-        }
+        appState.playbackSource(for: element)
     }
 
     private func timelineBackgroundMedia(id: String) -> BackgroundMediaItem? {
@@ -720,7 +698,7 @@ struct TimelineView: View {
                 barWidth: activeWidth,
                 activeOffset: 0,
                 activeWidth: activeWidth,
-                activeDuration: activeDuration
+                isLooping: false
             )
         }
 
@@ -738,7 +716,7 @@ struct TimelineView: View {
             barWidth: barWidth,
             activeOffset: activeOffset,
             activeWidth: activeWidth,
-            activeDuration: activeTimelineDuration
+            isLooping: element.shouldLoop(cycleDuration: source.span / speed)
         )
     }
 
@@ -776,7 +754,7 @@ struct TimelineView: View {
             return false
         }()
         let isSelected = appState.isElementSelected(element.id)
-        let isLoopTrimDragging = isLoopTrimActive(for: element.id)
+        let repeatCount = playbackCount(for: displayElement)
         let isTrimmingStart = isActiveTrim(element.id, mode: .trimStart)
         let isTrimmingEnd = isActiveTrim(element.id, mode: .trimEnd)
         let sourceInfo = timelineSourceInfo(for: displayElement)
@@ -905,7 +883,7 @@ struct TimelineView: View {
                     .allowsHitTesting(false)
 
                 // 两侧圆角拖拽柄略微超出胶片条，避免与缩略图融成一块。
-                if !isCanvasEdge {
+                if !isCanvasEdge && repeatCount == 1 {
                 HStack(spacing: 0) {
                     // 视觉手柄的中心必须和时间坐标边界重合。
                     Color.clear.frame(width: max(metrics.activeOffset - visualHandleWidth / 2, 0))
@@ -981,17 +959,30 @@ struct TimelineView: View {
                 }
             }
 
-            if isLoopTrimDragging,
-               let count = loopCount(displayElement, metrics: metrics, spp: spp) {
-                LoopCountBadge(count: count)
-                    .offset(
-                        x: min(
-                            max(metrics.activeOffset + metrics.activeWidth - 52, 0),
-                            max(barWidth - 52, 0)
-                        ),
-                        y: -(barHeight / 2 + 12)
-                    )
-                    .allowsHitTesting(false)
+            if repeatCount > 1 {
+                if let sourceInfo {
+                    let cycleWidth = sourceInfo.cycleDuration(for: displayElement) / spp
+                    // 太密时省略分隔线，避免细碎闪烁；不创建与帧数等量的视图。
+                    if cycleWidth >= 6 {
+                        ForEach(1..<min(repeatCount, 100), id: \.self) { cycle in
+                            Rectangle()
+                                .fill(LF.selectionStroke.opacity(0.65))
+                                .frame(width: 1, height: barHeight - 6)
+                                .offset(x: metrics.activeOffset + Double(cycle) * cycleWidth)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                }
+                Button {
+                    appState.selectElement(element.id)
+                    onRequestInspector()
+                } label: {
+                    LoopCountBadge(count: repeatCount)
+                }
+                .buttonStyle(.plain)
+                .offset(x: metrics.activeOffset + 6)
+                .zIndex(21)
+                .accessibilityLabel("播放 \(repeatCount) 次，编辑播放片段")
             }
         }
         .frame(width: barWidth, height: barHeight)
@@ -1017,44 +1008,15 @@ struct TimelineView: View {
         return display
     }
 
-    private func isLoopTrimActive(for id: UUID) -> Bool {
-        guard let session = elementDragSession, session.id == id else { return false }
-        if case .trimEnd = session.mode { return true }
-        return false
-    }
-
     /// 手指进入左右裁剪模式后立即强调对应手柄，让用户知道当前操控的是哪一端。
     private func isActiveTrim(_ id: UUID, mode: ElementDragMode) -> Bool {
         guard let session = elementDragSession, session.id == id else { return false }
         return session.mode == mode
     }
 
-    private func loopCount(
-        _ element: CompositionElement,
-        metrics: ElementTimelineMetrics,
-        spp: CGFloat
-    ) -> Int? {
-        guard let cycleWidth = loopCycleWidth(element, spp: spp),
-              cycleWidth > 2 else { return nil }
-        return max(1, Int(ceil(metrics.activeWidth / cycleWidth)))
-    }
-
-    /// 第一次循环的时间轴宽度；只对素材和贴纸生效。
-    private func loopCycleWidth(_ element: CompositionElement, spp: CGFloat) -> CGFloat? {
-        switch element.kind {
-        case .clip(let clipID):
-            guard let clip = timelineClip(id: clipID) else { return nil }
-            let speed = max(clip.playbackSpeed, 0.01)
-            let source = clipSourceRange(for: element, clip: clip)
-            let sourceCycleDuration = max(source.span / speed, 0.1)
-            return max(sourceCycleDuration / spp, 0)
-        case .decoration(let decorationID):
-            guard let duration = DecorationRenderer.stickerDefinition(for: decorationID)?.defaultDuration,
-                  duration.isFinite, duration > 0 else { return nil }
-            return duration / spp
-        case .background, .effect, .text, .canvasEdge:
-            return nil
-        }
+    private func playbackCount(for element: CompositionElement) -> Int {
+        guard let source = timelineSourceInfo(for: element) else { return 1 }
+        return element.resolvedPlaybackCount(cycleDuration: source.cycleDuration(for: element))
     }
 
     /// 素材条内帧缩略图拼贴（最多 24 个）。胶片带显示完整源素材，
@@ -1277,6 +1239,7 @@ struct TimelineView: View {
                         - timelineLeadingInset
                         - metrics.outerStart
                     if fixedMode == .move,
+                       playbackCount(for: element) == 1,
                        isInsideTrimHotZone(localStartX, metrics: metrics) {
                         return
                     }
@@ -1291,6 +1254,7 @@ struct TimelineView: View {
                         ),
                         secondsPerPoint: spp
                     )
+                    didReachSourceBoundary = false
                     timelineDebug(
                         "gesture.begin id=\(element.id.uuidString.prefix(8)) kind=\(timelineElementKind(element)) mode=\(fixedMode) " +
                         "start=\(element.startTime) end=\(element.endTime) " +
@@ -1336,6 +1300,15 @@ struct TimelineView: View {
                 case .trimEnd:
                     timing = trimmedEnd(element, anchor: session.anchor, delta: delta, secondsPerPoint: session.secondsPerPoint)
                 }
+                if let source = timelineSourceInfo(for: element), session.mode != .move {
+                    let atBoundary = session.mode == .trimEnd
+                        ? timing.sourceEnd >= source.duration - 0.000001
+                        : timing.sourceStart <= 0.000001
+                    if atBoundary && !didReachSourceBoundary {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
+                    didReachSourceBoundary = atBoundary
+                }
                 timelineElementPreviews[element.id] = timing
                 timelineScaleDuration = max(timelineScaleDuration, timing.end, 1)
             }
@@ -1358,11 +1331,13 @@ struct TimelineView: View {
                         guard let mode = completedSession?.mode else { return }
                         switch mode {
                         case .trimStart:
+                            element.playbackCount = 1
                             // 左手柄只改变源入点；源出点必须保持锚点值不变。
                             element.startTime = timing.start
                             element.endTime = timing.end
                             element.sourceStartTime = timing.sourceStart
                         case .trimEnd:
+                            element.playbackCount = 1
                             // 右手柄只改变源出点；源入点必须保持锚点值不变。
                             element.startTime = timing.start
                             element.endTime = timing.end
@@ -1471,31 +1446,19 @@ struct TimelineView: View {
         let sourceStart = source.start
         let minimumSourceSpan = min(0.1 * speed, sourceDuration)
         let minimumSourceEnd = min(sourceStart + minimumSourceSpan, sourceDuration)
-        let oldSourceEnd = max(
-            source.end,
-            minimumSourceEnd
-        )
         let rawRequestedEnd = max(anchor.start + 0.1, anchor.end + delta)
         let requestedEnd = appState.composition.map {
             snapTime(rawRequestedEnd, excluding: element.id, comp: $0, secondsPerPoint: secondsPerPoint)
         } ?? rawRequestedEnd
-        let firstCycleEnd = anchor.start + (oldSourceEnd - sourceStart) / speed
-        let newSourceEnd: TimeInterval
-        let newEnd: TimeInterval
-        if requestedEnd <= firstCycleEnd {
-            newSourceEnd = min(
-                max(sourceStart + (requestedEnd - anchor.start) * speed, minimumSourceEnd),
-                sourceDuration
-            )
-            newEnd = anchor.start + (newSourceEnd - sourceStart) / speed
-        } else {
-            // 超出当前源区间时保留源出点，时间轴多出的部分由渲染器循环播放。
-            newSourceEnd = oldSourceEnd
-            newEnd = requestedEnd
-        }
+        // 右拖先恢复被裁掉的源帧，到原片末尾停止，绝不通过手柄触发重复。
+        let newSourceEnd = min(
+            max(sourceStart + (requestedEnd - anchor.start) * speed, minimumSourceEnd),
+            sourceDuration
+        )
+        let newEnd = anchor.start + (newSourceEnd - sourceStart) / speed
         return ElementTiming(
             start: anchor.start,
-            end: max(newEnd, anchor.start + 0.1),
+            end: newEnd,
             sourceStart: sourceStart,
             sourceEnd: newSourceEnd
         )
@@ -1922,12 +1885,10 @@ private func timelineSourceTimeForX(
     }
     if x < activeEnd {
         let elapsed = max((x - metrics.activeOffset) * secondsPerPoint * rate, 0)
-        let sourceSpan = source.span
-        let activeDuration = max(metrics.activeDuration * rate, 0)
         return source.sourceTime(
             at: elapsed / rate,
             playbackRate: rate,
-            looping: activeDuration > sourceSpan + 0.001
+            looping: metrics.isLooping
         )
     }
     let elapsed = max((x - activeEnd) * secondsPerPoint * rate, 0)
@@ -2008,17 +1969,17 @@ private struct BackgroundTimelineStrip: View {
     }
 }
 
-/// 仅在拖动结束手柄时显示的循环次数提示，不占用时间轴常驻空间。
+/// 常驻总播放次数，明确区分重复片段与普通裁剪片段。
 private struct LoopCountBadge: View {
     let count: Int
 
     var body: some View {
-        Text("循环 ×\(count)")
+        Text("↻ ×\(count)")
             .font(.system(size: 9, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white)
+            .foregroundStyle(LF.selectionText)
             .padding(.horizontal, 7)
             .frame(height: 18)
-            .background(Color.black.opacity(0.72), in: Capsule())
+            .background(LF.selectionFill, in: Capsule())
             .shadow(color: .black.opacity(0.14), radius: 2, y: 1)
     }
 }

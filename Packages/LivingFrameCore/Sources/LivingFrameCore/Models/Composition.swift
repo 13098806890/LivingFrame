@@ -305,6 +305,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     /// 静态文字/效果没有独立源帧时仅保留默认值。
     public var sourceStartTime: TimeInterval
     public var sourceEndTime: TimeInterval
+    /// 总播放次数（1 = 仅一次）。nil 只用于兼容旧工程隐式延长的循环。
+    public var playbackCount: Int?
     /// 元素级背景图案（垫在元素内容下层，nil = 无）
     public var backgroundPattern: BackgroundPatternStyle?
     /// 滤镜（作用于元素内容，nil = 原图）
@@ -322,6 +324,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         endTime: TimeInterval = .greatestFiniteMagnitude,
         sourceStartTime: TimeInterval = 0,
         sourceEndTime: TimeInterval = .greatestFiniteMagnitude,
+        playbackCount: Int = 1,
         backgroundPattern: BackgroundPatternStyle? = nil,
         filter: ElementFilter? = nil,
         backgroundSettings: BackgroundElementSettings? = nil
@@ -335,6 +338,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         self.endTime = endTime
         self.sourceStartTime = sourceStartTime
         self.sourceEndTime = sourceEndTime
+        self.playbackCount = max(playbackCount, 1)
         self.backgroundPattern = backgroundPattern
         self.filter = filter
         self.backgroundSettings = backgroundSettings

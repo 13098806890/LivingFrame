@@ -36,9 +36,11 @@ public final class FrameCache {
         return url
     }
 
-    public func register(_ clip: SegmentedClip) {
+    /// 新提取素材必须先成功落盘，才能作为可用素材发布给界面。
+    public func register(_ clip: SegmentedClip) throws {
+        try persistManifest(for: clip)
         registerInMemory(clip)
-        persistManifest(for: clip)
+        LogStore.log("library.clip.saved id=\(clip.id) frames=\(clip.frameCount)")
     }
 
     /// 更新内存状态并异步保存清单，适合编辑器中的属性修改。
@@ -48,7 +50,11 @@ public final class FrameCache {
         guard let data = manifestData(for: clip) else { return }
         let url = manifestURL(for: clip.id)
         manifestQueue.async {
-            try? data.write(to: url)
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                LogStore.log("library.clip.update.failed id=\(clip.id) error=\(error)")
+            }
         }
     }
 
@@ -159,8 +165,14 @@ public final class FrameCache {
         }
         for dir in entries where dir.hasDirectoryPath && dir.lastPathComponent != ".trash" {
             let id = dir.lastPathComponent
-            guard let data = try? Data(contentsOf: manifestURL(for: id)),
-                  let manifest = try? JSONDecoder().decode(ClipManifest.self, from: data) else { continue }
+            let manifest: ClipManifest
+            do {
+                let data = try Data(contentsOf: manifestURL(for: id))
+                manifest = try JSONDecoder().decode(ClipManifest.self, from: data)
+            } catch {
+                LogStore.log("library.clip.load.failed id=\(id) error=\(error)")
+                continue
+            }
             let audioURL = manifest.audioFilename.map { dir.appendingPathComponent($0) }
             loaded[id] = SegmentedClip(
                 id: manifest.id,
@@ -169,6 +181,7 @@ public final class FrameCache {
                 frameCount: manifest.frameCount,
                 width: manifest.width,
                 height: manifest.height,
+                createdAt: manifest.createdAt,
                 folderURL: dir,
                 audioURL: audioURL,
                 edgeStyle: manifest.edgeStyle,
@@ -183,6 +196,7 @@ public final class FrameCache {
         registryLock.lock()
         registered = loaded
         registryLock.unlock()
+        LogStore.log("library.reload count=\(loaded.count)")
     }
 
     public func allClips() -> [SegmentedClip] {
@@ -316,14 +330,28 @@ public final class FrameCache {
         rootURL.appendingPathComponent(id).appendingPathComponent("clip.json")
     }
 
-    private func persistManifest(for clip: SegmentedClip) {
-        guard let data = manifestData(for: clip) else { return }
-        manifestQueue.sync {
-            try? data.write(to: manifestURL(for: clip.id))
+    private func persistManifest(for clip: SegmentedClip) throws {
+        let data = try encodedManifestData(for: clip)
+        do {
+            try manifestQueue.sync {
+                try data.write(to: manifestURL(for: clip.id), options: .atomic)
+            }
+        } catch {
+            LogStore.log("library.clip.save.failed id=\(clip.id) error=\(error)")
+            throw error
         }
     }
 
     private func manifestData(for clip: SegmentedClip) -> Data? {
+        do {
+            return try encodedManifestData(for: clip)
+        } catch {
+            LogStore.log("library.clip.encode.failed id=\(clip.id) error=\(error)")
+            return nil
+        }
+    }
+
+    private func encodedManifestData(for clip: SegmentedClip) throws -> Data {
         let manifest = ClipManifest(
             id: clip.id,
             name: clip.name,
@@ -341,7 +369,7 @@ public final class FrameCache {
             playbackSpeed: clip.playbackSpeed,
             excludedFrames: Array(clip.excludedFrames).sorted()
         )
-        return try? JSONEncoder().encode(manifest)
+        return try JSONEncoder().encode(manifest)
     }
 }
 

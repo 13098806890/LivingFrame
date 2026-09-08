@@ -1,9 +1,197 @@
 import LivingFrameCore
 import SwiftUI
+import UIKit
+
+/// 编辑一轮播放使用的完整源范围；草稿只在点“完成”时提交，取消不影响工程。
+private struct ElementSourceRangeEditor: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    let element: CompositionElement
+    let source: ElementPlaybackSource
+    let onApply: (TimeInterval, TimeInterval) -> Void
+    @State private var start: TimeInterval
+    @State private var end: TimeInterval
+
+    init(element: CompositionElement, source: ElementPlaybackSource,
+         onApply: @escaping (TimeInterval, TimeInterval) -> Void) {
+        self.element = element
+        self.source = source
+        self.onApply = onApply
+        let range = source.range(for: element)
+        _start = State(initialValue: range.start)
+        _end = State(initialValue: range.end)
+    }
+
+    private var minimumSpan: Double { min(0.1 * source.playbackRate, source.duration) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text(element.name).font(.headline)
+                    SourceRangeFilmstrip(
+                        element: element, source: source, start: start, end: end,
+                        clip: clip
+                    )
+                    .frame(height: 76)
+                    endpointLabel("起始位置", time: start)
+                    Slider(value: Binding(
+                        get: { start },
+                        set: { start = min($0, max(end - minimumSpan, 0)) }
+                    ), in: 0...source.duration)
+                    .accessibilityLabel("源片段起始位置")
+                    endpointLabel("结束位置", time: end)
+                    Slider(value: Binding(
+                        get: { end },
+                        set: { end = max($0, min(start + minimumSpan, source.duration)) }
+                    ), in: 0...source.duration)
+                    .accessibilityLabel("源片段结束位置")
+                    Text(String(format: "每次播放 %.2f 秒", (end - start) / source.playbackRate))
+                        .font(.subheadline.monospacedDigit())
+                    Text("暗区不会播放。修改片段会应用到每一次重复，时间轴上的开始位置保持不动。")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                    Button("恢复完整素材") {
+                        start = 0
+                        end = source.duration
+                    }
+                }
+                .padding(20)
+            }
+            .magicBackground()
+            .tint(LF.actionPrimary)
+            .lfNavigationTitle("编辑播放片段")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") {
+                        onApply(start, end)
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var clip: SegmentedClip? {
+        guard case .clip(let id) = element.kind else { return nil }
+        return FrameCache.shared.clip(id: id) ?? appState.clips.first(where: { $0.id == id })
+    }
+
+    private func endpointLabel(_ title: String, time: Double) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(String(format: "%.2f s", time)).monospacedDigit()
+        }
+        .font(.subheadline)
+    }
+}
+
+/// 只采样 12 张低分辨率帧，拖动选区只更新遮罩，不反复解码或建立播放缓存。
+private struct SourceRangeFilmstrip: View {
+    let element: CompositionElement
+    let source: ElementPlaybackSource
+    let start: Double
+    let end: Double
+    let clip: SegmentedClip?
+    @State private var frames: [CGImage?] = []
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let left = width * start / source.duration
+            let right = width * end / source.duration
+            HStack(spacing: 0) {
+                ForEach(frames.indices, id: \.self) { index in
+                    Group {
+                        if let frame = frames[index] {
+                            Image(decorative: frame, scale: 1).resizable().scaledToFill()
+                        } else {
+                            LF.surface2
+                        }
+                    }
+                    .frame(width: width / CGFloat(max(frames.count, 1)), height: geometry.size.height)
+                    .clipped()
+                }
+            }
+            .frame(width: width, height: geometry.size.height)
+            .overlay(alignment: .leading) {
+                TimelineInactiveRangeMask(totalWidth: width, leftWidth: left,
+                                          rightWidth: width - right, height: geometry.size.height)
+                    .frame(width: width, height: geometry.size.height)
+                    .allowsHitTesting(false)
+            }
+            .overlay(alignment: .leading) {
+                Rectangle().strokeBorder(LF.selectionStroke, lineWidth: 3)
+                    .frame(width: max(right - left, 1))
+                    .offset(x: left)
+                    .allowsHitTesting(false)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .task(id: element.id) {
+            let kind = element.kind
+            let duration = source.duration
+            let clip = clip
+            let worker = Task.detached(priority: .utility) {
+                var result: [CGImage?] = []
+                for index in 0..<12 {
+                    guard !Task.isCancelled else { return result }
+                    let time = duration * (Double(index) + 0.5) / 12
+                    result.append(autoreleasepool {
+                        Self.thumbnail(kind: kind, clip: clip, time: time)
+                    })
+                }
+                return result
+            }
+            let result = await withTaskCancellationHandler {
+                await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
+            guard !Task.isCancelled else { return }
+            frames = result
+        }
+    }
+
+    nonisolated private static func thumbnail(kind: ElementKind, clip: SegmentedClip?, time: Double) -> CGImage? {
+        let image: CGImage?
+        switch kind {
+        case .clip:
+            guard let clip, clip.fps.isFinite, !clip.playbackFrameIndices.isEmpty else { return nil }
+            let indices = clip.playbackFrameIndices
+            let offset = min(max(Int(time * max(clip.fps, 0.001)), 0), indices.count - 1)
+            return FrameCache.shared.cachedThumbnail(for: clip, index: indices[offset], maxPixelSize: 160)
+        case .background(let id):
+            image = BackgroundStore.shared.loadFrame(named: id, at: time)
+        case .decoration(let id), .effect(let id):
+            return DecorationRenderer.previewThumbnail(for: id, at: time)
+        case .text, .canvasEdge:
+            return nil
+        }
+        guard let image else { return nil }
+        let scale = min(160 / Double(max(image.width, image.height)), 1)
+        let width = max(Int(Double(image.width) * scale), 1)
+        let height = max(Int(Double(image.height) * scale), 1)
+        guard let context = CGContext(data: nil, width: width, height: height,
+                                      bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+        return context.makeImage()
+    }
+}
 
 /// 检查器：按选中类型分派（视频元素 / 音频段）
 struct ElementInspectorView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var editingSourceElement: CompositionElement?
 
     var body: some View {
         // 底部属性面板：高度受限（外部 frame），内容多时内部滚动
@@ -25,6 +213,13 @@ struct ElementInspectorView: View {
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                     }
+                }
+            }
+        }
+        .sheet(item: $editingSourceElement) { element in
+            if let source = appState.playbackSource(for: element) {
+                ElementSourceRangeEditor(element: element, source: source) { start, end in
+                    appState.setElementSourceRange(element.id, start: start, end: end)
                 }
             }
         }
@@ -78,6 +273,22 @@ struct ElementInspectorView: View {
             }
             // 纯色
             HStack(spacing: 10) {
+                Button {
+                    appState.setTransparentBackground()
+                } label: {
+                    CheckerboardView()
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(
+                                    appState.composition?.background.kind == .clear ? LF.selectionStroke : LF.surface2,
+                                    lineWidth: appState.composition?.background.kind == .clear ? 2.5 : 1
+                                )
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("透明背景")
                 ForEach(bgColors, id: \.hex) { color in
                     Button {
                         appState.setBackground(color: color.hex)
@@ -339,6 +550,10 @@ struct ElementInspectorView: View {
                 .buttonStyle(.plain)
             }
 
+            if let source = appState.playbackSource(for: element) {
+                playbackControls(element, source: source)
+            }
+
             if case .canvasEdge = element.kind {
                 canvasEdgeElementInspector
             } else if case .background = element.kind {
@@ -347,7 +562,9 @@ struct ElementInspectorView: View {
                 if case .clip(let clipID) = element.kind,
                    let clip = appState.clips.first(where: { $0.id == clipID }) {
                     stickerStylePicker(clip)
-                    speedPicker(clip)
+                    if appState.playbackSource(for: element) != nil {
+                        speedPicker(clip)
+                    }
                 }
                 if case .text(let textID) = element.kind,
                    let text = appState.composition?.texts.first(where: { $0.id.uuidString == textID }) {
@@ -357,6 +574,55 @@ struct ElementInspectorView: View {
                 elementBackgroundPicker(element)
             }
         }
+    }
+
+    private func playbackControls(_ element: CompositionElement, source: ElementPlaybackSource) -> some View {
+        let count = element.resolvedPlaybackCount(cycleDuration: source.cycleDuration(for: element))
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("重复播放", systemImage: "repeat")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Menu {
+                    ForEach([1, 2, 3], id: \.self) { value in
+                        Button(value == 1 ? "仅播放一次" : "播放 \(value) 次") {
+                            appState.setElementPlaybackCount(element.id, count: value)
+                        }
+                    }
+                    Button("自定义次数") {
+                        appState.setElementPlaybackCount(element.id, count: max(count, 4))
+                    }
+                } label: {
+                    Text(count == 1 ? "仅播放一次" : "播放 \(count) 次")
+                        .foregroundStyle(LF.selectionText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(LF.selectionFill, in: Capsule())
+                }
+            }
+            if count > 3 {
+                Stepper("总共播放 \(count) 次", value: Binding(
+                    get: { min(count, 99) },
+                    set: { appState.setElementPlaybackCount(element.id, count: $0) }
+                ), in: 1...99)
+                .font(.caption)
+            }
+            Button {
+                appState.pause()
+                editingSourceElement = element
+            } label: {
+                Label("编辑播放片段", systemImage: "scissors")
+                    .font(.subheadline)
+                    .foregroundStyle(LF.actionPrimary)
+            }
+            Text(count > 1
+                 ? "每次重复当前选中片段；修改片段不改变时间轴起点。"
+                 : "左右手柄只裁剪或恢复内容，到原片末尾停止。")
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
+        }
+        .padding(10)
+        .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var canvasEdgeElementInspector: some View {
@@ -814,8 +1080,8 @@ struct ElementInspectorView: View {
                     }
                 }
             }
-            // 自定义描边参数：粗细 → 颜色（风格=自定义描边时）
-            if clip.stickerStyle == .customOutline {
+            // 自定义描边和漫画风格都支持三档粗细；颜色仅对自定义描边生效。
+            if clip.stickerStyle == .customOutline || clip.stickerStyle == .comic {
                 HStack(spacing: 8) {
                     ForEach(EdgeThickness.allCases) { thickness in
                         Button {
@@ -834,7 +1100,8 @@ struct ElementInspectorView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                HStack(spacing: 10) {
+                if clip.stickerStyle == .customOutline {
+                    HStack(spacing: 10) {
                     ForEach(edgeColors, id: \.hex) { color in
                         Button {
                             appState.setClipEdgeColor(clip.id, color.hex)
@@ -850,6 +1117,7 @@ struct ElementInspectorView: View {
                                 }
                         }
                         .buttonStyle(.plain)
+                    }
                     }
                 }
             }

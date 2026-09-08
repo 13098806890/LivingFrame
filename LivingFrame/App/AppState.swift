@@ -59,6 +59,8 @@ final class AppState: ObservableObject {
     @Published var segmentingName = ""
     /// 抠图失败原因（nil 表示无错误）
     @Published var segmentationError: String?
+    /// 导出完成后的非错误提示（例如微信收藏模式为满足体积而均匀抽帧）。
+    @Published private(set) var exportNotice: String?
     /// 素材文件夹（按创建时间倒序）
     @Published var folders: [LibraryFolder] = []
     /// 设置页展示的素材占用；异步计算，避免每次 SwiftUI 刷新都扫描磁盘。
@@ -574,6 +576,13 @@ final class AppState: ObservableObject {
         composition = comp
     }
 
+    /// 设置为透明背景。编辑器使用棋盘格提示透明区域，导出时保留 alpha 通道。
+    func setTransparentBackground() {
+        guard var comp = composition ?? defaultComposition() else { return }
+        comp.background = .clear
+        composition = comp
+    }
+
     /// 设置背景为预置图片
     func setBackground(preset fileName: String) {
         guard var comp = composition ?? defaultComposition() else { return }
@@ -631,7 +640,7 @@ final class AppState: ObservableObject {
         let settings = BackgroundElementSettings()
         let regionRect = backgroundRegionRect(settings.region, in: comp.canvasRect)
         // 动态背景的默认片段应当等于媒体自身完整播放时长，而不是已有工程时长。
-        // 后续若需要循环或延长，交给用户在时间轴中显式调整。
+        // 后续裁剪在时间轴调整，重复播放在检查器显式设置。
         let duration = media.isAnimated
             ? max(media.duration, 0.1)
             : max(comp.duration, 1)
@@ -833,6 +842,7 @@ final class AppState: ObservableObject {
     private func addClip(_ clip: SegmentedClip) {
         // 提取后只进入素材库，不自动加入画布（用户在编辑页自行添加）
         clips.insert(clip, at: 0)
+        LogStore.log("library.clip.published id=\(clip.id) count=\(clips.count)")
         syncAudioPreview()
     }
 
@@ -929,6 +939,63 @@ final class AppState: ObservableObject {
 
     // MARK: - 元素
 
+    /// 时间轴、检查器共用动态源识别；不把单帧图片当成可裁剪的视频。
+    func playbackSource(for element: CompositionElement) -> ElementPlaybackSource? {
+        switch element.kind {
+        case .clip(let id):
+            guard let clip = FrameCache.shared.clip(id: id) ?? clips.first(where: { $0.id == id }),
+                  clip.playbackFrameIndices.count > 1 else { return nil }
+            return ElementPlaybackSource(duration: clip.playbackSourceDuration, playbackRate: clip.playbackSpeed)
+        case .background(let id):
+            guard let media = backgroundMedia.first(where: { $0.id == id }) ?? BackgroundStore.shared.media(named: id),
+                  media.isAnimated else { return nil }
+            return ElementPlaybackSource(duration: media.duration)
+        case .decoration(let id), .effect(let id):
+            guard let definition = DecorationRenderer.stickerDefinition(for: id),
+                  definition.frameCount > 1 else { return nil }
+            return ElementPlaybackSource(duration: definition.defaultDuration)
+        case .text, .canvasEdge:
+            return nil
+        }
+    }
+
+    func setElementPlaybackCount(_ id: UUID, count: Int) {
+        guard let element = composition?.elements.first(where: { $0.id == id }),
+              let source = playbackSource(for: element) else { return }
+        pause()
+        let count = min(max(count, 1), 99)
+        beginTimelineEdit()
+        defer { finishTimelineEdit() }
+        updateElement(id, { item in
+            let range = source.range(for: item)
+            item.sourceStartTime = range.start
+            item.sourceEndTime = range.end
+            item.playbackCount = count
+            item.endTime = item.startTime + range.span / source.playbackRate * Double(count)
+        }, recomputeDuration: false)
+        recomputeDuration(autoFillOverlayElements: false)
+    }
+
+    /// 编辑重复所用的源片段，不移动工程入点；所有轮次使用同一份入点/出点。
+    func setElementSourceRange(_ id: UUID, start: TimeInterval, end: TimeInterval) {
+        guard let element = composition?.elements.first(where: { $0.id == id }),
+              let source = playbackSource(for: element), start.isFinite, end.isFinite else { return }
+        let minimumSpan = min(0.1 * source.playbackRate, source.duration)
+        let start = min(max(start, 0), source.duration - minimumSpan)
+        let end = min(max(end, start + minimumSpan), source.duration)
+        let count = min(element.resolvedPlaybackCount(cycleDuration: source.cycleDuration(for: element)), 99)
+        pause()
+        beginTimelineEdit()
+        defer { finishTimelineEdit() }
+        updateElement(id, { item in
+            item.sourceStartTime = start
+            item.sourceEndTime = end
+            item.playbackCount = count
+            item.endTime = item.startTime + (end - start) / source.playbackRate * Double(count)
+        }, recomputeDuration: false)
+        recomputeDuration(autoFillOverlayElements: false)
+    }
+
     func updateElement(
         _ id: UUID,
         _ mutate: (inout CompositionElement) -> Void,
@@ -990,16 +1057,18 @@ final class AppState: ObservableObject {
             maxEnd = max(maxEnd, a.startTime + a.duration)
         }
 
-        // 贴纸若正好贴着上一次工程末端，视为“默认铺满”而非独立撑长工程。
+        // 仅静态装饰/背景保留“默认铺满”行为，动态源的时长完全由裁剪与次数决定。
         // 先从内容最大时长中排除它，之后再让它跟随新的工程末端一起伸缩。
         if autoFillOverlayElements, previousDuration.isFinite, previousDuration > 0 {
             for index in comp.elements.indices {
                 guard case .decoration = comp.elements[index].kind,
+                      playbackSource(for: comp.elements[index]) == nil,
                       abs(comp.elements[index].endTime - previousDuration) <= 0.001 else { continue }
                 autoFillStickerIndices.append(index)
             }
             for index in comp.elements.indices {
                 guard case .background = comp.elements[index].kind,
+                      playbackSource(for: comp.elements[index]) == nil,
                       abs(comp.elements[index].endTime - previousDuration) <= 0.001 else { continue }
                 autoFillBackgroundIndices.append(index)
             }
@@ -1033,16 +1102,17 @@ final class AppState: ObservableObject {
             )
         }
 
-        // 贴纸默认铺满时间轴：当素材把工程时长向右撑长时，仍处于旧时间轴末端的贴纸
-        // 自动跟随延长；已经缩短到旧末端之前的贴纸则视为用户手动调整，不强行改动。
+        // 工程延长时只延长静态覆盖层，动态贴纸和背景绝不自动增加播放轮次。
         if autoFillOverlayElements, maxEnd > previousDuration + 0.001 {
             for index in comp.elements.indices {
                 guard case .decoration = comp.elements[index].kind,
+                      playbackSource(for: comp.elements[index]) == nil,
                       comp.elements[index].endTime <= previousDuration + 0.001 else { continue }
                 comp.elements[index].endTime = maxEnd
             }
             for index in comp.elements.indices {
                 guard case .background = comp.elements[index].kind,
+                      playbackSource(for: comp.elements[index]) == nil,
                       comp.elements[index].endTime <= previousDuration + 0.001 else { continue }
                 comp.elements[index].endTime = maxEnd
             }
@@ -1137,18 +1207,6 @@ final class AppState: ObservableObject {
             return CGRect(x: canvas.minX, y: canvas.minY, width: canvas.width, height: canvas.height / 2)
         case .quarter:
             return CGRect(x: canvas.midX, y: canvas.midY, width: canvas.width / 2, height: canvas.height / 2)
-        }
-    }
-
-    /// 新增长素材时，让仍处于默认时长的动图贴纸覆盖新的工程时长并循环播放。
-    /// 已经手动调整过时间轴的贴纸不强行改动，保留用户的裁剪选择。
-    private func extendDefaultStickerDurations(in composition: inout Composition, to duration: TimeInterval) {
-        guard duration.isFinite, duration > 0 else { return }
-        for index in composition.elements.indices {
-            guard case .decoration(let decorationID) = composition.elements[index].kind,
-                  let defaultDuration = DecorationRenderer.stickerDefinition(for: decorationID)?.defaultDuration,
-                  composition.elements[index].endTime <= defaultDuration + 0.001 else { continue }
-            composition.elements[index].endTime = max(composition.elements[index].endTime, duration)
         }
     }
 
@@ -1291,7 +1349,6 @@ final class AppState: ObservableObject {
             sourceEndTime: clip.playbackSourceDuration
         )
         comp.elements.append(element)
-        extendDefaultStickerDurations(in: &comp, to: max(comp.duration, element.endTime))
         composition = comp
         selectElement(element.id)
         recomputeDuration()
@@ -1301,6 +1358,7 @@ final class AppState: ObservableObject {
     func setClipPlaybackSpeed(_ clipID: String, _ speed: Double) {
         guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
         guard clips[index].playbackSpeed != speed else { return }
+        let oldSpeed = max(clips[index].playbackSpeed, 0.01)
         clips[index].playbackSpeed = speed
         FrameCache.shared.registerInBackground(clips[index])
         // 引用该素材的元素结束时间 = 起始时间 + 当前源范围时长 / 倍速
@@ -1313,10 +1371,14 @@ final class AppState: ObservableObject {
                     let sourceEnd = comp.elements[i].sourceEndTime.isFinite
                         ? min(max(comp.elements[i].sourceEndTime, sourceStart), sourceDuration)
                         : sourceDuration
+                    let count = comp.elements[i].resolvedPlaybackCount(
+                        cycleDuration: max(sourceEnd - sourceStart, 0.001) / oldSpeed
+                    )
                     comp.elements[i].sourceStartTime = sourceStart
                     comp.elements[i].sourceEndTime = sourceEnd
+                    comp.elements[i].playbackCount = count
                     comp.elements[i].endTime = comp.elements[i].startTime
-                        + max((sourceEnd - sourceStart) / max(speed, 0.01), 0.1)
+                        + max((sourceEnd - sourceStart) / max(speed, 0.01), 0.001) * Double(count)
                 }
             }
             composition = comp
@@ -1465,6 +1527,7 @@ final class AppState: ObservableObject {
 
     func addEffect(_ effectID: String) {
         guard var comp = composition ?? defaultComposition() else { return }
+        let sourceDuration = DecorationRenderer.stickerDefinition(for: effectID)?.defaultDuration
         let element = CompositionElement(
             kind: .effect(effectID: effectID),
             name: effectID,
@@ -1474,7 +1537,8 @@ final class AppState: ObservableObject {
             ),
             zIndex: nextElementZIndex(in: comp),
             startTime: 0,
-            endTime: max(comp.duration, 1)
+            endTime: sourceDuration ?? max(comp.duration, 1),
+            sourceEndTime: sourceDuration ?? .greatestFiniteMagnitude
         )
         comp.elements.append(element)
         composition = comp
@@ -1482,8 +1546,7 @@ final class AppState: ObservableObject {
         recomputeDuration()
     }
 
-    /// 添加动图贴纸：默认覆盖当前工程时长，帧序列不足时循环补满。
-    /// 之后仍可在时间轴上拖动结束时间调整播放区间。
+    /// 动态贴纸默认播放一次；循环必须通过检查器显式设置。
     func addSticker(_ stickerID: String) {
         guard var comp = composition ?? defaultComposition() else { return }
         let stickerDuration = DecorationRenderer.stickerDefinition(for: stickerID)?.defaultDuration ?? 0.9
@@ -1496,7 +1559,7 @@ final class AppState: ObservableObject {
             ),
             zIndex: nextElementZIndex(in: comp),
             startTime: 0,
-            endTime: max(comp.duration, stickerDuration),
+            endTime: stickerDuration,
             sourceStartTime: 0,
             sourceEndTime: stickerDuration
         )
@@ -1508,10 +1571,17 @@ final class AppState: ObservableObject {
 
     // MARK: - 导出
 
-    func export(format: ExportFormat, fps: Double) async throws -> URL {
+    func export(
+        format: ExportFormat,
+        fps: Double,
+        chatSticker: Bool = false,
+        chatGIFPixelSize: CGFloat = 240,
+        resolution: ExportResolution = .original
+    ) async throws -> URL {
         guard let composition else { throw AppStateError.noComposition }
         isExporting = true
         exportProgress = 0
+        exportNotice = nil
         RenderMemoryController.prepareForExport()
         defer {
             RenderMemoryController.finishExport()
@@ -1520,11 +1590,30 @@ final class AppState: ObservableObject {
         let start = Date()
         LogStore.log("export: start format=\(format.rawValue) fps=\(fps) duration=\(composition.duration)s elements=\(composition.elements.count) audioClips=\(composition.audioClips.count)")
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("LF-export-\(Int(Date().timeIntervalSince1970)).\(format.fileExtension)")
+            .appendingPathComponent("LF-export-\(UUID().uuidString).\(format.fileExtension)")
         switch format {
         case .gif:
-            try await GIFExporter().export(composition, to: url, fps: fps) { [weak self] value in
-                Task { @MainActor in self?.exportProgress = value }
+            if chatSticker {
+                let result = try await GIFExporter().exportChatSticker(
+                    composition,
+                    to: url,
+                    pixelSize: chatGIFPixelSize,
+                    progress: { [weak self] value in
+                        Task { @MainActor in self?.exportProgress = value }
+                    }
+                )
+                if result.usedFrameSampling {
+                    exportNotice = "为控制在 10 MB 内，已均匀抽帧至 \(Int(result.fps)) fps；画面尺寸仍为 \(result.pixelSize)×\(result.pixelSize)。"
+                }
+            } else {
+                try await GIFExporter().export(
+                    composition,
+                    to: url,
+                    fps: fps,
+                    maxPixelSize: resolution.maxPixelSize
+                ) { [weak self] value in
+                    Task { @MainActor in self?.exportProgress = value }
+                }
             }
         case .hevcAlpha, .h264:
             try await VideoExporter().export(
@@ -1534,7 +1623,8 @@ final class AppState: ObservableObject {
                     self?.clips.first(where: { $0.id == sourceID })?.loadAudioURL()
                 },
                 to: url,
-                fps: fps
+                fps: fps,
+                maxPixelSize: resolution.maxPixelSize
             ) { [weak self] value in
                 Task { @MainActor in self?.exportProgress = value }
             }

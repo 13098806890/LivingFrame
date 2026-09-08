@@ -146,6 +146,9 @@ struct EditorView: View {
             // 检查器覆盖时间轴下半部分，画布和播放控制仍可见；需要更多参数时可继续上拉。
             .presentationDetents([.fraction(0.46), .large])
             .presentationDragIndicator(.visible)
+            // 检查器是精细编辑状态：暂停可冻结当前帧，避免播放时间持续变化
+            // 让滑块、样式和源片段编辑看起来无法生效。
+            .onAppear { appState.pause() }
         }
         .alert("清空编辑内容？", isPresented: $showClearConfirmation) {
             Button("清空", role: .destructive) {
@@ -330,6 +333,7 @@ struct EditorView: View {
 
     private var timelineArea: some View {
         TimelineView(onRequestInspector: {
+            appState.pause()
             showInspectorSheet = true
         })
             .padding(.horizontal, 12)
@@ -555,6 +559,20 @@ struct EditorView: View {
                 // 纯色背景（横排）
                 HStack(spacing: 8) {
                     Text("背景").font(.caption2).foregroundStyle(LF.header)
+                    Button { appState.setTransparentBackground() } label: {
+                        CheckerboardView()
+                            .frame(width: 36, height: 36)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(
+                                        appState.composition?.background.kind == .clear ? LF.selectionStroke : LF.surface2,
+                                        lineWidth: appState.composition?.background.kind == .clear ? 2.5 : 1
+                                    )
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("透明背景")
                     ForEach(bgColors, id: \.hex) { color in
                         Button { appState.setBackground(color: color.hex) } label: {
                             RoundedRectangle(cornerRadius: 8)
@@ -930,8 +948,8 @@ struct EditorView: View {
                         }
                     }
                 }
-                // 自定义描边参数（粗细/颜色）
-                if clip.stickerStyle == .customOutline {
+                // 自定义描边和漫画风格都支持三档粗细；颜色仅对自定义描边生效。
+                if clip.stickerStyle == .customOutline || clip.stickerStyle == .comic {
                     HStack(spacing: 8) {
                         ForEach(EdgeThickness.allCases) { thickness in
                             Button { appState.setClipEdgeThickness(clip.id, thickness) } label: {

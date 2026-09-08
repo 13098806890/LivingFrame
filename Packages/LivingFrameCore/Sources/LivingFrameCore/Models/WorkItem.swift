@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// 作品引用素材的可编辑设置快照。帧文件仍复用素材库，不重复占用磁盘。
@@ -64,6 +65,46 @@ public enum ExportFormat: String, Codable, CaseIterable, Identifiable {
         case .h264: NSLocalizedString("无透明通道，最通用的视频格式", comment: "Export format subtitle")
         case .livePhoto: NSLocalizedString("存入相册长按播放，透明区域用背景填充", comment: "Export format subtitle")
         }
+    }
+}
+
+/// 导出最长边预设。`original` 从不放大工程画布，其他档位只会按比例缩小。
+public enum ExportResolution: String, Codable, CaseIterable, Identifiable, Sendable {
+    case original
+    case p480
+    case p720
+    case p1080
+
+    public var id: String { rawValue }
+
+    public var maxPixelSize: CGFloat? {
+        switch self {
+        case .original: nil
+        case .p480: 480
+        case .p720: 720
+        case .p1080: 1080
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .original: NSLocalizedString("原始", comment: "Export resolution")
+        case .p480: "480p"
+        case .p720: "720p"
+        case .p1080: "1080p"
+        }
+    }
+
+    public func outputSize(for source: CGSize, requiresEvenDimensions: Bool = false) -> CGSize {
+        let longestEdge = max(source.width, source.height, 1)
+        let scale = maxPixelSize.map { min($0 / longestEdge, 1) } ?? 1
+        var width = max(Int((source.width * scale).rounded()), 1)
+        var height = max(Int((source.height * scale).rounded()), 1)
+        if requiresEvenDimensions {
+            width = max(width - width % 2, 2)
+            height = max(height - height % 2, 2)
+        }
+        return CGSize(width: width, height: height)
     }
 }
 
