@@ -3,8 +3,16 @@ import CoreImage
 import Foundation
 import ImageIO
 
-public enum StickerCategory: String, Equatable, Sendable {
+public enum StickerCategory: String, CaseIterable, Equatable, Sendable {
     case doodle
+    case crayon
+
+    public var title: String {
+        switch self {
+        case .doodle: "涂鸦"
+        case .crayon: "蜡笔绘本"
+        }
+    }
 }
 
 public struct StickerDefinition: Identifiable, Equatable, Sendable {
@@ -15,9 +23,10 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
     public let resourceExtension: String
     public let isFrameSequence: Bool
     public let frameCount: Int
+    public let frameDuration: TimeInterval
 
     public var defaultDuration: TimeInterval {
-        Double(frameCount) * 0.1
+        Double(frameCount) * frameDuration
     }
 
     public init(
@@ -27,7 +36,8 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         resourceName: String,
         resourceExtension: String,
         isFrameSequence: Bool,
-        frameCount: Int
+        frameCount: Int,
+        frameDuration: TimeInterval = 0.1
     ) {
         self.id = id
         self.name = name
@@ -36,6 +46,7 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         self.resourceExtension = resourceExtension
         self.isFrameSequence = isFrameSequence
         self.frameCount = frameCount
+        self.frameDuration = max(frameDuration, 0.01)
     }
 }
 
@@ -178,6 +189,26 @@ public struct DecorationRenderer {
             id: "sticker-doodle-simple-clock", name: "简单时钟", category: .doodle,
             resourceName: "doodle-simple-clock", resourceExtension: "gif",
             isFrameSequence: false, frameCount: 108
+        ),
+        StickerDefinition(
+            id: "sticker-crayon-cloud", name: "蜡笔云朵", category: .crayon,
+            resourceName: "crayon-cloud", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 5, frameDuration: 0.2
+        ),
+        StickerDefinition(
+            id: "sticker-crayon-sparkle", name: "蜡笔星光", category: .crayon,
+            resourceName: "crayon-sparkle", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3, frameDuration: 0.22
+        ),
+        StickerDefinition(
+            id: "sticker-crayon-heart-pink", name: "蜡笔粉色爱心", category: .crayon,
+            resourceName: "crayon-heart-pink", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3, frameDuration: 0.3
+        ),
+        StickerDefinition(
+            id: "sticker-crayon-heart-blue", name: "蜡笔蓝色爱心", category: .crayon,
+            resourceName: "crayon-heart-blue", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 3, frameDuration: 0.3
         )
     ]
 
@@ -205,7 +236,7 @@ public struct DecorationRenderer {
     public static func previewThumbnail(for id: String, at time: TimeInterval,
                                         maxPixelSize: Int = 160) -> CGImage? {
         guard time.isFinite, let definition = stickerDefinition(for: id) else { return nil }
-        let index = min(max(Int(max(time, 0) / 0.1), 0), max(definition.frameCount - 1, 0))
+        let index = min(max(Int(max(time, 0) / definition.frameDuration), 0), max(definition.frameCount - 1, 0))
         let name = definition.isFrameSequence
             ? String(format: definition.resourceName, index)
             : definition.resourceName
@@ -233,6 +264,7 @@ public struct DecorationRenderer {
         duration: TimeInterval = 0,
         sourceStartTime: TimeInterval = 0,
         sourceEndTime: TimeInterval = .greatestFiniteMagnitude,
+        playbackOffsetTime: TimeInterval = 0,
         playbackCount: Int? = nil
     ) -> CIImage? {
         if decorationID.hasPrefix("sticker-") {
@@ -242,6 +274,7 @@ public struct DecorationRenderer {
                 duration: duration,
                 sourceStartTime: sourceStartTime,
                 sourceEndTime: sourceEndTime,
+                playbackOffsetTime: playbackOffsetTime,
                 playbackCount: playbackCount
             )
         }
@@ -312,13 +345,14 @@ public struct DecorationRenderer {
         return loaded
     }
 
-    /// 按固定 0.1s/帧播放；由显式次数决定是否重复选定片段。
+    /// 按素材声明的单帧时长播放；由显式次数决定是否重复选定片段。
     private func stickerImage(
         decorationID: String,
         localTime: TimeInterval,
         duration: TimeInterval,
         sourceStartTime: TimeInterval,
         sourceEndTime: TimeInterval,
+        playbackOffsetTime: TimeInterval,
         playbackCount: Int?
     ) -> CIImage? {
         guard let frames = frames(for: decorationID), !frames.isEmpty else { return nil }
@@ -332,10 +366,11 @@ public struct DecorationRenderer {
         let elapsed = max(localTime, 0)
         let sourceTime = sourceRange.sourceTime(
             at: elapsed,
+            phase: playbackOffsetTime,
             looping: playbackCount.map { $0 > 1 } ?? (duration > sourceRange.span + 0.001)
         )
         let frameIndex = min(
-            max(Int((sourceTime / 0.1).rounded(.down)), 0),
+            max(Int((sourceTime / definition.frameDuration).rounded(.down)), 0),
             frames.count - 1
         )
         return CIImage(cgImage: frames[frameIndex])

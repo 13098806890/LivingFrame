@@ -44,8 +44,12 @@ struct CanvasView: View {
         qos: .userInteractive
     )
 
-    init(drivesPlayback: Bool = true) {
+    /// 双击画布素材时由编辑页打开检查器；全屏预览不传回调，因此保持只读预览。
+    private let onRequestInspector: () -> Void
+
+    init(drivesPlayback: Bool = true, onRequestInspector: @escaping () -> Void = {}) {
         self.drivesPlayback = drivesPlayback
+        self.onRequestInspector = onRequestInspector
     }
 
     var body: some View {
@@ -106,6 +110,9 @@ struct CanvasView: View {
                 }
             )
             .contentShape(Rectangle())
+            .onTapGesture(count: 2) { location in
+                handleDoubleTap(at: location)
+            }
             .onTapGesture { location in
                 handleTap(at: location)
             }
@@ -204,6 +211,14 @@ struct CanvasView: View {
             // 点空白处 = 选中背景对象（检查器可编辑背景纯色/图案）
             appState.selectBackground()
         }
+    }
+
+    /// 双击先按同一套命中测试选中素材，再打开检查器；点到空白处不会误弹检查器。
+    private func handleDoubleTap(at location: CGPoint) {
+        guard !appState.isCropping else { return }
+        handleTap(at: location)
+        guard appState.primarySelectedElement != nil else { return }
+        onRequestInspector()
     }
 
     /// 旋转变换后的点-元素命中测试

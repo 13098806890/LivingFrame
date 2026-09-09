@@ -62,8 +62,7 @@ struct WorksView: View {
     }
 
     private func createNewProject() {
-        let aspect = appState.composition.map { CanvasAspect.aspect(for: $0.canvasRect.size) } ?? .landscape16x9
-        appState.createComposition(aspect: aspect)
+        appState.createComposition()
         appState.selectedTab = .editor
     }
 }

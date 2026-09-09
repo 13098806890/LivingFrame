@@ -578,6 +578,7 @@ struct ElementInspectorView: View {
 
     private func playbackControls(_ element: CompositionElement, source: ElementPlaybackSource) -> some View {
         let count = element.resolvedPlaybackCount(cycleDuration: source.cycleDuration(for: element))
+        let range = source.range(for: element)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("重复播放", systemImage: "repeat")
@@ -607,17 +608,26 @@ struct ElementInspectorView: View {
                 ), in: 1...99)
                 .font(.caption)
             }
+            HStack(spacing: 8) {
+                Label("源片段", systemImage: "film")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(LF.textSecondary)
+                Spacer(minLength: 8)
+                Text(String(format: "%.2f–%.2f / %.2f s", range.start, range.end, source.duration))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(LF.textPrimary)
+            }
             Button {
                 appState.pause()
                 editingSourceElement = element
             } label: {
-                Label("编辑播放片段", systemImage: "scissors")
+                Label("编辑起始帧和结束帧", systemImage: "scissors")
                     .font(.subheadline)
                     .foregroundStyle(LF.actionPrimary)
             }
             Text(count > 1
-                 ? "每次重复当前选中片段；修改片段不改变时间轴起点。"
-                 : "左右手柄只裁剪或恢复内容，到原片末尾停止。")
+                 ? "每次重复当前选中的源片段；修改后保持时间轴起点不变。"
+                 : "动态素材可调整源片段的起始帧和结束帧；时间轴左右手柄用于单次播放。")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
         }

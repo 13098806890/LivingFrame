@@ -271,6 +271,7 @@ public struct CompositionRenderer {
             let elapsed = max(0, time - element.startTime)
             let sourceTime = sourceRange.sourceTime(
                 at: elapsed,
+                phase: element.sourcePlaybackOffset ?? 0,
                 looping: element.shouldLoop(cycleDuration: sourceRange.span)
             )
             if let frame = BackgroundStore.shared.loadFrame(
@@ -304,6 +305,7 @@ public struct CompositionRenderer {
                 let playTime = sourceRange.sourceTime(
                     at: elapsed,
                     playbackRate: clip.playbackSpeed,
+                    phase: element.sourcePlaybackOffset ?? 0,
                     looping: isLooping
                 )
                 if let frame = clipFrameImage(
@@ -370,6 +372,7 @@ public struct CompositionRenderer {
                 duration: element.endTime - element.startTime,
                 sourceStartTime: element.sourceStartTime,
                 sourceEndTime: element.sourceEndTime,
+                playbackOffsetTime: element.sourcePlaybackOffset ?? 0,
                 playbackCount: element.playbackCount
             )
         case .effect(let effectID):
@@ -380,6 +383,7 @@ public struct CompositionRenderer {
                 duration: element.endTime - element.startTime,
                 sourceStartTime: element.sourceStartTime,
                 sourceEndTime: element.sourceEndTime,
+                playbackOffsetTime: element.sourcePlaybackOffset ?? 0,
                 playbackCount: element.playbackCount
             )
         case .text(let textID):

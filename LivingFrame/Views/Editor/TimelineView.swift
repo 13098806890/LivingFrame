@@ -67,6 +67,8 @@ struct TimelineView: View {
         let end: TimeInterval
         let sourceStart: TimeInterval
         let sourceEnd: TimeInterval
+        let sourceOffset: TimeInterval
+        let playbackCount: Int
     }
 
     fileprivate struct ElementTimelineMetrics {
@@ -84,12 +86,23 @@ struct TimelineView: View {
         var end: TimeInterval
         var sourceStart: TimeInterval
         var sourceEnd: TimeInterval
+        var sourceOffset: TimeInterval
+        var playbackCount: Int?
 
-        init(start: TimeInterval, end: TimeInterval, sourceStart: TimeInterval, sourceEnd: TimeInterval) {
+        init(
+            start: TimeInterval,
+            end: TimeInterval,
+            sourceStart: TimeInterval,
+            sourceEnd: TimeInterval,
+            sourceOffset: TimeInterval = 0,
+            playbackCount: Int? = nil
+        ) {
             self.start = start
             self.end = end
             self.sourceStart = sourceStart
             self.sourceEnd = sourceEnd
+            self.sourceOffset = sourceOffset
+            self.playbackCount = playbackCount
         }
 
         init(_ element: CompositionElement) {
@@ -97,6 +110,8 @@ struct TimelineView: View {
             end = element.endTime
             sourceStart = element.sourceStartTime
             sourceEnd = element.sourceEndTime
+            sourceOffset = element.sourcePlaybackOffset ?? 0
+            playbackCount = element.playbackCount
         }
     }
 
@@ -705,18 +720,26 @@ struct TimelineView: View {
         let speed = max(info.playbackRate, 0.01)
         let source = timelineSourceRange(for: element, info: info)
         let activeTimelineDuration = max(element.endTime - element.startTime, 0.1)
-        let activeOffset = max(source.start / speed / spp, 0)
+        let firstPlaybackOffset = min(max(element.sourcePlaybackOffset ?? 0, 0), source.span)
+        let activeOffset = max((source.start + firstPlaybackOffset) / speed / spp, 0)
         let activeWidth = max(activeTimelineDuration / spp, 20)
         // 胶片带始终展示完整源素材；activeOffset/activeWidth 只表示实际播放区间。
         // 循环播放时，选区会变长，右侧未选区接在循环段之后，避免尾部原始帧消失。
-        let rightInactiveWidth = max((source.duration - source.end) / speed / spp, 0)
+        let activeSourceDistance = activeTimelineDuration * speed
+        let rightInactiveWidth = max(
+            (source.span - firstPlaybackOffset - activeSourceDistance) / speed / spp,
+            0
+        )
         let barWidth = max(activeOffset + activeWidth + rightInactiveWidth, 20)
+        let isLooping = element.shouldLoop(cycleDuration: source.span / speed)
+            || (max(element.sourcePlaybackOffset ?? 0, 0)
+                + activeTimelineDuration * speed > source.span + 0.001)
         return ElementTimelineMetrics(
             outerStart: element.startTime / spp - activeOffset,
             barWidth: barWidth,
             activeOffset: activeOffset,
             activeWidth: activeWidth,
-            isLooping: element.shouldLoop(cycleDuration: source.span / speed)
+            isLooping: isLooping
         )
     }
 
@@ -801,7 +824,8 @@ struct TimelineView: View {
                     metrics: metrics,
                     secondsPerPoint: spp,
                     source: sourceRange,
-                    playbackRate: sourceInfo?.playbackRate ?? 1
+                    playbackRate: sourceInfo?.playbackRate ?? 1,
+                    playbackOffset: displayElement.sourcePlaybackOffset ?? 0
                 )
                 .frame(width: barWidth, height: barHeight, alignment: .leading)
                 .overlay(alignment: .leading) {
@@ -823,7 +847,8 @@ struct TimelineView: View {
                     metrics: metrics,
                     secondsPerPoint: spp,
                     source: sourceRange,
-                    playbackRate: sourceInfo?.playbackRate ?? 1
+                    playbackRate: sourceInfo?.playbackRate ?? 1,
+                    playbackOffset: displayElement.sourcePlaybackOffset ?? 0
                 )
                 .frame(width: barWidth, height: barHeight, alignment: .leading)
                 .overlay(alignment: .leading) {
@@ -883,7 +908,10 @@ struct TimelineView: View {
                     .allowsHitTesting(false)
 
                 // 两侧圆角拖拽柄略微超出胶片条，避免与缩略图融成一块。
-                if !isCanvasEdge && repeatCount == 1 {
+                // 所有具备真实源帧的动态元素都显示两侧手柄。
+                // 单次播放时，手柄调整源素材入点/出点；循环播放时，手柄只调整
+                // 时间轴总时长（增加/减少循环次数）。每一轮使用的源片段仍在检查器中编辑。
+                if !isCanvasEdge && sourceInfo != nil {
                 HStack(spacing: 0) {
                     // 视觉手柄的中心必须和时间坐标边界重合。
                     Color.clear.frame(width: max(metrics.activeOffset - visualHandleWidth / 2, 0))
@@ -961,14 +989,21 @@ struct TimelineView: View {
 
             if repeatCount > 1 {
                 if let sourceInfo {
-                    let cycleWidth = sourceInfo.cycleDuration(for: displayElement) / spp
+                    let cycleDuration = sourceInfo.cycleDuration(for: displayElement)
+                    let cycleWidth = cycleDuration / spp
                     // 太密时省略分隔线，避免细碎闪烁；不创建与帧数等量的视图。
                     if cycleWidth >= 6 {
-                        ForEach(1..<min(repeatCount, 100), id: \.self) { cycle in
+                        let boundaryOffsets = TimelinePlaybackRules.loopBoundaryOffsets(
+                            firstPlaybackOffset: displayElement.sourcePlaybackOffset ?? 0,
+                            cycleDuration: cycleDuration,
+                            playbackCount: repeatCount,
+                            playbackRate: sourceInfo.playbackRate
+                        )
+                        ForEach(Array(boundaryOffsets.enumerated()), id: \.offset) { _, boundaryOffset in
                             Rectangle()
                                 .fill(LF.selectionStroke.opacity(0.65))
                                 .frame(width: 1, height: barHeight - 6)
-                                .offset(x: metrics.activeOffset + Double(cycle) * cycleWidth)
+                                .offset(x: metrics.activeOffset + boundaryOffset / spp)
                                 .allowsHitTesting(false)
                         }
                     }
@@ -989,12 +1024,25 @@ struct TimelineView: View {
         .contentShape(Rectangle())
 
         if isCanvasEdge {
-            content.onTapGesture { appState.selectElement(element.id) }
+            content
+                .onTapGesture { appState.selectElement(element.id) }
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        appState.selectElement(element.id)
+                        onRequestInspector()
+                    }
+                )
         } else {
             content
                 // 素材条中部只负责整体移动；两端由上面的专用热区负责裁剪。
                 .simultaneousGesture(elementDragGesture(element, spp: spp, fixedMode: .move))
                 .onTapGesture { appState.selectElement(element.id) }
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        appState.selectElement(element.id)
+                        onRequestInspector()
+                    }
+                )
         }
     }
 
@@ -1005,6 +1053,10 @@ struct TimelineView: View {
         display.endTime = preview.end
         display.sourceStartTime = preview.sourceStart
         display.sourceEndTime = preview.sourceEnd
+        display.sourcePlaybackOffset = preview.sourceOffset
+        if let playbackCount = preview.playbackCount {
+            display.playbackCount = playbackCount
+        }
         return display
     }
 
@@ -1045,7 +1097,8 @@ struct TimelineView: View {
                 metrics: metrics,
                 secondsPerPoint: spp,
                 source: source,
-                playbackRate: speed
+                playbackRate: speed,
+                playbackOffset: element.sourcePlaybackOffset ?? 0
             )
             let frameIndex = min(
                 max(Int((sourceTime * clip.fps).rounded(.down)), 0),
@@ -1239,7 +1292,7 @@ struct TimelineView: View {
                         - timelineLeadingInset
                         - metrics.outerStart
                     if fixedMode == .move,
-                       playbackCount(for: element) == 1,
+                       timelineSourceInfo(for: element) != nil,
                        isInsideTrimHotZone(localStartX, metrics: metrics) {
                         return
                     }
@@ -1250,7 +1303,9 @@ struct TimelineView: View {
                             start: element.startTime,
                             end: element.endTime,
                             sourceStart: element.sourceStartTime,
-                            sourceEnd: element.sourceEndTime
+                            sourceEnd: element.sourceEndTime,
+                            sourceOffset: element.sourcePlaybackOffset ?? 0,
+                            playbackCount: playbackCount(for: element)
                         ),
                         secondsPerPoint: spp
                     )
@@ -1293,14 +1348,17 @@ struct TimelineView: View {
                         start: newStart,
                         end: newStart + duration,
                         sourceStart: session.anchor.sourceStart,
-                        sourceEnd: session.anchor.sourceEnd
+                        sourceEnd: session.anchor.sourceEnd,
+                        sourceOffset: session.anchor.sourceOffset
                     )
                 case .trimStart:
                     timing = trimmedStart(element, anchor: session.anchor, delta: delta, secondsPerPoint: session.secondsPerPoint)
                 case .trimEnd:
                     timing = trimmedEnd(element, anchor: session.anchor, delta: delta, secondsPerPoint: session.secondsPerPoint)
                 }
-                if let source = timelineSourceInfo(for: element), session.mode != .move {
+                if let source = timelineSourceInfo(for: element),
+                   session.mode != .move,
+                   session.anchor.playbackCount == 1 {
                     let atBoundary = session.mode == .trimEnd
                         ? timing.sourceEnd >= source.duration - 0.000001
                         : timing.sourceStart <= 0.000001
@@ -1324,35 +1382,72 @@ struct TimelineView: View {
                     timelineDebug(
                         "commit.begin id=\(element.id.uuidString.prefix(8)) mode=\(completedSession?.mode as Any) " +
                         "timing.start=\(timing.start) timing.end=\(timing.end) " +
-                        "timing.sourceStart=\(timing.sourceStart) timing.sourceEnd=\(timing.sourceEnd)"
+                        "timing.sourceStart=\(timing.sourceStart) timing.sourceEnd=\(timing.sourceEnd) " +
+                        "timing.sourceOffset=\(timing.sourceOffset)"
                     )
+                    let anchorCount = completedSession?.anchor.playbackCount ?? 1
+                    let sourceInfo = timelineSourceInfo(for: element)
+                    let cycleDuration = sourceInfo?.cycleDuration(for: element)
+                    let phaseWraps = sourceInfo.map {
+                        let sourceSpan = $0.range(for: element).span
+                        return timing.sourceOffset + (timing.end - timing.start) * $0.playbackRate > sourceSpan + 0.0001
+                    } ?? false
+                    let becameLooping = completedSession?.mode != .move &&
+                        (cycleDuration.map { timing.end - timing.start > $0 + 0.0001 } == true || phaseWraps)
+                    let preserveLoop = anchorCount > 1 || becameLooping
+                    let loopCount = preserveLoop
+                        ? (timing.playbackCount ?? timelineLoopCount(
+                            for: timing.end - timing.start,
+                            element: element,
+                            phase: timing.sourceOffset
+                        ))
+                        : nil
                     appState.updateElement(element.id, { element in
                         let before = ElementTiming(element)
                         guard let mode = completedSession?.mode else { return }
                         switch mode {
                         case .trimStart:
-                            element.playbackCount = 1
-                            // 左手柄只改变源入点；源出点必须保持锚点值不变。
                             element.startTime = timing.start
                             element.endTime = timing.end
-                            element.sourceStartTime = timing.sourceStart
+                            if let loopCount {
+                                // 循环素材的源入点/出点由检查器维护；时间轴左手柄只改变
+                                // 总时长，并据此确定循环次数。
+                                element.playbackCount = loopCount
+                                element.sourcePlaybackOffset = timing.sourceOffset
+                            } else {
+                                element.playbackCount = 1
+                                element.sourcePlaybackOffset = timing.sourceOffset > 0.000001
+                                    ? timing.sourceOffset
+                                    : nil
+                            }
                         case .trimEnd:
-                            element.playbackCount = 1
-                            // 右手柄只改变源出点；源入点必须保持锚点值不变。
                             element.startTime = timing.start
                             element.endTime = timing.end
-                            element.sourceEndTime = timing.sourceEnd
+                            if let loopCount {
+                                // 循环素材的右手柄只延长/缩短时间轴上的循环段，
+                                // 不改变每一轮实际使用的源片段。
+                                element.playbackCount = loopCount
+                                element.sourcePlaybackOffset = timing.sourceOffset
+                            } else {
+                                element.playbackCount = 1
+                                element.sourcePlaybackOffset = timing.sourceOffset > 0.000001
+                                    ? timing.sourceOffset
+                                    : nil
+                            }
                         case .move:
                             // 整体移动只改变工程时间，不改变源素材入/出点。
                             element.startTime = timing.start
                             element.endTime = timing.end
+                            element.sourcePlaybackOffset = timing.sourceOffset
                         }
                         timelineDebug(
                             "commit.applied id=\(element.id.uuidString.prefix(8)) mode=\(mode) " +
                             "before.start=\(before.start) before.end=\(before.end) " +
                             "before.sourceStart=\(before.sourceStart) before.sourceEnd=\(before.sourceEnd) " +
                             "after.start=\(element.startTime) after.end=\(element.endTime) " +
-                            "after.sourceStart=\(element.sourceStartTime) after.sourceEnd=\(element.sourceEndTime)"
+                            "after.sourceStart=\(element.sourceStartTime) after.sourceEnd=\(element.sourceEndTime) " +
+                            "after.sourceOffset=\(element.sourcePlaybackOffset as Any) " +
+                            "after.playbackCount=\(element.playbackCount as Any)"
                         )
                     }, recomputeDuration: false)
                 }
@@ -1385,40 +1480,34 @@ struct TimelineView: View {
                 "reason=noSourceRange kind=\(timelineElementKind(element))"
             )
             let newStart = min(max(rawStart, 0), anchor.end - 0.1)
-            return ElementTiming(start: newStart, end: anchor.end, sourceStart: anchor.sourceStart, sourceEnd: anchor.sourceEnd)
+            return ElementTiming(
+                start: newStart,
+                end: anchor.end,
+                sourceStart: anchor.sourceStart,
+                sourceEnd: anchor.sourceEnd,
+                sourceOffset: anchor.sourceOffset
+            )
         }
 
         let speed = max(info.playbackRate, 0.01)
-        let sourceDuration = info.duration
-        let source = timelineSourceRange(for: element, info: info)
-        let sourceStart = source.start
-        let sourceEnd = source.end
-        let minimumSourceSpan = min(0.1 * speed, sourceDuration)
-
-        let targetStart = appState.composition.map {
-            snapTime(
-                rawStart,
-                excluding: element.id,
-                comp: $0,
-                secondsPerPoint: secondsPerPoint
-            )
-        } ?? rawStart
-
-        // 左侧手柄是标准视频编辑器的“左裁剪”：工程 startTime 与源素材
-        // sourceStartTime 同步向右/向左移动，右侧的 endTime/sourceEndTime 保持不动。
-        // 因此把左侧边界向右拖 2 秒时，工程区间会从 2～12 变成 4～12，
-        // 源素材区间会从 0～10 变成 2～10。
-        let maximumSourceStart = max(sourceEnd - minimumSourceSpan, 0)
-        let newSourceStart = min(
-            max(sourceStart + (targetStart - anchor.start) * speed, 0),
-            maximumSourceStart
+        let result = TimelinePlaybackRules.trim(
+            TimelinePlaybackState(
+                sourceRange: timelineSourceRange(for: element, info: info),
+                timelineStart: anchor.start,
+                timelineEnd: anchor.end,
+                firstPlaybackOffset: anchor.sourceOffset
+            ),
+            handle: .leading,
+            delta: Double(delta),
+            playbackRate: speed
         )
-        let newStart = anchor.start + (newSourceStart - sourceStart) / speed
         return ElementTiming(
-            start: min(max(newStart, 0), anchor.end - minimumSourceSpan / speed),
-            end: anchor.end,
-            sourceStart: newSourceStart,
-            sourceEnd: sourceEnd
+            start: result.state.timelineStart,
+            end: result.state.timelineEnd,
+            sourceStart: anchor.sourceStart,
+            sourceEnd: anchor.sourceEnd,
+            sourceOffset: result.state.firstPlaybackOffset,
+            playbackCount: result.playbackCount
         )
     }
 
@@ -1437,31 +1526,55 @@ struct TimelineView: View {
             let newEnd = appState.composition.map {
                 snapTime(rawEnd, excluding: element.id, comp: $0, secondsPerPoint: secondsPerPoint)
             } ?? rawEnd
-            return ElementTiming(start: anchor.start, end: newEnd, sourceStart: anchor.sourceStart, sourceEnd: anchor.sourceEnd)
+            return ElementTiming(
+                start: anchor.start,
+                end: newEnd,
+                sourceStart: anchor.sourceStart,
+                sourceEnd: anchor.sourceEnd,
+                sourceOffset: anchor.sourceOffset
+            )
         }
 
         let speed = max(info.playbackRate, 0.01)
-        let sourceDuration = info.duration
-        let source = timelineSourceRange(for: element, info: info)
-        let sourceStart = source.start
-        let minimumSourceSpan = min(0.1 * speed, sourceDuration)
-        let minimumSourceEnd = min(sourceStart + minimumSourceSpan, sourceDuration)
-        let rawRequestedEnd = max(anchor.start + 0.1, anchor.end + delta)
-        let requestedEnd = appState.composition.map {
-            snapTime(rawRequestedEnd, excluding: element.id, comp: $0, secondsPerPoint: secondsPerPoint)
-        } ?? rawRequestedEnd
-        // 右拖先恢复被裁掉的源帧，到原片末尾停止，绝不通过手柄触发重复。
-        let newSourceEnd = min(
-            max(sourceStart + (requestedEnd - anchor.start) * speed, minimumSourceEnd),
-            sourceDuration
+        let result = TimelinePlaybackRules.trim(
+            TimelinePlaybackState(
+                sourceRange: timelineSourceRange(for: element, info: info),
+                timelineStart: anchor.start,
+                timelineEnd: anchor.end,
+                firstPlaybackOffset: anchor.sourceOffset
+            ),
+            handle: .trailing,
+            delta: Double(delta),
+            playbackRate: speed
         )
-        let newEnd = anchor.start + (newSourceEnd - sourceStart) / speed
         return ElementTiming(
             start: anchor.start,
-            end: newEnd,
-            sourceStart: sourceStart,
-            sourceEnd: newSourceEnd
+            end: result.state.timelineEnd,
+            sourceStart: anchor.sourceStart,
+            sourceEnd: anchor.sourceEnd,
+            sourceOffset: result.state.firstPlaybackOffset,
+            playbackCount: result.playbackCount
         )
+    }
+
+    private func normalizedLoopOffset(_ offset: TimeInterval, span: TimeInterval) -> TimeInterval {
+        let safeSpan = max(span, 0.001)
+        let remainder = offset.truncatingRemainder(dividingBy: safeSpan)
+        return remainder >= 0 ? remainder : remainder + safeSpan
+    }
+
+    private func timelineLoopCount(
+        for duration: TimeInterval,
+        element: CompositionElement,
+        phase: TimeInterval = 0
+    ) -> Int {
+        guard let source = timelineSourceInfo(for: element) else { return 1 }
+        let cycleDuration = max(source.cycleDuration(for: element), 0.001)
+        // playbackCount 负责打开循环渲染；实际播放长度仍由 startTime/endTime
+        // 保留，所以最后一轮可以是不完整的一轮。
+        let count = max(Int(ceil(max(duration, cycleDuration) / cycleDuration - 0.000001)), 1)
+        let needsLooping = abs(normalizedLoopOffset(phase, span: source.range(for: element).span)) > 0.0001
+        return min(max(needsLooping ? max(count, 2) : count, 1), 99)
     }
 
     /// 就近磁吸：只参考视觉上紧邻的上、下两条素材轨道的开始/结束。
@@ -1876,23 +1989,31 @@ private func timelineSourceTimeForX(
     metrics: TimelineView.ElementTimelineMetrics,
     secondsPerPoint: CGFloat,
     source: SourcePlaybackRange,
-    playbackRate: TimeInterval
+    playbackRate: TimeInterval,
+    playbackOffset: TimeInterval = 0
 ) -> TimeInterval {
     let rate = max(playbackRate, 0.01)
     let activeEnd = metrics.activeOffset + metrics.activeWidth
     if x < metrics.activeOffset {
-        return min(max(x * secondsPerPoint * rate, 0), source.duration)
+        let elapsed = max(x * secondsPerPoint * rate, 0)
+        return min(max(source.start + elapsed, 0), source.duration)
     }
     if x < activeEnd {
         let elapsed = max((x - metrics.activeOffset) * secondsPerPoint * rate, 0)
         return source.sourceTime(
             at: elapsed / rate,
             playbackRate: rate,
+            phase: playbackOffset,
             looping: metrics.isLooping
         )
     }
     let elapsed = max((x - activeEnd) * secondsPerPoint * rate, 0)
-    return min(max(source.end + elapsed, 0), source.duration)
+    let activeSourceOffset = min(
+        max(metrics.activeOffset * secondsPerPoint * rate - source.start, 0)
+            + metrics.activeWidth * secondsPerPoint * rate,
+        source.span
+    )
+    return min(max(source.start + activeSourceOffset + elapsed, 0), source.duration)
 }
 
 private struct BackgroundTimelineStrip: View {
@@ -1903,6 +2024,7 @@ private struct BackgroundTimelineStrip: View {
     let secondsPerPoint: CGFloat
     let source: SourcePlaybackRange?
     let playbackRate: TimeInterval
+    let playbackOffset: TimeInterval
     @State private var frames: [CGImage] = []
 
     var body: some View {
@@ -1962,7 +2084,8 @@ private struct BackgroundTimelineStrip: View {
             metrics: metrics,
             secondsPerPoint: secondsPerPoint,
             source: source,
-            playbackRate: playbackRate
+            playbackRate: playbackRate,
+            playbackOffset: playbackOffset
         )
         let progress = source.duration > 0 ? sourceTime / source.duration : 0
         return min(max(Int((progress * CGFloat(frames.count - 1)).rounded()), 0), frames.count - 1)
@@ -1993,6 +2116,7 @@ private struct StickerTimelineStrip: View {
     let secondsPerPoint: CGFloat
     let source: SourcePlaybackRange?
     let playbackRate: TimeInterval
+    let playbackOffset: TimeInterval
 
     @State private var frames: [CGImage] = []
 
@@ -2043,7 +2167,8 @@ private struct StickerTimelineStrip: View {
             metrics: metrics,
             secondsPerPoint: secondsPerPoint,
             source: source,
-            playbackRate: playbackRate
+            playbackRate: playbackRate,
+            playbackOffset: playbackOffset
         )
         let frameDuration = source.duration / CGFloat(frames.count)
         return min(max(Int((sourceTime / max(frameDuration, 0.001)).rounded(.down)), 0), frames.count - 1)

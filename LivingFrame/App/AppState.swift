@@ -219,6 +219,8 @@ final class AppState: ObservableObject {
     private let settingProcessingFPSKey = "setting.processingFPS"
     private let settingMaxExtractionDurationKey = "setting.maxExtractionDuration"
     private let settingAppThemeKey = "setting.appTheme"
+    private let canvasPreferenceAspectKey = "canvasPreference.aspect"
+    private let canvasPreferenceBackgroundKey = "canvasPreference.background"
 
     // MARK: - 编辑交互
 
@@ -574,6 +576,7 @@ final class AppState: ObservableObject {
         guard var comp = composition ?? defaultComposition() else { return }
         comp.background = BackgroundPreset(kind: .solid, topColor: hex, bottomColor: hex)
         composition = comp
+        rememberCanvasBackground(comp.background)
     }
 
     /// 设置为透明背景。编辑器使用棋盘格提示透明区域，导出时保留 alpha 通道。
@@ -581,6 +584,7 @@ final class AppState: ObservableObject {
         guard var comp = composition ?? defaultComposition() else { return }
         comp.background = .clear
         composition = comp
+        rememberCanvasBackground(comp.background)
     }
 
     /// 设置背景为预置图片
@@ -590,6 +594,7 @@ final class AppState: ObservableObject {
             kind: .image, topColor: "FFFFFF", bottomColor: "FFFFFF", imageFileName: fileName
         )
         composition = comp
+        rememberCanvasBackground(comp.background)
     }
 
     /// 设置背景为相册图片（写入 Backgrounds 目录后引用）
@@ -603,6 +608,7 @@ final class AppState: ObservableObject {
             kind: .image, topColor: "FFFFFF", bottomColor: "FFFFFF", imageFileName: fileName
         )
         composition = comp
+        rememberCanvasBackground(comp.background)
     }
 
     /// 刷新背景媒体列表。素材选择器导入相册图片后调用。
@@ -829,6 +835,7 @@ final class AppState: ObservableObject {
         guard var comp = composition ?? defaultComposition() else { return }
         comp.background.patternOverlay = style
         composition = comp
+        rememberCanvasBackground(comp.background)
     }
 
     /// 设置元素级背景图案（垫在元素内容下层）
@@ -846,13 +853,43 @@ final class AppState: ObservableObject {
         syncAudioPreview()
     }
 
+    // MARK: - 新画布偏好
+
+    /// 新工程使用的画布比例和背景。已有作品重新打开时仍以作品自身配置为准。
+    private var preferredCanvasAspect: CanvasAspect {
+        guard let raw = UserDefaults.standard.string(forKey: canvasPreferenceAspectKey),
+              let aspect = CanvasAspect(rawValue: raw) else {
+            return .landscape16x9
+        }
+        return aspect
+    }
+
+    private var preferredCanvasBackground: BackgroundPreset {
+        guard let data = UserDefaults.standard.data(forKey: canvasPreferenceBackgroundKey),
+              let background = try? JSONDecoder().decode(BackgroundPreset.self, from: data) else {
+            return BackgroundPreset(kind: .solid, topColor: "FFFFFF", bottomColor: "FFFFFF")
+        }
+        return background
+    }
+
+    private func rememberCanvasAspect(_ aspect: CanvasAspect) {
+        UserDefaults.standard.set(aspect.rawValue, forKey: canvasPreferenceAspectKey)
+    }
+
+    private func rememberCanvasBackground(_ background: BackgroundPreset) {
+        guard let data = try? JSONEncoder().encode(background) else { return }
+        UserDefaults.standard.set(data, forKey: canvasPreferenceBackgroundKey)
+    }
+
     private func defaultComposition() -> Composition? {
         pause()
+        let aspect = preferredCanvasAspect
         let comp = Composition(
             name: NSLocalizedString("我的动态照片", comment: "Default composition name"),
-            canvas: CanvasSpec(width: 1920, height: 1080),
+            canvas: CanvasSpec(width: aspect.canvasSize.width, height: aspect.canvasSize.height),
             duration: 0,
-            fps: 30
+            fps: 30,
+            background: preferredCanvasBackground
         )
         editingWorkID = nil
         undoStack.removeAll()
@@ -865,15 +902,17 @@ final class AppState: ObservableObject {
 
     // MARK: - 画布比例
 
-    /// 创建指定比例的画布工程
-    func createComposition(aspect: CanvasAspect) {
+    /// 创建新画布工程；没有传入比例时使用用户上次选择的画布设置。
+    func createComposition(aspect: CanvasAspect? = nil) {
         pause()
-        let size = aspect.canvasSize
+        let selectedAspect = aspect ?? preferredCanvasAspect
+        let size = selectedAspect.canvasSize
         let comp = Composition(
             name: NSLocalizedString("我的动态照片", comment: "Default composition name"),
             canvas: CanvasSpec(width: size.width, height: size.height),
             duration: 0,
-            fps: 30
+            fps: 30,
+            background: preferredCanvasBackground
         )
         editingWorkID = nil
         undoStack.removeAll()
@@ -886,6 +925,7 @@ final class AppState: ObservableObject {
         isCropping = false
         currentTime = 0
         syncAudioPreview()
+        rememberCanvasAspect(selectedAspect)
         markProjectClean()
     }
 
@@ -918,6 +958,7 @@ final class AppState: ObservableObject {
         comp.canvas = CanvasSpec(width: newSize.width, height: newSize.height)
         comp.cropRect = nil
         composition = comp
+        rememberCanvasAspect(aspect)
     }
 
     // MARK: - 裁剪
@@ -970,6 +1011,8 @@ final class AppState: ObservableObject {
             let range = source.range(for: item)
             item.sourceStartTime = range.start
             item.sourceEndTime = range.end
+            // 检查器操作以源范围起点作为每轮循环的起点，清除时间轴拖拽留下的相位。
+            item.sourcePlaybackOffset = nil
             item.playbackCount = count
             item.endTime = item.startTime + range.span / source.playbackRate * Double(count)
         }, recomputeDuration: false)
@@ -990,6 +1033,8 @@ final class AppState: ObservableObject {
         updateElement(id, { item in
             item.sourceStartTime = start
             item.sourceEndTime = end
+            // 检查器重新定义每一轮的源区间后，从该区间的起点重新开始播放。
+            item.sourcePlaybackOffset = nil
             item.playbackCount = count
             item.endTime = item.startTime + (end - start) / source.playbackRate * Double(count)
         }, recomputeDuration: false)

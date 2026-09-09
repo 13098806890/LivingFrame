@@ -61,6 +61,8 @@ struct EditorView: View {
     @State private var showBackgroundPicker = false
     /// 长按贴纸后显示的动态预览。
     @State private var previewSticker: StickerDefinition?
+    /// 贴纸面板当前选中的视觉分类。
+    @State private var selectedStickerCategory: StickerCategory = .doodle
     /// 工具 sheet（点击工具栏弹出，遮住编辑页）
     @State private var toolSheet: EditorTool?
     /// 选中元素后的详细属性面板（不再常驻占用画布高度）
@@ -92,7 +94,10 @@ struct EditorView: View {
 
                 // ② 纵向工作区：画布 → 播放控制 → 时间轴，避免手机屏幕横向拥挤。
                 VStack(spacing: 0) {
-                    CanvasView()
+                    CanvasView {
+                        appState.pause()
+                        showInspectorSheet = true
+                    }
                         .frame(width: canvasSize.width, height: canvasSize.height)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
@@ -844,6 +849,11 @@ struct EditorView: View {
         guard let background = appState.composition?.background else {
             return Color(hex: "FFFFFF")
         }
+        // 透明背景的模型占位色是 000000；不能直接拿它填充比例按钮，
+        // 否则切换透明后所有比例预览都会误显示成黑色。
+        if background.kind == .clear {
+            return LF.brandTint.opacity(0.32)
+        }
         return Color(hex: background.topColor)
     }
 
@@ -877,20 +887,31 @@ struct EditorView: View {
     }
 
     private var stickerPanel: some View {
-        let doodleStickers = DecorationRenderer.stickerCatalog.filter { $0.category == .doodle }
+        let stickers = DecorationRenderer.stickerCatalog.filter { $0.category == selectedStickerCategory }
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("贴纸分类")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
-            HStack {
-                Text("涂鸦")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(LF.gold, in: Capsule())
-                    .foregroundStyle(.black)
-                Spacer()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(StickerCategory.allCases, id: \.self) { category in
+                        Button {
+                            selectedStickerCategory = category
+                        } label: {
+                            Text(category.title)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .background(
+                                    selectedStickerCategory == category ? LF.gold : LF.surface2,
+                                    in: Capsule()
+                                )
+                                .foregroundStyle(selectedStickerCategory == category ? .black : LF.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
             Text("轻点添加，长按预览动画")
                 .font(.caption2)
@@ -901,7 +922,7 @@ struct EditorView: View {
                     columns: [GridItem(.adaptive(minimum: 84), spacing: 10)],
                     spacing: 10
                 ) {
-                    ForEach(doodleStickers) { sticker in
+                    ForEach(stickers) { sticker in
                         StickerPickerCell(sticker: sticker) {
                             appState.addSticker(sticker.id)
                             toolSheet = nil
@@ -1043,7 +1064,7 @@ private struct StickerPickerCell: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            StickerPreview(decorationID: sticker.id)
+            StickerPreview(decorationID: sticker.id, frameDuration: sticker.frameDuration)
                 .frame(width: 58, height: 58)
             Text(sticker.name)
                 .font(.caption2)
@@ -1080,6 +1101,7 @@ private struct StickerPickerCell: View {
 /// 贴纸面板缩略图与长按预览共用同一套帧加载逻辑。
 private struct StickerPreview: View {
     let decorationID: String
+    let frameDuration: TimeInterval
     var isPlaying = false
 
     @State private var frames: [CGImage] = []
@@ -1112,7 +1134,8 @@ private struct StickerPreview: View {
         .task(id: "\(decorationID)-\(frames.count)-\(isPlaying)") {
             guard isPlaying, frames.count > 1 else { return }
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(100))
+                let milliseconds = max(Int((frameDuration * 1000).rounded()), 1)
+                try? await Task.sleep(for: .milliseconds(milliseconds))
                 guard !Task.isCancelled, !frames.isEmpty else { return }
                 frameIndex = (frameIndex + 1) % frames.count
             }
@@ -1134,7 +1157,11 @@ private struct StickerPreviewSheet: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .fill(LF.surface2.opacity(0.72))
-                    StickerPreview(decorationID: sticker.id, isPlaying: isPlaying)
+                    StickerPreview(
+                        decorationID: sticker.id,
+                        frameDuration: sticker.frameDuration,
+                        isPlaying: isPlaying
+                    )
                         .padding(28)
                 }
                 .frame(maxWidth: .infinity)

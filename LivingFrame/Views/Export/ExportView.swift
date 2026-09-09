@@ -413,13 +413,28 @@ private struct ExportFramePreview: View {
                         .stroke(LF.brandTint.opacity(0.2), lineWidth: 1)
                 }
 
-                HStack {
-                    Label("\(Int(outputSize.width)) × \(Int(outputSize.height)) px", systemImage: "rectangle.dashed")
-                    Spacer()
-                    Text("\(Int(fps)) fps · 约 \(frameCount) 帧")
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("最终输出尺寸")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                        Text("\(Int(outputSize.width)) × \(Int(outputSize.height)) px")
+                            .font(.subheadline.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(LF.textPrimary)
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("帧率 / 总帧数")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                        Text("\(Int(fps)) fps · \(frameCount) 帧")
+                            .font(.subheadline.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(LF.textPrimary)
+                    }
                 }
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(LF.textSecondary)
+                Text("画面按比例预览，实际像素尺寸以这里显示的最终输出为准。")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
             }
         }
         .task(id: renderKey) {

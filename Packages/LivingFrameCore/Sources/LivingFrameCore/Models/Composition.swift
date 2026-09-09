@@ -305,6 +305,10 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     /// 静态文字/效果没有独立源帧时仅保留默认值。
     public var sourceStartTime: TimeInterval
     public var sourceEndTime: TimeInterval
+    /// 第一次播放相对源区间起点的偏移（秒）。例如源区间为 2–5、相位为 1 时，
+    /// 第一次播放从 3 开始；第一次回绕后仍从 2 开始。nil 表示从 sourceStartTime 开始。
+    /// 使用可选值保持旧工程 Codable 数据兼容。
+    public var sourcePlaybackOffset: TimeInterval?
     /// 总播放次数（1 = 仅一次）。nil 只用于兼容旧工程隐式延长的循环。
     public var playbackCount: Int?
     /// 元素级背景图案（垫在元素内容下层，nil = 无）
@@ -324,6 +328,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         endTime: TimeInterval = .greatestFiniteMagnitude,
         sourceStartTime: TimeInterval = 0,
         sourceEndTime: TimeInterval = .greatestFiniteMagnitude,
+        sourcePlaybackOffset: TimeInterval? = nil,
         playbackCount: Int = 1,
         backgroundPattern: BackgroundPatternStyle? = nil,
         filter: ElementFilter? = nil,
@@ -338,6 +343,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         self.endTime = endTime
         self.sourceStartTime = sourceStartTime
         self.sourceEndTime = sourceEndTime
+        self.sourcePlaybackOffset = sourcePlaybackOffset
         self.playbackCount = max(playbackCount, 1)
         self.backgroundPattern = backgroundPattern
         self.filter = filter

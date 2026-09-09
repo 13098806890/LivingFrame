@@ -33,12 +33,26 @@ public struct SourcePlaybackRange: Equatable, Sendable {
     public func sourceTime(
         at localTime: TimeInterval,
         playbackRate: TimeInterval = 1,
+        phase: TimeInterval = 0,
         looping: Bool
     ) -> TimeInterval {
         let elapsed = max(localTime.isFinite ? localTime : 0, 0) * max(playbackRate, 0.01)
-        let offset = looping
-            ? elapsed.truncatingRemainder(dividingBy: span)
-            : min(elapsed, span)
+        let safePhase = phase.isFinite ? phase : 0
+        let offset: TimeInterval
+        if looping {
+            // phase 只作用于第一次播放；回绕后必须从 sourceRange.start 开始，
+            // 这样左侧时间轴裁剪不会改变检查器定义的循环单元。
+            let firstPassRemaining = max(span - min(max(safePhase, 0), span), 0)
+            if elapsed < firstPassRemaining {
+                offset = min(max(safePhase, 0) + elapsed, span)
+            } else {
+                let loopElapsed = elapsed - firstPassRemaining
+                let wrapped = loopElapsed.truncatingRemainder(dividingBy: span)
+                offset = wrapped >= 0 ? wrapped : wrapped + span
+            }
+        } else {
+            offset = min(max(safePhase, 0) + elapsed, span)
+        }
         return min(max(start + offset, 0), duration)
     }
 }
