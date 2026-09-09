@@ -3,6 +3,7 @@ import Foundation
 import LivingFrameCore
 import Photos
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 作品文件的唯一写入入口。actor 保证保存、复制、重命名和删除按调用顺序执行，
 /// 避免多个后台任务互相覆盖，也让磁盘操作脱离主线程。
@@ -186,6 +187,16 @@ final class AppState: ObservableObject {
     @Published private(set) var isLoadingWorks = true
     /// 当前编辑页来自哪个已保存作品。nil 表示尚未保存的新工程。
     @Published private(set) var editingWorkID: UUID?
+    /// 正式保存的进行中状态；自动保存草稿使用独立的 isAutosavingDraft。
+    @Published private(set) var isSavingWork = false
+    /// 手动保存失败时的错误提示。
+    @Published private(set) var saveError: String?
+
+    /// 当前作品是否已有自动保存的草稿。
+    var currentWorkHasDraft: Bool {
+        guard let editingWorkID else { return false }
+        return works.first(where: { $0.id == editingWorkID })?.draft != nil
+    }
 
     // MARK: - Tab
 
@@ -356,11 +367,12 @@ final class AppState: ObservableObject {
                   let self,
                   self.autosaveGeneration == generation,
                   self.hasUnsavedChanges,
+                  self.editingWorkID != nil,
                   self.composition == snapshot else { return }
 
             self.autosaveError = nil
             self.isAutosavingDraft = true
-            let saved = await self.saveCurrentToWorks(expectedComposition: snapshot)
+            let saved = await self.saveCurrentDraft(expectedComposition: snapshot)
             // 保存期间可能已经开始了新的编辑或新的保存任务；旧任务不能再修改状态，
             // 更不能把“快照已过期”误报成自动保存失败。
             guard self.autosaveGeneration == generation else { return }
@@ -382,6 +394,10 @@ final class AppState: ObservableObject {
 
     func dismissAutosaveError() {
         autosaveError = nil
+    }
+
+    func dismissSaveError() {
+        saveError = nil
     }
 
     // MARK: - 素材
@@ -513,6 +529,29 @@ final class AppState: ObservableObject {
            composition?.audioClips.contains(where: { $0.id == selectedAudioID }) != true {
             self.selectedAudioID = nil
         }
+    }
+
+    /// 重命名素材；素材 ID 和帧文件保持不变，当前作品中的时间轴名称同步更新。
+    func renameClip(_ clipID: String, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let clipIndex = clips.firstIndex(where: { $0.id == clipID }),
+              clips[clipIndex].name != trimmed else { return }
+
+        clips[clipIndex].name = trimmed
+        FrameCache.shared.registerInBackground(clips[clipIndex])
+
+        guard var comp = composition else { return }
+        var changed = false
+        for index in comp.elements.indices {
+            guard case .clip(let referencedID) = comp.elements[index].kind,
+                  referencedID == clipID else { continue }
+            if comp.elements[index].name != trimmed {
+                comp.elements[index].name = trimmed
+                changed = true
+            }
+        }
+        if changed { composition = comp }
     }
 
     /// 返回仍引用指定素材的已保存作品，用于删除前的轻量保护提示。
@@ -1732,9 +1771,12 @@ final class AppState: ObservableObject {
             isExporting = false
         }
         let start = Date()
-        LogStore.log("export: start format=\(format.rawValue) fps=\(fps) duration=\(composition.duration)s elements=\(composition.elements.count) audioClips=\(composition.audioClips.count)")
+        let exportLogPrefix = format == .livePhoto ? "xdz.livephoto" : "export"
+        LogStore.log("\(exportLogPrefix) start format=\(format.rawValue) fps=\(fps) duration=\(composition.duration)s elements=\(composition.elements.count) audioClips=\(composition.audioClips.count)")
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("LF-export-\(UUID().uuidString).\(format.fileExtension)")
+            .appendingPathComponent(
+                "\(exportFileBaseName(composition.name))-\(UUID().uuidString).\(format.fileExtension)"
+            )
         switch format {
         case .gif:
             if chatSticker {
@@ -1773,27 +1815,63 @@ final class AppState: ObservableObject {
                 Task { @MainActor in self?.exportProgress = value }
             }
         case .livePhoto:
+            LogStore.log(
+                "xdz.livephoto export begin compositionSize=\(composition.renderRect.size.width)x\(composition.renderRect.size.height) "
+                    + "fps=\(composition.fps) duration=\(composition.duration)s"
+            )
             let output = try await LivePhotoExporter().export(composition, to: url) { [weak self] value in
                 Task { @MainActor in self?.exportProgress = value }
             }
+            let videoBytes = (try? FileManager.default.attributesOfItem(atPath: output.videoURL.path)[.size] as? Int) ?? 0
+            LogStore.log(
+                "xdz.livephoto export output video=\(output.videoURL.lastPathComponent) videoBytes=\(videoBytes) "
+                    + "coverBytes=\(output.coverData.count) assetID=\(output.assetIdentifier)"
+            )
             let authorized = await requestAddOnlyAuthorization()
+            LogStore.log("xdz.livephoto photoLibrary authorized=\(authorized)")
             guard authorized else { throw AppStateError.photoLibraryDenied }
-            try await saveLivePhoto(videoURL: output.videoURL, coverData: output.coverData)
+            let photosVideoURL = try makeLivePhotoPhotosCopy(from: output.videoURL)
+            let photosCoverURL = try makeLivePhotoPhotosCoverCopy(
+                from: output.coverData,
+                assetIdentifier: output.assetIdentifier
+            )
+            defer {
+                try? FileManager.default.removeItem(at: photosVideoURL)
+                try? FileManager.default.removeItem(at: photosCoverURL)
+            }
+            try await saveLivePhoto(
+                videoURL: photosVideoURL,
+                coverURL: photosCoverURL,
+                assetIdentifier: output.assetIdentifier
+            )
+            LogStore.log("xdz.livephoto photoLibrary save completed")
         }
         exportedURL = url
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        LogStore.log("export: done elapsed=\(Int(Date().timeIntervalSince(start)))s size=\(size) bytes")
+        LogStore.log("\(exportLogPrefix) done elapsed=\(Int(Date().timeIntervalSince(start)))s size=\(size) bytes")
         savePosterForWidget()
         return url
     }
 
+    private func exportFileBaseName(_ name: String) -> String {
+        let invalidCharacters = CharacterSet(charactersIn: "/\\?%*|\"<>:")
+        let cleaned = name
+            .components(separatedBy: invalidCharacters)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "LivingFrame" : cleaned
+    }
+
     private func requestAddOnlyAuthorization() async -> Bool {
         let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        LogStore.log("xdz.livephoto photoLibrary authorization status=\(status.rawValue)")
         switch status {
         case .authorized, .limited:
             return true
         case .notDetermined:
-            return await PHPhotoLibrary.requestAuthorization(for: .addOnly) == .authorized
+            let requestedStatus = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            LogStore.log("xdz.livephoto photoLibrary authorization requestedStatus=\(requestedStatus.rawValue)")
+            return requestedStatus == .authorized
         case .denied, .restricted:
             return false
         @unknown default:
@@ -1801,51 +1879,67 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func saveLivePhoto(videoURL: URL, coverData: Data) async throws {
+    private func saveLivePhoto(videoURL: URL, coverURL: URL, assetIdentifier: String) async throws {
+        let videoBytes = (try? FileManager.default.attributesOfItem(atPath: videoURL.path)[.size] as? Int) ?? 0
+        let coverBytes = (try? FileManager.default.attributesOfItem(atPath: coverURL.path)[.size] as? Int) ?? 0
+        LogStore.log(
+            "xdz.livephoto save begin videoURL=\(videoURL.path) videoBytes=\(videoBytes) "
+                + "coverURL=\(coverURL.path) coverBytes=\(coverBytes) assetID=\(assetIdentifier)"
+        )
         do {
             try await PHPhotoLibrary.shared().performChanges {
                 let request = PHAssetCreationRequest.forAsset()
-                request.addResource(with: .photo, data: coverData, options: nil)
-                // 保留导出临时文件，导出页完成后仍可继续分享 MOV。
-                let options = PHAssetResourceCreationOptions()
-                options.shouldMoveFile = false
-                request.addResource(with: .pairedVideo, fileURL: videoURL, options: options)
+                let photoOptions = PHAssetResourceCreationOptions()
+                photoOptions.shouldMoveFile = true
+                photoOptions.uniformTypeIdentifier = UTType.jpeg.identifier
+                photoOptions.originalFilename = "LivePhoto-\(assetIdentifier).jpg"
+                request.addResource(with: .photo, fileURL: coverURL, options: photoOptions)
+                // Photos 接管独立副本；原始导出文件保留给导出页继续分享。
+                let videoOptions = PHAssetResourceCreationOptions()
+                videoOptions.shouldMoveFile = true
+                videoOptions.uniformTypeIdentifier = UTType.quickTimeMovie.identifier
+                videoOptions.originalFilename = "LivePhoto-\(assetIdentifier).mov"
+                request.addResource(with: .pairedVideo, fileURL: videoURL, options: videoOptions)
             }
         } catch {
             let nsError = error as NSError
             LogStore.log(
-                "LivePhoto save failed domain=\(nsError.domain) code=\(nsError.code) userInfo=\(nsError.userInfo)"
+                "xdz.livephoto save failed domain=\(nsError.domain) code=\(nsError.code) userInfo=\(nsError.userInfo)"
             )
             throw error
         }
     }
 
+    private func makeLivePhotoPhotosCopy(from sourceURL: URL) throws -> URL {
+        let destinationURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LivePhoto-Photos-\(UUID().uuidString).mov")
+        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        let size = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? Int) ?? 0
+        LogStore.log(
+            "xdz.livephoto Photos copy created url=\(destinationURL.lastPathComponent) bytes=\(size) "
+                + "source=\(sourceURL.lastPathComponent)"
+        )
+        return destinationURL
+    }
+
+    private func makeLivePhotoPhotosCoverCopy(from data: Data, assetIdentifier: String) throws -> URL {
+        let destinationURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LivePhoto-Photos-\(assetIdentifier).jpg")
+        try data.write(to: destinationURL, options: .atomic)
+        LogStore.log(
+            "xdz.livephoto Photos cover created url=\(destinationURL.lastPathComponent) bytes=\(data.count)"
+        )
+        return destinationURL
+    }
+
     // MARK: - 作品
 
-    /// 只有用户在编辑页主动点击“保存”时调用。再次保存已打开的作品会更新原记录。
-    @discardableResult
-    func saveCurrentToWorks(expectedComposition: Composition? = nil) async -> Bool {
-        guard let comp = composition else { return false }
-        guard expectedComposition == nil || expectedComposition == comp else { return false }
-        let posterData = await Task.detached(priority: .utility) {
-            guard let poster = CompositionRenderer(frameMaxPixelSize: 900).render(comp, at: 0) else {
-                return Data?.none
-            }
-            return pngData(from: poster)
-        }.value
-        guard let posterData else {
-            LogStore.log("work.save failed: poster render returned nil")
-            return false
-        }
-        // 工程切换或继续编辑后，不要把已经过期的自动保存快照写入新工程。
-        guard expectedComposition == nil || composition == comp else { return false }
-        let existing = editingWorkID.flatMap { id in works.first { $0.id == id } }
-        let now = Date()
+    private func clipSettingsSnapshot(for comp: Composition) -> [WorkClipSettings] {
         let referencedClipIDs = Set(comp.elements.compactMap { element -> String? in
             guard case .clip(let clipID) = element.kind else { return nil }
             return clipID
         })
-        let clipSettings = clips
+        return clips
             .filter { referencedClipIDs.contains($0.id) }
             .map {
                 WorkClipSettings(
@@ -1859,6 +1953,71 @@ final class AppState: ObservableObject {
                     excludedFrames: $0.excludedFrames
                 )
             }
+    }
+
+    /// 自动保存当前工程的草稿，不修改正式作品快照。
+    /// 新工程尚未有作品 ID 时只保留在当前编辑会话中，点击“保存”后才创建正式作品。
+    @discardableResult
+    private func saveCurrentDraft(expectedComposition: Composition? = nil) async -> Bool {
+        guard let comp = composition else { return false }
+        guard expectedComposition == nil || expectedComposition == comp else { return false }
+        guard let editingWorkID,
+              let existing = works.first(where: { $0.id == editingWorkID }) else {
+            // 未保存的新工程不能因为自动保存出现在作品列表中。
+            return true
+        }
+
+        var work = existing
+        work.draft = WorkDraft(
+            updatedAt: Date(),
+            composition: comp,
+            clipSettings: clipSettingsSnapshot(for: comp)
+        )
+        let persistence = await workPersistence.saveAndLoad(work)
+        guard persistence.0 else { return false }
+        works = persistence.1
+        LogStore.log("work.draft saved id=\(work.id)")
+        return true
+    }
+
+    /// 立即写入当前草稿，用于用户离开当前作品前确保最近一次修改已落盘。
+    @discardableResult
+    func saveCurrentDraftNow() async -> Bool {
+        cancelDraftAutosave()
+        guard let snapshot = composition else { return false }
+        let saved = await saveCurrentDraft(expectedComposition: snapshot)
+        if !saved {
+            autosaveError = "草稿保存失败，请稍后重试。"
+        }
+        return saved
+    }
+
+    /// 手动保存当前工程；这是唯一会更新正式作品快照的入口。
+    @discardableResult
+    func saveCurrentToWorks(expectedComposition: Composition? = nil) async -> Bool {
+        guard !isSavingWork else { return false }
+        guard let comp = composition else { return false }
+        guard expectedComposition == nil || expectedComposition == comp else { return false }
+        cancelDraftAutosave()
+        isSavingWork = true
+        saveError = nil
+        defer { isSavingWork = false }
+        let posterData = await Task.detached(priority: .utility) {
+            guard let poster = CompositionRenderer(frameMaxPixelSize: 900).render(comp, at: 0) else {
+                return Data?.none
+            }
+            return pngData(from: poster)
+        }.value
+        guard let posterData else {
+            LogStore.log("work.save failed: poster render returned nil")
+            saveError = "无法生成作品封面，请稍后重试。"
+            return false
+        }
+        // 工程切换或继续编辑后，不要把已经过期的自动保存快照写入新工程。
+        guard expectedComposition == nil || composition == comp else { return false }
+        let existing = editingWorkID.flatMap { id in works.first { $0.id == id } }
+        let now = Date()
+        let clipSettings = clipSettingsSnapshot(for: comp)
         let work = WorkItem(
             id: existing?.id ?? UUID(),
             name: comp.name,
@@ -1867,10 +2026,14 @@ final class AppState: ObservableObject {
             composition: comp,
             clipSettings: clipSettings,
             posterData: posterData,
-            format: existing?.format ?? defaultFormat
+            format: existing?.format ?? defaultFormat,
+            draft: nil
         )
         let persistence = await workPersistence.saveAndLoad(work)
-        guard persistence.0 else { return false }
+        guard persistence.0 else {
+            saveError = "作品保存失败，请稍后重试。"
+            return false
+        }
         editingWorkID = work.id
         works = persistence.1
         // 渲染封面期间用户可能继续编辑；只有保存的快照仍是当前工程时，
@@ -1897,13 +2060,14 @@ final class AppState: ObservableObject {
         copy.updatedAt = now
         copy.composition.id = UUID()
         copy.composition.name = copy.name
+        copy.draft = nil
         let saved = await workPersistence.save(copy, failureMessage: "work.duplicate failed")
         guard saved else { return false }
         works.insert(copy, at: 0)
         return true
     }
 
-    /// 重命名作品；当前正在编辑的工程同步更新名称，但仍需用户主动保存内容。
+    /// 重命名作品；当前正在编辑的工程同步更新名称并沿用自动保存流程。
     func renameWork(_ work: WorkItem, to name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -1923,6 +2087,14 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 编辑器顶部的轻量重命名入口。名称变更沿用作品自动保存流程。
+    func renameCurrentComposition(to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var comp = composition, comp.name != trimmed else { return }
+        comp.name = trimmed
+        composition = comp
+    }
+
     func deleteWork(_ work: WorkItem) {
         works.removeAll { $0.id == work.id }
         if editingWorkID == work.id { editingWorkID = nil }
@@ -1931,10 +2103,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    func reopen(_ work: WorkItem) {
+    func reopen(_ work: WorkItem, includingDraft: Bool = true) {
         cancelDraftAutosave()
-        restoreClipSettings(from: work)
-        var comp = work.composition
+        let draft = includingDraft ? work.draft : nil
+        restoreClipSettings(draft?.clipSettings ?? work.clipSettings)
+        var comp = draft?.composition ?? work.composition
         // 消毒工程中的非法变换值（NaN/Inf 会导致渲染失败）
         var sanitized = false
         for index in comp.elements.indices {
@@ -1964,10 +2137,30 @@ final class AppState: ObservableObject {
         }
         clipStyleVersion += 1
         markProjectClean()
+        if draft != nil {
+            // 正式作品仍是 clean snapshot；当前打开的是草稿，所以应显示未正式保存。
+            hasUnsavedChanges = true
+        }
     }
 
-    private func restoreClipSettings(from work: WorkItem) {
-        for settings in work.clipSettings {
+    /// 放弃当前作品草稿并恢复到最近一次正式保存的版本。
+    func discardCurrentDraft() async {
+        guard let editingWorkID,
+              let work = works.first(where: { $0.id == editingWorkID }),
+              work.draft != nil else { return }
+        var clearedWork = work
+        clearedWork.draft = nil
+        let persistence = await workPersistence.saveAndLoad(clearedWork)
+        guard persistence.0 else {
+            saveError = "无法删除草稿，请稍后重试。"
+            return
+        }
+        works = persistence.1
+        reopen(clearedWork, includingDraft: false)
+    }
+
+    private func restoreClipSettings(_ settingsList: [WorkClipSettings]) {
+        for settings in settingsList {
             guard let index = clips.firstIndex(where: { $0.id == settings.clipID }) else { continue }
             clips[index].edgeStyle = settings.edgeStyle
             clips[index].edgeLineStyle = settings.edgeLineStyle

@@ -1,5 +1,6 @@
 import LivingFrameCore
 import SwiftUI
+import UIKit
 
 /// 编辑器工具类型（参考 ImgPlay 底部工具栏）
 enum EditorTool: String, CaseIterable, Identifiable {
@@ -69,10 +70,15 @@ struct EditorView: View {
     @State private var showInspectorSheet = false
     /// 清空编辑页前的二次确认
     @State private var showClearConfirmation = false
+    /// 放弃当前作品草稿前的二次确认
+    @State private var showDiscardDraftConfirmation = false
     /// 全屏预览（播放控制行最右侧按钮）
     @State private var showPreview = false
     /// 时间轴默认显示；用户收起后记住选择，避免每次进入编辑页都重复操作。
     @AppStorage("gifbloom.editor.showTimeline") private var showTimeline = true
+    /// 作品名称采用内联编辑，不在新建或首次导出时打断用户。
+    @State private var isEditingWorkName = false
+    @State private var workNameDraft = ""
 
     var body: some View {
         GeometryReader { proxy in
@@ -144,6 +150,20 @@ struct EditorView: View {
                     .lfNavigationTitle("调整")
                     .navigationBarTitleDisplayMode(.inline)
                     .magicBackground()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showInspectorSheet = false }
+                                .fontWeight(.semibold)
+                                .foregroundStyle(LF.actionPrimary)
+                        }
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("收起键盘") {
+                                dismissKeyboard()
+                            }
+                            .fontWeight(.semibold)
+                        }
+                    }
             }
             // 检查器覆盖时间轴下半部分，画布和播放控制仍可见；需要更多参数时可继续上拉。
             .presentationDetents([.fraction(0.46), .large])
@@ -167,6 +187,22 @@ struct EditorView: View {
             Button("好", role: .cancel) {}
         } message: {
             Text(appState.autosaveError ?? "请稍后重试。")
+        }
+        .alert("保存失败", isPresented: Binding(
+            get: { appState.saveError != nil },
+            set: { if !$0 { appState.dismissSaveError() } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(appState.saveError ?? "请稍后重试。")
+        }
+        .confirmationDialog("放弃草稿？", isPresented: $showDiscardDraftConfirmation, titleVisibility: .visible) {
+            Button("恢复正式版本", role: .destructive) {
+                Task { await appState.discardCurrentDraft() }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将删除当前作品下的草稿，并恢复到上次手动保存的版本。")
         }
         .fullScreenCover(isPresented: $showPreview) {
             ZStack(alignment: .topTrailing) {
@@ -208,35 +244,92 @@ struct EditorView: View {
                             ToolbarItem(placement: .topBarTrailing) {
                                 Button("完成") { toolSheet = nil }
                                     .fontWeight(.semibold)
-                                    .foregroundStyle(LF.gold)
+                                .foregroundStyle(LF.gold)
+                            }
+                            ToolbarItemGroup(placement: .keyboard) {
+                                Spacer()
+                                Button("收起键盘") {
+                                    dismissKeyboard()
+                                }
+                                .fontWeight(.semibold)
                             }
                         }
                 }
-                .presentationDetents([.medium, .large])
+                .presentationDetents(
+                    tool == .canvas || tool == .text
+                        ? [.height(420), .large]
+                        : [.medium, .large]
+                )
+                .presentationBackground(.ultraThinMaterial)
+                .presentationCornerRadius(28)
+                .presentationContentInteraction(.scrolls)
                 .presentationDragIndicator(.visible)
             }
         }
     }
 
-    /// 自定义顶部栏（编辑信息 + 自动保存状态 + 导出）
+    /// 自定义顶部栏（作品名称 + 保存状态 + 导出）
     private var topBar: some View {
         ZStack {
             VStack(spacing: 0) {
-                Text("编辑")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LF.header)
                 if let comp = appState.composition {
+                    if isEditingWorkName {
+                        HStack(spacing: 5) {
+                            TextField("作品名称", text: $workNameDraft)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 190)
+                                .onSubmit { finishWorkNameEditing() }
+                            Button {
+                                finishWorkNameEditing()
+                            } label: {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(LF.actionPrimary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("保存作品名称")
+                        }
+                    } else {
+                        Button {
+                            beginWorkNameEditing(comp.name)
+                        } label: {
+                            HStack(spacing: 5) {
+                                Text(comp.name)
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(1)
+                                Image(systemName: "pencil.line")
+                                    .font(.caption2.weight(.semibold))
+                            }
+                            .foregroundStyle(LF.header)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("编辑作品名称")
+                    }
                     HStack(spacing: 5) {
                         Text(frameInfoText(comp))
-                        if appState.isAutosavingDraft {
-                            Text("自动保存中…")
+                        if appState.isSavingWork {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text("保存中…")
+                                .foregroundStyle(LF.header)
+                        } else if appState.isAutosavingDraft {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text("草稿保存中…")
                                 .foregroundStyle(LF.header)
                         } else if appState.hasUnsavedChanges {
-                            Text("等待自动保存")
+                            Text(appState.currentWorkHasDraft ? "草稿已保存" : "未保存修改")
                                 .foregroundStyle(LF.header)
                         } else if appState.editingWorkID != nil {
                             Text("已保存")
                                 .foregroundStyle(LF.textSecondary)
+                        }
+                        if appState.currentWorkHasDraft {
+                            Button("恢复正式版") {
+                                showDiscardDraftConfirmation = true
+                            }
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(LF.actionPrimary)
+                            .buttonStyle(.plain)
                         }
                     }
                     .font(.caption2)
@@ -258,6 +351,20 @@ struct EditorView: View {
 
                 Spacer()
 
+                Button {
+                    Task { _ = await appState.saveCurrentToWorks() }
+                } label: {
+                    Label("保存", systemImage: appState.isSavingWork ? "hourglass" : "square.and.arrow.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(LF.selectionText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(LF.selectionFill, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(appState.isSavingWork)
+                .accessibilityLabel("保存作品")
+
                 Button { appState.showExportView = true } label: {
                     Text("导出")
                         .font(.caption.weight(.bold))
@@ -270,6 +377,16 @@ struct EditorView: View {
             }
         }
         .padding(.horizontal, 4)
+    }
+
+    private func beginWorkNameEditing(_ name: String) {
+        workNameDraft = name
+        isEditingWorkName = true
+    }
+
+    private func finishWorkNameEditing() {
+        appState.renameCurrentComposition(to: workNameDraft)
+        isEditingWorkName = false
     }
 
     // MARK: - 帧信息
@@ -488,21 +605,26 @@ struct EditorView: View {
                 filterPanel
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.horizontal, tool == .canvas || tool == .text ? 0 : 16)
+        .padding(.top, tool == .canvas || tool == .text ? 0 : 8)
     }
 
     // MARK: - 各工具子面板（占位，后续填充完整内容）
 
     private var canvasPanel: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 10) {
-                // 画布比例（横排）
-                HStack(spacing: 8) {
-                    Text("比例").font(.caption2).foregroundStyle(LF.actionPrimary)
+            VStack(alignment: .leading, spacing: 14) {
+                EditorPanelHeader(
+                    icon: "rectangle.on.rectangle",
+                    title: "画布",
+                    subtitle: "调整比例、背景和画面外缘"
+                )
+
+                EditorPanelSection(title: "画面比例", subtitle: "导出时会使用当前比例") {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(CanvasAspect.allCases) { aspect in
+                                let isSelected = appState.composition?.canvasRect.size == aspect.canvasSize
                                 Button { appState.setCanvasAspect(aspect) } label: {
                                     VStack(spacing: 3) {
                                         RoundedRectangle(cornerRadius: 4)
@@ -510,78 +632,96 @@ struct EditorView: View {
                                             .overlay {
                                                 RoundedRectangle(cornerRadius: 4)
                                                     .strokeBorder(
-                                                        appState.composition?.canvasRect.size == aspect.canvasSize ? LF.selectionStroke : LF.surface2,
-                                                        lineWidth: appState.composition?.canvasRect.size == aspect.canvasSize ? 2 : 1
+                                                        isSelected ? LF.selectionStroke : LF.surface2,
+                                                        lineWidth: isSelected ? 2 : 1
                                                     )
                                             }
-                                            .frame(width: 36, height: 36)
-                                        Text(aspect.title).font(.caption2)
+                                            .frame(width: 42, height: 42)
+                                        Text(aspect.title)
+                                            .font(.caption2.weight(.medium))
                                     }
                                     .foregroundStyle(LF.textPrimary)
+                                    .frame(width: 58)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        isSelected ? LF.selectionFill : LF.surface2.opacity(0.42),
+                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    )
+                                    .overlay(alignment: .topTrailing) {
+                                        if isSelected {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.caption)
+                                                .foregroundStyle(LF.selectionStroke)
+                                                .background(LF.surface, in: Circle())
+                                                .offset(x: 4, y: -4)
+                                        }
+                                    }
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 4)
                     }
                 }
-                // 纯色背景（横排）
-                HStack(spacing: 8) {
-                    Text("背景").font(.caption2).foregroundStyle(LF.header)
-                    Button { appState.setTransparentBackground() } label: {
-                        CheckerboardView()
-                            .frame(width: 36, height: 36)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(
-                                        appState.composition?.background.kind == .clear ? LF.selectionStroke : LF.surface2,
-                                        lineWidth: appState.composition?.background.kind == .clear ? 2.5 : 1
-                                    )
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("透明背景")
-                    ForEach(bgColors, id: \.hex) { color in
-                        Button { appState.setBackground(color: color.hex) } label: {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color(hex: color.hex))
-                                .frame(width: 36, height: 36)
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(isBgColor(color.hex) ? LF.selectionStroke : LF.surface2, lineWidth: isBgColor(color.hex) ? 2.5 : 1)
+
+                EditorPanelSection(title: "背景颜色", subtitle: "透明背景也会保留导出时的透明通道") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            Button { appState.setTransparentBackground() } label: {
+                                CanvasColorSwatch(label: "透明", isSelected: appState.composition?.background.kind == .clear) {
+                                    CheckerboardView()
                                 }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    ColorPicker(
-                        "更多",
-                        selection: Binding(
-                            get: { selectedCanvasBackgroundColor },
-                            set: { appState.setBackground(color: $0.hexRGB) }
-                        ),
-                        supportsOpacity: false
-                    )
-                    .labelsHidden()
-                    .frame(width: 36, height: 36)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(
-                                AngularGradient(
-                                    colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
-                                    center: .center
-                                )
-                            )
-                            .overlay {
-                                Text("更多")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .shadow(color: .black.opacity(0.35), radius: 1)
                             }
-                            .allowsHitTesting(false)
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("透明背景")
+
+                            ForEach(bgColors, id: \.hex) { color in
+                                Button { appState.setBackground(color: color.hex) } label: {
+                                    CanvasColorSwatch(label: color.name, isSelected: isBgColor(color.hex)) {
+                                        Color(hex: color.hex)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            VStack(spacing: 5) {
+                                ColorPicker(
+                                    "自定义",
+                                    selection: Binding(
+                                        get: { selectedCanvasBackgroundColor },
+                                        set: { appState.setBackground(color: $0.hexRGB) }
+                                    ),
+                                    supportsOpacity: false
+                                )
+                                .labelsHidden()
+                                .frame(width: 44, height: 44)
+                                .background(
+                                    AngularGradient(
+                                        colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
+                                        center: .center
+                                    ),
+                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                )
+                                .overlay {
+                                    Image(systemName: "plus")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.white)
+                                        .shadow(color: .black.opacity(0.35), radius: 1)
+                                        .allowsHitTesting(false)
+                                }
+                                Text("自定义")
+                                    .font(.caption2)
+                                    .foregroundStyle(LF.textPrimary)
+                            }
+                            .frame(width: 56)
+                            .accessibilityLabel("更多背景颜色")
+                        }
+                        .padding(.horizontal, 2)
+                        .padding(.vertical, 4)
                     }
-                    .accessibilityLabel("更多背景颜色")
                 }
+
                 // 背景素材：沿用素材选择器已有的动态照片下载、背景媒体存储和多选逻辑。
                 Button {
                     showBackgroundPicker = true
@@ -623,161 +763,111 @@ struct EditorView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("添加背景素材")
-                HStack(spacing: 8) {
-                    Text("外缘").font(.caption2).foregroundStyle(LF.header)
+
+                EditorPanelSection(title: "画布外缘", subtitle: "设置画面与外部背景之间的过渡") {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(CanvasEdgeStyle.allCases) { style in
-                                Button { appState.setCanvasEdgeStyle(style) } label: {
-                                    Text(style.title)
-                                        .font(.caption.weight(.semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(
-                                            appState.composition?.canvasEdgeStyle == style ? LF.selectionFill : LF.surface2,
-                                            in: Capsule()
-                                        )
-                                        .overlay {
-                                            Capsule()
-                                                .stroke(
-                                                    appState.composition?.canvasEdgeStyle == style ? LF.selectionStroke : .clear,
-                                                    lineWidth: 1.5
-                                                )
-                                        }
-                                        .foregroundStyle(
-                                            appState.composition?.canvasEdgeStyle == style ? LF.selectionText : LF.textPrimary
-                                        )
+                                EditorChoiceChip(
+                                    title: style.title,
+                                    isSelected: appState.composition?.canvasEdgeStyle == style
+                                ) {
+                                    appState.setCanvasEdgeStyle(style)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
                 }
-                // 图案叠加（横排：类型+参数一行搞定）
-                HStack(spacing: 8) {
-                    Text("图案").font(.caption2).foregroundStyle(LF.header)
-                    Button { appState.setBackgroundPattern(nil) } label: {
-                        Text("无")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(bgOverlay == nil ? LF.selectionFill : LF.surface2, in: Capsule())
-                            .overlay {
-                                Capsule()
-                                    .stroke(bgOverlay == nil ? LF.selectionStroke : .clear, lineWidth: 1.5)
+
+                EditorPanelSection(title: "背景图案", subtitle: "为纯色背景叠加简单纹理") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            EditorChoiceChip(title: "无", isSelected: bgOverlay == nil) {
+                                appState.setBackgroundPattern(nil)
                             }
-                            .foregroundStyle(bgOverlay == nil ? LF.selectionText : LF.textPrimary)
-                    }
-                    .buttonStyle(.plain)
-                    ForEach(bgLinePatterns) { pattern in
-                        Button {
-                            var style = bgOverlay ?? BackgroundPatternStyle()
-                            style.pattern = pattern
-                            if pattern == .mosaic {
-                                style.lineWidth = 48; style.spacing = 48; style.angle = 0
-                            } else {
-                                style.lineWidth = 4; style.spacing = 36; style.angle = 0
-                            }
-                            appState.setBackgroundPattern(style)
-                        } label: {
-                            Text(pattern.title)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(bgOverlay?.pattern == pattern ? LF.selectionFill : LF.surface2, in: Capsule())
-                                .overlay {
-                                    Capsule()
-                                        .stroke(bgOverlay?.pattern == pattern ? LF.selectionStroke : .clear, lineWidth: 1.5)
-                                }
-                                .foregroundStyle(bgOverlay?.pattern == pattern ? LF.selectionText : LF.textPrimary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                if bgOverlay != nil {
-                    // 图案参数（粗细 | 疏密）
-                    HStack(spacing: 10) {
-                        ForEach(bgPatternOptions(bgOverlay?.pattern).widths, id: \.0) { opt in
-                            Button {
-                                var style = bgOverlay ?? BackgroundPatternStyle()
-                                style.lineWidth = opt.1
-                                appState.setBackgroundPattern(style)
-                            } label: {
-                                Text(opt.0)
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(abs((bgOverlay?.lineWidth ?? 0) - opt.1) < 0.1 ? LF.selectionFill : LF.surface2, in: Capsule())
-                                    .overlay {
-                                        Capsule()
-                                            .stroke(abs((bgOverlay?.lineWidth ?? 0) - opt.1) < 0.1 ? LF.selectionStroke : .clear, lineWidth: 1.5)
-                                    }
-                                    .foregroundStyle(abs((bgOverlay?.lineWidth ?? 0) - opt.1) < 0.1 ? LF.selectionText : LF.textPrimary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        if bgOverlay?.pattern != .mosaic {
-                            ForEach(bgPatternOptions(bgOverlay?.pattern).spacing, id: \.0) { opt in
-                                Button {
+                            ForEach(bgLinePatterns) { pattern in
+                                EditorChoiceChip(title: pattern.title, isSelected: bgOverlay?.pattern == pattern) {
                                     var style = bgOverlay ?? BackgroundPatternStyle()
-                                    style.spacing = opt.1
-                                    appState.setBackgroundPattern(style)
-                                } label: {
-                                    Text(opt.0)
-                                        .font(.caption.weight(.semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(abs((bgOverlay?.spacing ?? 0) - opt.1) < 1 ? LF.selectionFill : LF.surface2, in: Capsule())
-                                        .overlay {
-                                            Capsule()
-                                                .stroke(abs((bgOverlay?.spacing ?? 0) - opt.1) < 1 ? LF.selectionStroke : .clear, lineWidth: 1.5)
-                                        }
-                                        .foregroundStyle(abs((bgOverlay?.spacing ?? 0) - opt.1) < 1 ? LF.selectionText : LF.textPrimary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    // 图案颜色
-                    HStack(spacing: 10) {
-                        ForEach(bgPatternColors, id: \.hex) { color in
-                            Button {
-                                var style = bgOverlay ?? BackgroundPatternStyle()
-                                style.colorHex = color.hex
-                                appState.setBackgroundPattern(style)
-                            } label: {
-                                Circle().fill(Color(hex: color.hex))
-                                    .frame(width: 22, height: 22)
-                                    .overlay {
-                                        Circle().stroke(
-                                            bgOverlay?.colorHex == color.hex ? LF.selectionStroke : LF.surface2,
-                                            lineWidth: bgOverlay?.colorHex == color.hex ? 2.5 : 1
-                                        )
+                                    style.pattern = pattern
+                                    if pattern == .mosaic {
+                                        style.lineWidth = 48; style.spacing = 48; style.angle = 0
+                                    } else {
+                                        style.lineWidth = 4; style.spacing = 36; style.angle = 0
                                     }
+                                    appState.setBackgroundPattern(style)
+                                }
                             }
-                            .buttonStyle(.plain)
                         }
-                    }
-                    // 横线角度单独占下一行；马赛克不需要角度。
-                    if bgOverlay?.pattern != .mosaic {
-                        HStack(spacing: 10) {
-                            Text("角度").font(.caption2).foregroundStyle(LF.textSecondary)
-                            Slider(
-                                value: Binding(
-                                    get: { bgOverlay?.angle ?? 0 },
-                                    set: { var s = bgOverlay ?? BackgroundPatternStyle(); s.angle = $0; appState.setBackgroundPattern(s) }
-                                ),
-                                in: 0...180
-                            )
-                            .tint(LF.selectionStroke)
-                            .frame(maxWidth: .infinity)
-                            Text("\(Int(bgOverlay?.angle ?? 0))°")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(LF.textSecondary)
+                        if let bgOverlay {
+                            HStack(spacing: 8) {
+                                ForEach(bgPatternOptions(bgOverlay.pattern).widths, id: \.0) { opt in
+                                    EditorChoiceChip(title: "粗细 \(opt.0)", isSelected: abs(bgOverlay.lineWidth - opt.1) < 0.1) {
+                                        var style = bgOverlay
+                                        style.lineWidth = opt.1
+                                        appState.setBackgroundPattern(style)
+                                    }
+                                }
+                                if bgOverlay.pattern != .mosaic {
+                                    ForEach(bgPatternOptions(bgOverlay.pattern).spacing, id: \.0) { opt in
+                                        EditorChoiceChip(title: "间距 \(opt.0)", isSelected: abs(bgOverlay.spacing - opt.1) < 1) {
+                                            var style = bgOverlay
+                                            style.spacing = opt.1
+                                            appState.setBackgroundPattern(style)
+                                        }
+                                    }
+                                }
+                            }
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 10) {
+                                    ForEach(bgPatternColors, id: \.hex) { color in
+                                        Button {
+                                            var style = bgOverlay
+                                            style.colorHex = color.hex
+                                            appState.setBackgroundPattern(style)
+                                        } label: {
+                                            Circle()
+                                                .fill(Color(hex: color.hex))
+                                                .frame(width: 26, height: 26)
+                                                .overlay {
+                                                    Circle().stroke(
+                                                        bgOverlay.colorHex == color.hex ? LF.selectionStroke : LF.surface2,
+                                                        lineWidth: bgOverlay.colorHex == color.hex ? 2.5 : 1
+                                                    )
+                                                }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("图案颜色\(color.name)")
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                            }
+                            if bgOverlay.pattern != .mosaic {
+                                HStack(spacing: 10) {
+                                    Text("角度")
+                                        .font(.caption)
+                                        .foregroundStyle(LF.textSecondary)
+                                        .frame(width: 34, alignment: .leading)
+                                    Slider(
+                                        value: Binding(
+                                            get: { bgOverlay.angle },
+                                            set: { var style = bgOverlay; style.angle = $0; appState.setBackgroundPattern(style) }
+                                        ),
+                                        in: 0...180
+                                    )
+                                    .tint(LF.actionPrimary)
+                                    Text("\(Int(bgOverlay.angle))°")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(LF.textSecondary)
+                                        .frame(width: 34, alignment: .trailing)
+                                }
+                            }
                         }
                     }
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 28)
         }
         .sheet(isPresented: $showBackgroundPicker) {
             AssetPickerView(backgroundOnly: true)
@@ -836,18 +926,52 @@ struct EditorView: View {
     }
 
     private var textPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let element = appState.primarySelectedElement,
-               case .text(let textID) = element.kind,
-               let text = appState.composition?.texts.first(where: { $0.id.uuidString == textID }) {
-                TextFormattingControls(text: text)
-                    .environmentObject(appState)
-            } else {
-                Text("点击工具栏「文本」添加文字，选中文字后可编辑")
-                    .font(.caption)
-                    .foregroundStyle(LF.textSecondary)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
+                EditorPanelHeader(
+                    icon: "textformat",
+                    title: "文字",
+                    subtitle: "输入内容并调整文字的视觉样式"
+                )
+                if let element = appState.primarySelectedElement,
+                   case .text(let textID) = element.kind,
+                   let text = appState.composition?.texts.first(where: { $0.id.uuidString == textID }) {
+                    TextFormattingControls(text: text)
+                        .environmentObject(appState)
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "text.cursor")
+                            .font(.title2)
+                            .foregroundStyle(LF.actionPrimary)
+                        Text("画布上还没有选中的文字")
+                            .font(.subheadline.weight(.semibold))
+                        Text("点击工具栏「文字」添加一段文字")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 28)
+                    .background(LF.surface.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(LF.brandTint.opacity(0.28), lineWidth: 1)
+                    }
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 28)
         }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 
     private var stickerPanel: some View {
@@ -1003,6 +1127,112 @@ struct EditorView: View {
                 }
             }
         }
+    }
+}
+
+/// 工具面板的顶部说明：让用户先知道当前面板解决什么问题，再开始操作控件。
+private struct EditorPanelHeader: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(LF.actionPrimary)
+                .frame(width: 38, height: 38)
+                .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(LF.textSecondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 2)
+    }
+}
+
+/// 面板内的统一分组，避免多个同等级控件挤在一条横排里。
+private struct EditorPanelSection<Content: View>: View {
+    let title: String
+    let subtitle: String?
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                }
+            }
+            content
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LF.surface.opacity(0.78), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(LF.brandTint.opacity(0.24), lineWidth: 1)
+        }
+    }
+}
+
+private struct EditorChoiceChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isSelected ? LF.selectionText : LF.textPrimary)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .background(isSelected ? LF.selectionFill : LF.surface2.opacity(0.58), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .strokeBorder(
+                            isSelected ? LF.selectionStroke : LF.brandTint.opacity(0.18),
+                            lineWidth: 1
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct CanvasColorSwatch<Content: View>: View {
+    let label: String
+    let isSelected: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 5) {
+            content
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(isSelected ? LF.selectionStroke : LF.surface2, lineWidth: isSelected ? 2.5 : 1)
+                }
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(LF.textPrimary)
+        }
+        .frame(width: 56)
     }
 }
 

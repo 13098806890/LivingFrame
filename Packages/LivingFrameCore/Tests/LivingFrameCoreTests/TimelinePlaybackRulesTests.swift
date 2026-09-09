@@ -218,6 +218,43 @@ final class TimelinePlaybackRulesTests: XCTestCase {
         XCTAssertEqual(trailing.state.sourceRange.end, 4)
     }
 
+    func testStaticLeadingAndTrailingHandlesOnlyChangeTimelineWindow() {
+        let initial = TimelineStaticTiming(start: 1, end: 5)
+
+        let leading = TimelinePlaybackRules.trimStatic(
+            initial,
+            handle: .leading,
+            delta: 1
+        )
+        let trailing = TimelinePlaybackRules.trimStatic(
+            initial,
+            handle: .trailing,
+            delta: -1
+        )
+
+        XCTAssertEqual(leading, TimelineStaticTiming(start: 2, end: 5))
+        XCTAssertEqual(trailing, TimelineStaticTiming(start: 1, end: 4))
+    }
+
+    func testStaticLeadingHandleCanExtendToTimelineStartAndTrailingHandleKeepsMinimumDuration() {
+        let initial = TimelineStaticTiming(start: 2, end: 3)
+
+        let extended = TimelinePlaybackRules.trimStatic(
+            initial,
+            handle: .leading,
+            delta: -5
+        )
+        let collapsed = TimelinePlaybackRules.trimStatic(
+            initial,
+            handle: .trailing,
+            delta: -5
+        )
+
+        XCTAssertEqual(extended, TimelineStaticTiming(start: 0, end: 3))
+        XCTAssertEqual(collapsed.duration, 0.1, accuracy: 0.0001)
+        XCTAssertEqual(collapsed.start, 2, accuracy: 0.0001)
+    }
+
     private func state(
         sourceRange: ClosedRange<Int>,
         timelineDuration: TimeInterval,

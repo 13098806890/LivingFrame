@@ -18,13 +18,43 @@ struct WorksView: View {
                     EmptyStateView(
                         icon: "photo.stack",
                         title: "还没有作品",
-                        message: "在编辑页点击“保存”，作品会显示在这里"
+                        message: "在编辑页编辑内容，点击保存后作品会显示在这里"
                     )
                     .padding(.top, 80)
                 } else {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(appState.works) { work in
-                            WorkCell(work: work)
+                    let draftWorks = appState.works.filter { $0.draft != nil }
+                    let savedWorks = appState.works.filter { $0.draft == nil }
+
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        worksSectionHeader(
+                            title: "草稿箱",
+                            subtitle: "自动保存的修改，点击继续编辑；正式作品不会被覆盖。",
+                            icon: "pencil.circle.fill"
+                        )
+                        if !draftWorks.isEmpty {
+                            LazyVGrid(columns: columns, spacing: 12) {
+                                ForEach(draftWorks) { work in
+                                    WorkCell(work: work)
+                                }
+                            }
+                        } else {
+                            Text("暂无草稿。编辑已保存作品后的修改会自动出现在这里。")
+                                .font(.caption)
+                                .foregroundStyle(LF.textSecondary)
+                                .padding(.horizontal, 4)
+                        }
+
+                        if !savedWorks.isEmpty {
+                            worksSectionHeader(
+                                title: "已保存作品",
+                                subtitle: draftWorks.isEmpty ? nil : "手动保存的正式版本",
+                                icon: "photo.stack"
+                            )
+                            LazyVGrid(columns: columns, spacing: 12) {
+                                ForEach(savedWorks) { work in
+                                    WorkCell(work: work)
+                                }
+                            }
                         }
                     }
                     .padding()
@@ -41,16 +71,57 @@ struct WorksView: View {
                     }
                 }
             }
-            .confirmationDialog("放弃未保存修改？", isPresented: $showNewProjectConfirmation, titleVisibility: .visible) {
-                Button("放弃并新建", role: .destructive) {
-                    createNewProject()
+            .confirmationDialog("开始新工程？", isPresented: $showNewProjectConfirmation, titleVisibility: .visible) {
+                if appState.editingWorkID != nil {
+                    Button("新建并保留草稿") {
+                        Task { @MainActor in
+                            guard await appState.saveCurrentDraftNow() else { return }
+                            createNewProject()
+                        }
+                    }
+                } else {
+                    Button("放弃并新建", role: .destructive) {
+                        createNewProject()
+                    }
                 }
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("当前编辑内容尚未保存，继续新建会将其留在当前工程之外。")
+                if appState.editingWorkID != nil {
+                    Text("当前修改尚未正式保存，继续新建会先将其保留为当前作品的草稿。")
+                } else {
+                    Text("当前工程尚未保存为作品，继续新建会丢失这些修改。")
+                }
             }
         }
         .magicBackground()
+    }
+
+    private func worksSectionHeader(
+        title: String,
+        subtitle: String?,
+        icon: String
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(LF.selectionText)
+                .frame(width: 32, height: 32)
+                .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 2)
     }
 
     private func requestNewProject() {
@@ -100,9 +171,14 @@ private struct WorkCell: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
             HStack {
-                Text(work.lastSavedAt.formatted(date: .abbreviated, time: .omitted))
+                Text((work.draft?.updatedAt ?? work.lastSavedAt).formatted(date: .abbreviated, time: .omitted))
                 Spacer()
-                Text("已保存")
+                if work.draft != nil {
+                    Label("有草稿", systemImage: "pencil.circle.fill")
+                        .foregroundStyle(LF.header)
+                } else {
+                    Text("已保存")
+                }
             }
             .font(.caption2)
             .foregroundStyle(LF.textSecondary)
@@ -169,15 +245,29 @@ private struct WorkCell: View {
         } message: {
             Text("删除后无法恢复，素材库中的素材不会被删除。")
         }
-        .confirmationDialog("放弃未保存修改？", isPresented: $showDiscardConfirmation, titleVisibility: .visible) {
-            Button("放弃并继续", role: .destructive) {
-                if let pendingAction {
-                    perform(pendingAction)
+        .confirmationDialog("切换作品？", isPresented: $showDiscardConfirmation, titleVisibility: .visible) {
+            if appState.editingWorkID != nil {
+                Button("切换并保留草稿") {
+                    guard let pendingAction else { return }
+                    Task { @MainActor in
+                        guard await appState.saveCurrentDraftNow() else { return }
+                        perform(pendingAction)
+                    }
+                }
+            } else {
+                Button("放弃并继续", role: .destructive) {
+                    if let pendingAction {
+                        perform(pendingAction)
+                    }
                 }
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("当前编辑内容尚未保存，切换作品后这些修改会丢失。")
+            if appState.editingWorkID != nil {
+                Text("当前修改尚未正式保存，切换作品后会保留为草稿；正式作品仍需点击“保存”。")
+            } else {
+                Text("当前工程尚未保存为作品，切换后这些修改会丢失。")
+            }
         }
         .alert("重命名作品", isPresented: $showRenameAlert) {
             TextField("作品名称", text: $renameText)

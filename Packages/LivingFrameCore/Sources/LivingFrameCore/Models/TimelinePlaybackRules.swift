@@ -38,6 +38,23 @@ public struct TimelinePlaybackState: Equatable, Sendable {
     }
 }
 
+/// 没有独立源片段的静态元素（文字、静态背景、静态贴纸/效果）的时间轴窗口。
+/// 静态元素只编辑工程时间，不参与源帧循环和源入点计算。
+public struct TimelineStaticTiming: Equatable, Sendable {
+    public let start: TimeInterval
+    public let end: TimeInterval
+
+    public init(start: TimeInterval, end: TimeInterval) {
+        let safeStart = max(start.isFinite ? start : 0, 0)
+        self.start = safeStart
+        self.end = max(end.isFinite ? end : safeStart + 0.1, safeStart + 0.1)
+    }
+
+    public var duration: TimeInterval {
+        end - start
+    }
+}
+
 /// 一次时间轴拖拽的纯计算结果，供预览和提交共同使用。
 public struct TimelineTrimResult: Equatable, Sendable {
     public let state: TimelinePlaybackState
@@ -55,6 +72,32 @@ public struct TimelineTrimResult: Equatable, Sendable {
 public enum TimelinePlaybackRules {
     private static let minimumTimelineDuration: TimeInterval = 0.1
     private static let maximumPlaybackCount = 99
+
+    /// 调整静态元素的时间轴播放窗口。
+    ///
+    /// 静态元素没有源素材入点/出点；左右手柄只改变元素在工程时间轴上的
+    /// 起止位置，并始终保留至少 0.1 秒的可见时长。
+    public static func trimStatic(
+        _ timing: TimelineStaticTiming,
+        handle: TimelineTrimHandle,
+        delta: TimeInterval
+    ) -> TimelineStaticTiming {
+        let safeDelta = delta.isFinite ? delta : 0
+
+        switch handle {
+        case .leading:
+            let requestedStart = max(timing.start + safeDelta, 0)
+            return TimelineStaticTiming(
+                start: min(requestedStart, timing.end - minimumTimelineDuration),
+                end: timing.end
+            )
+        case .trailing:
+            return TimelineStaticTiming(
+                start: timing.start,
+                end: max(timing.start + minimumTimelineDuration, timing.end + safeDelta)
+            )
+        }
+    }
 
     /// 调整时间轴播放窗口。
     ///

@@ -4,6 +4,10 @@ import SwiftUI
 struct LivingFrameApp: App {
     @StateObject private var appState = AppState()
 
+    init() {
+        BundledFontManager.registerFonts()
+    }
+
     var body: some Scene {
         WindowGroup {
             MainTabView()

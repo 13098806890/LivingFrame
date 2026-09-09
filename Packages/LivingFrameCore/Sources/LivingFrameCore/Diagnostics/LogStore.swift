@@ -19,6 +19,15 @@ public enum LogStore {
         let tag = file.components(separatedBy: "/").last ?? file
         let stamp = formatter.string(from: Date())
         let entry = "[\(stamp)] [\(tag):\(line)] \(message)"
+
+        // Live Photo 导出失败时需要从 Xcode 控制台直接复制完整链路。
+        // 其他日志仍只写入文件，避免普通操作持续刷屏。
+        #if DEBUG
+        if message.hasPrefix("xdz.livephoto") || message.hasPrefix("export:") {
+            print("[LivingFrame] \(entry)")
+        }
+        #endif
+
         lock.lock()
         defer { lock.unlock() }
         guard let handle = ensureHandle() else { return }
@@ -55,6 +64,13 @@ public enum LogStore {
         try? handle?.close()
         handle = nil
         try? FileManager.default.removeItem(at: logURL)
+    }
+
+    /// 在后台线程清理日志，避免关闭文件句柄和删除日志文件阻塞设置页。
+    public static func clearAsync() async {
+        await Task.detached(priority: .utility) {
+            LogStore.clear()
+        }.value
     }
 
     /// 截断为最近 N 行，防止日志无限膨胀

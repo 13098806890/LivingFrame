@@ -109,6 +109,27 @@ public enum ExportResolution: String, Codable, CaseIterable, Identifiable, Senda
 }
 
 /// 作品快照：可重新编辑、重导出
+public struct WorkDraft: Codable, Equatable {
+    /// 草稿最近一次自动保存时间；不影响正式作品的更新时间。
+    public var updatedAt: Date
+    /// 草稿工程快照。
+    public var composition: Composition
+    /// 草稿对应的素材级编辑设置。
+    public var clipSettings: [WorkClipSettings]
+
+    public init(
+        updatedAt: Date = Date(),
+        composition: Composition,
+        clipSettings: [WorkClipSettings] = []
+    ) {
+        self.updatedAt = updatedAt
+        self.composition = composition
+        self.clipSettings = clipSettings
+    }
+}
+
+/// 作品快照：可重新编辑、重导出。
+/// 正式版本保留在 composition；编辑过程中的自动保存版本放在 draft 中。
 public struct WorkItem: Codable, Identifiable, Equatable {
     public var id: UUID
     public var name: String
@@ -122,6 +143,8 @@ public struct WorkItem: Codable, Identifiable, Equatable {
     /// 封面 PNG 数据
     public var posterData: Data
     public var format: ExportFormat
+    /// 自动保存的未提交草稿；nil 表示当前作品没有草稿。
+    public var draft: WorkDraft?
 
     public init(
         id: UUID = UUID(),
@@ -131,7 +154,8 @@ public struct WorkItem: Codable, Identifiable, Equatable {
         composition: Composition,
         clipSettings: [WorkClipSettings] = [],
         posterData: Data,
-        format: ExportFormat
+        format: ExportFormat,
+        draft: WorkDraft? = nil
     ) {
         self.id = id
         self.name = name
@@ -141,6 +165,7 @@ public struct WorkItem: Codable, Identifiable, Equatable {
         self.clipSettings = clipSettings
         self.posterData = posterData
         self.format = format
+        self.draft = draft
     }
 
     public var lastSavedAt: Date { updatedAt }

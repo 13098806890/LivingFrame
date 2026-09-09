@@ -5,7 +5,7 @@ import ImageIO
 /// 抠图结果：透明 PNG 帧序列 + 可选音频，磁盘缓存
 public struct SegmentedClip: Identifiable {
     public let id: String
-    public let name: String
+    public var name: String
     public let fps: Double
     public let frameCount: Int
     public let width: Int

@@ -195,7 +195,8 @@ struct ElementInspectorView: View {
 
     var body: some View {
         // 底部属性面板：高度受限（外部 frame），内容多时内部滚动
-        SectionCard(title: "检查器") {
+        // sheet 导航栏已经提供了上下文标题，这里不再重复嵌套“检查器”标题。
+        SectionCard(title: nil) {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 10) {
                     if appState.selectedBackground {
@@ -215,6 +216,7 @@ struct ElementInspectorView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
         }
         .sheet(item: $editingSourceElement) { element in
             if let source = appState.playbackSource(for: element) {
@@ -234,14 +236,7 @@ struct ElementInspectorView: View {
 
     private var backgroundInspector: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("背景")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text("画布空白处取消选中后返回")
-                    .font(.caption2)
-                    .foregroundStyle(LF.textSecondary)
-            }
+            backgroundInspectorHeader
             // 画幅比例
             HStack(spacing: 8) {
                 Text("比例")
@@ -531,24 +526,41 @@ struct ElementInspectorView: View {
 
     private func elementInspector(_ element: CompositionElement) -> some View {
         VStack(spacing: 10) {
-            HStack {
-                Text(element.name)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+            HStack(spacing: 10) {
+                Image(systemName: elementInspectorIcon(for: element))
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(LF.selectionText)
+                    .frame(width: 32, height: 32)
+                    .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(element.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(LF.textPrimary)
+                        .lineLimit(1)
+                    Text("图层属性")
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                }
+
                 Spacer()
-                Button { appState.moveElementZ(element.id, up: false) } label: {
-                    Image(systemName: "square.3.layers.3d.down.right")
+                HStack(spacing: 5) {
+                    Button { appState.moveElementZ(element.id, up: false) } label: {
+                        Image(systemName: "square.3.layers.3d.down.right")
+                    }
+                    .buttonStyle(.plain)
+                    Button { appState.moveElementZ(element.id, up: true) } label: {
+                        Image(systemName: "square.3.layers.3d.up.right")
+                    }
+                    .buttonStyle(.plain)
+                    Button(role: .destructive) { appState.deleteElement(element.id) } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                Button { appState.moveElementZ(element.id, up: true) } label: {
-                    Image(systemName: "square.3.layers.3d.up.right")
-                }
-                .buttonStyle(.plain)
-                Button(role: .destructive) { appState.deleteElement(element.id) } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.plain)
             }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
 
             if let source = appState.playbackSource(for: element) {
                 playbackControls(element, source: source)
@@ -569,10 +581,23 @@ struct ElementInspectorView: View {
                 if case .text(let textID) = element.kind,
                    let text = appState.composition?.texts.first(where: { $0.id.uuidString == textID }) {
                     textEditor(text)
+                } else {
+                    filterPicker(element)
+                    elementBackgroundPicker(element)
                 }
-                filterPicker(element)
-                elementBackgroundPicker(element)
             }
+        }
+    }
+
+    private func elementInspectorIcon(for element: CompositionElement) -> String {
+        switch element.kind {
+        case .clip: return "film"
+        case .background: return "photo.on.rectangle"
+        case .decoration: return "face.smiling"
+        case .effect: return "sparkles"
+        case .text: return "textformat"
+        case .canvasEdge: return "square"
+        @unknown default: return "square"
         }
     }
 
@@ -683,62 +708,6 @@ struct ElementInspectorView: View {
             }
 
             if settings.splitCount != .full {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack {
-                        Text("角度")
-                            .font(.caption2)
-                            .foregroundStyle(LF.textSecondary)
-                        Spacer()
-                        Text(String(format: "%.0f°", settings.dividerAngle))
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(LF.selectionStroke)
-                    }
-                    Slider(
-                        value: Binding(
-                            get: { Double(settings.dividerAngle) },
-                            set: { appState.setBackgroundDividerAngle(element.id, CGFloat($0)) }
-                        ),
-                        in: 0...180
-                    )
-                    .tint(LF.selectionStroke)
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach([CGFloat(0), 30, 45, 60, 90, 120, 135, 150], id: \.self) { angle in
-                                Button {
-                                    appState.setBackgroundDividerAngle(element.id, angle)
-                                } label: {
-                                    Text(String(format: "%.0f°", angle))
-                                        .font(.caption2.monospacedDigit().weight(.semibold))
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 5)
-                                        .background(
-                                            abs(settings.dividerAngle - angle) < 0.5 ? LF.selectionFill : LF.surface2,
-                                            in: Capsule()
-                                        )
-                                        .overlay {
-                                            Capsule()
-                                                .stroke(
-                                                    abs(settings.dividerAngle - angle) < 0.5 ? LF.selectionStroke : .clear,
-                                                    lineWidth: 1.5
-                                                )
-                                        }
-                                        .foregroundStyle(
-                                            abs(settings.dividerAngle - angle) < 0.5 ? LF.selectionText : LF.textPrimary
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-
-                    Text(settings.splitCount == .four
-                         ? "靠近常用角度时会自动吸附；预览中的两个圆点可分别拖动"
-                         : "靠近常用角度时会自动吸附；预览中的圆点可拖动")
-                        .font(.caption2)
-                        .foregroundStyle(LF.textSecondary)
-                }
-
                 partitionChoiceRow(
                     title: "填充区域",
                     count: settings.splitCount == .two ? 2 : 4,
@@ -746,20 +715,6 @@ struct ElementInspectorView: View {
                 ) { partition in
                     appState.setBackgroundPartition(element.id, partition)
                 }
-            }
-
-            if settings.splitCount != .full {
-                inspectorChoiceRow(
-                    title: "分割边缘",
-                    items: BackgroundEdgeStyle.allCases,
-                    selected: settings.edgeStyle
-                ) { style in
-                    appState.setBackgroundEdgeStyle(element.id, style)
-                }
-            } else {
-                Text("选择分区后可设置分割边缘；画布外缘在“画布外缘”中统一设置。")
-                    .font(.caption2)
-                    .foregroundStyle(LF.textSecondary)
             }
 
             VStack(alignment: .leading, spacing: 5) {
@@ -800,7 +755,48 @@ struct ElementInspectorView: View {
                     .foregroundStyle(LF.header)
                 }
             }
+
+            inspectorFooter("点击画布空白处可返回画布背景设置")
         }
+    }
+
+    private var backgroundInspectorHeader: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "rectangle.split.2x1")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(LF.selectionText)
+                .frame(width: 32, height: 32)
+                .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("画布背景")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+                Text("比例、颜色和背景图案")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+    }
+
+    private func inspectorFooter(_ message: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: "hand.tap")
+                .font(.caption2.weight(.semibold))
+            Text(message)
+                .font(.caption2)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(LF.textSecondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LF.surface2.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func inspectorChoiceRow<T: CaseIterable & Identifiable & Equatable>(
@@ -1301,10 +1297,10 @@ private struct BackgroundFillPreview: View {
 
                         Text("区域 \(settings.selectedPartition + 1)")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(LF.selectionText)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 4)
-                        .background(LF.header, in: Capsule())
+                        .background(LF.selectionFill, in: Capsule())
                             .position(selectedLabelPosition(in: rect))
                     }
                 }
@@ -1378,7 +1374,7 @@ private struct BackgroundFillPreview: View {
         let point = BackgroundPartitionShape.dividerCenter(for: index, settings: settings, in: rect)
         let isActive = activeDividerIndex == index
         Circle()
-            .fill(isActive ? LF.gold : LF.header)
+            .fill(isActive ? LF.selectionStroke : LF.header)
             .frame(width: isActive ? 22 : 18, height: isActive ? 22 : 18)
             .overlay {
                 Image(systemName: "arrow.left.and.right")

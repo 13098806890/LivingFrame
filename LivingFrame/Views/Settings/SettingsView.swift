@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @State private var logRefresh = 0
+    @State private var isClearingLogs = false
     @State private var showAdvancedExportFormats = false
 
     var body: some View {
@@ -120,13 +121,24 @@ struct SettingsView: View {
                                 }
                                 .buttonStyle(MagicButtonStyle(prominent: false))
                                 Button(role: .destructive) {
-                                    LogStore.clear()
-                                    logRefresh += 1
+                                    guard !isClearingLogs else { return }
+                                    isClearingLogs = true
+                                    Task { @MainActor in
+                                        await LogStore.clearAsync()
+                                        isClearingLogs = false
+                                        logRefresh += 1
+                                    }
                                 } label: {
-                                    Label("清空", systemImage: "trash")
-                                        .font(.caption.weight(.semibold))
-                                        .frame(maxWidth: .infinity)
+                                    if isClearingLogs {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                            .frame(maxWidth: .infinity)
+                                    } else {
+                                        Label("清空", systemImage: "trash")
+                                    }
                                 }
+                                .font(.caption.weight(.semibold))
+                                .disabled(isClearingLogs)
                                 .buttonStyle(MagicButtonStyle(prominent: false))
                             }
                         }

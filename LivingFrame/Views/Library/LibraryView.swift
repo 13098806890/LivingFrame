@@ -42,14 +42,14 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                pickerSection
-                foldersSection
                 if isDownloading {
                     downloadCard
                 }
                 if isExtractionActive {
                     segmentationCard
                 }
+                pickerSection
+                foldersSection
                 clipsSection
             }
             .padding(.horizontal)
@@ -1398,6 +1398,8 @@ struct ClipMenuView: View {
     @State private var showReferencedWorkAlert = false
     @State private var referencedWorkNames: [String] = []
     @State private var isDeletingClip = false
+    @State private var showRenameAlert = false
+    @State private var renameText = ""
 
     /// 读取最新值，避免详情页打开后修改样式仍显示旧状态。
     private var currentClip: SegmentedClip {
@@ -1448,11 +1450,19 @@ struct ClipMenuView: View {
         } message: {
             Text("请先从以下作品中移除它，再删除素材：\n\(referencedWorkNames.joined(separator: "、"))")
         }
+        .alert("重命名素材", isPresented: $showRenameAlert) {
+            TextField("素材名称", text: $renameText)
+            Button("保存") {
+                appState.renameClip(clip.id, to: renameText)
+            }
+            Button("取消", role: .cancel) {}
+        }
     }
 
     private var detailScrollView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                clipIdentityHeader
                 ClipDetailPreview(clip: currentClip, isPlaying: $isPlayingPreview)
                 rotateClipButton
                 frameEditorButton
@@ -1460,6 +1470,31 @@ struct ClipMenuView: View {
                 deleteClipButton
             }
             .padding(20)
+        }
+    }
+
+    private var clipIdentityHeader: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(currentClip.name)
+                    .font(.headline)
+                    .lineLimit(2)
+                Text("\(currentClip.orientedWidth)×\(currentClip.orientedHeight) · \(Int(currentClip.fps.rounded())) fps · \(currentClip.frameCount) 帧")
+                    .font(.caption)
+                    .foregroundStyle(LF.textSecondary)
+            }
+            Spacer()
+            Button {
+                renameText = currentClip.name
+                showRenameAlert = true
+            } label: {
+                Image(systemName: "pencil.line")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 34, height: 34)
+                    .background(LF.surface2, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("编辑素材名称")
         }
     }
 

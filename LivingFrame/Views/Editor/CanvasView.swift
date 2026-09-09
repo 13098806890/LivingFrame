@@ -509,8 +509,9 @@ struct CanvasView: View {
     // MARK: - 选中框
 
     private var selectionOverlay: some View {
-        GeometryReader { _ in
+        GeometryReader { geo in
             ZStack {
+                let geometry = viewportGeometry(for: appState.composition, viewport: geo.size)
                 ForEach(selectedElements.filter { element in
                     if case .canvasEdge = element.kind { return false }
                     return true
@@ -518,7 +519,7 @@ struct CanvasView: View {
                     let frame = elementFrame(
                         element,
                         in: appState.composition,
-                        geometry: viewportGeometry(for: appState.composition),
+                        geometry: geometry,
                         at: appState.currentTime
                     )
                     let center = CGPoint(x: frame.midX, y: frame.midY)
@@ -596,10 +597,10 @@ struct CanvasView: View {
     }
 
     private var backgroundInteractionOverlay: some View {
-        GeometryReader { _ in
+        GeometryReader { geo in
             if let element = selectedBackgroundElement,
                let comp = appState.composition {
-                let geometry = viewportGeometry(for: comp)
+                let geometry = viewportGeometry(for: comp, viewport: geo.size)
                 let frame = elementFrame(element, in: comp, geometry: geometry, at: appState.currentTime)
                 let settings = element.backgroundSettings ?? BackgroundElementSettings()
                 ZStack {
@@ -873,18 +874,23 @@ struct CanvasView: View {
     // MARK: - 坐标换算
 
     /// 视口显示的区域（裁剪后），元素坐标按该区域映射到屏幕
-    private func viewportGeometry(for comp: Composition?, contentRect: CGRect? = nil) -> ViewportGeometry {
-        guard let comp, viewportSize.width > 0, viewportSize.height > 0 else {
+    private func viewportGeometry(
+        for comp: Composition?,
+        contentRect: CGRect? = nil,
+        viewport: CGSize? = nil
+    ) -> ViewportGeometry {
+        let currentViewport = viewport ?? viewportSize
+        guard let comp, currentViewport.width > 0, currentViewport.height > 0 else {
             return ViewportGeometry(scale: 1, offsetX: 0, offsetY: 0, rect: CGRect(x: 0, y: 0, width: 1, height: 1))
         }
         let rect = contentRect ?? comp.renderRect
         let aspect = rect.width / rect.height
-        let displayWidth = min(viewportSize.width, viewportSize.height * aspect)
+        let displayWidth = min(currentViewport.width, currentViewport.height * aspect)
         let displayHeight = displayWidth / aspect
         return ViewportGeometry(
             scale: displayWidth / rect.width,
-            offsetX: (viewportSize.width - displayWidth) / 2,
-            offsetY: (viewportSize.height - displayHeight) / 2,
+            offsetX: (currentViewport.width - displayWidth) / 2,
+            offsetY: (currentViewport.height - displayHeight) / 2,
             rect: rect
         )
     }
@@ -901,6 +907,19 @@ struct CanvasView: View {
         at time: TimeInterval
     ) -> CGRect {
         guard let comp else { return .zero }
+        // 背景图片由渲染器先生成完整画布尺寸的蒙版图，且背景取景只修改
+        // cropOffset/cropScale，不使用 element.transform。选中框必须和这条
+        // 渲染路径一致，否则会出现背景框跟随旧 transform 偏移的问题。
+        if case .background = element.kind {
+            let canvasCenter = CGPoint(x: comp.canvasRect.midX, y: comp.canvasRect.midY)
+            return ElementFrameGeometry.frame(
+                contentSize: comp.canvasRect.size,
+                transform: ElementTransform(position: canvasCenter),
+                contentRect: geometry.rect,
+                viewportScale: geometry.scale,
+                viewportOffset: CGPoint(x: geometry.offsetX, y: geometry.offsetY)
+            )
+        }
         let size = elementContentSize(element, in: comp, at: time)
         return ElementFrameGeometry.frame(
             contentSize: size,
@@ -918,7 +937,16 @@ struct CanvasView: View {
         in comp: Composition,
         at time: TimeInterval
     ) -> CGSize {
-        renderer.contentSize(for: element, in: comp, at: time) ?? .zero
+        // 不要依赖 FrameCache 的瞬时注册状态。AppState 是编辑器当前工程的
+        // 稳定素材来源，选中框始终包住完整素材矩形，而不是某一帧的透明像素范围。
+        if case .clip(let clipID) = element.kind,
+           let clip = appState.clips.first(where: { $0.id == clipID }) {
+            return CGSize(width: max(clip.orientedWidth, 1), height: max(clip.orientedHeight, 1))
+        }
+        if case .background = element.kind {
+            return comp.canvasRect.size
+        }
+        return renderer.contentSize(for: element, in: comp, at: time) ?? .zero
     }
 
     // MARK: - 渲染

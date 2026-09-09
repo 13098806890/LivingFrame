@@ -102,6 +102,16 @@ public struct CompositionRenderer {
         in composition: Composition,
         at time: TimeInterval
     ) -> CGSize? {
+        // 素材的选中框代表“素材画布”而不是当前帧的非透明像素范围。
+        // 分割结果的透明边缘、描边和滤镜会随帧变化，不能让它们改变交互边界。
+        if case .clip(let clipID) = element.kind,
+           let clip = FrameCache.shared.clip(id: clipID) {
+            return CGSize(
+                width: max(clip.orientedWidth, 1),
+                height: max(clip.orientedHeight, 1)
+            )
+        }
+
         var neutralElement = element
         neutralElement.transform = ElementTransform(
             position: .zero,

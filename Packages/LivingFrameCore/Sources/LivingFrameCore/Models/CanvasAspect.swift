@@ -14,12 +14,12 @@ public enum CanvasAspect: String, CaseIterable, Identifiable {
 
     public var title: String {
         switch self {
-        case .portrait9x16: NSLocalizedString("9:16 竖屏", comment: "Canvas aspect")
-        case .portrait4x5: NSLocalizedString("4:5 竖屏", comment: "Canvas aspect")
-        case .portrait3x4: NSLocalizedString("3:4 竖屏", comment: "Canvas aspect")
-        case .square1x1: NSLocalizedString("1:1 方形", comment: "Canvas aspect")
-        case .landscape4x3: NSLocalizedString("4:3 横屏", comment: "Canvas aspect")
-        case .landscape16x9: NSLocalizedString("16:9 横屏", comment: "Canvas aspect")
+        case .portrait9x16: NSLocalizedString("9:16", comment: "Canvas aspect")
+        case .portrait4x5: NSLocalizedString("4:5", comment: "Canvas aspect")
+        case .portrait3x4: NSLocalizedString("3:4", comment: "Canvas aspect")
+        case .square1x1: NSLocalizedString("1:1", comment: "Canvas aspect")
+        case .landscape4x3: NSLocalizedString("4:3", comment: "Canvas aspect")
+        case .landscape16x9: NSLocalizedString("16:9", comment: "Canvas aspect")
         }
     }
 

@@ -35,16 +35,35 @@ struct ExportView: View {
     @State private var exportedURL: URL?
     @State private var exportError: String?
     @State private var savedToLibrary = false
+    @State private var isSavingToLibrary = false
     @State private var exportTask: Task<Void, Never>?
     /// 打开导出页时冻结预览时刻，避免编辑器仍在播放时反复触发高成本渲染。
     @State private var previewTime: TimeInterval = 0
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
+            VStack(spacing: 0) {
+                if appState.isExporting || isSavingToLibrary {
+                    exportProgressBanner
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                } else if let exportedURL {
+                    exportResultBanner(url: exportedURL)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                } else if let exportError {
+                    exportErrorBanner(message: exportError)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                ScrollView {
+                    VStack(spacing: 16) {
                     if let comp = appState.composition {
-                        summaryCard(comp)
+                        exportContext(comp)
                     }
 
                     SectionCard(title: "导出格式") {
@@ -104,103 +123,36 @@ struct ExportView: View {
                         )
                     }
 
-                    if appState.isExporting {
-                    SectionCard(title: "导出中") {
-                        ProgressView(value: appState.exportProgress)
-                            .tint(LF.gold)
-                        Text(String(format: "%d%%", Int(appState.exportProgress * 100)))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(LF.textSecondary)
-                    }
-                    }
-
-                    if let exportedURL {
-                    SectionCard(title: "完成") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            if exportedChatSticker {
-                                Text("将 GIF 存到相册后，可在微信中发送或尝试添加到自定义表情；无需转成视频。")
-                                    .font(.caption)
-                                    .foregroundStyle(LF.textSecondary)
-                            }
-                            if let notice = appState.exportNotice {
-                                Label(notice, systemImage: "info.circle.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(LF.textSecondary)
-                            }
-                            if format == .livePhoto {
-                                Text("已存入系统相册，打开「照片」长按即可看到动态效果")
-                                    .font(.caption)
-                                    .foregroundStyle(LF.textSecondary)
-                            }
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(exportedURL.lastPathComponent)
-                                        .font(.subheadline.weight(.medium))
-                                        .lineLimit(1)
-                                    Label("导出成功", systemImage: "checkmark.circle.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(LF.gold)
-                                    if let exportedFileSize {
-                                        Label(exportedFileSize, systemImage: "internaldrive")
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(LF.textSecondary)
-                                    }
-                                }
-                                Spacer()
-                                ShareLink(item: exportedURL) {
-                                    Image(systemName: "square.and.arrow.up")
-                                }
-                                .buttonStyle(MagicButtonStyle())
-                            }
-                        }
-                        Button {
-                            saveToLibrary(url: exportedURL)
-                        } label: {
-                            Label(
-                                savedToLibrary ? "已存入相册" : "存到相册",
-                                systemImage: savedToLibrary ? "checkmark" : "photo.badge.plus"
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(MagicButtonStyle(prominent: false))
-                        .disabled(savedToLibrary)
-                    }
-                    }
-
-                    if let exportError {
-                    Text(exportError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                    }
-
                     Text("文件体积会随画面细节、透明区域和编码器变化；导出完成后会显示准确结果。")
                         .font(.caption2)
                         .foregroundStyle(LF.textSecondary)
                         .multilineTextAlignment(.center)
                         .padding(.top, 2)
                 }
-                .padding()
+                        .padding()
+                    }
+                    .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
             .lfNavigationTitle("导出")
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(appState.isExporting ? "停止导出" : "取消") {
+                    Button(appState.isExporting || isSavingToLibrary ? "处理中…" : "取消") {
                         if appState.isExporting {
                             exportTask?.cancel()
-                        } else {
+                        } else if !isSavingToLibrary {
                             dismiss()
                         }
                     }
+                    .disabled(isSavingToLibrary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("导出") {
                         export()
                     }
                     .tint(LF.actionPrimary)
-                    .disabled(appState.isExporting)
+                    .disabled(appState.isExporting || isSavingToLibrary)
                 }
             }
         }
@@ -213,6 +165,93 @@ struct ExportView: View {
         }
         .onDisappear {
             exportTask?.cancel()
+        }
+    }
+
+    private var exportProgressBanner: some View {
+        SectionCard(title: isSavingToLibrary && !appState.isExporting ? "保存到相册" : "导出中") {
+            HStack(spacing: 10) {
+                if appState.isExporting {
+                    ProgressView(value: appState.exportProgress)
+                        .tint(LF.gold)
+                    Text(String(format: "%d%%", Int(appState.exportProgress * 100)))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(LF.textSecondary)
+                } else {
+                    ProgressView()
+                        .tint(LF.gold)
+                    Text("正在写入系统相册…")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+            }
+        }
+    }
+
+    private func exportResultBanner(url: URL) -> some View {
+        SectionCard(title: "导出完成") {
+            VStack(alignment: .leading, spacing: 8) {
+                if exportedChatSticker {
+                    Text("GIF 可直接分享到微信，也可以尝试添加到自定义表情。")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+                if let notice = appState.exportNotice {
+                    Label(notice, systemImage: "info.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+                if format == .livePhoto {
+                    Text("已存入系统相册，打开「照片」长按即可看到动态效果")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("导出成功", systemImage: "checkmark.circle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(LF.gold)
+                        Text(url.lastPathComponent)
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                            .lineLimit(1)
+                        if let exportedFileSize {
+                            Label(exportedFileSize, systemImage: "internaldrive")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(LF.textSecondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    ShareLink(item: url) {
+                        Label("分享", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(MagicButtonStyle())
+                }
+
+                Button {
+                    saveToLibrary(url: url)
+                } label: {
+                    Label(
+                        savedToLibrary ? "已存入相册" : "存到相册",
+                        systemImage: savedToLibrary ? "checkmark" : "photo.badge.plus"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(MagicButtonStyle(prominent: false))
+                .disabled(savedToLibrary || isSavingToLibrary)
+            }
+        }
+    }
+
+    private func exportErrorBanner(message: String) -> some View {
+        SectionCard(title: "导出失败") {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -276,35 +315,30 @@ struct ExportView: View {
             )
             .overlay {
                 Capsule()
-                    .stroke(
+                    .strokeBorder(
                         format == option ? LF.selectionStroke : LF.brandTint.opacity(0.2),
-                        lineWidth: format == option ? 1.8 : 1
+                        lineWidth: 1
                     )
             }
         }
         .buttonStyle(.plain)
     }
 
-    private func summaryCard(_ comp: Composition) -> some View {
-        SectionCard(title: "工程信息") {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(comp.name)
-                        .font(.headline)
-                    Text(String(
-                        format: NSLocalizedString("canvas.meta", comment: "Canvas metadata"),
-                        Int(comp.canvas.width), Int(comp.canvas.height), Int(comp.duration),
-                        comp.elements.count, comp.audioClips.count
-                    ))
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
-                }
-                Spacer()
-                Image(systemName: "film")
-                    .font(.title)
-                    .foregroundStyle(LF.gold)
+    private func exportContext(_ comp: Composition) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "film")
+                .foregroundStyle(LF.gold)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(comp.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text("时长 \(String(format: "%.1f", max(comp.duration, 0))) 秒 · 导出预览")
+                    .font(.caption)
+                    .foregroundStyle(LF.textSecondary)
             }
+            Spacer()
         }
+        .padding(.horizontal, 4)
     }
 
     private func export() {
@@ -336,6 +370,12 @@ struct ExportView: View {
             } catch ExportError.cancelled {
                 // 用户主动停止，不显示错误。
             } catch {
+                let nsError = error as NSError
+                let logPrefix = selectedFormat == .livePhoto ? "xdz.livephoto" : "export"
+                LogStore.log(
+                    "\(logPrefix) failed format=\(selectedFormat.rawValue) domain=\(nsError.domain) "
+                        + "code=\(nsError.code) description=\(nsError.localizedDescription) userInfo=\(nsError.userInfo)"
+                )
                 exportError = error.localizedDescription
             }
         }
@@ -392,7 +432,10 @@ struct ExportView: View {
     }
 
     private func saveToLibrary(url: URL) {
+        guard !isSavingToLibrary else { return }
+        isSavingToLibrary = true
         Task { @MainActor in
+            defer { isSavingToLibrary = false }
             do {
                 let currentStatus = PHPhotoLibrary.authorizationStatus(for: .addOnly)
                 let authorized: Bool

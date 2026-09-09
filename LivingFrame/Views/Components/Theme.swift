@@ -59,6 +59,7 @@ struct ThemePalette {
     let timelineSticker: Color
     let timelineEffect: Color
     let timelineAudio: Color
+    let timelineText: Color
 }
 
 /// 四套可切换的马卡龙皮肤。首五个颜色分别对应用户给出的主色、深色、强调色、文字色和中性色，
@@ -109,7 +110,8 @@ enum AppTheme: String, CaseIterable, Identifiable {
                 timelineBackground: Color(hex: "95CEE8"),
                 timelineSticker: Color(hex: "DF8CAD"),
                 timelineEffect: Color(hex: "DF8CAD"),
-                timelineAudio: Color(hex: "95CEE8")
+                timelineAudio: Color(hex: "95CEE8"),
+                timelineText: Color(hex: "A95D80")
             )
         case .coralNavy:
             return ThemePalette(
@@ -129,7 +131,8 @@ enum AppTheme: String, CaseIterable, Identifiable {
                 timelineBackground: Color(hex: "F9815E"),
                 timelineSticker: Color(hex: "00283D"),
                 timelineEffect: Color(hex: "F9815E"),
-                timelineAudio: Color(hex: "00283D")
+                timelineAudio: Color(hex: "00283D"),
+                timelineText: Color(hex: "B64B4B")
             )
         case .limeClover:
             return ThemePalette(
@@ -149,7 +152,8 @@ enum AppTheme: String, CaseIterable, Identifiable {
                 timelineBackground: Color(hex: "E7F0D6"),
                 timelineSticker: Color(hex: "D4B01D"),
                 timelineEffect: Color(hex: "D4B01D"),
-                timelineAudio: Color(hex: "4AA112")
+                timelineAudio: Color(hex: "4AA112"),
+                timelineText: Color(hex: "6B7D24")
             )
         case .gardenSun:
             return ThemePalette(
@@ -169,7 +173,8 @@ enum AppTheme: String, CaseIterable, Identifiable {
                 timelineBackground: Color(hex: "4E8F38"),
                 timelineSticker: Color(hex: "FFC64A"),
                 timelineEffect: Color(hex: "FFC64A"),
-                timelineAudio: Color(hex: "4E8F38")
+                timelineAudio: Color(hex: "4E8F38"),
+                timelineText: Color(hex: "A86D16")
             )
         }
     }
@@ -205,6 +210,7 @@ enum LF {
     static var timelineSticker: Color { palette.timelineSticker }
     static var timelineEffect: Color { palette.timelineEffect }
     static var timelineAudio: Color { palette.timelineAudio }
+    static var timelineText: Color { palette.timelineText }
 
     static var gold: Color { actionPrimary }
 
@@ -374,7 +380,7 @@ struct TimelineInactiveRangeMask: UIViewRepresentable {
     }
 }
 
-/// Cloud Glass 背景修饰：内容层使用主题背景，导航栏和 Tab 栏保持同一套颜色。
+/// Cloud Glass 背景修饰：主题背景覆盖整个安全区域，导航栏与主体背景连续，Tab 栏保持稳定底色。
 struct MagicBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
@@ -389,13 +395,15 @@ struct MagicBackground: ViewModifier {
                         startPoint: .topLeading,
                         endPoint: .center
                     )
-                    .ignoresSafeArea()
                 }
+                .ignoresSafeArea()
             }
-            // 仅使用 regularMaterial 时，列表/ScrollView 滚动后系统会自动把导航栏
-            // 提升成灰色不透明材质。显式指定主题背景，确保各 Tab 滚动前后视觉一致。
-            .toolbarBackground(.visible, for: .navigationBar, .tabBar)
-            .toolbarBackground(LF.background.opacity(0.96), for: .navigationBar, .tabBar)
+            // 导航栏不再使用一块独立的不透明色带，让标题和主体共享同一层背景。
+            // Tab 栏保留稳定底色，避免滚动内容穿透到底部操作区。
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(.visible, for: .tabBar)
+            .toolbarBackground(LF.background.opacity(0.96), for: .tabBar)
+            .toolbarColorScheme(.light, for: .navigationBar, .tabBar)
     }
 }
 

@@ -925,10 +925,9 @@ struct TimelineView: View {
                     .allowsHitTesting(false)
 
                 // 两侧圆角拖拽柄略微超出胶片条，避免与缩略图融成一块。
-                // 所有具备真实源帧的动态元素都显示两侧手柄。
-                // 单次播放时，手柄调整源素材入点/出点；循环播放时，手柄只调整
-                // 时间轴总时长（增加/减少循环次数）。每一轮使用的源片段仍在检查器中编辑。
-                if !isCanvasEdge && sourceInfo != nil {
+                // 所有可编辑元素都显示两侧手柄。
+                // 动态元素沿用源素材/循环规则；静态元素只调整时间轴起点和时长。
+                if !isCanvasEdge {
                 HStack(spacing: 0) {
                     // 视觉手柄的中心必须和时间坐标边界重合。
                     Color.clear.frame(width: max(metrics.activeOffset - visualHandleWidth / 2, 0))
@@ -1360,7 +1359,6 @@ struct TimelineView: View {
                         - timelineLeadingInset
                         - metrics.outerStart
                     if fixedMode == .move,
-                       timelineSourceInfo(for: element) != nil,
                        isInsideTrimHotZone(localStartX, metrics: metrics) {
                         return
                     }
@@ -1541,15 +1539,26 @@ struct TimelineView: View {
         delta: CGFloat,
         secondsPerPoint: CGFloat
     ) -> ElementTiming {
-        let rawStart = max(anchor.start + delta, 0)
         guard let info = timelineSourceInfo(for: element) else {
             timelineDebug(
                 "trimStart.fallback id=\(element.id.uuidString.prefix(8)) " +
                 "reason=noSourceRange kind=\(timelineElementKind(element))"
             )
-            let newStart = min(max(rawStart, 0), anchor.end - 0.1)
+            let staticTiming = TimelinePlaybackRules.trimStatic(
+                TimelineStaticTiming(start: anchor.start, end: anchor.end),
+                handle: .leading,
+                delta: delta
+            )
+            let newStart = appState.composition.map {
+                snapTime(
+                    staticTiming.start,
+                    excluding: element.id,
+                    comp: $0,
+                    secondsPerPoint: secondsPerPoint
+                )
+            } ?? staticTiming.start
             return ElementTiming(
-                start: newStart,
+                start: min(max(newStart, 0), anchor.end - 0.1),
                 end: anchor.end,
                 sourceStart: anchor.sourceStart,
                 sourceEnd: anchor.sourceEnd,
@@ -1598,13 +1607,22 @@ struct TimelineView: View {
                 "trimEnd.fallback id=\(element.id.uuidString.prefix(8)) " +
                 "reason=noSourceRange kind=\(timelineElementKind(element))"
             )
-            let rawEnd = max(anchor.start + 0.1, anchor.end + delta)
+            let staticTiming = TimelinePlaybackRules.trimStatic(
+                TimelineStaticTiming(start: anchor.start, end: anchor.end),
+                handle: .trailing,
+                delta: delta
+            )
             let newEnd = appState.composition.map {
-                snapTime(rawEnd, excluding: element.id, comp: $0, secondsPerPoint: secondsPerPoint)
-            } ?? rawEnd
+                snapTime(
+                    staticTiming.end,
+                    excluding: element.id,
+                    comp: $0,
+                    secondsPerPoint: secondsPerPoint
+                )
+            } ?? staticTiming.end
             return ElementTiming(
                 start: anchor.start,
-                end: newEnd,
+                end: max(newEnd, anchor.start + 0.1),
                 sourceStart: anchor.sourceStart,
                 sourceEnd: anchor.sourceEnd,
                 sourceOffset: anchor.sourceOffset
@@ -1835,7 +1853,9 @@ struct TimelineView: View {
         case .background: LF.timelineBackground.opacity(0.82)
         case .decoration: LF.timelineSticker.opacity(0.82)
         case .effect: LF.timelineEffect.opacity(0.75)
-        case .text: LF.textPrimary.opacity(0.75)
+        // 文字轨道使用独立语义色，不跟随文字本身的白/黑/彩色设置，
+        // 避免浅色主题下出现黑灰色底配白字的低质感组合。
+        case .text: LF.timelineText.opacity(0.90)
         case .canvasEdge: LF.header.opacity(0.9)
         }
     }
