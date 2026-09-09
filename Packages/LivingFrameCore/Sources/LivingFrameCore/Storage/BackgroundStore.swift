@@ -45,6 +45,12 @@ public struct BackgroundMediaItem: Identifiable, Equatable, Sendable {
     }
 }
 
+/// 渲染器只依赖这组读取能力，不直接绑定具体的磁盘存储实现。
+public protocol BackgroundMediaProviding {
+    func loadFrame(named name: String, at time: TimeInterval) -> CGImage?
+    func media(named name: String) -> BackgroundMediaItem?
+}
+
 /// 背景图片存储：用户相册图片与 App 预置图片统一存于 Documents/Library/Backgrounds/
 public struct BackgroundStore {
     public static let shared = BackgroundStore()
@@ -606,3 +612,5 @@ public struct BackgroundStore {
         )
     }
 }
+
+extension BackgroundStore: BackgroundMediaProviding {}

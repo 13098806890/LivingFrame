@@ -1337,32 +1337,7 @@ private struct BackgroundFillPreview: View {
     }
 
     private func partition(at point: CGPoint, in rect: CGRect) -> Int? {
-        guard settings.splitCount != .full else { return nil }
-        let normal = BackgroundPartitionShape.normal(for: 0, settings: settings)
-        let firstCenter = BackgroundPartitionShape.dividerCenter(
-            for: 0,
-            settings: settings,
-            in: rect
-        )
-        let value = signedDistance(point, from: firstCenter, normal: normal)
-        if settings.splitCount == .two {
-            return value >= 0 ? 0 : 1
-        }
-        let secondNormal = BackgroundPartitionShape.normal(for: 1, settings: settings)
-        let secondCenter = BackgroundPartitionShape.dividerCenter(
-            for: 1,
-            settings: settings,
-            in: rect
-        )
-        let secondValue = signedDistance(point, from: secondCenter, normal: secondNormal)
-        let firstBit = value >= 0
-        let secondBit = secondValue >= 0
-        switch (firstBit, secondBit) {
-        case (true, true): return 0
-        case (false, true): return 1
-        case (false, false): return 2
-        case (true, false): return 3
-        }
+        BackgroundPartitionGeometry.partition(at: point, settings: settings, in: rect)
     }
 
     private var dividerCount: Int {
@@ -1425,20 +1400,13 @@ private struct BackgroundFillPreview: View {
     }
 
     private func dividerIndex(near point: CGPoint, in rect: CGRect) -> Int? {
-        guard dividerCount > 0 else { return nil }
         let threshold = max(16, min(rect.width, rect.height) * 0.1)
-        let candidates = (0..<dividerCount).map { index -> (index: Int, distance: CGFloat) in
-            let center = BackgroundPartitionShape.dividerCenter(for: index, settings: settings, in: rect)
-            let normal = BackgroundPartitionShape.normal(for: index, settings: settings)
-            return (index, abs(signedDistance(point, from: center, normal: normal)))
-        }
-        guard let nearest = candidates.min(by: { $0.distance < $1.distance }),
-              nearest.distance <= threshold else { return nil }
-        return nearest.index
-    }
-
-    private func signedDistance(_ point: CGPoint, from center: CGPoint, normal: CGPoint) -> CGFloat {
-        (point.x - center.x) * normal.x + (point.y - center.y) * normal.y
+        return BackgroundPartitionGeometry.dividerIndex(
+            near: point,
+            settings: settings,
+            in: rect,
+            threshold: threshold
+        )
     }
 }
 
@@ -1448,7 +1416,11 @@ struct BackgroundPartitionShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         guard settings.splitCount != .full else { return Path(rect) }
-        let polygon = polygon(in: rect)
+        let polygon = BackgroundPartitionGeometry.polygon(
+            for: settings,
+            in: rect,
+            coordinateSpace: .screen
+        )
         var path = Path()
         guard let first = polygon.first else { return path }
         path.move(to: first)
@@ -1458,16 +1430,15 @@ struct BackgroundPartitionShape: Shape {
     }
 
     static func radians(_ degrees: CGFloat) -> CGFloat {
-        let normalized = (degrees.isFinite ? degrees : 90).truncatingRemainder(dividingBy: 180)
-        return (normalized < 0 ? normalized + 180 : normalized) * .pi / 180
+        BackgroundPartitionGeometry.radians(degrees)
     }
 
     static func normal(for dividerIndex: Int, settings: BackgroundElementSettings) -> CGPoint {
-        let angle = radians(settings.dividerAngle)
-        let direction = CGPoint(x: cos(angle), y: -sin(angle))
-        return dividerIndex == 0
-            ? CGPoint(x: -direction.y, y: direction.x)
-            : CGPoint(x: -direction.x, y: -direction.y)
+        BackgroundPartitionGeometry.normal(
+            for: dividerIndex,
+            settings: settings,
+            coordinateSpace: .screen
+        )
     }
 
     static func dividerCenter(
@@ -1475,122 +1446,16 @@ struct BackgroundPartitionShape: Shape {
         settings: BackgroundElementSettings,
         in rect: CGRect
     ) -> CGPoint {
-        BackgroundDividerGeometry.center(
+        BackgroundPartitionGeometry.dividerCenter(
+            for: dividerIndex,
+            settings: settings,
             in: rect,
-            normal: normal(for: dividerIndex, settings: settings),
-            offset: BackgroundDividerGeometry.offset(for: dividerIndex, settings: settings)
+            coordinateSpace: .screen
         )
     }
 
     static func samplePoint(settings: BackgroundElementSettings, in rect: CGRect) -> CGPoint {
-        let firstNormal = normal(for: 0, settings: settings)
-        let firstCenter = dividerCenter(for: 0, settings: settings, in: rect)
-        if settings.splitCount == .two {
-            let sign: CGFloat = settings.selectedPartition == 0 ? 1 : -1
-            let distance = BackgroundDividerGeometry.extent(in: rect, normal: firstNormal) * 0.24 * sign
-            return clampedToRect(
-                CGPoint(
-                    x: firstCenter.x + firstNormal.x * distance,
-                    y: firstCenter.y + firstNormal.y * distance
-                ),
-                rect: rect
-            )
-        }
-        let secondNormal = normal(for: 1, settings: settings)
-        let firstSign: CGFloat = settings.selectedPartition == 0 || settings.selectedPartition == 3 ? 1 : -1
-        let secondSign: CGFloat = settings.selectedPartition == 0 || settings.selectedPartition == 1 ? 1 : -1
-        let firstDistance = BackgroundDividerGeometry.extent(in: rect, normal: firstNormal) * 0.2 * firstSign
-        let secondDistance = BackgroundDividerGeometry.extent(in: rect, normal: secondNormal) * 0.2 * secondSign
-        let sample = CGPoint(
-            x: firstCenter.x + firstNormal.x * firstDistance + secondNormal.x * secondDistance,
-            y: firstCenter.y + firstNormal.y * firstDistance + secondNormal.y * secondDistance
-        )
-        return clampedToRect(
-            sample,
-            rect: rect
-        )
-    }
-
-    private func polygon(in rect: CGRect) -> [CGPoint] {
-        let angle = Self.radians(settings.dividerAngle)
-        let direction = CGPoint(x: cos(angle), y: -sin(angle))
-        let normal = CGPoint(x: -direction.y, y: direction.x)
-        let rawFirstCenter = Self.dividerCenter(for: 0, settings: settings, in: rect)
-        let base = [
-            CGPoint(x: rect.minX, y: rect.minY),
-            CGPoint(x: rect.maxX, y: rect.minY),
-            CGPoint(x: rect.maxX, y: rect.maxY),
-            CGPoint(x: rect.minX, y: rect.maxY)
-        ]
-        if settings.splitCount == .two {
-            let sign: CGFloat = settings.selectedPartition == 0 ? 1 : -1
-            let firstCenter = insetCenter(
-                rawFirstCenter,
-                normal: normal,
-                sign: sign,
-                in: rect
-            )
-            return clipped(base, center: firstCenter, normal: normal, sign: sign)
-        }
-        let secondNormal = Self.normal(for: 1, settings: settings)
-        let rawSecondCenter = Self.dividerCenter(for: 1, settings: settings, in: rect)
-        let firstSign: CGFloat = settings.selectedPartition == 0 || settings.selectedPartition == 3 ? 1 : -1
-        let secondSign: CGFloat = settings.selectedPartition == 0 || settings.selectedPartition == 1 ? 1 : -1
-        let firstCenter = insetCenter(rawFirstCenter, normal: normal, sign: firstSign, in: rect)
-        let secondCenter = insetCenter(rawSecondCenter, normal: secondNormal, sign: secondSign, in: rect)
-        return clipped(
-            clipped(base, center: firstCenter, normal: normal, sign: firstSign),
-            center: secondCenter,
-            normal: secondNormal,
-            sign: secondSign
-        )
-    }
-
-    private func insetCenter(
-        _ center: CGPoint,
-        normal: CGPoint,
-        sign: CGFloat,
-        in rect: CGRect
-    ) -> CGPoint {
-        let inset = BackgroundDividerGeometry.edgeInset(for: settings.edgeStyle, in: rect)
-        return CGPoint(
-            x: center.x + normal.x * sign * inset,
-            y: center.y + normal.y * sign * inset
-        )
-    }
-
-    private func clipped(_ polygon: [CGPoint], center: CGPoint, normal: CGPoint, sign: CGFloat) -> [CGPoint] {
-        guard !polygon.isEmpty else { return [] }
-        var result: [CGPoint] = []
-        for index in polygon.indices {
-            let current = polygon[index]
-            let previous = polygon[(index + polygon.count - 1) % polygon.count]
-            let currentValue = distance(current, center: center, normal: normal, sign: sign)
-            let previousValue = distance(previous, center: center, normal: normal, sign: sign)
-            let currentInside = currentValue >= 0
-            let previousInside = previousValue >= 0
-            if currentInside != previousInside {
-                let denominator = previousValue - currentValue
-                let progress = abs(denominator) > 0.0001 ? previousValue / denominator : 0
-                result.append(CGPoint(
-                    x: previous.x + (current.x - previous.x) * progress,
-                    y: previous.y + (current.y - previous.y) * progress
-                ))
-            }
-            if currentInside { result.append(current) }
-        }
-        return result
-    }
-
-    private func distance(_ point: CGPoint, center: CGPoint, normal: CGPoint, sign: CGFloat) -> CGFloat {
-        ((point.x - center.x) * normal.x + (point.y - center.y) * normal.y) * sign
-    }
-
-    private static func clampedToRect(_ point: CGPoint, rect: CGRect) -> CGPoint {
-        CGPoint(
-            x: min(max(point.x, rect.minX + 24), rect.maxX - 24),
-            y: min(max(point.y, rect.minY + 16), rect.maxY - 16)
-        )
+        BackgroundPartitionGeometry.samplePoint(settings: settings, in: rect)
     }
 }
 
@@ -1599,7 +1464,7 @@ private struct BackgroundDividerShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         guard settings.splitCount != .full else { return Path() }
-        let angle = BackgroundPartitionShape.radians(settings.dividerAngle)
+        let angle = BackgroundPartitionGeometry.radians(settings.dividerAngle)
         let direction = CGPoint(x: cos(angle), y: -sin(angle))
         let firstCenter = BackgroundPartitionShape.dividerCenter(for: 0, settings: settings, in: rect)
         let length = max(rect.width, rect.height) * 2

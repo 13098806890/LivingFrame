@@ -12,15 +12,19 @@ public struct CompositionRenderer {
     private let frameMaxPixelSize: CGFloat?
     /// 排除帧的补位方向；倒放预览时使用右侧最近保留帧。
     private let isPlaybackReversed: Bool
+    /// 背景素材的读取入口由调用方提供，避免渲染器把磁盘存储和渲染逻辑绑在一起。
+    private let backgroundMediaProvider: any BackgroundMediaProviding
 
     public init(
         context: CIContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()]),
         frameMaxPixelSize: CGFloat? = nil,
-        isPlaybackReversed: Bool = false
+        isPlaybackReversed: Bool = false,
+        backgroundMediaProvider: any BackgroundMediaProviding
     ) {
         self.context = context
         self.frameMaxPixelSize = frameMaxPixelSize
         self.isPlaybackReversed = isPlaybackReversed
+        self.backgroundMediaProvider = backgroundMediaProvider
     }
 
     static func clearSharedCaches() {
@@ -301,7 +305,7 @@ public struct CompositionRenderer {
         case .background(let backgroundID):
             let settings = element.backgroundSettings ?? BackgroundElementSettings()
             let sourceDuration = max(
-                BackgroundStore.shared.media(named: backgroundID)?.duration ?? 0.1,
+                backgroundMediaProvider.media(named: backgroundID)?.duration ?? 0.1,
                 0.1
             )
             let sourceRange = SourcePlaybackRange(
@@ -315,7 +319,7 @@ public struct CompositionRenderer {
                 phase: element.sourcePlaybackOffset ?? 0,
                 looping: element.shouldLoop(cycleDuration: sourceRange.span)
             )
-            if let frame = BackgroundStore.shared.loadFrame(
+            if let frame = backgroundMediaProvider.loadFrame(
                 named: backgroundID,
                 at: sourceTime
             ) {

@@ -5,6 +5,29 @@ import XCTest
 @testable import LivingFrameCore
 
 final class BackgroundPartitionRenderingTests: XCTestCase {
+    func testSharedPartitionGeometryCoversCanvas() {
+        let rect = CGRect(x: 0, y: 0, width: 320, height: 180)
+        let areas = (0..<4).map { partition in
+            let settings = BackgroundElementSettings(
+                splitCount: .four,
+                dividerAngle: 27,
+                primaryDividerOffset: 0.12,
+                secondaryDividerOffset: -0.18,
+                selectedPartition: partition
+            )
+            return polygonArea(
+                BackgroundPartitionGeometry.polygon(
+                    for: settings,
+                    in: rect,
+                    coordinateSpace: .screen,
+                    applyingEdgeInset: false
+                )
+            )
+        }
+
+        XCTAssertEqual(areas.reduce(0, +), rect.width * rect.height, accuracy: 0.01)
+    }
+
     func testFourBackgroundsRenderIntoFourIndependentPartitions() throws {
         let colors = [
             CGColor(red: 1, green: 0, blue: 0, alpha: 1),
@@ -130,6 +153,16 @@ final class BackgroundPartitionRenderingTests: XCTestCase {
 
     private func colorDistance(_ lhs: RGB, _ rhs: RGB) -> Int {
         abs(lhs.red - rhs.red) + abs(lhs.green - rhs.green) + abs(lhs.blue - rhs.blue)
+    }
+
+    private func polygonArea(_ polygon: [CGPoint]) -> CGFloat {
+        guard polygon.count > 2 else { return 0 }
+        let sum = polygon.indices.reduce(CGFloat.zero) { partial, index in
+            let current = polygon[index]
+            let next = polygon[(index + 1) % polygon.count]
+            return partial + current.x * next.y - next.x * current.y
+        }
+        return abs(sum) / 2
     }
 
     private struct RGB: Hashable {

@@ -5,44 +5,6 @@ import Photos
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// 作品文件的唯一写入入口。actor 保证保存、复制、重命名和删除按调用顺序执行，
-/// 避免多个后台任务互相覆盖，也让磁盘操作脱离主线程。
-private actor WorkPersistenceCoordinator {
-    private let store: WorksStore
-
-    init(store: WorksStore) {
-        self.store = store
-    }
-
-    func saveAndLoad(_ work: WorkItem) -> (Bool, [WorkItem]) {
-        do {
-            try store.save(work)
-            return (true, store.loadWorks())
-        } catch {
-            LogStore.log("work.save failed: \(error)")
-            return (false, [])
-        }
-    }
-
-    func load() -> [WorkItem] {
-        store.loadWorks()
-    }
-
-    func save(_ work: WorkItem, failureMessage: String) -> Bool {
-        do {
-            try store.save(work)
-            return true
-        } catch {
-            LogStore.log("\(failureMessage): \(error)")
-            return false
-        }
-    }
-
-    func delete(_ work: WorkItem) {
-        store.delete(work)
-    }
-}
-
 @MainActor
 final class AppState: ObservableObject {
     static let processingFPSOptions: [Double] = [10, 15, 30, 60]
@@ -55,7 +17,7 @@ final class AppState: ObservableObject {
     // MARK: - 素材
 
     @Published var clips: [SegmentedClip] = []
-    /// 用户导入的静态/动态背景图片，可在编辑页作为独立元素添加多次。
+    /// 用户导入的静态/动态拼接媒体，可在编辑页作为独立元素添加多次。
     @Published var backgroundMedia: [BackgroundMediaItem] = []
     @Published var isSegmenting = false
     @Published var segmentationProgress: Double = 0
@@ -67,7 +29,7 @@ final class AppState: ObservableObject {
     /// 素材文件夹（按创建时间倒序）
     @Published var folders: [LibraryFolder] = []
     /// 设置页展示的素材占用；异步计算，避免每次 SwiftUI 刷新都扫描磁盘。
-    @Published private(set) var cacheSizeText = "计算中…"
+    @Published var cacheSizeText = "计算中…"
 
     // MARK: - 工程
 
@@ -278,7 +240,7 @@ final class AppState: ObservableObject {
     private let audioEngine = AudioPreviewEngine()
     private let workPersistence: WorkPersistenceCoordinator
     private var backgroundMediaReloadTask: Task<Void, Never>?
-    private var cacheSizeTask: Task<Void, Never>?
+    var cacheSizeTask: Task<Void, Never>?
 
     init() {
         workPersistence = WorkPersistenceCoordinator(store: worksStore)
@@ -416,10 +378,10 @@ final class AppState: ObservableObject {
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         LogStore.log("startSegmenting: name=\(name) url=\(url.path) size=\(size) stillOrientation=\(stillOrientation.rawValue)")
         do {
-            let clip = try await VideoSegmentationPipeline().segmentVideo(
+            let clip = try await MediaProcessingService.extractVideo(
                 at: url,
                 name: name,
-                maxDimension: maxDimension,
+                maxDimension: CGFloat(maxDimension),
                 maxFPS: processingFPS,
                 startTime: sourceStartTime,
                 maxDuration: sourceEndTime.map { max($0 - sourceStartTime, 0.1) } ?? maxExtractionDuration,
@@ -451,13 +413,11 @@ final class AppState: ObservableObject {
         let maxDimension = maxDimension
         LogStore.log("startPhotoSegmenting: name=\(name) input=\(cgImage.width)x\(cgImage.height)")
         do {
-            let clip = try await Task.detached(priority: .userInitiated) {
-                try VideoSegmentationPipeline().segmentPhoto(
-                    from: cgImage,
-                    name: name,
-                    maxDimension: maxDimension
-                )
-            }.value
+            let clip = try await MediaProcessingService.extractPhoto(
+                from: cgImage,
+                name: name,
+                maxDimension: CGFloat(maxDimension)
+            )
             addClip(clip)
             isSegmenting = false
         } catch is CancellationError {
@@ -744,16 +704,21 @@ final class AppState: ObservableObject {
         rememberCanvasBackground(comp.background)
     }
 
-    /// 刷新背景媒体列表。素材选择器导入相册图片后调用。
+    /// 刷新拼接媒体列表。素材选择器导入相册图片或视频后调用。
     func reloadBackgroundMedia() {
         backgroundMediaReloadTask?.cancel()
         backgroundMediaReloadTask = Task { [weak self] in
-            let media = await Task.detached(priority: .utility) {
-                await BackgroundStore.shared.allUserMedia()
-            }.value
-            guard !Task.isCancelled else { return }
-            self?.backgroundMedia = media
+            await self?.reloadBackgroundMediaAndWait()
         }
+    }
+
+    /// 等待媒体列表刷新完成，供导入后需要立即创建元素的流程使用。
+    func reloadBackgroundMediaAndWait() async {
+        let media = await Task.detached(priority: .utility) {
+            await BackgroundStore.shared.allUserMedia()
+        }.value
+        guard !Task.isCancelled else { return }
+        backgroundMedia = media
     }
 
     /// 保存一张相册图片/动态图片，返回可用于创建元素的媒体 ID。
@@ -772,35 +737,61 @@ final class AppState: ObservableObject {
         return id
     }
 
-    /// 添加一个背景图片元素。背景元素默认位于所有现有元素下方，并覆盖当前工程时长。
+    /// 添加一个拼接媒体元素。元素默认位于所有现有元素下方，并覆盖当前工程时长。
     func addBackgroundElement(mediaID: String) {
-        guard let media = backgroundMedia.first(where: { $0.id == mediaID }),
-              var comp = composition ?? defaultComposition() else { return }
-        let settings = BackgroundElementSettings()
-        let regionRect = backgroundRegionRect(settings.region, in: comp.canvasRect)
-        // 动态背景的默认片段应当等于媒体自身完整播放时长，而不是已有工程时长。
-        // 后续裁剪在时间轴调整，重复播放在检查器显式设置。
-        let duration = media.isAnimated
-            ? max(media.duration, 0.1)
-            : max(comp.duration, 1)
-        let element = CompositionElement(
-            kind: .background(backgroundID: media.id),
-            name: media.name == media.id ? NSLocalizedString("背景图片", comment: "Background element") : media.name,
-            transform: ElementTransform(
-                position: CGPoint(x: regionRect.midX, y: regionRect.midY),
-                scale: 1,
-                rotation: 0
-            ),
-            zIndex: minimumElementZIndex(in: comp),
-            startTime: 0,
-            endTime: duration,
-            sourceStartTime: 0,
-            sourceEndTime: media.isAnimated ? max(media.duration, 0.1) : duration,
-            backgroundSettings: settings
-        )
-        comp.elements.append(element)
+        addBackgroundElements(mediaIDs: [mediaID])
+    }
+
+    /// 一次添加多个拼接素材，并按选择数量自动分配到整幅、2 区或 4 区布局。
+    /// 这里仍复用背景元素模型，但对用户表现为独立的照片/动态素材拼接流程。
+    func addBackgroundElements(mediaIDs: [String]) {
+        guard var comp = composition ?? defaultComposition() else { return }
+        let mediaItems = mediaIDs.compactMap { mediaID in
+            backgroundMedia.first { $0.id == mediaID }
+        }
+        guard !mediaItems.isEmpty else { return }
+
+        let splitCount: BackgroundSplitCount = switch mediaItems.count {
+        case 1: .full
+        case 2: .two
+        default: .four
+        }
+        let baseDuration = max(comp.duration, 1)
+        let minimumZIndex = minimumElementZIndex(in: comp)
+        let elements = mediaItems.enumerated().map { index, media in
+            let settings = BackgroundElementSettings(
+                splitCount: splitCount,
+                selectedPartition: min(index, splitCount == .two ? 1 : 3)
+            )
+            let regionRect = backgroundRegionRect(settings.region, in: comp.canvasRect)
+            let duration = media.isAnimated
+                ? max(media.duration, 0.1)
+                : baseDuration
+
+            return CompositionElement(
+                kind: .background(backgroundID: media.id),
+                name: media.name == media.id
+                    ? NSLocalizedString("拼接素材", comment: "Collage element")
+                    : media.name,
+                transform: ElementTransform(
+                    position: CGPoint(x: regionRect.midX, y: regionRect.midY),
+                    scale: 1,
+                    rotation: 0
+                ),
+                zIndex: minimumZIndex - index,
+                startTime: 0,
+                endTime: duration,
+                sourceStartTime: 0,
+                sourceEndTime: media.isAnimated ? max(media.duration, 0.1) : duration,
+                backgroundSettings: settings
+            )
+        }
+
+        comp.elements.append(contentsOf: elements)
         composition = comp
-        selectElement(element.id)
+        if let firstElement = elements.first {
+            selectElement(firstElement.id)
+        }
         recomputeDuration()
     }
 
@@ -2172,52 +2163,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Widget
-
-    func savePosterForWidget() {
-        guard let comp = composition,
-              let poster = CompositionRenderer().render(comp, at: 0) else { return }
-        FrameStore.savePoster(poster, title: comp.name)
-    }
-
-    /// 从作品快照生成 Widget 封面，不改变当前编辑页中的工程。
-    func savePosterForWidget(_ work: WorkItem) {
-        guard let poster = UIImage(data: work.posterData)?.cgImage else { return }
-        FrameStore.savePoster(poster, title: work.name)
-    }
-
-    // MARK: - 缓存
-
-    /// 清理临时文件：素材（含文件夹内外的所有抠图结果）一律保留，只删导入/导出产生的临时文件
-    func clearCache() {
-        let tmp = FileManager.default.temporaryDirectory
-        Task.detached(priority: .utility) {
-            if let items = try? FileManager.default.contentsOfDirectory(
-                at: tmp, includingPropertiesForKeys: nil
-            ) {
-                for item in items where item.lastPathComponent.hasPrefix("LF-") {
-                    try? FileManager.default.removeItem(at: item)
-                }
-            }
-            LogStore.log("clearCache: 已清理临时文件，素材全部保留")
-        }
-    }
-
-    /// 异步刷新素材占用，避免设置页 body 计算属性反复遍历素材目录。
-    func refreshCacheSize() {
-        cacheSizeTask?.cancel()
-        cacheSizeText = "计算中…"
-        cacheSizeTask = Task { [weak self] in
-            let bytes = await Task.detached(priority: .utility) {
-                FrameCache.shared.totalSizeBytes
-            }.value
-            guard !Task.isCancelled else { return }
-            self?.cacheSizeText = ByteCountFormatter.string(
-                fromByteCount: bytes,
-                countStyle: .file
-            )
-        }
-    }
 }
 
 enum AppStateError: LocalizedError {

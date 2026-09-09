@@ -62,7 +62,7 @@ struct SettingsView: View {
                         .tint(LF.header)
                     }
 
-                    SectionCard(title: "素材提取") {
+                    SectionCard(title: "人物处理") {
                         Picker("单个素材最长时长", selection: $appState.maxExtractionDuration) {
                             Text("3 秒").tag(3.0)
                             Text("5 秒（推荐）").tag(5.0)

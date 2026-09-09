@@ -269,136 +269,12 @@ enum BackgroundMaskRenderer {
         guard settings.splitCount != .full else {
             return path(for: settings.region, in: rect, edgeStyle: settings.edgeStyle)
         }
-
-        let angle = normalizedAngle(settings.dividerAngle)
-        let direction = CGPoint(x: cos(angle), y: sin(angle))
-        // SwiftUI 预览使用屏幕坐标（y 向下），这里反转法线方向，
-        // 让预览中点击的分区与最终 Core Image 渲染保持一致。
-        let normal = CGPoint(x: direction.y, y: -direction.x)
-        let partition = max(
-            0,
-            min(
-                settings.selectedPartition,
-                settings.splitCount == .two ? 1 : 3
-            )
-        )
-
-        if settings.splitCount == .two {
-            let sign: CGFloat = partition == 0 ? 1 : -1
-            let center = insetDividerCenter(
-                BackgroundDividerGeometry.center(
-                    in: rect,
-                    normal: normal,
-                    offset: settings.primaryDividerOffset
-                ),
-                normal: normal,
-                sign: sign,
-                edgeStyle: settings.edgeStyle,
-                in: rect
-            )
-            return clippedPath(
-                in: rect,
-                center: center,
-                normal: normal,
-                sign: sign,
-                edgeStyle: settings.edgeStyle
-            )
-        }
-
-        // 4 区由两条互相垂直、可独立平移的分割线组成。
-        // 分区编号按 (+,+)、(-,+)、(-,-)、(+,-) 排列。
-        let secondNormal = CGPoint(x: -direction.x, y: -direction.y)
-        let firstSign: CGFloat = partition == 0 || partition == 3 ? 1 : -1
-        let secondSign: CGFloat = partition == 0 || partition == 1 ? 1 : -1
-        let firstCenter = insetDividerCenter(BackgroundDividerGeometry.center(
+        let polygon = BackgroundPartitionGeometry.polygon(
+            for: settings,
             in: rect,
-            normal: normal,
-            offset: settings.primaryDividerOffset
-        ), normal: normal, sign: firstSign, edgeStyle: settings.edgeStyle, in: rect)
-        let secondCenter = insetDividerCenter(BackgroundDividerGeometry.center(
-            in: rect,
-            normal: secondNormal,
-            offset: settings.secondaryDividerOffset
-        ), normal: secondNormal, sign: secondSign, edgeStyle: settings.edgeStyle, in: rect)
-        return clippedPath(
-            clippedPolygon(
-                rectanglePolygon(rect),
-                center: firstCenter,
-                normal: normal,
-                sign: firstSign
-            ),
-            center: secondCenter,
-            normal: secondNormal,
-            sign: secondSign,
-            edgeStyle: settings.edgeStyle,
-            canvas: rect
+            coordinateSpace: .coreImage
         )
-    }
-
-    private static func normalizedAngle(_ degrees: CGFloat) -> CGFloat {
-        let safe = degrees.isFinite ? degrees : 90
-        let normalized = safe.truncatingRemainder(dividingBy: 180)
-        return (normalized < 0 ? normalized + 180 : normalized) * .pi / 180
-    }
-
-    /// 分割边缘只向素材自身一侧轻微后退。相邻两侧都会贡献内退距离，
-    /// 因此这里使用共用的窄缝参数，避免留白比纸张纹理本身还宽。
-    private static func insetDividerCenter(
-        _ center: CGPoint,
-        normal: CGPoint,
-        sign: CGFloat,
-        edgeStyle: BackgroundEdgeStyle,
-        in rect: CGRect
-    ) -> CGPoint {
-        let inset = BackgroundDividerGeometry.edgeInset(for: edgeStyle, in: rect)
-        guard inset > 0 else { return center }
-        return CGPoint(
-            x: center.x + normal.x * sign * inset,
-            y: center.y + normal.y * sign * inset
-        )
-    }
-
-    private static func rectanglePolygon(_ rect: CGRect) -> [CGPoint] {
-        [
-            CGPoint(x: rect.minX, y: rect.minY),
-            CGPoint(x: rect.maxX, y: rect.minY),
-            CGPoint(x: rect.maxX, y: rect.maxY),
-            CGPoint(x: rect.minX, y: rect.maxY)
-        ]
-    }
-
-    private static func clippedPath(
-        in rect: CGRect,
-        center: CGPoint,
-        normal: CGPoint,
-        sign: CGFloat,
-        edgeStyle: BackgroundEdgeStyle
-    ) -> CGPath {
-        clippedPath(
-            rectanglePolygon(rect),
-            center: center,
-            normal: normal,
-            sign: sign,
-            edgeStyle: edgeStyle,
-            canvas: rect
-        )
-    }
-
-    private static func clippedPath(
-        _ polygon: [CGPoint],
-        center: CGPoint,
-        normal: CGPoint,
-        sign: CGFloat,
-        edgeStyle: BackgroundEdgeStyle,
-        canvas: CGRect
-    ) -> CGPath {
-        let clipped = clippedPolygon(
-            polygon,
-            center: center,
-            normal: normal,
-            sign: sign
-        )
-        return paperPath(clipped, edgeStyle: edgeStyle, canvas: canvas)
+        return paperPath(polygon, edgeStyle: settings.edgeStyle, canvas: rect)
     }
 
     /// Returns only the internal sides of the selected partition. The existing
@@ -409,70 +285,10 @@ enum BackgroundMaskRenderer {
         settings: BackgroundElementSettings
     ) -> [(CGPoint, CGPoint)] {
         guard settings.splitCount != .full else { return [] }
-
-        let angle = normalizedAngle(settings.dividerAngle)
-        let direction = CGPoint(x: cos(angle), y: sin(angle))
-        let normal = CGPoint(x: direction.y, y: -direction.x)
-        let partition = max(
-            0,
-            min(settings.selectedPartition, settings.splitCount == .two ? 1 : 3)
-        )
-
-        if settings.splitCount == .two {
-            let sign: CGFloat = partition == 0 ? 1 : -1
-            let center = insetDividerCenter(
-                BackgroundDividerGeometry.center(
-                    in: rect,
-                    normal: normal,
-                    offset: settings.primaryDividerOffset
-                ),
-                normal: normal,
-                sign: sign,
-                edgeStyle: settings.edgeStyle,
-                in: rect
-            )
-            return internalSegments(
-                of: clippedPolygon(rectanglePolygon(rect), center: center, normal: normal, sign: sign),
-                in: rect
-            )
-        }
-
-        let secondNormal = CGPoint(x: -direction.x, y: -direction.y)
-        let firstSign: CGFloat = partition == 0 || partition == 3 ? 1 : -1
-        let secondSign: CGFloat = partition == 0 || partition == 1 ? 1 : -1
-        let firstCenter = insetDividerCenter(
-            BackgroundDividerGeometry.center(
-                in: rect,
-                normal: normal,
-                offset: settings.primaryDividerOffset
-            ),
-            normal: normal,
-            sign: firstSign,
-            edgeStyle: settings.edgeStyle,
-            in: rect
-        )
-        let secondCenter = insetDividerCenter(
-            BackgroundDividerGeometry.center(
-                in: rect,
-                normal: secondNormal,
-                offset: settings.secondaryDividerOffset
-            ),
-            normal: secondNormal,
-            sign: secondSign,
-            edgeStyle: settings.edgeStyle,
-            in: rect
-        )
-        let firstClipped = clippedPolygon(
-            rectanglePolygon(rect),
-            center: firstCenter,
-            normal: normal,
-            sign: firstSign
-        )
-        let partitionPolygon = clippedPolygon(
-            firstClipped,
-            center: secondCenter,
-            normal: secondNormal,
-            sign: secondSign
+        let partitionPolygon = BackgroundPartitionGeometry.polygon(
+            for: settings,
+            in: rect,
+            coordinateSpace: .coreImage
         )
         return internalSegments(of: partitionPolygon, in: rect)
     }
@@ -528,47 +344,6 @@ enum BackgroundMaskRenderer {
             || (abs(start.x - rect.maxX) < tolerance && abs(end.x - rect.maxX) < tolerance)
             || (abs(start.y - rect.minY) < tolerance && abs(end.y - rect.minY) < tolerance)
             || (abs(start.y - rect.maxY) < tolerance && abs(end.y - rect.maxY) < tolerance)
-    }
-
-    /// Sutherland-Hodgman 裁剪：保留分割线一侧的多边形区域。
-    private static func clippedPolygon(
-        _ polygon: [CGPoint],
-        center: CGPoint,
-        normal: CGPoint,
-        sign: CGFloat
-    ) -> [CGPoint] {
-        guard !polygon.isEmpty else { return [] }
-        var result: [CGPoint] = []
-        for index in polygon.indices {
-            let current = polygon[index]
-            let previous = polygon[(index + polygon.count - 1) % polygon.count]
-            let currentValue = signedDistance(current, center: center, normal: normal, sign: sign)
-            let previousValue = signedDistance(previous, center: center, normal: normal, sign: sign)
-            let currentInside = currentValue >= 0
-            let previousInside = previousValue >= 0
-
-            if currentInside != previousInside {
-                let denominator = previousValue - currentValue
-                let progress = abs(denominator) > 0.0001 ? previousValue / denominator : 0
-                result.append(CGPoint(
-                    x: previous.x + (current.x - previous.x) * progress,
-                    y: previous.y + (current.y - previous.y) * progress
-                ))
-            }
-            if currentInside {
-                result.append(current)
-            }
-        }
-        return result
-    }
-
-    private static func signedDistance(
-        _ point: CGPoint,
-        center: CGPoint,
-        normal: CGPoint,
-        sign: CGFloat
-    ) -> CGFloat {
-        ((point.x - center.x) * normal.x + (point.y - center.y) * normal.y) * sign
     }
 
     private static func path(

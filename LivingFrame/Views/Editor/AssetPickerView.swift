@@ -1,16 +1,14 @@
 import Combine
 import LivingFrameCore
-import Photos
 import PhotosUI
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// 编辑页素材选择器：从素材库文件夹中选择素材（可多选）加入画布
+/// 编辑页素材选择器：从素材库选择素材，或直接选择照片/动态素材进行拼接。
 struct AssetPickerView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    /// 从“画布 > 背景”进入时只展示背景，不再让用户在人物素材和背景之间二次判断。
-    private let backgroundOnly: Bool
+    /// 从“拼接”进入时只展示照片/动态素材，不再让用户在提取和拼接之间二次判断。
+    private let collageOnly: Bool
     @State private var selectedIDs: Set<String> = []
     @State private var selectedBackgroundIDs: Set<String> = []
     @State private var pickerMode: PickerMode = .person
@@ -26,9 +24,9 @@ struct AssetPickerView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 10)]
 
-    init(backgroundOnly: Bool = false) {
-        self.backgroundOnly = backgroundOnly
-        _pickerMode = State(initialValue: backgroundOnly ? .background : .person)
+    init(collageOnly: Bool = false) {
+        self.collageOnly = collageOnly
+        _pickerMode = State(initialValue: collageOnly ? .background : .person)
     }
 
     private enum PickerMode: String, CaseIterable, Identifiable {
@@ -39,8 +37,8 @@ struct AssetPickerView: View {
 
         var title: LocalizedStringKey {
             switch self {
-            case .person: "人物素材"
-            case .background: "背景素材"
+            case .person: "人物"
+            case .background: "拼接素材"
             }
         }
     }
@@ -54,7 +52,7 @@ struct AssetPickerView: View {
 
         var title: LocalizedStringKey {
             switch self {
-            case .all: "全部背景"
+            case .all: "全部素材"
             case .still: "静态"
             case .animated: "动态"
             }
@@ -65,26 +63,35 @@ struct AssetPickerView: View {
         appState.folders.first { $0.id == folderID }
     }
 
+    /// Set 只负责去重；实际排版使用素材库顺序，保证同一批素材每次分区稳定。
+    private var orderedSelectedBackgroundIDs: [String] {
+        let ordered = appState.backgroundMedia
+            .filter { selectedBackgroundIDs.contains($0.id) }
+            .map(\.id)
+        let known = Set(ordered)
+        return ordered + selectedBackgroundIDs.filter { !known.contains($0) }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
-                    if !backgroundOnly {
+                    if !collageOnly {
                         modePicker
                     }
-                    if !backgroundOnly && pickerMode == .person {
+                    if !collageOnly && pickerMode == .person {
                         folderBar
                         if let folder = currentFolder, !appState.childFolders(of: folder.id).isEmpty {
                             childFolderBar(folder)
                         }
                         clipsGrid
-                    } else if backgroundOnly || pickerMode == .background {
+                    } else if collageOnly || pickerMode == .background {
                         backgroundGrid
                     }
                 }
                 .padding()
             }
-            .lfNavigationTitle(backgroundOnly ? "添加背景素材" : (currentFolder?.name ?? "选择素材"))
+            .lfNavigationTitle(collageOnly ? "拼接素材" : (currentFolder?.name ?? "选择人物素材"))
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {
@@ -98,9 +105,7 @@ struct AssetPickerView: View {
                                 appState.addElementFromClipID(clipID)
                             }
                         } else {
-                            for backgroundID in selectedBackgroundIDs {
-                                appState.addBackgroundElement(mediaID: backgroundID)
-                            }
+                            appState.addBackgroundElements(mediaIDs: orderedSelectedBackgroundIDs)
                         }
                         dismiss()
                     } label: {
@@ -108,7 +113,11 @@ struct AssetPickerView: View {
                         Text(count == 0 ? "添加" : "添加(\(count))")
                             .fontWeight(.semibold)
                     }
-                    .disabled(pickerMode == .person ? selectedIDs.isEmpty : selectedBackgroundIDs.isEmpty)
+                    .disabled(
+                        pickerMode == .person
+                            ? selectedIDs.isEmpty
+                            : selectedBackgroundIDs.isEmpty || isImportingBackground
+                    )
                 }
             }
         }
@@ -131,7 +140,7 @@ struct AssetPickerView: View {
                 backgroundImportTotalCount = items.count
                 for (index, item) in items.enumerated() {
                     guard !Task.isCancelled else { break }
-                    let imported = await BackgroundPhotoImporter.load(from: item) { progress in
+                    let imported = await PhotoLibraryMediaImporter.loadBackgroundMedia(from: item) { progress in
                         Task { @MainActor in
                             guard backgroundImportTotalCount == items.count else { return }
                             let completed = Double(index) / Double(max(items.count, 1))
@@ -149,7 +158,7 @@ struct AssetPickerView: View {
                     backgroundImportCompletedCount = index + 1
                     backgroundImportProgress = Double(index + 1) / Double(max(items.count, 1))
                 }
-                appState.reloadBackgroundMedia()
+                await appState.reloadBackgroundMediaAndWait()
                 isImportingBackground = false
                 backgroundImportTask = nil
             }
@@ -282,11 +291,15 @@ struct AssetPickerView: View {
 
     private var backgroundGrid: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Text("选择照片、动态照片或视频，系统会自动排版到画布中。")
+                .font(.subheadline)
+                .foregroundStyle(LF.textSecondary)
+
             PhotosPicker(
                 selection: $photoItems,
-                // 单次相册操作最多选择 5 张；之后仍可继续分批添加，作品总数不设上限。
-                maxSelectionCount: 5,
-                matching: .any(of: [.images, .livePhotos]),
+                // 自动排版最多使用四个分区；之后仍可继续分批添加。
+                maxSelectionCount: 4,
+                matching: .any(of: [.images, .livePhotos, .videos]),
                 preferredItemEncoding: .current
             ) {
                 HStack(spacing: 12) {
@@ -299,7 +312,7 @@ struct AssetPickerView: View {
                         Text("从相册选择")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(LF.textPrimary)
-                        Text("一次最多选择 5 张，可继续分批添加")
+                        Text("一次最多选择 4 个，可继续分批添加")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                     }
@@ -322,7 +335,7 @@ struct AssetPickerView: View {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
-                        Text("正在下载原始动态照片")
+                        Text("正在准备拼接素材")
                             .font(.caption.weight(.semibold))
                         Spacer()
                         Text("\(backgroundImportCompletedCount)/\(backgroundImportTotalCount)")
@@ -373,8 +386,8 @@ struct AssetPickerView: View {
             if media.isEmpty {
                 EmptyStateView(
                     icon: "photo.on.rectangle.angled",
-                    title: "暂无背景素材",
-                    message: "点击上方按钮从相册导入背景素材"
+                    title: "暂无拼接素材",
+                    message: "点击上方按钮从相册导入照片、动态照片或视频"
                 )
             } else {
                 LazyVGrid(columns: columns, spacing: 10) {
@@ -385,185 +398,13 @@ struct AssetPickerView: View {
                         ) {
                             if selectedBackgroundIDs.contains(item.id) {
                                 selectedBackgroundIDs.remove(item.id)
-                            } else {
+                            } else if selectedBackgroundIDs.count < 4 {
                                 selectedBackgroundIDs.insert(item.id)
                             }
                         }
                     }
                 }
             }
-        }
-    }
-}
-
-/// PhotosPicker 的 `Data` 对 Live Photo 通常只返回静态主照片。
-/// 用资源库中的 pairedVideo 取回原始 MOV，才能让背景在时间轴和导出中正常播放。
-private enum BackgroundPhotoImporter {
-    struct ImportedMedia {
-        let data: Data
-        let fileExtension: String?
-        let isVideo: Bool
-    }
-
-    static func load(
-        from item: PhotosPickerItem,
-        progress: @escaping (Double) -> Void
-    ) async -> ImportedMedia? {
-        // 与「提取素材」使用相同的优先级：先通过 PHAsset 请求原始视频，
-        // 再以 PHLivePhoto 的 pairedVideo 资源兜底。两条路径都允许 iCloud 下载。
-        if let imported = await livePhotoVideo(from: item, progress: progress) {
-            return imported
-        }
-
-        progress(0.15)
-        guard let data = try? await item.loadTransferable(type: Data.self) else { return nil }
-        let type = item.supportedContentTypes.first
-        progress(1)
-        return ImportedMedia(data: data, fileExtension: type?.preferredFilenameExtension, isVideo: false)
-    }
-
-    private static func livePhotoVideo(
-        from item: PhotosPickerItem,
-        progress: @escaping (Double) -> Void
-    ) async -> ImportedMedia? {
-        if let identifier = item.itemIdentifier,
-           let status = await requestPhotoLibraryAccess(),
-           (status == .authorized || status == .limited),
-           let asset = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject,
-           asset.mediaSubtypes.contains(.photoLive),
-           let imported = await videoFromAsset(asset, progress: progress) {
-            return imported
-        }
-
-        // iCloud 或受限访问时 itemIdentifier 可能为空；PHLivePhoto 仍能给到 pairedVideo。
-        guard let livePhoto = try? await item.loadTransferable(type: PHLivePhoto.self),
-              let resource = PHAssetResource.assetResources(for: livePhoto)
-                .first(where: { $0.type == .pairedVideo }),
-              let data = await resourceData(resource, progress: progress) else {
-            return nil
-        }
-        return ImportedMedia(
-            data: data,
-            fileExtension: URL(fileURLWithPath: resource.originalFilename).pathExtension,
-            isVideo: true
-        )
-    }
-
-    private static func videoFromAsset(
-        _ asset: PHAsset,
-        progress: @escaping (Double) -> Void
-    ) async -> ImportedMedia? {
-        let options = PHVideoRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = true
-        options.progressHandler = { value, _, _, _ in progress(value) }
-        let url: URL? = await withCheckedContinuation { continuation in
-            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
-                continuation.resume(returning: (avAsset as? AVURLAsset)?.url)
-            }
-        }
-        guard let url else { return nil }
-        let data = await Task.detached(priority: .utility) {
-            try? Data(contentsOf: url)
-        }.value
-        guard let data else { return nil }
-        progress(1)
-        return ImportedMedia(data: data, fileExtension: url.pathExtension, isVideo: true)
-    }
-
-    private static func resourceData(
-        _ resource: PHAssetResource,
-        progress: @escaping (Double) -> Void
-    ) async -> Data? {
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("LF-background-\(UUID().uuidString)")
-            .appendingPathExtension(URL(fileURLWithPath: resource.originalFilename).pathExtension.isEmpty ? "mov" : URL(fileURLWithPath: resource.originalFilename).pathExtension)
-        let options = PHAssetResourceRequestOptions()
-        options.isNetworkAccessAllowed = true
-        options.progressHandler = progress
-        let error: Error? = await withCheckedContinuation { continuation in
-            PHAssetResourceManager.default().writeData(for: resource, toFile: destination, options: options) {
-                continuation.resume(returning: $0)
-            }
-        }
-        defer { try? FileManager.default.removeItem(at: destination) }
-        guard error == nil else { return nil }
-        let data = await Task.detached(priority: .utility) {
-            try? Data(contentsOf: destination)
-        }.value
-        guard let data else { return nil }
-        progress(1)
-        return data
-    }
-
-    private static func requestPhotoLibraryAccess() async -> PHAuthorizationStatus? {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        switch status {
-        case .notDetermined:
-            return await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-        default:
-            return status
-        }
-    }
-}
-
-/// 背景媒体缩略图：选择器与素材库共用，保证预览和动态标识一致。
-struct BackgroundAssetCell: View {
-    let item: BackgroundMediaItem
-    let isSelected: Bool
-    let onSelect: () -> Void
-    var showsSelection = true
-
-    var body: some View {
-        VStack(spacing: 4) {
-            ZStack(alignment: .topTrailing) {
-                Group {
-                    if let image = BackgroundStore.shared.loadFrame(named: item.id, at: 0) {
-                        Image(decorative: image, scale: 1)
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        Color.black.opacity(0.2)
-                    }
-                }
-                .frame(height: 90)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                if item.isAnimated {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 24, height: 24)
-                        .background(.black.opacity(0.42), in: Circle())
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                        .padding(4)
-                }
-
-                if showsSelection {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(isSelected ? LF.header : .white.opacity(0.88))
-                        .shadow(color: .black.opacity(0.35), radius: 1)
-                        .padding(6)
-                }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if showsSelection {
-                    onSelect()
-                }
-            }
-
-            HStack(spacing: 4) {
-                Text(item.isAnimated ? "动态图片" : "静态图片")
-                if item.isAnimated {
-                    Text("\(String(format: "%.1fs", item.duration))")
-                        .foregroundStyle(LF.textSecondary)
-                }
-            }
-            .font(.caption2)
-            .foregroundStyle(LF.textPrimary)
-            .lineLimit(1)
         }
     }
 }
@@ -712,32 +553,6 @@ struct ClipPreviewPlayButton: View {
                 isPlaying.toggle()
             }
             .accessibilityLabel(isPlaying ? "暂停动态素材" : "播放动态素材")
-        }
-    }
-}
-
-struct AssetCell: View {
-    let clip: SegmentedClip
-    let onSelect: () -> Void
-    @State private var isPlaying = false
-
-    var body: some View {
-        VStack(spacing: 4) {
-            AnimatedClipPreview(clip: clip, maxPixelSize: 320, isPlaying: $isPlaying)
-                .frame(height: 90)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(alignment: .bottomLeading) {
-                    ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    onSelect()
-                }
-
-            Text(clip.name)
-                .font(.caption2)
-                .foregroundStyle(LF.textPrimary)
-                .lineLimit(1)
         }
     }
 }

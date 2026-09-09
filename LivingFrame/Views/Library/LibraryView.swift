@@ -1,8 +1,6 @@
 import AVFoundation
 import AVKit
-import ImageIO
 import LivingFrameCore
-import Photos
 import PhotosUI
 import SwiftUI
 
@@ -167,14 +165,14 @@ struct LibraryView: View {
                 }
             } label: {
                 Label(
-                    "提取：\(defaultExtractKind == .live ? "动态" : "静态") · \(fpsTitle(appState.processingFPS)) fps",
+                    "人物：\(defaultExtractKind == .live ? "动态" : "静态") · \(fpsTitle(appState.processingFPS)) fps",
                     systemImage: "slider.horizontal.3"
                 )
                 .font(.caption.weight(.medium))
                 .foregroundStyle(LF.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .accessibilityLabel("提取方式")
+            .accessibilityLabel("人物设置")
         }
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
@@ -318,188 +316,19 @@ struct LibraryView: View {
     }
 
     private func loadLivePhoto(item: PhotosPickerItem) async -> ImportSource? {
-        if let source = await loadLivePhotoVideo(item: item) { return source }
-        if let source = await loadLivePhotoTransfer(item: item) { return source }
-        return nil
-    }
-
-    private func loadLivePhotoVideo(item: PhotosPickerItem) async -> ImportSource? {
-        guard let id = item.itemIdentifier else {
-            LogStore.log("loadLivePhotoVideo: no itemIdentifier, trying PHLivePhoto transfer")
-            return nil
+        let progressHandler: @Sendable (Double) -> Void = { value in
+            Task { @MainActor in self.downloadProgress = value }
         }
-        let status = await requestPhotoLibraryAccess()
-        LogStore.log("loadLivePhotoVideo: photo library permission=\(status.rawValue)")
-        guard status == .authorized || status == .limited,
-              let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject else {
-            LogStore.log("loadLivePhotoVideo: PHAsset fetch failed")
-            return nil
-        }
-        let resources = PHAssetResource.assetResources(for: asset)
-        LogStore.log("loadLivePhotoVideo: asset=\(asset.localIdentifier) isLivePhoto=\(asset.mediaSubtypes.contains(.photoLive)) mediaType=\(asset.mediaType.rawValue) resources=\(resources.map { "\($0.type.rawValue):\($0.originalFilename):\($0.value(forKey: "fileSize") ?? "?")" })")
-        // 仅处理真正的 Live Photo；普通视频/照片交给后续分支
-        guard asset.mediaSubtypes.contains(.photoLive) else {
-            LogStore.log("loadLivePhotoVideo: not a Live Photo")
-            return nil
-        }
-        let options = PHVideoRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = true
-        options.progressHandler = { progress, _, _, _ in
-            LogStore.log("loadLivePhotoVideo: iCloud video download progress=\(Int(progress * 100))%")
-            Task { @MainActor in self.downloadProgress = progress }
-        }
-        let result: (url: URL?, error: Error?)? = await withCheckedContinuation { continuation in
-            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, info in
-                continuation.resume(returning: (url: (avAsset as? AVURLAsset)?.url, error: info?[PHImageErrorKey] as? Error))
-            }
-        }
-        guard let result, let url = result.url else {
-            LogStore.log("loadLivePhotoVideo: requestAVAsset failed error=\(String(describing: result?.error))")
-            return nil
-        }
-        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        LogStore.log("loadLivePhotoVideo: video URL=\(url.path) size=\(size) bytes")
-        guard let copy = try? await copyToTemporaryFile(url) else {
-            LogStore.log("loadLivePhotoVideo: copy to temp failed")
-            return nil
-        }
-        LogStore.log("loadLivePhotoVideo: copied to \(copy.path)")
-        // 以静态图 EXIF 朝向传给抠图管线（视频轨无旋转元数据时用于方向修正）
-        let stillOrientation = await stillOrientation(for: asset)
-        let name = resources.first?.originalFilename ?? copy.lastPathComponent
-        // 配套静态图（Live Photo 静态贴纸提取源）：请求原图数据存临时文件
-        let stillURL = await liveStillImageURL(for: asset)
-        LogStore.log("loadLivePhotoVideo: stillURL=\(stillURL?.path ?? "nil")")
-        return .video(url: copy, name: name, stillOrientation: stillOrientation, stillURL: stillURL)
-    }
-
-    /// 下载 Live Photo 配套静态图到临时文件（静态贴纸提取源）
-    private func liveStillImageURL(for asset: PHAsset) async -> URL? {
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = true
-        options.progressHandler = { progress, _, _, _ in
-            LogStore.log("loadLivePhotoVideo: iCloud still download progress=\(Int(progress * 100))%")
-            Task { @MainActor in self.downloadProgress = progress }
-        }
-        let result: (data: Data?, error: Error?)? = await withCheckedContinuation { continuation in
-            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
-                continuation.resume(returning: (data: data, error: info?[PHImageErrorKey] as? Error))
-            }
-        }
-        guard let data = result?.data, result?.error == nil else {
-            LogStore.log("liveStillImageURL: failed error=\(String(describing: result?.error))")
-            return nil
-        }
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("LF-still-\(UUID().uuidString)")
-            .appendingPathExtension("jpg")
-        do {
-            try data.write(to: url)
-            return url
-        } catch {
-            LogStore.log("liveStillImageURL: write failed error=\(error)")
-            return nil
-        }
-    }
-
-    /// 兜底路径：PHLivePhoto 传输 + 提取 pairedVideo（iCloud 素材 itemIdentifier/类型缺失时使用）
-    private func loadLivePhotoTransfer(item: PhotosPickerItem) async -> ImportSource? {
-        let livePhoto: PHLivePhoto?
-        do {
-            livePhoto = try await item.loadTransferable(type: PHLivePhoto.self)
-        } catch {
-            LogStore.log("loadLivePhotoTransfer: PHLivePhoto transfer failed error=\(error)")
-            return nil
-        }
-        guard let livePhoto else {
-            LogStore.log("loadLivePhotoTransfer: not a Live Photo")
-            return nil
-        }
-        let resources = PHAssetResource.assetResources(for: livePhoto)
-        LogStore.log("loadLivePhotoTransfer: resources=\(resources.map { "\($0.type.rawValue):\($0.originalFilename):\($0.value(forKey: "fileSize") ?? "?")" })")
-        guard let videoResource = resources.first(where: { $0.type == .pairedVideo }) else {
-            LogStore.log("loadLivePhotoTransfer: no pairedVideo resource")
-            return nil
-        }
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("mov")
-        let options = PHAssetResourceRequestOptions()
-        options.isNetworkAccessAllowed = true
-        options.progressHandler = { progress in
-            LogStore.log("loadLivePhotoTransfer: iCloud video download progress=\(Int(progress * 100))%")
-            Task { @MainActor in self.downloadProgress = progress }
-        }
-        let writeError: Error? = await withCheckedContinuation { continuation in
-            PHAssetResourceManager.default().writeData(
-                for: videoResource,
-                toFile: destination,
-                options: options
-            ) { error in
-                continuation.resume(returning: error)
-            }
-        }
-        guard writeError == nil else {
-            LogStore.log("loadLivePhotoTransfer: video write failed error=\(String(describing: writeError))")
-            return nil
-        }
-        let size = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int) ?? 0
-        LogStore.log("loadLivePhotoTransfer: video written \(destination.path) size=\(size) bytes")
-        // 以配套静态图 EXIF 朝向传给抠图管线（视频轨无旋转元数据时用于方向修正）
-        var stillOrientation = CGImagePropertyOrientation.up
-        var stillURL: URL? = nil
-        if let stillResource = resources.first(where: { $0.type == .photo || $0.type == .fullSizePhoto }) {
-            let stillURLTmp = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension(stillResource.uniformTypeIdentifier)
-            let stillError: Error? = await withCheckedContinuation { continuation in
-                PHAssetResourceManager.default().writeData(for: stillResource, toFile: stillURLTmp, options: options) { error in
-                    continuation.resume(returning: error)
-                }
-            }
-            if stillError == nil {
-                stillURL = stillURLTmp
-                if let exif = exifOrientation(of: stillURLTmp) {
-                    stillOrientation = exif
-                }
-            }
-        }
-        return .video(url: destination, name: videoResource.originalFilename, stillOrientation: stillOrientation, stillURL: stillURL)
-    }
-
-    /// 从 PHAsset 读静态图 EXIF 朝向
-    private func stillOrientation(for asset: PHAsset) async -> CGImagePropertyOrientation {
-        let options = PHImageRequestOptions()
-        options.isNetworkAccessAllowed = true
-        options.progressHandler = { progress, _, _, _ in
-            Task { @MainActor in self.downloadProgress = progress }
-        }
-        return await withCheckedContinuation { continuation in
-            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { _, _, orientation, _ in
-                continuation.resume(returning: orientation)
-            }
-        }
-    }
-
-    /// 从图片文件读 EXIF 朝向
-    private func exifOrientation(of url: URL) -> CGImagePropertyOrientation? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let raw = props[kCGImagePropertyOrientation] as? UInt32,
-              let orientation = CGImagePropertyOrientation(rawValue: raw) else { return nil }
-        return orientation
-    }
-
-    private func requestPhotoLibraryAccess() async -> PHAuthorizationStatus {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        switch status {
-        case .notDetermined:
-            return await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-        default:
-            return status
-        }
+        guard let video = await PhotoLibraryMediaImporter.loadExtractionVideo(
+            from: item,
+            progress: progressHandler
+        ) else { return nil }
+        return .video(
+            url: video.url,
+            name: video.name,
+            stillOrientation: video.stillOrientation,
+            stillURL: video.stillURL
+        )
     }
 
     private func loadMovie(item: PhotosPickerItem) async -> ImportSource? {
@@ -882,7 +711,7 @@ private struct VideoRangePickerView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("提取") {
+                    Button("提取人物") {
                         onConfirm(startTime...endTime)
                         dismiss()
                     }
@@ -1647,23 +1476,6 @@ struct ClipDragPreview: View {
                 .stroke(LF.gold, lineWidth: 1.5)
         }
         .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-    }
-}
-
-/// 视频文件的 Transferable 包装（PhotosPicker 加载到本地临时文件）
-struct MovieFile: Transferable {
-    let url: URL
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(contentType: .movie) { movie in
-            SentTransferredFile(movie.url)
-        } importing: { received in
-            let copy = FileManager.default.temporaryDirectory
-                .appendingPathComponent("LF-import-\(UUID().uuidString)")
-                .appendingPathExtension(received.file.pathExtension)
-            try FileManager.default.copyItem(at: received.file, to: copy)
-            return MovieFile(url: copy)
-        }
     }
 }
 

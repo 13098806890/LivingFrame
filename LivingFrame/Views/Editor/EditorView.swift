@@ -5,7 +5,8 @@ import UIKit
 /// 编辑器工具类型（参考 ImgPlay 底部工具栏）
 enum EditorTool: String, CaseIterable, Identifiable {
     case timeline   // 时间轴（展开/收起）
-    case asset       // 素材（从素材库添加）
+    case asset       // 人物（从素材库添加）
+    case collage     // 拼接（照片、动态照片和视频）
     case canvas      // 画布（比例 + 背景）
     case text        // 文本（添加/编辑文字）
     case sticker     // 贴纸（内置贴纸库）
@@ -20,7 +21,8 @@ enum EditorTool: String, CaseIterable, Identifiable {
     var title: LocalizedStringKey {
         switch self {
         case .timeline: "时间轴"
-        case .asset: "素材"
+        case .asset: "人物"
+        case .collage: "拼接"
         case .canvas: "画布"
         // 使用本地化 key：中文显示“文字”，英文等语言显示为“Text”。
         case .text: "文字"
@@ -37,6 +39,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
         switch self {
         case .timeline: "timeline.selection"
         case .asset: "photo.badge.plus"
+        case .collage: "square.stack.3d.down.right"
         case .canvas: "rectangle.on.rectangle"
         case .text: "textformat"
         case .sticker: "face.smiling"
@@ -49,7 +52,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
     }
 
     /// 当前版本只把已完成且属于核心编辑流程的工具放进主工具栏。
-    static let visibleCases: [EditorTool] = [.timeline, .asset, .canvas, .text, .sticker, .frame, .crop]
+    static let visibleCases: [EditorTool] = [.timeline, .asset, .collage, .canvas, .text, .sticker, .frame, .crop]
 }
 
 /// 编辑页（参考 ImgPlay 布局）
@@ -58,8 +61,8 @@ enum EditorTool: String, CaseIterable, Identifiable {
 struct EditorView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showAssetPicker = false
-    /// 从画布面板打开背景媒体选择器。
-    @State private var showBackgroundPicker = false
+    /// 独立的照片/动态素材拼接选择器。
+    @State private var showCollagePicker = false
     /// 长按贴纸后显示的动态预览。
     @State private var previewSticker: StickerDefinition?
     /// 贴纸面板当前选中的视觉分类。
@@ -143,6 +146,10 @@ struct EditorView: View {
         }
         .sheet(isPresented: $showAssetPicker) {
             AssetPickerView().environmentObject(appState)
+        }
+        .sheet(isPresented: $showCollagePicker) {
+            AssetPickerView(collageOnly: true)
+                .environmentObject(appState)
         }
         .sheet(isPresented: $showInspectorSheet) {
             NavigationStack {
@@ -555,6 +562,8 @@ struct EditorView: View {
             }
         case .asset:
             showAssetPicker = true
+        case .collage:
+            showCollagePicker = true
         case .text:
             // 选中文字时打开当前文字；否则新增一个文字元素，支持叠加多段文字。
             if let selected = appState.primarySelectedElement,
@@ -589,7 +598,7 @@ struct EditorView: View {
     private func toolPanel(_ tool: EditorTool) -> some View {
         Group {
             switch tool {
-            case .timeline, .asset, .crop, .frame:
+            case .timeline, .asset, .collage, .crop, .frame:
                 EmptyView() // frame 走全屏 FrameGridView
             case .canvas:
                 canvasPanel
@@ -617,7 +626,7 @@ struct EditorView: View {
                 EditorPanelHeader(
                     icon: "rectangle.on.rectangle",
                     title: "画布",
-                    subtitle: "调整比例、背景和画面外缘"
+                    subtitle: "调整比例、画布背景和画面外缘"
                 )
 
                 EditorPanelSection(title: "画面比例", subtitle: "导出时会使用当前比例") {
@@ -721,48 +730,6 @@ struct EditorView: View {
                         .padding(.vertical, 4)
                     }
                 }
-
-                // 背景素材：沿用素材选择器已有的动态照片下载、背景媒体存储和多选逻辑。
-                Button {
-                    showBackgroundPicker = true
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "photo.on.rectangle.angled")
-                            .font(.title3)
-                            .foregroundStyle(LF.actionPrimary)
-                            .frame(width: 34, height: 34)
-                            .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10))
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("背景素材")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(LF.textPrimary)
-                            Text("添加到画布，可叠加多张并分别编辑时间轴")
-                                .font(.caption2)
-                                .foregroundStyle(LF.textSecondary)
-                        }
-
-                        Spacer()
-
-                        if backgroundElementCount > 0 {
-                            Text("\(backgroundElementCount) 张")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(LF.textSecondary)
-                        }
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(LF.textSecondary)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(LF.brandTint.opacity(0.45), lineWidth: 1)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("添加背景素材")
 
                 EditorPanelSection(title: "画布外缘", subtitle: "设置画面与外部背景之间的过渡") {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -869,18 +836,6 @@ struct EditorView: View {
             .padding(.top, 8)
             .padding(.bottom, 28)
         }
-        .sheet(isPresented: $showBackgroundPicker) {
-            AssetPickerView(backgroundOnly: true)
-                .environmentObject(appState)
-        }
-    }
-
-    private var backgroundElementCount: Int {
-        appState.composition?.elements.reduce(into: 0) { count, element in
-            if case .background = element.kind {
-                count += 1
-            }
-        } ?? 0
     }
 
     // MARK: - 背景面板（完整版：纯色+图案叠加+参数+更多）
