@@ -19,19 +19,14 @@ struct LibraryView: View {
     @State private var dragOverFolderID: String?
     /// 单击素材打开的详情页（nil = 不显示）
     @State private var menuClip: SegmentedClip?
-    /// 素材库按用途分组，背景媒体不再和抠图人物混在同一个网格里。
-    @State private var libraryMode: LibraryMode = .people
-    /// 下载完成后统一配置本批素材的提取方式。
-    @State private var pendingPreparation: PendingPreparation?
+    /// 普通路径默认提取动态素材；静态首帧作为高级选项。
+    @State private var defaultExtractKind: ExtractKind = .live
     /// 超过 1 分钟的视频，在动态提取前选择源视频范围。
     @State private var pendingVideoRange: PendingVideoRange?
+    /// 当前批量提取的队列位置；提取仍串行执行以控制内存占用。
+    @State private var extractionQueuePosition: Int?
+    @State private var extractionQueueTotal = 0
     @State private var importTask: Task<Void, Never>?
-
-    /// 已经下载完成、等待用户统一配置的导入批次。
-    private struct PendingPreparation: Identifiable {
-        let id = UUID()
-        let sources: [ImportSource]
-    }
 
     private struct PendingVideoRange: Identifiable {
         let id = UUID()
@@ -42,39 +37,20 @@ struct LibraryView: View {
         var resume: (ClosedRange<TimeInterval>?) -> Void
     }
 
-    private enum LibraryMode: String, CaseIterable, Identifiable, Hashable {
-        case people
-        case backgrounds
-
-        var id: String { rawValue }
-
-        var title: LocalizedStringKey {
-            switch self {
-            case .people: "人物素材"
-            case .backgrounds: "背景库"
-            }
-        }
-    }
-
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                libraryModePicker
-                if libraryMode == .people {
-                    pickerSection
-                    foldersSection
-                    if isDownloading {
-                        downloadCard
-                    }
-                    if appState.isSegmenting {
-                        segmentationCard
-                    }
-                    clipsSection
-                } else {
-                    backgroundLibrarySection
+                pickerSection
+                foldersSection
+                if isDownloading {
+                    downloadCard
                 }
+                if isExtractionActive {
+                    segmentationCard
+                }
+                clipsSection
             }
             .padding(.horizontal)
             .navigationTitle("素材库")
@@ -104,19 +80,6 @@ struct LibraryView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(loadErrorMessage ?? "")
-            }
-            .sheet(item: $pendingPreparation) { preparation in
-                ImportPreparationView(
-                    sources: preparation.sources,
-                    onCancel: {
-                        pendingPreparation = nil
-                    },
-                    onConfirm: { kinds in
-                        pendingPreparation = nil
-                        startExtraction(sources: preparation.sources, kinds: kinds)
-                    }
-                )
-                .environmentObject(appState)
             }
             .sheet(item: $pendingVideoRange, onDismiss: {
                 pendingVideoRange?.resume(nil)
@@ -150,79 +113,69 @@ struct LibraryView: View {
         }
     }
 
-    private var libraryModePicker: some View {
-        Picker("素材类型", selection: $libraryMode) {
-            ForEach(LibraryMode.allCases) { mode in
-                Text(mode.title).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
-        .tint(LF.actionPrimary)
-    }
-
-    private var backgroundLibrarySection: some View {
-        SectionCard(title: "背景库") {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .foregroundStyle(LF.actionPrimary)
-                    Text("在编辑页打开“画布 → 图片背景”添加背景")
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
-                }
-
-                if appState.backgroundMedia.isEmpty {
-                    EmptyStateView(
-                        icon: "photo.on.rectangle.angled",
-                        title: "还没有背景",
-                        message: "在编辑页的“画布”中添加图片或动态照片"
-                    )
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 24)
-                } else {
-                    ScrollView {
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(appState.backgroundMedia) { item in
-                                BackgroundAssetCell(
-                                    item: item,
-                                    isSelected: false,
-                                    onSelect: {},
-                                    showsSelection: false
-                                )
-                            }
-                        }
-                    }
-                    .scrollIndicators(.hidden)
-                    .frame(maxHeight: 520)
-                }
-            }
-        }
-    }
-
     // MARK: - 素材入口
 
     private var pickerSection: some View {
-        PhotosPicker(
-            selection: $pickerItems,
-            maxSelectionCount: 5,
-            matching: .any(of: [.videos, .livePhotos, .images])
-        ) {
-            SectionCard(title: nil) {
-                VStack(spacing: 10) {
-                    Image(systemName: "film.stack")
-                        .font(.system(size: 34))
-                        .foregroundStyle(LF.gold)
-                    Text("选择视频 / Live Photo / 照片")
-                        .font(.headline)
-                    Text("自动抠出人物，生成透明素材，全程在设备端处理")
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
+        VStack(spacing: 8) {
+            PhotosPicker(
+                selection: $pickerItems,
+                maxSelectionCount: 5,
+                matching: .any(of: [.videos, .livePhotos, .images])
+            ) {
+                SectionCard(title: nil) {
+                    VStack(spacing: 10) {
+                        Image(systemName: "film.stack")
+                            .font(.system(size: 34))
+                            .foregroundStyle(LF.gold)
+                        Text("选择视频 / Live Photo / 照片")
+                            .font(.headline)
+                        Text("自动抠出人物，生成透明素材，全程在设备端处理")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+
+            Menu {
+                Section("提取方式") {
+                    Button {
+                        defaultExtractKind = .live
+                    } label: {
+                        Label("动态素材（默认）", systemImage: defaultExtractKind == .live ? "checkmark" : "sparkles")
+                    }
+                    Button {
+                        defaultExtractKind = .static
+                    } label: {
+                        Label("静态素材（只取首帧）", systemImage: defaultExtractKind == .static ? "checkmark" : "photo")
+                    }
+                }
+
+                Section("提取帧率") {
+                    ForEach(AppState.processingFPSOptions, id: \.self) { option in
+                        Button {
+                            appState.processingFPS = option
+                        } label: {
+                            Label(
+                                "\(fpsTitle(option)) fps",
+                                systemImage: abs(appState.processingFPS - option) < 0.01 ? "checkmark" : "circle"
+                            )
+                        }
+                    }
+                }
+            } label: {
+                Label(
+                    "提取：\(defaultExtractKind == .live ? "动态" : "静态") · \(fpsTitle(appState.processingFPS)) fps",
+                    systemImage: "slider.horizontal.3"
+                )
+                .font(.caption.weight(.medium))
+                .foregroundStyle(LF.textSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .accessibilityLabel("提取方式")
         }
-        .buttonStyle(.plain)
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
             pickerItems.removeAll()
@@ -248,17 +201,18 @@ struct LibraryView: View {
                     .map(\.source)
                 guard !Task.isCancelled, !sources.isEmpty else { return }
 
-                // 2. 先一次性配置本批素材，避免多选时连续弹出多个确认框。
-                if sources.contains(where: isVideoSource) {
-                    pendingPreparation = PendingPreparation(sources: sources)
-                } else {
-                    startExtraction(
-                        sources: sources,
-                        kinds: sources.map { _ in .static }
-                    )
-                }
+                // 2. 视频默认直接按动态素材提取；需要静态首帧时再从高级选项进入。
+                startExtraction(
+                    sources: sources,
+                    kinds: sources.map { isVideoSource($0) ? defaultExtractKind : .static }
+                )
             }
         }
+    }
+
+    private func fpsTitle(_ fps: Double) -> String {
+        if abs(fps.rounded() - fps) < 0.01 { return String(Int(fps.rounded())) }
+        return String(format: "%.1f", fps)
     }
 
     private enum ExtractKind: Hashable {
@@ -266,135 +220,22 @@ struct LibraryView: View {
         case `static`
     }
 
-    /// 批量导入的统一配置页：用户可以在一个页面里决定每个视频类素材的提取方式。
-    private struct ImportPreparationView: View {
-        let sources: [ImportSource]
-        let onCancel: () -> Void
-        let onConfirm: ([ExtractKind]) -> Void
-
-        @Environment(\.dismiss) private var dismiss
-        @State private var kinds: [ExtractKind]
-
-        init(
-            sources: [ImportSource],
-            onCancel: @escaping () -> Void,
-            onConfirm: @escaping ([ExtractKind]) -> Void
-        ) {
-            self.sources = sources
-            self.onCancel = onCancel
-            self.onConfirm = onConfirm
-            _kinds = State(
-                initialValue: sources.map { source in
-                    if case .video = source { return .live }
-                    return .static
-                }
-            )
-        }
-
-        var body: some View {
-            NavigationStack {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("先设置这批素材，再开始抠图")
-                                .font(.headline)
-                                .foregroundStyle(LF.header)
-                            Text("动态贴纸会保留画面变化；静态贴纸只提取一张画面，适合做固定元素。")
-                                .font(.subheadline)
-                                .foregroundStyle(LF.textSecondary)
-                        }
-
-                        VStack(spacing: 10) {
-                            ForEach(Array(sources.enumerated()), id: \.offset) { index, source in
-                                sourceRow(source, index: index)
-                            }
-                        }
-                    }
-                    .padding(20)
-                }
-                .lfNavigationTitle("准备提取")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("取消") {
-                            onCancel()
-                            dismiss()
-                        }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("开始提取") {
-                            onConfirm(kinds)
-                            dismiss()
-                        }
-                        .fontWeight(.semibold)
-                    }
-                }
-                .magicBackground()
-            }
-            .presentationDetents([.medium, .large])
-        }
-
-        @ViewBuilder
-        private func sourceRow(_ source: ImportSource, index: Int) -> some View {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 12) {
-                    Image(systemName: isVideo(source) ? "film" : "photo")
-                        .font(.title3)
-                        .foregroundStyle(LF.gold)
-                        .frame(width: 36, height: 36)
-                        .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10))
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(sourceName(source))
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        Text(isVideo(source) ? "视频 / Live Photo" : "照片")
-                            .font(.caption)
-                            .foregroundStyle(LF.textSecondary)
-                    }
-                    Spacer(minLength: 0)
-                }
-
-                if isVideo(source) {
-                    Picker("提取方式", selection: $kinds[index]) {
-                        Text("动态贴纸").tag(ExtractKind.live)
-                        Text("静态贴纸").tag(ExtractKind.static)
-                    }
-                    .pickerStyle(.segmented)
-                } else {
-                    Label("固定画面 · 自动按静态素材处理", systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
-                }
-            }
-            .padding(14)
-            .background(LF.surface2.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-
-        private func isVideo(_ source: ImportSource) -> Bool {
-            if case .video = source { return true }
-            return false
-        }
-
-        private func sourceName(_ source: ImportSource) -> String {
-            switch source {
-            case .video(_, let name, _, _), .photo(_, let name):
-                return name
-            }
-        }
-    }
-
     private func isVideoSource(_ source: ImportSource) -> Bool {
         if case .video = source { return true }
         return false
     }
 
-    /// 按用户在准备页选择的方式串行提取，保留原有的方向、首帧和长视频范围逻辑。
+    /// 按选择的方式串行提取，保留原有的方向、首帧和长视频范围逻辑。
     private func startExtraction(sources: [ImportSource], kinds: [ExtractKind]) {
         importTask?.cancel()
+        extractionQueueTotal = sources.count
+        extractionQueuePosition = nil
         importTask = Task { @MainActor in
-            for (source, kind) in zip(sources, kinds) {
+            for (index, pair) in zip(sources.indices, zip(sources, kinds)) {
                 guard !Task.isCancelled else { break }
+                extractionQueuePosition = index + 1
+                let source = pair.0
+                let kind = pair.1
                 switch source {
                 case .video(let url, let name, let stillOrientation, let stillURL):
                     switch kind {
@@ -435,6 +276,8 @@ struct LibraryView: View {
                     await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
                 }
             }
+            extractionQueuePosition = nil
+            extractionQueueTotal = 0
         }
     }
 
@@ -837,16 +680,33 @@ struct LibraryView: View {
 
     // MARK: - 抠图进度
 
+    private var isExtractionActive: Bool {
+        appState.isSegmenting || extractionQueuePosition != nil
+    }
+
     private var segmentationCard: some View {
         SectionCard(title: "正在抠图") {
             HStack {
-                ProgressView(value: appState.segmentationProgress)
-                    .tint(LF.gold)
-                Text(String(format: "%d%%", Int(appState.segmentationProgress * 100)))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(LF.textSecondary)
+                if appState.isSegmenting {
+                    ProgressView(value: appState.segmentationProgress)
+                        .tint(LF.gold)
+                    Text(String(format: "%d%%", Int(appState.segmentationProgress * 100)))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(LF.textSecondary)
+                } else {
+                    ProgressView()
+                        .tint(LF.gold)
+                    Text("准备中…")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
             }
-            Text(appState.segmentingName)
+            if let extractionQueuePosition {
+                Text("第 \(extractionQueuePosition)/\(extractionQueueTotal) 个素材")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LF.header)
+            }
+            Text(appState.segmentingName.isEmpty ? "正在准备素材" : appState.segmentingName)
                 .font(.caption)
                 .foregroundStyle(LF.textSecondary)
                 .lineLimit(1)
@@ -1090,10 +950,12 @@ private final class VideoRangePreviewController: ObservableObject {
             forTimes: [NSValue(time: endTime)],
             queue: .main
         ) { [weak self] in
-            guard let self else { return }
-            self.player.pause()
-            self.player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
-            self.isPlaying = false
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.player.pause()
+                self.player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                self.isPlaying = false
+            }
         }
         isPlaying = true
         player.play()
@@ -1503,7 +1365,7 @@ private struct ClipDetailPreview: View {
     }
 
     private var aspectRatio: CGFloat {
-        CGFloat(max(clip.width, 1)) / CGFloat(max(clip.height, 1))
+        CGFloat(max(clip.orientedWidth, 1)) / CGFloat(max(clip.orientedHeight, 1))
     }
 
     var body: some View {
@@ -1592,12 +1454,40 @@ struct ClipMenuView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 ClipDetailPreview(clip: currentClip, isPlaying: $isPlayingPreview)
+                rotateClipButton
                 frameEditorButton
                 foldersSection
                 deleteClipButton
             }
             .padding(20)
         }
+    }
+
+    private var rotateClipButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                appState.rotateClip(clip.id)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "rotate.right")
+                    .foregroundStyle(LF.gold)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("旋转 90°")
+                        .font(.subheadline.weight(.semibold))
+                    Text("当前方向：\(currentClip.normalizedRotationQuarterTurns * 90)°")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "arrow.clockwise")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LF.textSecondary)
+            }
+            .padding(14)
+            .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
     }
 
     private var frameEditorButton: some View {

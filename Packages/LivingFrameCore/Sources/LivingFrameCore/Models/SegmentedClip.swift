@@ -30,6 +30,20 @@ public struct SegmentedClip: Identifiable {
     public var playbackSpeed: Double = 1
     /// 被排除的帧索引（播放时由前面最近的保留帧填补，用于"帧选择"功能）
     public var excludedFrames: Set<Int> = []
+    /// 用户在素材详情页主动旋转的次数；每次为顺时针 90°。
+    public var rotationQuarterTurns: Int = 0
+
+    public var normalizedRotationQuarterTurns: Int {
+        ((rotationQuarterTurns % 4) + 4) % 4
+    }
+
+    public var orientedWidth: Int {
+        normalizedRotationQuarterTurns % 2 == 1 ? height : width
+    }
+
+    public var orientedHeight: Int {
+        normalizedRotationQuarterTurns % 2 == 1 ? width : height
+    }
 
     public var duration: TimeInterval {
         fps > 0 ? TimeInterval(frameCount) / fps : 1

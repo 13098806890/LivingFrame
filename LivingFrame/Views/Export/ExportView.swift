@@ -30,6 +30,7 @@ struct ExportView: View {
     @State private var resolution: ExportResolution = .original
     @State private var chatSticker = false
     @State private var weChatGIFPreset: WeChatGIFPreset = .sticker
+    @State private var showAdvancedFormats = false
     @State private var exportedChatSticker = false
     @State private var exportedURL: URL?
     @State private var exportError: String?
@@ -77,11 +78,14 @@ struct ExportView: View {
                         }
                         .pickerStyle(.segmented)
                         Picker("帧率", selection: $fps) {
-                            Text("10 fps").tag(10.0)
-                            Text("15 fps").tag(15.0)
-                            Text("30 fps（流畅）").tag(30.0)
+                            ForEach(availableFPSOptions, id: \.self) { option in
+                                Text("\(fpsTitle(option)) fps").tag(option)
+                            }
                         }
                         .pickerStyle(.segmented)
+                        Text("当前工程动态素材最高：\(fpsTitle(appState.maximumSourceFPS)) fps")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
                         } else if format == .livePhoto {
                         Label("Live Photo 使用原始画布与工程帧率", systemImage: "lock.fill")
                             .font(.caption)
@@ -203,7 +207,8 @@ struct ExportView: View {
         .presentationDetents([.large])
         .onAppear {
             format = appState.defaultFormat
-            fps = appState.exportFPS
+            showAdvancedFormats = appState.defaultFormat != .gif
+            fps = normalizedFPSSelection(appState.exportFPS)
             previewTime = appState.currentTime
         }
         .onDisappear {
@@ -211,46 +216,73 @@ struct ExportView: View {
         }
     }
 
-    /// 两列胶囊比四等分 segmented picker 更适合较长的中文格式名称，
-    /// 也能保持每个选项的完整可读性。
+    /// 普通路径只突出 GIF；低频的视频和 Live Photo 格式放进高级选项。
     private var exportFormatPicker: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
-            spacing: 8
-        ) {
-            ForEach(ExportFormat.allCases) { option in
-                Button {
-                    format = option
-                } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: format == option ? "checkmark.circle.fill" : "circle")
-                            .font(.subheadline)
-                        Text(option.title)
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.78)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .foregroundStyle(format == option ? LF.selectionText : LF.textPrimary)
-                    .padding(.horizontal, 11)
-                    .frame(minHeight: 46, alignment: .leading)
-                    .background(
-                        format == option ? LF.selectionFill : LF.surface2,
-                        in: Capsule()
-                    )
-                    .overlay {
-                        Capsule()
-                            .stroke(
-                                format == option ? LF.selectionStroke : LF.brandTint.opacity(0.2),
-                                lineWidth: format == option ? 1.8 : 1
-                            )
+        VStack(alignment: .leading, spacing: 10) {
+            formatButton(.gif)
+
+            DisclosureGroup(isExpanded: $showAdvancedFormats) {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                    spacing: 8
+                ) {
+                    ForEach(ExportFormat.allCases.filter { $0 != .gif }) { option in
+                        formatButton(option)
                     }
                 }
-                .buttonStyle(.plain)
+                .padding(.top, 4)
+            } label: {
+                HStack {
+                    Label("更多导出格式", systemImage: "slider.horizontal.3")
+                    Spacer()
+                    if format != .gif {
+                        Text(format.title)
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(LF.header)
             }
+            .tint(LF.header)
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private func formatButton(_ option: ExportFormat) -> some View {
+        Button {
+            format = option
+            if option != .gif {
+                showAdvancedFormats = true
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: format == option ? "checkmark.circle.fill" : "circle")
+                    .font(.subheadline)
+                Text(option.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.78)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .foregroundStyle(format == option ? LF.selectionText : LF.textPrimary)
+            .padding(.horizontal, 11)
+            .frame(minHeight: 46, alignment: .leading)
+            .background(
+                format == option ? LF.selectionFill : LF.surface2,
+                in: Capsule()
+            )
+            .overlay {
+                Capsule()
+                    .stroke(
+                        format == option ? LF.selectionStroke : LF.brandTint.opacity(0.2),
+                        lineWidth: format == option ? 1.8 : 1
+                    )
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private func summaryCard(_ comp: Composition) -> some View {
@@ -331,6 +363,24 @@ struct ExportView: View {
         if format == .livePhoto { return composition.fps }
         if format == .gif && chatSticker { return 15 }
         return fps
+    }
+
+    private var availableFPSOptions: [Double] {
+        appState.availableExportFPSOptions
+    }
+
+    private func normalizedFPSSelection(_ preferred: Double) -> Double {
+        let options = availableFPSOptions
+        guard !options.isEmpty else { return preferred }
+        if let exact = options.first(where: { abs($0 - preferred) < 0.01 }) {
+            return exact
+        }
+        return options.last ?? preferred
+    }
+
+    private func fpsTitle(_ fps: Double) -> String {
+        if abs(fps.rounded() - fps) < 0.01 { return String(Int(fps.rounded())) }
+        return String(format: "%.1f", fps)
     }
 
     private var exportedFileSize: String? {

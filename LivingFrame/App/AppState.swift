@@ -44,6 +44,8 @@ private actor WorkPersistenceCoordinator {
 
 @MainActor
 final class AppState: ObservableObject {
+    static let processingFPSOptions: [Double] = [10, 15, 30, 60]
+
     private static func clampedExtractionDuration(_ value: Double) -> Double {
         guard value.isFinite else { return 5 }
         return min(max(value, 3), 10)
@@ -82,13 +84,25 @@ final class AppState: ObservableObject {
         }
         didSet {
             hasUnsavedChanges = composition != cleanCompositionSnapshot
+            if hasUnsavedChanges {
+                scheduleDraftAutosave()
+            } else {
+                autosaveTask?.cancel()
+            }
         }
     }
     /// 当前工程是否有尚未保存到“作品”的修改。
     @Published private(set) var hasUnsavedChanges = false
+    /// 编辑中的草稿是否正在后台自动保存。
+    @Published private(set) var isAutosavingDraft = false
+    /// 最近一次自动保存失败时的提示；下一次编辑会重新尝试保存。
+    @Published private(set) var autosaveError: String?
     private var cleanCompositionSnapshot: Composition?
     private var undoStack: [Composition] = []
     private var redoStack: [Composition] = []
+    private var autosaveTask: Task<Void, Never>?
+    /// 自动保存任务可以在渲染封面或写盘期间继续运行；序号用于忽略已经过期任务的结果。
+    private var autosaveGeneration = 0
     private var isApplyingHistory = false
     /// 时间轴一次拖拽会产生数十次位置更新；只在手势开始时保留一份撤销快照。
     private var isCoalescingTimelineHistory = false
@@ -198,6 +212,27 @@ final class AppState: ObservableObject {
     @Published var processingFPS: Double = 30 {
         didSet { UserDefaults.standard.set(processingFPS, forKey: settingProcessingFPSKey) }
     }
+
+    /// 当前工程引用的动态素材中，最高的实际提取帧率。
+    /// 静态素材只有一帧，不参与导出帧率上限计算。
+    var maximumSourceFPS: Double {
+        guard let composition else { return 30 }
+        let dynamicFPS = composition.elements.compactMap { element -> Double? in
+            guard case .clip(let clipID) = element.kind,
+                  let clip = FrameCache.shared.clip(id: clipID) ?? clips.first(where: { $0.id == clipID }),
+                  clip.frameCount > 1,
+                  clip.fps.isFinite,
+                  clip.fps > 0 else {
+                return nil
+            }
+            return clip.fps
+        }
+        return max(dynamicFPS.max() ?? composition.fps, 1)
+    }
+
+    var availableExportFPSOptions: [Double] {
+        ExportFPSPolicy.availableOptions(maxSourceFPS: maximumSourceFPS)
+    }
     /// 单个视频/Live Photo 默认最多抠取的时长；超出部分从视频开头截断。
     @Published var maxExtractionDuration: Double = 5 {
         didSet {
@@ -249,7 +284,7 @@ final class AppState: ObservableObject {
         // 背景目录扫描会读取视频轨道和动图帧信息，放到后台避免启动时阻塞主线程。
         Task { [weak self] in
             let media = await Task.detached(priority: .utility) {
-                BackgroundStore.shared.allUserMedia()
+                await BackgroundStore.shared.allUserMedia()
             }.value
             guard !Task.isCancelled else { return }
             self?.backgroundMedia = media
@@ -288,13 +323,65 @@ final class AppState: ObservableObject {
         LogStore.log("launch: device=\(machine) system=\(UIDevice.current.systemName) \(UIDevice.current.systemVersion) app=\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "?")")
     }
 
-    private func markProjectClean() {
+    private func markProjectClean(invalidateAutosave: Bool = true) {
+        if invalidateAutosave {
+            autosaveGeneration &+= 1
+            autosaveTask?.cancel()
+        } else {
+            autosaveTask = nil
+        }
         cleanCompositionSnapshot = composition
         hasUnsavedChanges = false
     }
 
     private func markProjectDirty() {
         hasUnsavedChanges = true
+        scheduleDraftAutosave()
+    }
+
+    /// 在用户停止操作一小段时间后自动把当前工程保存为作品草稿。
+    /// 统一放在 composition 的变更入口，覆盖时间轴、画布、检查器和工具面板。
+    private func scheduleDraftAutosave() {
+        autosaveGeneration &+= 1
+        let generation = autosaveGeneration
+        autosaveTask?.cancel()
+        let snapshot = composition
+        autosaveTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 800_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled,
+                  let self,
+                  self.autosaveGeneration == generation,
+                  self.hasUnsavedChanges,
+                  self.composition == snapshot else { return }
+
+            self.autosaveError = nil
+            self.isAutosavingDraft = true
+            let saved = await self.saveCurrentToWorks(expectedComposition: snapshot)
+            // 保存期间可能已经开始了新的编辑或新的保存任务；旧任务不能再修改状态，
+            // 更不能把“快照已过期”误报成自动保存失败。
+            guard self.autosaveGeneration == generation else { return }
+            self.isAutosavingDraft = false
+            guard !Task.isCancelled, self.composition == snapshot else { return }
+            if !saved {
+                self.autosaveError = "草稿自动保存失败，请稍后重试。"
+            }
+        }
+    }
+
+    /// 切换工程前取消旧工程的待保存任务，避免旧工程在新工程打开后写入。
+    private func cancelDraftAutosave() {
+        autosaveGeneration &+= 1
+        autosaveTask?.cancel()
+        autosaveTask = nil
+        isAutosavingDraft = false
+    }
+
+    func dismissAutosaveError() {
+        autosaveError = nil
     }
 
     // MARK: - 素材
@@ -548,6 +635,13 @@ final class AppState: ObservableObject {
         updateClip(clipID) { $0.excludedFrames = excluded }
     }
 
+    /// 素材详情页每次顺时针旋转 90°，持久化到 clip.json。
+    func rotateClip(_ clipID: String) {
+        updateClip(clipID) {
+            $0.rotationQuarterTurns = ($0.rotationQuarterTurns + 1) % 4
+        }
+    }
+
     /// 统一处理素材属性更新、清单持久化和画布刷新，避免多个设置入口行为不一致。
     private func updateClip(_ clipID: String, _ update: (inout SegmentedClip) -> Void) {
         guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return }
@@ -616,7 +710,7 @@ final class AppState: ObservableObject {
         backgroundMediaReloadTask?.cancel()
         backgroundMediaReloadTask = Task { [weak self] in
             let media = await Task.detached(priority: .utility) {
-                BackgroundStore.shared.allUserMedia()
+                await BackgroundStore.shared.allUserMedia()
             }.value
             guard !Task.isCancelled else { return }
             self?.backgroundMedia = media
@@ -882,6 +976,7 @@ final class AppState: ObservableObject {
     }
 
     private func defaultComposition() -> Composition? {
+        cancelDraftAutosave()
         pause()
         let aspect = preferredCanvasAspect
         let comp = Composition(
@@ -904,6 +999,7 @@ final class AppState: ObservableObject {
 
     /// 创建新画布工程；没有传入比例时使用用户上次选择的画布设置。
     func createComposition(aspect: CanvasAspect? = nil) {
+        cancelDraftAutosave()
         pause()
         let selectedAspect = aspect ?? preferredCanvasAspect
         let size = selectedAspect.canvasSize
@@ -1364,10 +1460,10 @@ final class AppState: ObservableObject {
         guard var comp = composition ?? defaultComposition() else { return }
         // 素材尺寸异常时给默认缩放，避免产生 Inf 变换导致渲染失败
         let scale: CGFloat
-        if clip.width > 0, clip.height > 0 {
+        if clip.orientedWidth > 0, clip.orientedHeight > 0 {
             scale = min(
-                0.8 * comp.canvas.width / CGFloat(clip.width),
-                0.8 * comp.canvas.height / CGFloat(clip.height)
+                0.8 * comp.canvas.width / CGFloat(clip.orientedWidth),
+                0.8 * comp.canvas.height / CGFloat(clip.orientedHeight)
             )
         } else {
             scale = 0.5
@@ -1502,6 +1598,9 @@ final class AppState: ObservableObject {
 
     func play() {
         guard let comp = composition, comp.duration > 0 else { return }
+        // 播放是预览状态，隐藏编辑选框和检查器聚焦，避免选中框跟着画面闪动。
+        clearElementSelection()
+        selectedAudioID = nil
         // 播放完成后再次点击，从对应方向的端点重新开始，但每次只播放一遍。
         if isReversed {
             if currentTime <= 0 { currentTime = comp.duration }
@@ -1703,10 +1802,21 @@ final class AppState: ObservableObject {
     }
 
     private func saveLivePhoto(videoURL: URL, coverData: Data) async throws {
-        try await PHPhotoLibrary.shared().performChanges {
-            let request = PHAssetCreationRequest.forAsset()
-            request.addResource(with: .photo, data: coverData, options: nil)
-            request.addResource(with: .pairedVideo, fileURL: videoURL, options: nil)
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                let request = PHAssetCreationRequest.forAsset()
+                request.addResource(with: .photo, data: coverData, options: nil)
+                // 保留导出临时文件，导出页完成后仍可继续分享 MOV。
+                let options = PHAssetResourceCreationOptions()
+                options.shouldMoveFile = false
+                request.addResource(with: .pairedVideo, fileURL: videoURL, options: options)
+            }
+        } catch {
+            let nsError = error as NSError
+            LogStore.log(
+                "LivePhoto save failed domain=\(nsError.domain) code=\(nsError.code) userInfo=\(nsError.userInfo)"
+            )
+            throw error
         }
     }
 
@@ -1714,8 +1824,9 @@ final class AppState: ObservableObject {
 
     /// 只有用户在编辑页主动点击“保存”时调用。再次保存已打开的作品会更新原记录。
     @discardableResult
-    func saveCurrentToWorks() async -> Bool {
+    func saveCurrentToWorks(expectedComposition: Composition? = nil) async -> Bool {
         guard let comp = composition else { return false }
+        guard expectedComposition == nil || expectedComposition == comp else { return false }
         let posterData = await Task.detached(priority: .utility) {
             guard let poster = CompositionRenderer(frameMaxPixelSize: 900).render(comp, at: 0) else {
                 return Data?.none
@@ -1726,6 +1837,8 @@ final class AppState: ObservableObject {
             LogStore.log("work.save failed: poster render returned nil")
             return false
         }
+        // 工程切换或继续编辑后，不要把已经过期的自动保存快照写入新工程。
+        guard expectedComposition == nil || composition == comp else { return false }
         let existing = editingWorkID.flatMap { id in works.first { $0.id == id } }
         let now = Date()
         let referencedClipIDs = Set(comp.elements.compactMap { element -> String? in
@@ -1760,7 +1873,15 @@ final class AppState: ObservableObject {
         guard persistence.0 else { return false }
         editingWorkID = work.id
         works = persistence.1
-        markProjectClean()
+        // 渲染封面期间用户可能继续编辑；只有保存的快照仍是当前工程时，
+        // 才能把工程标记为干净，否则下一次自动保存需要继续追上最新修改。
+        if composition == comp {
+            // 当前保存任务本身正在执行，不要取消/作废它的 generation。
+            markProjectClean(invalidateAutosave: false)
+        } else {
+            hasUnsavedChanges = true
+            scheduleDraftAutosave()
+        }
         LogStore.log("work.save done id=\(work.id) updated=\(existing != nil)")
         return true
     }
@@ -1811,6 +1932,7 @@ final class AppState: ObservableObject {
     }
 
     func reopen(_ work: WorkItem) {
+        cancelDraftAutosave()
         restoreClipSettings(from: work)
         var comp = work.composition
         // 消毒工程中的非法变换值（NaN/Inf 会导致渲染失败）

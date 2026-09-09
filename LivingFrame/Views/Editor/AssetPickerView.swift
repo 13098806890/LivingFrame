@@ -40,7 +40,7 @@ struct AssetPickerView: View {
         var title: LocalizedStringKey {
             switch self {
             case .person: "人物素材"
-            case .background: "背景图片"
+            case .background: "背景素材"
             }
         }
     }
@@ -84,7 +84,7 @@ struct AssetPickerView: View {
                 }
                 .padding()
             }
-            .lfNavigationTitle(backgroundOnly ? "添加背景" : (currentFolder?.name ?? "选择素材"))
+            .lfNavigationTitle(backgroundOnly ? "添加背景素材" : (currentFolder?.name ?? "选择素材"))
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {
@@ -373,8 +373,8 @@ struct AssetPickerView: View {
             if media.isEmpty {
                 EmptyStateView(
                     icon: "photo.on.rectangle.angled",
-                    title: "暂无背景图片",
-                    message: "点击上方按钮从相册添加图片"
+                    title: "暂无背景素材",
+                    message: "点击上方按钮从相册导入背景素材"
                 )
             } else {
                 LazyVGrid(columns: columns, spacing: 10) {
@@ -813,6 +813,7 @@ struct ClipPreviewImage: View {
         Image(decorative: image, scale: 1)
             .resizable()
             .scaledToFill()
+            .rotationEffect(.degrees(Double(clip.normalizedRotationQuarterTurns * 90)))
     }
 
     private func halo(color: Color, radius: CGFloat, opacity: Double) -> some View {

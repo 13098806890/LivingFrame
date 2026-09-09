@@ -1,6 +1,33 @@
 import AVFoundation
 import CoreImage
 import Foundation
+@preconcurrency import Dispatch
+
+private final class ExportSessionBox: @unchecked Sendable {
+    let value: AVAssetExportSession
+
+    init(_ value: AVAssetExportSession) {
+        self.value = value
+    }
+}
+
+private final class CompletionGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didComplete = false
+
+    func take() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didComplete else { return false }
+        didComplete = true
+        return true
+    }
+}
+
+private enum RemuxWaitResult {
+    case completed
+    case timedOut
+}
 
 /// 视频导出：HEVC-alpha（带透明，首选）/ H.264 回退，可混入音轨
 ///
@@ -299,24 +326,38 @@ public struct VideoExporter {
         session.outputFileType = .mov
         session.shouldOptimizeForNetworkUse = false
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            // 60s 超时保护，防止 AVAssetExportSession 挂起
-            let timeout = DispatchWorkItem {
-                session.cancelExport()
-                continuation.resume(throwing: ExportError.renderFailed)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: timeout)
-            session.exportAsynchronously {
-                timeout.cancel()
-                switch session.status {
-                case .completed:
-                    continuation.resume()
-                case .cancelled:
-                    continuation.resume(throwing: CancellationError())
-                default:
-                    LogStore.log("VideoExporter: remux failed status=\(session.status.rawValue) error=\(String(describing: session.error))")
-                    continuation.resume(throwing: ExportError.renderFailed)
+        let sessionBox = ExportSessionBox(session)
+        let result: RemuxWaitResult = await withCheckedContinuation { continuation in
+            let gate = CompletionGate()
+            let timeoutTask = Task { [sessionBox, gate] in
+                do {
+                    try await Task.sleep(nanoseconds: 60_000_000_000)
+                } catch {
+                    return
                 }
+                guard gate.take() else { return }
+                sessionBox.value.cancelExport()
+                continuation.resume(returning: .timedOut)
+            }
+
+            sessionBox.value.exportAsynchronously {
+                timeoutTask.cancel()
+                guard gate.take() else { return }
+                continuation.resume(returning: .completed)
+            }
+        }
+        switch result {
+        case .timedOut:
+            throw ExportError.renderFailed
+        case .completed:
+            switch sessionBox.value.status {
+            case .completed:
+                break
+            case .cancelled:
+                throw CancellationError()
+            default:
+                LogStore.log("VideoExporter: remux failed status=\(sessionBox.value.status.rawValue) error=\(String(describing: sessionBox.value.error))")
+                throw ExportError.renderFailed
             }
         }
 
@@ -333,8 +374,9 @@ public struct VideoExporter {
             guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return }
             var codes: [String] = []
             var alphaModes: [String] = []
-            for formatDescription in track.formatDescriptions {
-                let desc = formatDescription as! CMFormatDescription
+            let formatDescriptions = (try? await track.load(.formatDescriptions)) ?? []
+            for formatDescription in formatDescriptions {
+                let desc = formatDescription
                 codes.append(fourCC(CMFormatDescriptionGetMediaSubType(desc)))
                 let alpha = CMFormatDescriptionGetExtension(
                     desc, extensionKey: kCMFormatDescriptionExtension_AlphaChannelMode as CFString

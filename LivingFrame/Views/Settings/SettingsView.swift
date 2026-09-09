@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @State private var logRefresh = 0
+    @State private var showAdvancedExportFormats = false
 
     var body: some View {
         NavigationStack {
@@ -30,15 +31,34 @@ struct SettingsView: View {
                     }
 
                     SectionCard(title: "导出") {
-                        Picker("默认格式", selection: $appState.defaultFormat) {
-                            ForEach(ExportFormat.allCases) { format in
-                                Text(format.title).tag(format)
+                        if appState.defaultFormat == .gif {
+                            Picker("默认格式", selection: $appState.defaultFormat) {
+                                Text(ExportFormat.gif.title).tag(ExportFormat.gif)
+                            }
+                        } else {
+                            HStack {
+                                Text("默认格式")
+                                Spacer()
+                                Text(appState.defaultFormat.title)
+                                    .foregroundStyle(LF.textSecondary)
+                                    .lineLimit(1)
                             }
                         }
                         Picker("默认帧率", selection: $appState.exportFPS) {
                             Text("15 fps").tag(15.0)
                             Text("30 fps").tag(30.0)
+                            Text("60 fps").tag(60.0)
                         }
+
+                        DisclosureGroup("高级导出格式", isExpanded: $showAdvancedExportFormats) {
+                            Picker("默认格式", selection: $appState.defaultFormat) {
+                                ForEach(ExportFormat.allCases.filter { $0 != .gif }) { format in
+                                    Text(format.title).tag(format)
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
+                        .tint(LF.header)
                     }
 
                     SectionCard(title: "素材提取") {
@@ -63,8 +83,9 @@ struct SettingsView: View {
                             Text("10 fps（最快）").tag(10.0)
                             Text("15 fps（快）").tag(15.0)
                             Text("30 fps（流畅）").tag(30.0)
+                            Text("60 fps（保留高帧率）").tag(60.0)
                         }
-                        Text("分辨率越高、帧率越高，抠图越精细，处理时间越长。素材越多，磁盘占用越大。")
+                        Text("仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，抠图越精细，处理时间越长。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                     }
@@ -142,6 +163,7 @@ struct SettingsView: View {
         }
         .magicBackground()
         .task {
+            showAdvancedExportFormats = appState.defaultFormat != .gif
             appState.refreshCacheSize()
         }
     }

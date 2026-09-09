@@ -4,6 +4,48 @@ import XCTest
 final class TimelinePlaybackRulesTests: XCTestCase {
     private let sourceFrames = [1, 2, 3, 4, 5, 6]
 
+    func testExportFPSOptionsAreCappedByMaximumSourceFPS() {
+        XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 30), [10, 15, 30])
+        XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 60), [10, 15, 30, 60])
+        XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 24), [10, 15, 24])
+    }
+
+    func testRotationSnapsToNearbyThirtyDegreeMultiples() {
+        XCTAssertEqual(
+            RotationSnapPolicy.snapped(28 * .pi / 180),
+            30 * .pi / 180,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            RotationSnapPolicy.snapped(-31 * .pi / 180),
+            -30 * .pi / 180,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            RotationSnapPolicy.snapped(58 * .pi / 180),
+            60 * .pi / 180,
+            accuracy: 0.0001
+        )
+    }
+
+    func testRotationOutsideMagneticRangeRemainsContinuous() {
+        XCTAssertEqual(
+            RotationSnapPolicy.snapped(36 * .pi / 180),
+            36 * .pi / 180,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            RotationSnapPolicy.snapped(34 * .pi / 180),
+            34 * .pi / 180,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            RotationSnapPolicy.snapped(12 * .pi / 180),
+            12 * .pi / 180,
+            accuracy: 0.0001
+        )
+    }
+
     func testShorteningFullSourceThenExtendingRestoresBeforeLooping() {
         let initial = state(sourceRange: 1...5, timelineDuration: 5)
 

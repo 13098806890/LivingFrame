@@ -38,6 +38,7 @@ struct TimelineView: View {
     private let trimHandleTouchWidth: CGFloat = 32
     private let trimHandleTouchHeight: CGFloat = 44
     /// 时间轴缩放（1x = 全时长铺满，8x = 放大到帧级）
+    private let minimumZoom: CGFloat = 0.5
     @State private var zoom: CGFloat = 1
     @State private var lastPinchZoom: CGFloat = 1
     @State private var elementDragSession: ElementDragSession?
@@ -295,7 +296,11 @@ struct TimelineView: View {
 
                                 ForEach(Array(orderedElements.enumerated()), id: \.element.id) { i, element in
                                     let displayElement = elementWithTimelinePreview(element)
-                                    elementRow(element, spp: spp)
+                                    elementRow(
+                                        element,
+                                        spp: spp,
+                                        isLayerDropTarget: layerReorderSession?.currentIndex == i
+                                    )
                                         .position(x: rowX(displayElement, spp: spp), y: rulerHeight + rowCenterY(i))
                                 }
 
@@ -304,6 +309,7 @@ struct TimelineView: View {
                                         .position(x: audioX(audio, spp: spp), y: rulerHeight + rowCenterY(orderedElements.count + i))
                                 }
 
+                                layerReorderGuide(contentWidth: contentWidth)
                                 playhead(spp: spp, height: totalHeight, contentWidth: contentWidth)
                                 timelineSnapGuide(spp: spp, height: totalHeight, contentWidth: contentWidth)
                                 }
@@ -414,7 +420,7 @@ struct TimelineView: View {
 
             HStack(spacing: 4) {
                 Button {
-                    zoom = max(1, zoom - 0.5)
+                    zoom = max(minimumZoom, zoom - 0.5)
                     lastPinchZoom = zoom
                 } label: {
                     Image(systemName: "minus")
@@ -501,7 +507,7 @@ struct TimelineView: View {
     private var pinchZoomGesture: some Gesture {
         MagnifyGesture()
             .onChanged { value in
-                zoom = min(max(lastPinchZoom * value.magnification, 1), 8)
+                zoom = min(max(lastPinchZoom * value.magnification, minimumZoom), 8)
             }
             .onEnded { _ in
                 lastPinchZoom = zoom
@@ -660,6 +666,7 @@ struct TimelineView: View {
                         currentIndex: startIndex
                     )
                     appState.selectElement(element.id)
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isTimelineManipulating = true
                 }
 
@@ -679,6 +686,7 @@ struct TimelineView: View {
                 withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.82)) {
                     appState.setElementLayerOrder(topToBottom: reordered)
                 }
+                UISelectionFeedbackGenerator().selectionChanged()
                 session.currentIndex = targetIndex
                 layerReorderSession = session
             }
@@ -767,7 +775,11 @@ struct TimelineView: View {
     // MARK: - 元素行（帧缩略图拼贴）
 
     @ViewBuilder
-    private func elementRow(_ element: CompositionElement, spp: CGFloat) -> some View {
+    private func elementRow(
+        _ element: CompositionElement,
+        spp: CGFloat,
+        isLayerDropTarget: Bool = false
+    ) -> some View {
         let displayElement = elementWithTimelinePreview(element)
         let metrics = elementMetrics(displayElement, spp: spp)
         let barWidth = metrics.barWidth
@@ -776,6 +788,11 @@ struct TimelineView: View {
             if case .canvasEdge = element.kind { return true }
             return false
         }()
+        let isLayerDragging = layerReorderSession?.id == element.id
+        let layerFeedback = layerInteractionFeedback(
+            isDragging: isLayerDragging,
+            isDropTarget: isLayerDropTarget
+        )
         let isSelected = appState.isElementSelected(element.id)
         let repeatCount = playbackCount(for: displayElement)
         let isTrimmingStart = isActiveTrim(element.id, mode: .trimStart)
@@ -1032,6 +1049,8 @@ struct TimelineView: View {
                         onRequestInspector()
                     }
                 )
+                .overlay(layerFeedback)
+                .scaleEffect(isLayerDragging ? 1.035 : 1)
         } else {
             content
                 // 素材条中部只负责整体移动；两端由上面的专用热区负责裁剪。
@@ -1043,6 +1062,55 @@ struct TimelineView: View {
                         onRequestInspector()
                     }
                 )
+                .overlay(layerFeedback)
+                .scaleEffect(isLayerDragging ? 1.035 : 1)
+        }
+    }
+
+    private func layerInteractionFeedback(
+        isDragging: Bool,
+        isDropTarget: Bool
+    ) -> some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isDragging ? LF.selectionFill.opacity(0.28) : Color.clear)
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(
+                        isDragging ? LF.gold : (isDropTarget ? LF.selectionStroke : .clear),
+                        style: StrokeStyle(
+                            lineWidth: isDragging ? 2.5 : 2,
+                            dash: isDropTarget && !isDragging ? [6, 4] : []
+                        )
+                    )
+            }
+            .shadow(
+                color: isDragging ? LF.gold.opacity(0.32) : .clear,
+                radius: isDragging ? 8 : 0,
+                y: isDragging ? 3 : 0
+            )
+            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func layerReorderGuide(contentWidth: CGFloat) -> some View {
+        if let session = layerReorderSession {
+            let y = rulerHeight + CGFloat(session.currentIndex) * (rowHeight + rowSpacing) - 2
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(LF.gold)
+                    .frame(width: 6, height: 6)
+                Rectangle()
+                    .fill(LF.gold)
+                    .frame(height: 2)
+                Circle()
+                    .fill(LF.gold)
+                    .frame(width: 6, height: 6)
+            }
+            .frame(width: max(contentWidth - timelineLeadingInset, 12), height: 8)
+            .offset(x: timelineLeadingInset, y: y)
+            .shadow(color: LF.gold.opacity(0.5), radius: 4)
+            .allowsHitTesting(false)
+            .zIndex(30)
         }
     }
 
@@ -1501,8 +1569,16 @@ struct TimelineView: View {
             delta: Double(delta),
             playbackRate: speed
         )
+        let snappedStart = appState.composition.map {
+            snapTime(
+                result.state.timelineStart,
+                excluding: element.id,
+                comp: $0,
+                secondsPerPoint: secondsPerPoint
+            )
+        } ?? result.state.timelineStart
         return ElementTiming(
-            start: result.state.timelineStart,
+            start: min(snappedStart, result.state.timelineEnd - 0.001),
             end: result.state.timelineEnd,
             sourceStart: anchor.sourceStart,
             sourceEnd: anchor.sourceEnd,
@@ -1547,9 +1623,17 @@ struct TimelineView: View {
             delta: Double(delta),
             playbackRate: speed
         )
+        let snappedEnd = appState.composition.map {
+            snapTime(
+                result.state.timelineEnd,
+                excluding: element.id,
+                comp: $0,
+                secondsPerPoint: secondsPerPoint
+            )
+        } ?? result.state.timelineEnd
         return ElementTiming(
             start: anchor.start,
-            end: result.state.timelineEnd,
+            end: max(snappedEnd, anchor.start + 0.001),
             sourceStart: anchor.sourceStart,
             sourceEnd: anchor.sourceEnd,
             sourceOffset: result.state.firstPlaybackOffset,
@@ -1577,8 +1661,8 @@ struct TimelineView: View {
         return min(max(needsLooping ? max(count, 2) : count, 1), 99)
     }
 
-    /// 就近磁吸：只参考视觉上紧邻的上、下两条素材轨道的开始/结束。
-    /// 绝不调整被参考素材，且阈值严格限制为一帧，避免远处元素或播放头造成跳动。
+    /// 就近磁吸：参考其它视觉素材的开始/结束，不调整被参考素材。
+    /// 吸附范围以“至少一帧、最多约 12 个屏幕点”为限，既容易命中又不会远距离跳动。
     private func snapTime(
         _ value: TimeInterval,
         excluding elementID: UUID,
@@ -1591,8 +1675,8 @@ struct TimelineView: View {
             comp: comp,
             secondsPerPoint: secondsPerPoint
         )
-        let points = adjacentTrackSnapPoints(for: elementID, comp: comp)
-        let threshold = oneFrameSnapThreshold(comp: comp)
+        let points = trackSnapPoints(for: elementID, comp: comp)
+        let threshold = snapThreshold(comp: comp, secondsPerPoint: secondsPerPoint)
         guard let nearest = points.min(by: { abs($0 - value) < abs($1 - value) }),
               abs(nearest - value) <= threshold else {
             updateTimelineSnapGuide(nil)
@@ -1615,8 +1699,8 @@ struct TimelineView: View {
             comp: comp,
             secondsPerPoint: secondsPerPoint
         )
-        let points = adjacentTrackSnapPoints(for: elementID, comp: comp)
-        let threshold = oneFrameSnapThreshold(comp: comp)
+        let points = trackSnapPoints(for: elementID, comp: comp)
+        let threshold = snapThreshold(comp: comp, secondsPerPoint: secondsPerPoint)
         var candidates: [(start: TimeInterval, guide: TimeInterval, distance: TimeInterval)] = []
         for point in points {
             candidates.append((point, point, abs(point - rawStart)))
@@ -1634,20 +1718,17 @@ struct TimelineView: View {
         return nearest.start
     }
 
-    private func adjacentTrackSnapPoints(for elementID: UUID, comp: Composition) -> [TimeInterval] {
-        let elements = timelineElements(comp)
-        guard let index = elements.firstIndex(where: { $0.id == elementID }) else { return [] }
-        let neighbors = [index - 1, index + 1]
-            .compactMap { elements.indices.contains($0) ? elements[$0] : nil }
-        return neighbors
+    private func trackSnapPoints(for elementID: UUID, comp: Composition) -> [TimeInterval] {
+        comp.elements
+            .filter { $0.id != elementID }
             .flatMap { [$0.startTime, $0.endTime] }
             .filter { $0.isFinite && $0 >= 0 }
     }
 
-    private func oneFrameSnapThreshold(comp: Composition) -> TimeInterval {
-        // 不因缩放级别扩大吸附范围；一帧内才算“贴近”。保留一个极小的浮点容差。
+    private func snapThreshold(comp: Composition, secondsPerPoint: CGFloat) -> TimeInterval {
         let frame = 1 / max(comp.fps, 1)
-        return frame + 0.0005
+        let visibleDistance = TimeInterval(max(secondsPerPoint, 0.0001) * 12)
+        return max(frame + 0.0005, min(0.12, visibleDistance))
     }
 
     /// 所有其它素材都参与“看得见的对齐”，但不参与实际磁吸。

@@ -1,6 +1,14 @@
 import AVFoundation
 import Foundation
 
+private final class ExportSessionBox: @unchecked Sendable {
+    let value: AVAssetExportSession
+
+    init(_ value: AVAssetExportSession) {
+        self.value = value
+    }
+}
+
 /// 离线混音（导出用）：AVMutableComposition + AVAudioMix 精确对齐
 public struct OfflineAudioMixer {
     public init() {}
@@ -77,19 +85,20 @@ public struct OfflineAudioMixer {
         session.outputFileType = .m4a
         session.shouldOptimizeForNetworkUse = false
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            session.exportAsynchronously {
-                switch session.status {
-                case .completed:
-                    LogStore.log("OfflineAudioMixer: done")
-                    continuation.resume()
-                case .cancelled:
-                    continuation.resume(throwing: CancellationError())
-                default:
-                    LogStore.log("OfflineAudioMixer: failed status=\(session.status.rawValue) error=\(String(describing: session.error))")
-                    continuation.resume(throwing: AudioError.exportFailed(session.error?.localizedDescription))
-                }
+        let sessionBox = ExportSessionBox(session)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            sessionBox.value.exportAsynchronously {
+                continuation.resume()
             }
+        }
+        switch sessionBox.value.status {
+        case .completed:
+            LogStore.log("OfflineAudioMixer: done")
+        case .cancelled:
+            throw CancellationError()
+        default:
+            LogStore.log("OfflineAudioMixer: failed status=\(sessionBox.value.status.rawValue) error=\(String(describing: sessionBox.value.error))")
+            throw AudioError.exportFailed(sessionBox.value.error?.localizedDescription)
         }
     }
 }

@@ -71,9 +71,6 @@ struct EditorView: View {
     @State private var showClearConfirmation = false
     /// 全屏预览（播放控制行最右侧按钮）
     @State private var showPreview = false
-    /// 主动保存作品的进行中/结果状态。
-    @State private var isSavingWork = false
-    @State private var workSaveResult: WorkSaveResult?
     /// 时间轴默认显示；用户收起后记住选择，避免每次进入编辑页都重复操作。
     @AppStorage("gifbloom.editor.showTimeline") private var showTimeline = true
 
@@ -163,21 +160,13 @@ struct EditorView: View {
         } message: {
             Text("将移除画布和时间轴中的全部内容，但不会删除素材库里的素材。")
         }
-        .alert(item: $workSaveResult) { result in
-            switch result {
-            case .success(let updated):
-                Alert(
-                    title: Text(updated ? "作品已更新" : "作品已保存"),
-                    message: Text("可以在“作品”页面继续编辑或删除。"),
-                    dismissButton: .default(Text("好"))
-                )
-            case .failure:
-                Alert(
-                    title: Text("保存失败"),
-                    message: Text("无法生成作品封面，请稍后再试。"),
-                    dismissButton: .default(Text("好"))
-                )
-            }
+        .alert("自动保存失败", isPresented: Binding(
+            get: { appState.autosaveError != nil },
+            set: { if !$0 { appState.dismissAutosaveError() } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(appState.autosaveError ?? "请稍后重试。")
         }
         .fullScreenCover(isPresented: $showPreview) {
             ZStack(alignment: .topTrailing) {
@@ -229,7 +218,7 @@ struct EditorView: View {
         }
     }
 
-    /// 自定义顶部栏（编辑信息 + 主动保存/导出）
+    /// 自定义顶部栏（编辑信息 + 自动保存状态 + 导出）
     private var topBar: some View {
         ZStack {
             VStack(spacing: 0) {
@@ -239,9 +228,15 @@ struct EditorView: View {
                 if let comp = appState.composition {
                     HStack(spacing: 5) {
                         Text(frameInfoText(comp))
-                        if appState.hasUnsavedChanges {
-                            Text("未保存")
+                        if appState.isAutosavingDraft {
+                            Text("自动保存中…")
                                 .foregroundStyle(LF.header)
+                        } else if appState.hasUnsavedChanges {
+                            Text("等待自动保存")
+                                .foregroundStyle(LF.header)
+                        } else if appState.editingWorkID != nil {
+                            Text("已保存")
+                                .foregroundStyle(LF.textSecondary)
                         }
                     }
                     .font(.caption2)
@@ -263,26 +258,6 @@ struct EditorView: View {
 
                 Spacer()
 
-                Button(action: saveWork) {
-                    HStack(spacing: 3) {
-                        if isSavingWork {
-                            ProgressView()
-                                .controlSize(.mini)
-                        } else {
-                            Image(systemName: "square.and.arrow.down")
-                        }
-                        Text("保存")
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(LF.textPrimary)
-                    .frame(height: 30)
-                    .padding(.horizontal, 7)
-                    .background(LF.surface2.opacity(0.7), in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .disabled(isSavingWork)
-                .accessibilityLabel("保存作品")
-
                 Button { appState.showExportView = true } label: {
                     Text("导出")
                         .font(.caption.weight(.bold))
@@ -295,17 +270,6 @@ struct EditorView: View {
             }
         }
         .padding(.horizontal, 4)
-    }
-
-    private func saveWork() {
-        guard !isSavingWork else { return }
-        let isUpdating = appState.editingWorkID != nil
-        isSavingWork = true
-        Task { @MainActor in
-            let saved = await appState.saveCurrentToWorks()
-            isSavingWork = false
-            workSaveResult = saved ? .success(updated: isUpdating) : .failure
-        }
     }
 
     // MARK: - 帧信息
@@ -618,7 +582,7 @@ struct EditorView: View {
                     }
                     .accessibilityLabel("更多背景颜色")
                 }
-                // 图片背景：沿用素材选择器已有的动态照片下载、背景媒体存储和多选逻辑。
+                // 背景素材：沿用素材选择器已有的动态照片下载、背景媒体存储和多选逻辑。
                 Button {
                     showBackgroundPicker = true
                 } label: {
@@ -630,7 +594,7 @@ struct EditorView: View {
                             .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10))
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("图片背景")
+                            Text("背景素材")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(LF.textPrimary)
                             Text("添加到画布，可叠加多张并分别编辑时间轴")
@@ -658,7 +622,7 @@ struct EditorView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("添加图片背景")
+                .accessibilityLabel("添加背景素材")
                 HStack(spacing: 8) {
                     Text("外缘").font(.caption2).foregroundStyle(LF.header)
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -1038,18 +1002,6 @@ struct EditorView: View {
                     }
                 }
             }
-        }
-    }
-}
-
-private enum WorkSaveResult: Identifiable {
-    case success(updated: Bool)
-    case failure
-
-    var id: String {
-        switch self {
-        case .success(let updated): updated ? "updated" : "created"
-        case .failure: "failure"
         }
     }
 }

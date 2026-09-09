@@ -190,7 +190,8 @@ public final class FrameCache {
                 edgeColorHex: manifest.edgeColorHex,
                 stickerStyle: manifest.stickerStyle,
                 playbackSpeed: manifest.playbackSpeed,
-                excludedFrames: Set(manifest.excludedFrames)
+                excludedFrames: Set(manifest.excludedFrames),
+                rotationQuarterTurns: manifest.rotationQuarterTurns
             )
         }
         registryLock.lock()
@@ -367,7 +368,8 @@ public final class FrameCache {
             edgeColorHex: clip.edgeColorHex,
             stickerStyle: clip.stickerStyle,
             playbackSpeed: clip.playbackSpeed,
-            excludedFrames: Array(clip.excludedFrames).sorted()
+            excludedFrames: Array(clip.excludedFrames).sorted(),
+            rotationQuarterTurns: clip.rotationQuarterTurns
         )
         return try JSONEncoder().encode(manifest)
     }
@@ -390,11 +392,12 @@ private struct ClipManifest: Codable {
     let stickerStyle: StickerStyle
     let playbackSpeed: Double
     let excludedFrames: [Int]
+    let rotationQuarterTurns: Int
 
     private enum CodingKeys: String, CodingKey {
         case id, name, fps, frameCount, width, height, createdAt, audioFilename
         case edgeStyle, edgeLineStyle, edgeThickness, edgeColorHex, stickerStyle
-        case playbackSpeed, excludedFrames
+        case playbackSpeed, excludedFrames, rotationQuarterTurns
     }
 
     init(
@@ -412,7 +415,8 @@ private struct ClipManifest: Codable {
         edgeColorHex: String,
         stickerStyle: StickerStyle,
         playbackSpeed: Double,
-        excludedFrames: [Int]
+        excludedFrames: [Int],
+        rotationQuarterTurns: Int
     ) {
         self.id = id
         self.name = name
@@ -429,6 +433,7 @@ private struct ClipManifest: Codable {
         self.stickerStyle = stickerStyle
         self.playbackSpeed = playbackSpeed
         self.excludedFrames = excludedFrames
+        self.rotationQuarterTurns = rotationQuarterTurns
     }
 
     init(from decoder: Decoder) throws {
@@ -481,6 +486,7 @@ private struct ClipManifest: Codable {
         stickerStyle = StickerStyle(rawValue: rawStickerStyle) ?? .none
         playbackSpeed = try values.decodeIfPresent(Double.self, forKey: .playbackSpeed) ?? 1
         excludedFrames = try values.decodeIfPresent([Int].self, forKey: .excludedFrames) ?? []
+        rotationQuarterTurns = try values.decodeIfPresent(Int.self, forKey: .rotationQuarterTurns) ?? 0
     }
 }
 

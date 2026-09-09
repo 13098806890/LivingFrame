@@ -28,6 +28,8 @@ struct CanvasView: View {
     @State private var clearInteractivePreviewAfterRender = false
     /// 双指手势活跃中（防止同时触发拖动）
     @State private var isPinching = false
+    /// 缩放与旋转共享一组双指输入，但一旦确认意图就锁定模式，避免捏合时被微小角度变化带偏。
+    @State private var transformGestureMode: TransformGestureMode?
     /// 裁剪模式下的临时裁剪框（画布坐标系）
     @State private var cropRect: CGRect?
     /// 当前裁剪手势的起始矩形；所有位移都基于同一快照，避免拖动过程中累计误差。
@@ -43,6 +45,14 @@ struct CanvasView: View {
         label: "com.livingframe.canvas-render",
         qos: .userInteractive
     )
+
+    private enum TransformGestureMode: Equatable {
+        case scaling
+        case rotating
+    }
+
+    private let magnificationIntentThreshold: CGFloat = 0.02
+    private let rotationIntentThreshold: CGFloat = 0.08
 
     /// 双击画布素材时由编辑页打开检查器；全屏预览不传回调，因此保持只读预览。
     private let onRequestInspector: () -> Void
@@ -203,7 +213,13 @@ struct CanvasView: View {
             .first { element in
                 if case .canvasEdge = element.kind { return false }
                 guard element.isVisible(at: time) else { return false }
-                return rotatedHitTest(element: element, in: comp, geometry: geometry, at: location)
+                return rotatedHitTest(
+                    element: element,
+                    in: comp,
+                    geometry: geometry,
+                    point: location,
+                    time: time
+                )
             }
         if let hit {
             appState.selectElement(hit.id)
@@ -222,8 +238,14 @@ struct CanvasView: View {
     }
 
     /// 旋转变换后的点-元素命中测试
-    private func rotatedHitTest(element: CompositionElement, in comp: Composition, geometry: ViewportGeometry, at point: CGPoint) -> Bool {
-        let frame = elementFrame(element, in: comp, geometry: geometry)
+    private func rotatedHitTest(
+        element: CompositionElement,
+        in comp: Composition,
+        geometry: ViewportGeometry,
+        point: CGPoint,
+        time: TimeInterval
+    ) -> Bool {
+        let frame = elementFrame(element, in: comp, geometry: geometry, at: time)
         // 分区背景虽然使用整张画布尺寸生成图像，但画布中只有当前分区实际可见。
         // 命中测试必须使用同一遮罩路径，否则点击空白分区会错误选中上层背景。
         if case .background = element.kind {
@@ -307,7 +329,13 @@ struct CanvasView: View {
     private var magnifyGesture: some Gesture {
         MagnificationGesture()
             .onChanged { value in
-                guard !appState.isCropping, !appState.selectedElementIDs.isEmpty else { return }
+                guard !appState.isCropping,
+                      !appState.selectedElementIDs.isEmpty,
+                      transformGestureMode != .rotating else { return }
+                if transformGestureMode == nil {
+                    guard abs(value - 1) >= magnificationIntentThreshold else { return }
+                    transformGestureMode = .scaling
+                }
                 isPinching = true
                 beginCanvasManipulation()
                 if selectedBackgroundElement != nil {
@@ -336,10 +364,8 @@ struct CanvasView: View {
                 }
             }
             .onEnded { _ in
-                gestureStartTransforms = [:]
-                gestureStartBackgroundSettings = [:]
-                isPinching = false
-                endCanvasManipulation()
+                guard transformGestureMode == .scaling else { return }
+                finishTransformGesture()
             }
     }
 
@@ -348,13 +374,38 @@ struct CanvasView: View {
     private var rotateGesture: some Gesture {
         RotationGesture()
             .onChanged { value in
-                guard !appState.isCropping, !appState.selectedElementIDs.isEmpty else { return }
+                guard !appState.isCropping,
+                      !appState.selectedElementIDs.isEmpty,
+                      transformGestureMode != .scaling else { return }
+                if transformGestureMode == nil {
+                    // 双指捏合时允许少量自然抖动，但必须有明确的扭转意图才进入旋转模式。
+                    guard abs(value.radians) >= rotationIntentThreshold else { return }
+                    transformGestureMode = .rotating
+                }
                 isPinching = true
                 beginCanvasManipulation()
                 if gestureStartTransforms.isEmpty {
                     snapshotTransforms(appState.composition)
                 }
                 guard let snaps = gestureStartTransforms.snapshot else { return }
+                let rawDelta = -Double(value.radians)
+                // 以第一个可旋转素材作为组的参考方向，避免多选旋转时每个素材
+                // 分别吸附到不同角度而破坏它们之间的相对关系。
+                let referenceStart = snaps
+                    .filter { id, _ in
+                        guard let element = appState.composition?.elements.first(where: { $0.id == id }) else {
+                            return false
+                        }
+                        if case .background = element.kind { return false }
+                        if case .canvasEdge = element.kind { return false }
+                        return true
+                    }
+                    .sorted { $0.key.uuidString < $1.key.uuidString }
+                    .first?
+                    .value
+                let snappedDelta = referenceStart.map {
+                    RotationSnapPolicy.snapped($0.rotation + rawDelta) - $0.rotation
+                } ?? rawDelta
                 for id in appState.selectedElementIDs {
                     guard let start = snaps[id] else { continue }
                     if let element = appState.composition?.elements.first(where: { $0.id == id }) {
@@ -363,16 +414,22 @@ struct CanvasView: View {
                     }
                     appState.updateElement(id) { element in
                         // RotationGesture 正值=顺时针（屏幕 y 向下），画布 y 向上需取反
-                        element.transform.rotation = start.rotation - Double(value.radians)
+                        element.transform.rotation = start.rotation + snappedDelta
                     }
                 }
             }
             .onEnded { _ in
-                gestureStartTransforms = [:]
-                gestureStartBackgroundSettings = [:]
-                isPinching = false
-                endCanvasManipulation()
+                guard transformGestureMode == .rotating else { return }
+                finishTransformGesture()
             }
+    }
+
+    private func finishTransformGesture() {
+        gestureStartTransforms = [:]
+        gestureStartBackgroundSettings = [:]
+        transformGestureMode = nil
+        isPinching = false
+        endCanvasManipulation()
     }
 
     private func snapshotTransforms(_ comp: Composition?) {
@@ -458,7 +515,12 @@ struct CanvasView: View {
                     if case .canvasEdge = element.kind { return false }
                     return true
                 }) { element in
-                    let frame = elementFrame(element, in: appState.composition, geometry: viewportGeometry(for: appState.composition))
+                    let frame = elementFrame(
+                        element,
+                        in: appState.composition,
+                        geometry: viewportGeometry(for: appState.composition),
+                        at: appState.currentTime
+                    )
                     let center = CGPoint(x: frame.midX, y: frame.midY)
                     // 画布 rotation 正值=逆时针；SwiftUI rotationEffect 屏幕坐标系正值=顺时针，需取反
                     let rotation = -element.transform.rotation
@@ -538,7 +600,7 @@ struct CanvasView: View {
             if let element = selectedBackgroundElement,
                let comp = appState.composition {
                 let geometry = viewportGeometry(for: comp)
-                let frame = elementFrame(element, in: comp, geometry: geometry)
+                let frame = elementFrame(element, in: comp, geometry: geometry, at: appState.currentTime)
                 let settings = element.backgroundSettings ?? BackgroundElementSettings()
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
@@ -832,46 +894,31 @@ struct CanvasView: View {
     }
 
     /// 元素在视口中的框（画布坐标 → 视口，y 翻转；忽略旋转用于命中与框选）
-    private func elementFrame(_ element: CompositionElement, in comp: Composition?, geometry: ViewportGeometry) -> CGRect {
+    private func elementFrame(
+        _ element: CompositionElement,
+        in comp: Composition?,
+        geometry: ViewportGeometry,
+        at time: TimeInterval
+    ) -> CGRect {
         guard let comp else { return .zero }
-        // 分区背景的遮罩永远覆盖完整画布，且背景元素自身的 transform 不参与渲染。
-        // 因此交互框也必须忽略旧 region/position，和最终可见区域保持一致。
-        if case .background = element.kind,
-           (element.backgroundSettings ?? BackgroundElementSettings()).splitCount != .full {
-            let rect = comp.canvasRect
-            let width = rect.width * geometry.scale
-            let height = rect.height * geometry.scale
-            return CGRect(
-                x: geometry.offsetX,
-                y: geometry.offsetY,
-                width: width,
-                height: height
-            )
-        }
-        let size = elementContentSize(element, in: comp)
-        let w = size.width * element.transform.scale * geometry.scale
-        let h = size.height * element.transform.scale * geometry.scale
-        let cx = geometry.offsetX + (element.transform.position.x - geometry.rect.minX) * geometry.scale
-        let cy = geometry.offsetY + (geometry.rect.maxY - element.transform.position.y) * geometry.scale
-        return CGRect(x: cx - w / 2, y: cy - h / 2, width: w, height: h)
+        let size = elementContentSize(element, in: comp, at: time)
+        return ElementFrameGeometry.frame(
+            contentSize: size,
+            transform: element.transform,
+            contentRect: geometry.rect,
+            viewportScale: geometry.scale,
+            viewportOffset: CGPoint(x: geometry.offsetX, y: geometry.offsetY)
+        )
     }
 
-    /// 元素内容尺寸（clip 用素材尺寸，文字用排版估算，装饰/特效用画布比例估算）
-    private func elementContentSize(_ element: CompositionElement, in comp: Composition) -> CGSize {
-        if case .clip(let clipID) = element.kind,
-           let clip = appState.clips.first(where: { $0.id == clipID }) {
-            return CGSize(width: CGFloat(clip.width), height: CGFloat(clip.height))
-        }
-        if case .background = element.kind {
-            let region = element.backgroundSettings?.region ?? .full
-            let rect = region.rect(in: comp.canvasRect)
-            return rect.size
-        }
-        if case .text(let textID) = element.kind,
-           let text = comp.texts.first(where: { $0.id.uuidString == textID }) {
-            return TextLayout.measuredSize(for: text, maxWidth: comp.canvas.width)
-        }
-        return CGSize(width: comp.canvas.width * 0.3, height: comp.canvas.height * 0.3)
+    /// 选中框直接读取渲染器实际生成的内容矩形，避免 clip、文字、贴纸和特效
+    /// 各自估算一套尺寸。素材不可用时返回零框，等素材恢复后会随预览刷新。
+    private func elementContentSize(
+        _ element: CompositionElement,
+        in comp: Composition,
+        at time: TimeInterval
+    ) -> CGSize {
+        renderer.contentSize(for: element, in: comp, at: time) ?? .zero
     }
 
     // MARK: - 渲染

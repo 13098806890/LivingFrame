@@ -93,6 +93,37 @@ public struct CompositionRenderer {
         return true
     }
 
+    /// Returns the complete untransformed rectangle of the content rendered for
+    /// an element at the given time. The element transform is intentionally
+    /// neutralized so the editor can apply one shared transform/viewport mapping
+    /// to both the content and its selection frame.
+    public func contentSize(
+        for element: CompositionElement,
+        in composition: Composition,
+        at time: TimeInterval
+    ) -> CGSize? {
+        var neutralElement = element
+        neutralElement.transform = ElementTransform(
+            position: .zero,
+            scale: 1,
+            rotation: 0
+        )
+        guard let image = placedImage(
+            for: neutralElement,
+            at: time,
+            canvas: composition.canvasRect,
+            composition: composition
+        ) else {
+            return nil
+        }
+        let size = image.extent.standardized.size
+        guard size.width.isFinite, size.height.isFinite,
+              size.width >= 0, size.height >= 0 else {
+            return nil
+        }
+        return size
+    }
+
     // MARK: - 合成
 
     func renderCIImage(
@@ -317,8 +348,9 @@ public struct CompositionRenderer {
                 // 预览用缩略图（尺寸 < 素材实际像素）。不把源图放大回全尺寸——
                 // 放大插值会在人物边缘产生半透明残留像素（贴边时形成"阴影线"）。
                 // 改为把归一化因子并入元素缩放，源图始终一次缩放到位。
-                fixScale = clip.width > 0 && Int(frame.extent.width) > 0
-                    ? CGFloat(clip.width) / frame.extent.width
+                let targetWidth = CGFloat(max(clip.orientedWidth, 1))
+                fixScale = targetWidth > 0 && Int(frame.extent.width) > 0
+                    ? targetWidth / frame.extent.width
                     : 1
                 // 元素级背景图案垫在底层（先画背景，再叠加人物及其边缘/风格）
                 var content: CIImage
@@ -532,7 +564,10 @@ public struct CompositionRenderer {
         let fps = clip.fps
         guard fps.isFinite, fps > 0 else {
             if let frame = FrameCache.shared.cachedFrame(for: clip, index: playbackFrames[0]) {
-                return CIImage(cgImage: frame)
+                return rotatedClipImage(
+                    CIImage(cgImage: frame),
+                    quarterTurns: clip.normalizedRotationQuarterTurns
+                )
             }
             return nil
         }
@@ -553,7 +588,10 @@ public struct CompositionRenderer {
         let cycleFrameCount = max(endIndex - startIndex, 1)
         guard time.isFinite else {
             if let frame = FrameCache.shared.cachedFrame(for: clip, index: playbackFrames[startIndex]) {
-                return CIImage(cgImage: frame)
+                return rotatedClipImage(
+                    CIImage(cgImage: frame),
+                    quarterTurns: clip.normalizedRotationQuarterTurns
+                )
             }
             return nil
         }
@@ -572,7 +610,19 @@ public struct CompositionRenderer {
             frame = FrameCache.shared.cachedFrame(for: clip, index: index)
         }
         guard let frame else { return nil }
-        return CIImage(cgImage: frame)
+        return rotatedClipImage(CIImage(cgImage: frame), quarterTurns: clip.normalizedRotationQuarterTurns)
+    }
+
+    /// 素材详情页的旋转属于素材本身，因此在进入元素变换和描边处理前统一应用。
+    /// Core Image 的 y-up 坐标中，正 90° 对应界面里的顺时针旋转。
+    private func rotatedClipImage(_ image: CIImage, quarterTurns: Int) -> CIImage {
+        let turns = ((quarterTurns % 4) + 4) % 4
+        guard turns != 0 else { return image }
+        let rotated = image.transformed(by: CGAffineTransform(rotationAngle: CGFloat(turns) * .pi / 2))
+        return rotated.transformed(by: CGAffineTransform(
+            translationX: -rotated.extent.minX,
+            y: -rotated.extent.minY
+        ))
     }
 
     // MARK: - 边缘效果

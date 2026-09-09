@@ -53,27 +53,32 @@ public struct LivePhotoExporter {
         guard writer.canAdd(videoInput) else { throw ExportError.renderFailed }
         writer.add(videoInput)
 
-        // 配对标识：文件级 QuickTime 元数据（moov 层，无需 adaptor）
+        // 配对标识：文件级 QuickTime 元数据（moov 层，无需 adaptor）。
+        // 必须同时设置 keySpace、key 和 dataType，Photos 才能稳定识别。
         let identifierItem = AVMutableMetadataItem()
-        identifierItem.identifier = AVMetadataIdentifier.quickTimeMetadataContentIdentifier
+        identifierItem.key = "com.apple.quicktime.content.identifier" as NSString
+        identifierItem.keySpace = AVMetadataKeySpace.quickTimeMetadata
         identifierItem.value = assetID as NSString
+        identifierItem.dataType = "com.apple.metadata.datatype.UTF-8"
         writer.metadata = [identifierItem]
 
-        // 可选增强：定时元数据轨（部分系统需要从轨道读取标识；hint 创建失败则跳过，不阻塞导出）
-        var metadataInput: AVAssetWriterInput?
-        var metadataAdaptor: AVAssetWriterInputMetadataAdaptor?
-        if let formatHint = metadataFormatHint() {
-            let input = AVAssetWriterInput(
-                mediaType: .metadata,
-                outputSettings: nil,
-                sourceFormatHint: formatHint
-            )
-            metadataAdaptor = AVAssetWriterInputMetadataAdaptor(assetWriterInput: input)
-            if writer.canAdd(input) {
-                writer.add(input)
-                metadataInput = input
-            }
+        // Live Photo 必需的 still-image-time 定时元数据轨。
+        // 本实现的封面是第 0 帧，所以元数据样本也从第 0 帧开始。
+        guard let stillImageTimeHint = stillImageTimeFormatHint() else {
+            throw ExportError.renderFailed
         }
+        let stillImageTimeInput = AVAssetWriterInput(
+            mediaType: .metadata,
+            outputSettings: nil,
+            sourceFormatHint: stillImageTimeHint
+        )
+        guard writer.canAdd(stillImageTimeInput) else {
+            throw ExportError.renderFailed
+        }
+        writer.add(stillImageTimeInput)
+        let stillImageTimeAdaptor = AVAssetWriterInputMetadataAdaptor(
+            assetWriterInput: stillImageTimeInput
+        )
 
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: videoInput,
@@ -96,15 +101,20 @@ public struct LivePhotoExporter {
         }
         writer.startSession(atSourceTime: .zero)
 
-        // 写入定时元数据轨（若可用）
-        if let metadataInput, let metadataAdaptor {
-            let metadataGroup = AVTimedMetadataGroup(
-                items: [identifierItem],
-                timeRange: CMTimeRange(start: .zero, duration: CMTime(seconds: duration, preferredTimescale: 600))
-            )
-            metadataAdaptor.append(metadataGroup)
-            metadataInput.markAsFinished()
+        let stillImageTimeItem = AVMutableMetadataItem()
+        stillImageTimeItem.key = "com.apple.quicktime.still-image-time" as NSString
+        stillImageTimeItem.keySpace = AVMetadataKeySpace.quickTimeMetadata
+        stillImageTimeItem.value = NSNumber(value: 0)
+        stillImageTimeItem.dataType = "com.apple.metadata.datatype.int8"
+        let frameDuration = CMTime(value: 1, timescale: CMTimeScale(max(composition.fps, 1)))
+        let stillImageTimeGroup = AVTimedMetadataGroup(
+            items: [stillImageTimeItem],
+            timeRange: CMTimeRange(start: .zero, duration: frameDuration)
+        )
+        guard stillImageTimeAdaptor.append(stillImageTimeGroup) else {
+            throw ExportError.renderFailed
         }
+        stillImageTimeInput.markAsFinished()
 
         let renderer = CompositionRenderer(context: context)
         let rect = composition.canvasRect
@@ -193,22 +203,22 @@ public struct LivePhotoExporter {
         return Output(videoURL: url, coverData: coverData)
     }
 
-    /// QuickTime 元数据轨的格式描述 hint（metadata adaptor 必需）；失败返回 nil
-    private func metadataFormatHint() -> CMFormatDescription? {
-        let item = AVMutableMetadataItem()
-        item.identifier = AVMetadataIdentifier.quickTimeMetadataContentIdentifier
-        item.value = "" as NSString
+    /// still-image-time 元数据轨的格式描述 hint（metadata adaptor 必需）。
+    private func stillImageTimeFormatHint() -> CMFormatDescription? {
         let spec: [String: Any] = [
-            kCMMetadataFormatDescriptionMetadataSpecificationKey_Identifier as String: item.identifier as Any
+            kCMMetadataFormatDescriptionMetadataSpecificationKey_Identifier as String:
+                "mdta/com.apple.quicktime.still-image-time",
+            kCMMetadataFormatDescriptionMetadataSpecificationKey_DataType as String:
+                "com.apple.metadata.datatype.int8"
         ]
         var hint: CMFormatDescription?
         let status = CMMetadataFormatDescriptionCreateWithMetadataSpecifications(
             allocator: kCFAllocatorDefault,
-            metadataType: 0x6D647461, // 'mdta' QuickTime metadata
+            metadataType: kCMMetadataFormatType_Boxed,
             metadataSpecifications: [spec] as CFArray,
             formatDescriptionOut: &hint
         )
-        LogStore.log("LivePhotoExporter: metadata hint status=\(status) ok=\(hint != nil)")
+        LogStore.log("LivePhotoExporter: still-image-time hint status=\(status) ok=\(hint != nil)")
         return hint
     }
 
