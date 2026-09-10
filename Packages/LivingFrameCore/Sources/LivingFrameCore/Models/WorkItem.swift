@@ -169,4 +169,28 @@ public struct WorkItem: Codable, Identifiable, Equatable {
     }
 
     public var lastSavedAt: Date { updatedAt }
+
+    /// 草稿箱是全局入口，只展示最近更新的一份草稿。
+    /// 旧版本可能已经把草稿写在多个作品上，因此启动和保存时都使用这个规则
+    /// 清理较旧作品的 `draft` 字段；正式作品本身不会被删除或修改。
+    public static func retainingOnlyLatestDraft(in works: [WorkItem]) -> [WorkItem] {
+        var latestDraftID: UUID?
+        var latestDraftDate: Date?
+
+        for work in works {
+            guard let draft = work.draft else { continue }
+            if latestDraftDate == nil || draft.updatedAt >= latestDraftDate! {
+                latestDraftID = work.id
+                latestDraftDate = draft.updatedAt
+            }
+        }
+
+        guard let latestDraftID else { return works }
+        return works.map { work in
+            guard work.id != latestDraftID, work.draft != nil else { return work }
+            var cleaned = work
+            cleaned.draft = nil
+            return cleaned
+        }
+    }
 }

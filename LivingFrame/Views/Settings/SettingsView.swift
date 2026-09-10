@@ -62,7 +62,7 @@ struct SettingsView: View {
                         .tint(LF.header)
                     }
 
-                    SectionCard(title: "人物处理") {
+                    SectionCard(title: "人物素材") {
                         Picker("单个素材最长时长", selection: $appState.maxExtractionDuration) {
                             Text("3 秒").tag(3.0)
                             Text("5 秒（推荐）").tag(5.0)
@@ -72,21 +72,29 @@ struct SettingsView: View {
                         Text("短视频默认从开头提取；超过 1 分钟的视频会先让你选择开始和结束位置。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
-                    }
 
-                    SectionCard(title: "抠图") {
+                        Toggle("保留原始帧率和分辨率", isOn: $appState.preserveOriginalMediaQuality)
+                            .tint(LF.actionPrimary)
+                        Text("开启后按源素材实际帧率处理，并保留原始像素尺寸；处理帧率和处理分辨率预设将暂时不生效，处理时间和占用空间可能明显增加。")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+
                         Picker("处理分辨率", selection: $appState.maxDimension) {
                             Text("480p（最快）").tag(854.0)
                             Text("720p（快）").tag(1280.0)
                             Text("1080p（慢，更精细）").tag(1920.0)
                         }
+                        .disabled(appState.preserveOriginalMediaQuality)
                         Picker("处理帧率", selection: $appState.processingFPS) {
                             Text("10 fps（最快）").tag(10.0)
                             Text("15 fps（快）").tag(15.0)
                             Text("30 fps（流畅）").tag(30.0)
                             Text("60 fps（保留高帧率）").tag(60.0)
                         }
-                        Text("仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，抠图越精细，处理时间越长。")
+                        .disabled(appState.preserveOriginalMediaQuality)
+                        Text(appState.preserveOriginalMediaQuality
+                             ? "当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。"
+                             : "仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，人物素材越精细，处理时间越长。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                     }
@@ -98,7 +106,7 @@ struct SettingsView: View {
                             Text(appState.cacheSizeText)
                                 .foregroundStyle(LF.textSecondary)
                         }
-                        Text("清理临时文件不会删除任何素材（含文件夹内外的所有抠图结果）。")
+                        Text("清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                         Button(role: .destructive) {
@@ -149,7 +157,7 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Label("全部在设备端处理", systemImage: "lock.shield")
                                 .font(.subheadline.weight(.medium))
-                            Text("抠图、渲染、导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。")
+                            Text("人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。")
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
                         }
@@ -255,7 +263,11 @@ struct SettingsView: View {
             atPath: LogStore.logURL.path
         )[.size] as? Int) ?? 0
         let sizeText = ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
-        return "共 \(lines) 行 · \(sizeText)\n选择素材后会自动记录加载与抠图过程，导出后可直接分析。"
+        return String(
+            format: NSLocalizedString("日志摘要", comment: "Log summary"),
+            lines,
+            sizeText
+        )
     }
 
     private var appVersionText: String {

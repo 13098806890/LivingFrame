@@ -47,7 +47,9 @@ final class AppState: ObservableObject {
         }
         didSet {
             hasUnsavedChanges = composition != cleanCompositionSnapshot
-            if hasUnsavedChanges {
+            // 画布手势会在每个触摸采样点更新取景参数；撤销和自动保存都在手势结束时合并，
+            // 避免高频创建/取消保存任务拖慢主线程。
+            if hasUnsavedChanges, !isCoalescingCanvasHistory {
                 scheduleDraftAutosave()
             } else {
                 autosaveTask?.cancel()
@@ -185,6 +187,11 @@ final class AppState: ObservableObject {
     @Published var processingFPS: Double = 30 {
         didSet { UserDefaults.standard.set(processingFPS, forKey: settingProcessingFPSKey) }
     }
+    /// 是否在人物提取时保留源素材的实际帧率和分辨率。
+    /// 开启后会覆盖处理帧率与处理分辨率预设，但仍受视频起止时间限制。
+    @Published var preserveOriginalMediaQuality = false {
+        didSet { UserDefaults.standard.set(preserveOriginalMediaQuality, forKey: settingPreserveOriginalMediaQualityKey) }
+    }
 
     /// 当前工程引用的动态素材中，最高的实际提取帧率。
     /// 静态素材只有一帧，不参与导出帧率上限计算。
@@ -225,6 +232,7 @@ final class AppState: ObservableObject {
     private let settingExportFPSKey = "setting.exportFPS"
     private let settingMaxDimensionKey = "setting.maxDimension"
     private let settingProcessingFPSKey = "setting.processingFPS"
+    private let settingPreserveOriginalMediaQualityKey = "setting.preserveOriginalMediaQuality"
     private let settingMaxExtractionDurationKey = "setting.maxExtractionDuration"
     private let settingAppThemeKey = "setting.appTheme"
     private let canvasPreferenceAspectKey = "canvasPreference.aspect"
@@ -248,7 +256,17 @@ final class AppState: ObservableObject {
         Task { [weak self] in
             let loaded = await persistence.load()
             guard let self, !Task.isCancelled else { return }
-            self.works = loaded
+            let normalized = WorkItem.retainingOnlyLatestDraft(in: loaded)
+            if normalized != loaded {
+                let changed = normalized.filter { normalizedWork in
+                    loaded.first(where: { $0.id == normalizedWork.id }) != normalizedWork
+                }
+                let cleaned = await persistence.saveAndLoad(changed)
+                self.works = cleaned.0 ? cleaned.1 : normalized
+                LogStore.log("work.draft normalized latestOnly=\(cleaned.0)")
+            } else {
+                self.works = loaded
+            }
             self.isLoadingWorks = false
         }
         // 恢复持久化的素材与文件夹
@@ -276,6 +294,9 @@ final class AppState: ObservableObject {
         }
         if defaults.object(forKey: settingProcessingFPSKey) != nil {
             processingFPS = defaults.double(forKey: settingProcessingFPSKey)
+        }
+        if defaults.object(forKey: settingPreserveOriginalMediaQualityKey) != nil {
+            preserveOriginalMediaQuality = defaults.bool(forKey: settingPreserveOriginalMediaQualityKey)
         }
         if defaults.object(forKey: settingMaxExtractionDurationKey) != nil {
             maxExtractionDuration = Self.clampedExtractionDuration(
@@ -329,7 +350,6 @@ final class AppState: ObservableObject {
                   let self,
                   self.autosaveGeneration == generation,
                   self.hasUnsavedChanges,
-                  self.editingWorkID != nil,
                   self.composition == snapshot else { return }
 
             self.autosaveError = nil
@@ -381,8 +401,8 @@ final class AppState: ObservableObject {
             let clip = try await MediaProcessingService.extractVideo(
                 at: url,
                 name: name,
-                maxDimension: CGFloat(maxDimension),
-                maxFPS: processingFPS,
+                maxDimension: preserveOriginalMediaQuality ? .greatestFiniteMagnitude : CGFloat(maxDimension),
+                maxFPS: preserveOriginalMediaQuality ? .greatestFiniteMagnitude : processingFPS,
                 startTime: sourceStartTime,
                 maxDuration: sourceEndTime.map { max($0 - sourceStartTime, 0.1) } ?? maxExtractionDuration,
                 stillOrientation: stillOrientation
@@ -416,7 +436,7 @@ final class AppState: ObservableObject {
             let clip = try await MediaProcessingService.extractPhoto(
                 from: cgImage,
                 name: name,
-                maxDimension: CGFloat(maxDimension)
+                maxDimension: preserveOriginalMediaQuality ? .greatestFiniteMagnitude : CGFloat(maxDimension)
             )
             addClip(clip)
             isSegmenting = false
@@ -737,36 +757,56 @@ final class AppState: ObservableObject {
         return id
     }
 
-    /// 添加一个拼接媒体元素。元素默认位于所有现有元素下方，并覆盖当前工程时长。
+    /// 添加一个背景媒体元素。单张素材也使用拼接组标识，保证重新进入时走统一编辑器。
     func addBackgroundElement(mediaID: String) {
-        addBackgroundElements(mediaIDs: [mediaID])
+        _ = createBackgroundElements(mediaIDs: [mediaID], collageGroupID: UUID())
     }
 
-    /// 一次添加多个拼接素材，并按选择数量自动分配到整幅、2 区或 4 区布局。
+    /// 一次添加多个拼接素材。拼接布局由拼接器先行确定，新增元素初始不带分割线。
     /// 这里仍复用背景元素模型，但对用户表现为独立的照片/动态素材拼接流程。
-    func addBackgroundElements(mediaIDs: [String]) {
-        guard var comp = composition ?? defaultComposition() else { return }
+    @discardableResult
+    func addBackgroundElements(mediaIDs: [String]) -> [UUID] {
+        createBackgroundElements(mediaIDs: mediaIDs, collageGroupID: UUID())
+    }
+
+    /// 向已有拼接组追加素材；追加素材必须复用原组标识，才能保持统一的拼接入口。
+    @discardableResult
+    func addBackgroundElementsToCollage(
+        mediaIDs: [String],
+        groupID: UUID
+    ) -> [UUID] {
+        createBackgroundElements(mediaIDs: mediaIDs, collageGroupID: groupID)
+    }
+
+    /// 创建背景元素的底层实现。拼接入口为整批元素传入同一个标识；nil 仅用于兼容旧数据。
+    @discardableResult
+    private func createBackgroundElements(
+        mediaIDs: [String],
+        collageGroupID: UUID?
+    ) -> [UUID] {
+        guard var comp = composition ?? defaultComposition() else { return [] }
         let mediaItems = mediaIDs.compactMap { mediaID in
             backgroundMedia.first { $0.id == mediaID }
         }
-        guard !mediaItems.isEmpty else { return }
+        guard !mediaItems.isEmpty else { return [] }
 
-        let splitCount: BackgroundSplitCount = switch mediaItems.count {
-        case 1: .full
-        case 2: .two
-        default: .four
-        }
-        let baseDuration = max(comp.duration, 1)
+        // 不根据选择数量猜测布局。用户可以先添加分割线，再选择任意数量的图片填入区域。
+        let splitCount: BackgroundSplitCount = .full
+        // 拼接中的每个背景都要覆盖同一个工程时长；如果直接使用各自的
+        // 动态素材时长，预览播放到较短素材结束后会出现“少一块”的假象。
+        let collageDuration = max(
+            max(comp.duration, 1),
+            mediaItems.map { max($0.duration, 0.1) }.max() ?? 0.1
+        )
         let minimumZIndex = minimumElementZIndex(in: comp)
         let elements = mediaItems.enumerated().map { index, media in
             let settings = BackgroundElementSettings(
                 splitCount: splitCount,
-                selectedPartition: min(index, splitCount == .two ? 1 : 3)
+                selectedPartition: 0,
+                assignedPartitions: []
             )
             let regionRect = backgroundRegionRect(settings.region, in: comp.canvasRect)
-            let duration = media.isAnimated
-                ? max(media.duration, 0.1)
-                : baseDuration
+            let sourceDuration = max(media.duration, media.isAnimated ? 0.1 : 0.001)
 
             return CompositionElement(
                 kind: .background(backgroundID: media.id),
@@ -780,10 +820,11 @@ final class AppState: ObservableObject {
                 ),
                 zIndex: minimumZIndex - index,
                 startTime: 0,
-                endTime: duration,
+                endTime: collageDuration,
                 sourceStartTime: 0,
-                sourceEndTime: media.isAnimated ? max(media.duration, 0.1) : duration,
-                backgroundSettings: settings
+                sourceEndTime: sourceDuration,
+                backgroundSettings: settings,
+                collageGroupID: collageGroupID
             )
         }
 
@@ -793,6 +834,48 @@ final class AppState: ObservableObject {
             selectElement(firstElement.id)
         }
         recomputeDuration()
+        return elements.map(\.id)
+    }
+
+    /// 把旧工程中的单张背景纳入统一的拼接组；已有拼接组则保持原标识。
+    @discardableResult
+    func ensureCollageGroup(_ elementIDs: [UUID]) -> UUID? {
+        guard !elementIDs.isEmpty, var comp = composition else { return nil }
+        let ids = Set(elementIDs)
+        let groupID = comp.elements.first {
+            ids.contains($0.id) && $0.collageGroupID != nil
+        }?.collageGroupID ?? UUID()
+        var didChange = false
+        for index in comp.elements.indices {
+            guard ids.contains(comp.elements[index].id),
+                  case .background = comp.elements[index].kind else { continue }
+            if comp.elements[index].collageGroupID != groupID {
+                comp.elements[index].collageGroupID = groupID
+                didChange = true
+            }
+        }
+        if didChange {
+            composition = comp
+        }
+        return groupID
+    }
+
+    /// 取消尚未完成的拼接编辑时移除本次临时添加的元素，不产生额外撤销记录。
+    func removeTemporaryCollageElements(_ elementIDs: [UUID]) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        comp.elements.removeAll { ids.contains($0.id) }
+        isApplyingHistory = true
+        composition = comp
+        recomputeDuration()
+        isApplyingHistory = false
+        selectedElementIDs.subtract(ids)
+        if let lastSelectedElementID, ids.contains(lastSelectedElementID) {
+            self.lastSelectedElementID = nil
+        }
+        if selectedElementIDs.isEmpty {
+            selectedBackground = true
+        }
     }
 
     func setBackgroundRegion(_ elementID: UUID, _ region: BackgroundRegion) {
@@ -809,6 +892,55 @@ final class AppState: ObservableObject {
         clipStyleVersion &+= 1
     }
 
+    private func dividerCount(for count: BackgroundSplitCount) -> Int {
+        switch count {
+        case .full: 0
+        case .two: 1
+        case .four: 2
+        }
+    }
+
+    private func resizeDividerLines(
+        _ settings: inout BackgroundElementSettings,
+        to count: Int
+    ) {
+        let target = max(count, 0)
+        if settings.dividerLines.count > target {
+            settings.dividerLines.removeLast(settings.dividerLines.count - target)
+        } else {
+            while settings.dividerLines.count < target {
+                let nextAngle = settings.dividerLines.last.map { $0.angle + 90 } ?? settings.dividerAngle
+                settings.dividerLines.append(BackgroundDivider(angle: nextAngle))
+            }
+        }
+        settings.synchronizeLegacySplitCount()
+        if let first = settings.dividerLines.first {
+            settings.dividerAngle = first.angle
+            settings.primaryDividerOffset = first.offset
+            settings.primaryDividerPivot = first.pivot
+        }
+        if settings.dividerLines.count > 1 {
+            let second = settings.dividerLines[1]
+            settings.secondaryDividerAngle = second.angle
+            settings.secondaryDividerOffset = second.offset
+            settings.secondaryDividerPivot = second.pivot
+        }
+    }
+
+    private func normalizeAssignedPartitions(
+        _ settings: inout BackgroundElementSettings,
+        in canvasRect: CGRect
+    ) {
+        guard !settings.assignedPartitions.isEmpty else { return }
+        let regionCount = BackgroundPartitionGeometry.regionCount(for: settings, in: canvasRect)
+        let valid = settings.resolvedAssignedPartitions.filter { $0 < regionCount }
+        let fallback = min(max(settings.selectedPartition, 0), max(regionCount - 1, 0))
+        settings.assignedPartitions = valid.isEmpty ? [fallback] : Array(Set(valid)).sorted()
+        if !settings.assignedPartitions.contains(settings.selectedPartition) {
+            settings.selectedPartition = settings.assignedPartitions[0]
+        }
+    }
+
     /// 设置分割数量；4 区会自动使用两条互相垂直、可独立平移的分割线。
     func setBackgroundSplitCount(_ elementID: UUID, _ count: BackgroundSplitCount) {
         guard var comp = composition,
@@ -819,10 +951,13 @@ final class AppState: ObservableObject {
         // 2/4 分区的遮罩定义在完整画布上。清除旧的半区/四分之一区域值，
         // 让渲染、选框与命中测试都以同一个画布坐标系工作。
         settings.region = .full
-        if count != .full {
-            let maximum = count == .two ? 1 : 3
-            settings.selectedPartition = min(max(settings.selectedPartition, 0), maximum)
-        }
+        resizeDividerLines(&settings, to: dividerCount(for: count))
+        settings.selectedPartition = min(max(settings.selectedPartition, 0),
+                                         max(BackgroundPartitionGeometry.regionCount(
+                                            for: settings,
+                                            in: comp.canvasRect
+                                         ) - 1, 0))
+        normalizeAssignedPartitions(&settings, in: comp.canvasRect)
         comp.elements[index].backgroundSettings = settings
         comp.elements[index].transform.position = CGPoint(
             x: comp.canvasRect.midX,
@@ -832,31 +967,504 @@ final class AppState: ObservableObject {
         clipStyleVersion &+= 1
     }
 
+    /// 将一批临时拼接元素同步到同一种分区布局。
+    /// 拼接编辑器把“分区”视为整组素材的属性，因此不让每个背景元素各自漂移。
+    func setCollageSplitCount(_ elementIDs: [UUID], _ count: BackgroundSplitCount) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        var changed = false
+
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind else { continue }
+            var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+            settings.region = .full
+            resizeDividerLines(&settings, to: dividerCount(for: count))
+            settings.selectedPartition = min(max(settings.selectedPartition, 0),
+                                             max(BackgroundPartitionGeometry.regionCount(
+                                                for: settings,
+                                                in: comp.canvasRect
+                                             ) - 1, 0))
+            normalizeAssignedPartitions(&settings, in: comp.canvasRect)
+            comp.elements[index].backgroundSettings = settings
+            comp.elements[index].transform.position = CGPoint(
+                x: comp.canvasRect.midX,
+                y: comp.canvasRect.midY
+            )
+            changed = true
+        }
+
+        guard changed else { return }
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 在拼接器中新增一条分割线。区域数量由几何结果自动决定，不再由按钮直接指定。
+    func addCollageDividerLine(_ elementIDs: [UUID]) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        var changed = false
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind else { continue }
+            var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+            guard !settings.isDividerLayoutLocked,
+                  settings.dividerLines.count < BackgroundPartitionGeometry.maximumDividerCount else { continue }
+            let angle = settings.dividerLines.last.map { $0.angle + 90 } ?? 90
+            settings.dividerLines.append(BackgroundDivider(angle: angle))
+            resizeDividerLines(&settings, to: settings.dividerLines.count)
+            comp.elements[index].backgroundSettings = settings
+            changed = true
+        }
+        guard changed else { return }
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 在拼接器中删除指定分割线。
+    func removeCollageDividerLine(_ elementIDs: [UUID], dividerIndex: Int) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        var changed = false
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind else { continue }
+            var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+            guard !settings.isDividerLayoutLocked,
+                  settings.dividerLines.indices.contains(dividerIndex) else { continue }
+            settings.dividerLines.remove(at: dividerIndex)
+            resizeDividerLines(&settings, to: settings.dividerLines.count)
+            settings.selectedPartition = min(
+                max(settings.selectedPartition, 0),
+                max(BackgroundPartitionGeometry.regionCount(for: settings, in: comp.canvasRect) - 1, 0)
+            )
+            normalizeAssignedPartitions(&settings, in: comp.canvasRect)
+            comp.elements[index].backgroundSettings = settings
+            changed = true
+        }
+        guard changed else { return }
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 把拼接器在空画布阶段编辑好的分割线布局应用到新加入的背景元素。
+    /// 图片自己的取景、旋转和边缘样式不受影响；分割线和当前分区属于拼接布局。
+    func applyCollageLayout(
+        _ source: BackgroundElementSettings,
+        to elementIDs: [UUID]
+    ) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        var changed = false
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind else { continue }
+            var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+            settings.region = .full
+            settings.splitCount = source.splitCount
+            settings.dividerAngle = source.dividerAngle
+            settings.secondaryDividerAngle = source.secondaryDividerAngle
+            settings.primaryDividerOffset = source.primaryDividerOffset
+            settings.secondaryDividerOffset = source.secondaryDividerOffset
+            settings.primaryDividerPivot = source.primaryDividerPivot
+            settings.secondaryDividerPivot = source.secondaryDividerPivot
+            settings.dividerLines = source.dividerLines
+            settings.isDividerLayoutLocked = source.isDividerLayoutLocked
+            settings.synchronizeLegacySplitCount()
+            let selectedPartition = min(
+                max(source.selectedPartition, 0),
+                max(BackgroundPartitionGeometry.regionCount(for: settings, in: comp.canvasRect) - 1, 0)
+            )
+            settings.selectedPartition = selectedPartition
+            // 新加入的素材不应自动占用区域；由拼接编辑器中的显式操作决定归属。
+            settings.assignedPartitions = []
+            comp.elements[index].backgroundSettings = settings
+            comp.elements[index].transform.position = CGPoint(
+                x: comp.canvasRect.midX,
+                y: comp.canvasRect.midY
+            )
+            changed = true
+        }
+        guard changed else { return }
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 拼接器的分割线属于整组布局，而不是某一张背景图片。
+    func setCollageDividerAngle(_ elementIDs: [UUID], _ angle: CGFloat) {
+        setCollageDividerAngle(elementIDs, dividerIndex: 0, angle)
+    }
+
+    /// 设置拼接器的分割线布局是否固定；固定只影响拼接器的分割线编辑入口，
+    /// 不影响素材在区域内的移动、缩放和替换。
+    func setCollageDividerLayoutLocked(_ elementIDs: [UUID], _ locked: Bool) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        var changed = false
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind else { continue }
+            var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+            guard settings.isDividerLayoutLocked != locked else { continue }
+            settings.isDividerLayoutLocked = locked
+            comp.elements[index].backgroundSettings = settings
+            changed = true
+        }
+        guard changed else { return }
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 设置拼接组中指定分割线的独立角度；旋转中心保持在画布中的原位置。
+    func setCollageDividerAngle(
+        _ elementIDs: [UUID],
+        dividerIndex: Int,
+        _ angle: CGFloat
+    ) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        let snapped = snappedBackgroundAngle(angle)
+        var changed = false
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind else { continue }
+            var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+            guard BackgroundPartitionGeometry.angle(for: dividerIndex, settings: settings) != snapped else { continue }
+            setDividerAnglePreservingPivot(
+                &settings,
+                dividerIndex: dividerIndex,
+                angle: snapped,
+                in: comp.canvasRect
+            )
+            comp.elements[index].backgroundSettings = settings
+            changed = true
+        }
+        guard changed else { return }
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 同步拼接组中指定分割线的旋转中心；中心点始终约束在对应分割线上。
+    func setCollageDividerPivot(
+        _ elementIDs: [UUID],
+        dividerIndex: Int,
+        _ pivot: CGPoint
+    ) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        var changed = false
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind else { continue }
+            var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+            let normalizedPivot = constrainedDividerPivot(
+                pivot,
+                dividerIndex: dividerIndex,
+                settings: settings,
+                in: comp.canvasRect
+            )
+            let currentPivot: CGPoint
+            switch dividerIndex {
+            case 0:
+                currentPivot = settings.primaryDividerPivot
+            case 1:
+                currentPivot = settings.secondaryDividerPivot
+            default:
+                currentPivot = settings.dividerLines.indices.contains(dividerIndex)
+                    ? settings.dividerLines[dividerIndex].pivot
+                    : CGPoint(x: 0.5, y: 0.5)
+            }
+            guard currentPivot != normalizedPivot else { continue }
+            if dividerIndex == 0 {
+                settings.primaryDividerPivot = normalizedPivot
+            } else if dividerIndex == 1 {
+                settings.secondaryDividerPivot = normalizedPivot
+            }
+            if settings.dividerLines.indices.contains(dividerIndex) {
+                settings.dividerLines[dividerIndex].pivot = normalizedPivot
+            }
+            comp.elements[index].backgroundSettings = settings
+            changed = true
+        }
+        guard changed else { return }
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 同步拼接器的分割线位置到所有背景元素。
+    func setCollageDividerOffset(
+        _ elementIDs: [UUID],
+        dividerIndex: Int,
+        offset: CGFloat
+    ) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        let value = BackgroundDividerGeometry.clampedOffset(offset)
+        var changed = false
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind else { continue }
+            var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+            guard BackgroundDividerGeometry.offset(
+                for: dividerIndex,
+                settings: settings
+            ) != value else { continue }
+            setDividerOffsetPreservingPivot(
+                &settings,
+                dividerIndex: dividerIndex,
+                offset: value,
+                in: comp.canvasRect
+            )
+            settings.selectedPartition = min(
+                max(settings.selectedPartition, 0),
+                max(BackgroundPartitionGeometry.regionCount(for: settings, in: comp.canvasRect) - 1, 0)
+            )
+            comp.elements[index].backgroundSettings = settings
+            changed = true
+        }
+        guard changed else { return }
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 打开拼接器时将旧数据收敛为一套组级分割线配置；每张图片仍保留自己的区域和取景。
+    func normalizeCollageLayout(_ elementIDs: [UUID]) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        guard let template = comp.elements.first(where: {
+            ids.contains($0.id) && $0.backgroundSettings != nil
+        })?.backgroundSettings else { return }
+
+        var changed = false
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind else { continue }
+            let settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+            let splitCount = template.splitCount
+            let selectedPartition = min(
+                max(settings.selectedPartition, 0),
+                max(BackgroundPartitionGeometry.regionCount(for: template, in: comp.canvasRect) - 1, 0)
+            )
+            let regionCount = BackgroundPartitionGeometry.regionCount(
+                for: template,
+                in: comp.canvasRect
+            )
+            let assignedPartitions = settings.resolvedAssignedPartitions
+                .filter { $0 < regionCount }
+            let normalized = BackgroundElementSettings(
+                region: .full,
+                edgeStyle: settings.edgeStyle,
+                cropScale: settings.cropScale,
+                cropOffset: settings.cropOffset,
+                splitCount: splitCount,
+                dividerAngle: template.dividerAngle,
+                secondaryDividerAngle: template.secondaryDividerAngle,
+                primaryDividerOffset: template.primaryDividerOffset,
+                secondaryDividerOffset: template.secondaryDividerOffset,
+                primaryDividerPivot: template.primaryDividerPivot,
+                secondaryDividerPivot: template.secondaryDividerPivot,
+                selectedPartition: splitCount == .full ? 0 : selectedPartition,
+                assignedPartitions: splitCount == .full
+                    ? (settings.assignedPartitions.isEmpty ? [] : [0])
+                    : assignedPartitions,
+                rotationQuarterTurns: settings.rotationQuarterTurns,
+                dividerLines: template.dividerLines,
+                isDividerLayoutLocked: template.isDividerLayoutLocked
+            )
+            if settings != normalized {
+                comp.elements[index].backgroundSettings = normalized
+                changed = true
+            }
+            comp.elements[index].transform.position = CGPoint(
+                x: comp.canvasRect.midX,
+                y: comp.canvasRect.midY
+            )
+        }
+        guard changed else { return }
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 兼容早期创建的拼接工程：所有背景应覆盖整个工程时长，动态素材在其中循环，
+    /// 否则预览播放到较短素材的尾部时会错误地少掉一个分区。
+    func normalizeCollageBackgroundTiming(_ elementIDs: [UUID]) {
+        guard !elementIDs.isEmpty,
+              let duration = composition?.duration,
+              duration > 0,
+              var comp = composition else { return }
+        let ids = Set(elementIDs)
+        var changed = false
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind,
+                  comp.elements[index].endTime < duration else { continue }
+            comp.elements[index].endTime = duration
+            changed = true
+        }
+        guard changed else { return }
+        composition = comp
+    }
+
+    /// 设置第一条分割线角度，并在常用角度附近自动磁吸。
+    func setBackgroundDividerLayoutLocked(_ elementID: UUID, _ locked: Bool) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        guard settings.isDividerLayoutLocked != locked else { return }
+        settings.isDividerLayoutLocked = locked
+        comp.elements[index].backgroundSettings = settings
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 在单张素材编辑器中新增一条分割线，和拼接编辑器共享同一上限与几何规则。
+    func addBackgroundDividerLine(_ elementID: UUID) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        guard !settings.isDividerLayoutLocked,
+              settings.dividerLines.count < BackgroundPartitionGeometry.maximumDividerCount else { return }
+        let angle = settings.dividerLines.last.map { $0.angle + 90 } ?? 90
+        settings.dividerLines.append(BackgroundDivider(angle: angle))
+        resizeDividerLines(&settings, to: settings.dividerLines.count)
+        comp.elements[index].backgroundSettings = settings
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 在单张素材编辑器中删除一条分割线。
+    func removeBackgroundDividerLine(_ elementID: UUID, dividerIndex: Int) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        guard !settings.isDividerLayoutLocked,
+              settings.dividerLines.indices.contains(dividerIndex) else { return }
+        settings.dividerLines.remove(at: dividerIndex)
+        resizeDividerLines(&settings, to: settings.dividerLines.count)
+        settings.selectedPartition = min(
+            max(settings.selectedPartition, 0),
+            max(BackgroundPartitionGeometry.regionCount(for: settings, in: comp.canvasRect) - 1, 0)
+        )
+        comp.elements[index].backgroundSettings = settings
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
     /// 设置第一条分割线角度，并在常用角度附近自动磁吸。
     func setBackgroundDividerAngle(_ elementID: UUID, _ angle: CGFloat) {
-        updateBackgroundElement(elementID) {
-            $0.dividerAngle = snappedBackgroundAngle(angle)
+        setBackgroundDividerAngle(elementID, dividerIndex: 0, angle)
+    }
+
+    /// 设置指定分割线角度，并在常用角度附近自动磁吸。
+    func setBackgroundDividerAngle(
+        _ elementID: UUID,
+        dividerIndex: Int,
+        _ angle: CGFloat
+    ) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        let snapped = snappedBackgroundAngle(angle)
+        guard BackgroundPartitionGeometry.angle(for: dividerIndex, settings: settings) != snapped else { return }
+        setDividerAnglePreservingPivot(
+            &settings,
+            dividerIndex: dividerIndex,
+            angle: snapped,
+            in: comp.canvasRect
+        )
+        comp.elements[index].backgroundSettings = settings
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 调整单张背景指定分割线的旋转中心；中心点始终约束在对应分割线上。
+    func setBackgroundDividerPivot(
+        _ elementID: UUID,
+        dividerIndex: Int,
+        _ pivot: CGPoint
+    ) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        let normalizedPivot = constrainedDividerPivot(
+            pivot,
+            dividerIndex: dividerIndex,
+            settings: settings,
+            in: comp.canvasRect
+        )
+        let currentPivot = settings.dividerLines.indices.contains(dividerIndex)
+            ? settings.dividerLines[dividerIndex].pivot
+            : (dividerIndex == 0 ? settings.primaryDividerPivot : settings.secondaryDividerPivot)
+        guard currentPivot != normalizedPivot else { return }
+        if dividerIndex == 0 {
+            settings.primaryDividerPivot = normalizedPivot
+        } else {
+            settings.secondaryDividerPivot = normalizedPivot
         }
+        if settings.dividerLines.indices.contains(dividerIndex) {
+            settings.dividerLines[dividerIndex].pivot = normalizedPivot
+        }
+        comp.elements[index].backgroundSettings = settings
+        composition = comp
+        clipStyleVersion &+= 1
     }
 
     /// 沿自身法线平移一条背景分割线。offset 是相对当前画布可移动范围的比例。
     func setBackgroundDividerOffset(_ elementID: UUID, dividerIndex: Int, offset: CGFloat) {
-        updateBackgroundElement(elementID) {
-            let value = BackgroundDividerGeometry.clampedOffset(offset)
-            if dividerIndex == 0 {
-                $0.primaryDividerOffset = value
-            } else {
-                $0.secondaryDividerOffset = value
-            }
-        }
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        let value = BackgroundDividerGeometry.clampedOffset(offset)
+        let current = BackgroundDividerGeometry.offset(for: dividerIndex, settings: settings)
+        guard current != value else { return }
+        setDividerOffsetPreservingPivot(
+            &settings,
+            dividerIndex: dividerIndex,
+            offset: value,
+            in: comp.canvasRect
+        )
+        comp.elements[index].backgroundSettings = settings
+        composition = comp
+        clipStyleVersion &+= 1
     }
 
     /// 选择中心分割线切出的区域。
     func setBackgroundPartition(_ elementID: UUID, _ partition: Int) {
-        updateBackgroundElement(elementID) {
-            let maximum = $0.splitCount == .four ? 3 : 1
-            $0.selectedPartition = min(max(partition, 0), maximum)
+        setBackgroundPartitions(elementID, [partition])
+    }
+
+    /// 设置一个素材实例覆盖的多个区域；它们共享同一套取景参数。
+    func setBackgroundPartitions(_ elementID: UUID, _ partitions: [Int]) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        let regionCount = BackgroundPartitionGeometry.regionCount(for: settings, in: comp.canvasRect)
+        let valid = Array(Set(partitions.filter { $0 >= 0 && $0 < regionCount })).sorted()
+        guard !valid.isEmpty else { return }
+        settings.assignedPartitions = valid
+        settings.selectedPartition = valid[0]
+        comp.elements[index].backgroundSettings = settings
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 在当前素材实例上增减一个区域；允许暂时不分配区域，方便用户取消单区域素材。
+    func toggleBackgroundPartition(_ elementID: UUID, _ partition: Int) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind else { return }
+        var settings = comp.elements[index].backgroundSettings ?? BackgroundElementSettings()
+        let regionCount = BackgroundPartitionGeometry.regionCount(for: settings, in: comp.canvasRect)
+        guard partition >= 0, partition < regionCount else { return }
+        var assigned = settings.resolvedAssignedPartitions
+        if assigned.contains(partition) {
+            assigned.removeAll { $0 == partition }
+        } else {
+            assigned.append(partition)
+            assigned.sort()
         }
+        settings.assignedPartitions = assigned
+        settings.selectedPartition = partition
+        comp.elements[index].backgroundSettings = settings
+        composition = comp
+        clipStyleVersion &+= 1
     }
 
     func setBackgroundEdgeStyle(_ elementID: UUID, _ style: BackgroundEdgeStyle) {
@@ -911,7 +1519,12 @@ final class AppState: ObservableObject {
     }
 
     func setBackgroundCropScale(_ elementID: UUID, _ scale: CGFloat) {
-        updateBackgroundElement(elementID) { $0.cropScale = min(max(scale, 1), 4) }
+        updateBackgroundElement(elementID) {
+            $0.cropScale = min(
+                max(scale, BackgroundElementSettings.minimumCropScale),
+                BackgroundElementSettings.maximumCropScale
+            )
+        }
     }
 
     func setBackgroundCropOffset(_ elementID: UUID, _ offset: CGPoint) {
@@ -942,11 +1555,150 @@ final class AppState: ObservableObject {
         clipStyleVersion &+= 1
     }
 
+    private func setDividerAnglePreservingPivot(
+        _ settings: inout BackgroundElementSettings,
+        dividerIndex: Int,
+        angle: CGFloat,
+        in rect: CGRect
+    ) {
+        let oldSettings = settings
+        let oldPivot = BackgroundPartitionGeometry.pivot(
+            for: dividerIndex,
+            in: rect,
+            settings: oldSettings,
+            coordinateSpace: .coreImage
+        )
+        if dividerIndex == 0 {
+            settings.dividerAngle = angle
+        } else if dividerIndex == 1 {
+            settings.secondaryDividerAngle = angle
+        }
+        if settings.dividerLines.indices.contains(dividerIndex) {
+            settings.dividerLines[dividerIndex].angle = angle
+        }
+
+        let newNormal = BackgroundPartitionGeometry.normal(
+            for: dividerIndex,
+            settings: settings,
+            coordinateSpace: .coreImage
+        )
+        let newOffset = BackgroundDividerGeometry.offset(
+            keeping: oldPivot,
+            normal: newNormal,
+            in: rect
+        )
+        if dividerIndex == 0 {
+            settings.primaryDividerOffset = newOffset
+        } else if dividerIndex == 1 {
+            settings.secondaryDividerOffset = newOffset
+        }
+        let normalizedPivot = BackgroundPartitionGeometry.normalizedPivot(
+            at: oldPivot,
+            in: rect,
+            coordinateSpace: .coreImage
+        )
+        if dividerIndex == 0 {
+            settings.primaryDividerPivot = normalizedPivot
+        } else if dividerIndex == 1 {
+            settings.secondaryDividerPivot = normalizedPivot
+        }
+        if settings.dividerLines.indices.contains(dividerIndex) {
+            settings.dividerLines[dividerIndex].offset = newOffset
+            settings.dividerLines[dividerIndex].pivot = normalizedPivot
+        }
+    }
+
+    private func setDividerOffsetPreservingPivot(
+        _ settings: inout BackgroundElementSettings,
+        dividerIndex: Int,
+        offset: CGFloat,
+        in rect: CGRect
+    ) {
+        let oldSettings = settings
+        let oldPivot = BackgroundPartitionGeometry.pivot(
+            for: dividerIndex,
+            in: rect,
+            settings: oldSettings,
+            coordinateSpace: .coreImage
+        )
+        if dividerIndex == 0 {
+            settings.primaryDividerOffset = BackgroundDividerGeometry.clampedOffset(offset)
+        } else if dividerIndex == 1 {
+            settings.secondaryDividerOffset = BackgroundDividerGeometry.clampedOffset(offset)
+        }
+        if settings.dividerLines.indices.contains(dividerIndex) {
+            settings.dividerLines[dividerIndex].offset = BackgroundDividerGeometry.clampedOffset(offset)
+        }
+        let normal = BackgroundPartitionGeometry.normal(
+            for: dividerIndex,
+            settings: settings,
+            coordinateSpace: .coreImage
+        )
+        let oldDistance = BackgroundDividerGeometry.offset(for: dividerIndex, settings: oldSettings)
+            * BackgroundDividerGeometry.extent(in: rect, normal: normal)
+        let newDistance = BackgroundDividerGeometry.offset(for: dividerIndex, settings: settings)
+            * BackgroundDividerGeometry.extent(in: rect, normal: normal)
+        let translatedPivot = CGPoint(
+            x: oldPivot.x + normal.x * (newDistance - oldDistance),
+            y: oldPivot.y + normal.y * (newDistance - oldDistance)
+        )
+        let constrainedPivot = BackgroundPartitionGeometry.projectedPivot(
+            at: translatedPivot,
+            for: dividerIndex,
+            settings: settings,
+            in: rect,
+            coordinateSpace: .coreImage
+        )
+        let normalizedPivot = BackgroundPartitionGeometry.normalizedPivot(
+            at: constrainedPivot,
+            in: rect,
+            coordinateSpace: .coreImage
+        )
+        if dividerIndex == 0 {
+            settings.primaryDividerPivot = normalizedPivot
+        } else if dividerIndex == 1 {
+            settings.secondaryDividerPivot = normalizedPivot
+        }
+        if settings.dividerLines.indices.contains(dividerIndex) {
+            settings.dividerLines[dividerIndex].pivot = normalizedPivot
+        }
+    }
+
+    private func constrainedDividerPivot(
+        _ normalizedPivot: CGPoint,
+        dividerIndex: Int,
+        settings: BackgroundElementSettings,
+        in rect: CGRect
+    ) -> CGPoint {
+        let normalized = BackgroundDividerGeometry.clampedPivot(normalizedPivot)
+        let point = CGPoint(
+            x: rect.minX + normalized.x * rect.width,
+            y: rect.minY + normalized.y * rect.height
+        )
+        let projected = BackgroundPartitionGeometry.projectedPivot(
+            at: point,
+            for: dividerIndex,
+            settings: settings,
+            in: rect,
+            coordinateSpace: .coreImage
+        )
+        return BackgroundPartitionGeometry.normalizedPivot(
+            at: projected,
+            in: rect,
+            coordinateSpace: .coreImage
+        )
+    }
+
     private func snappedBackgroundAngle(_ angle: CGFloat) -> CGFloat {
         let safeAngle = angle.isFinite ? angle : 90
         let normalized = safeAngle.truncatingRemainder(dividingBy: 180)
-        let value = normalized < 0 ? normalized + 180 : normalized
-        let snapAngles: [CGFloat] = [0, 30, 45, 60, 90, 120, 135, 150]
+        // 分割线的几何方向每 180° 重复一次，但 UI 需要保留 180° 这个端点，
+        // 否则滑块拖到最右侧时会立刻跳回 0°。
+        let isPositiveBoundary = safeAngle > 0 && abs(normalized) < 0.0001
+        let value = isPositiveBoundary
+            ? 180
+            : (normalized < 0 ? normalized + 180 : normalized)
+        let snapAngles: [CGFloat] = [0, 30, 45, 60, 90, 120, 135, 150, 180]
         guard let nearest = snapAngles.min(by: { abs($0 - value) < abs($1 - value) }),
               abs(nearest - value) <= 6 else {
             return value
@@ -1211,6 +1963,9 @@ final class AppState: ObservableObject {
 
     func finishCanvasEdit() {
         isCoalescingCanvasHistory = false
+        if hasUnsavedChanges {
+            scheduleDraftAutosave()
+        }
     }
 
     /// 时长跟随内容：总时长 = 所有元素结束时间 / 音频结束时间的最大者（自由放置，可重叠）
@@ -1345,6 +2100,36 @@ final class AppState: ObservableObject {
         selectedElementIDs.remove(id)
         if lastSelectedElementID == id { lastSelectedElementID = nil }
         recomputeDuration()
+    }
+
+    /// 在同一个拼接组内调整素材图层顺序，不影响人物、文字等其它图层。
+    /// zIndex 越大越靠前；拼接编辑器中的“上移/下移”最终都通过这里统一处理。
+    func moveCollageElementZ(_ elementID: UUID, up: Bool) {
+        guard var comp = composition,
+              let index = comp.elements.firstIndex(where: { $0.id == elementID }),
+              case .background = comp.elements[index].kind,
+              let groupID = comp.elements[index].collageGroupID else { return }
+
+        let collageIndices = comp.elements.indices.filter { candidateIndex in
+            guard case .background = comp.elements[candidateIndex].kind else { return false }
+            return comp.elements[candidateIndex].collageGroupID == groupID
+        }.sorted {
+            if comp.elements[$0].zIndex != comp.elements[$1].zIndex {
+                return comp.elements[$0].zIndex < comp.elements[$1].zIndex
+            }
+            return $0 < $1
+        }
+        guard let position = collageIndices.firstIndex(of: index) else { return }
+        let neighborPosition = up ? position + 1 : position - 1
+        guard collageIndices.indices.contains(neighborPosition) else { return }
+        let neighborIndex = collageIndices[neighborPosition]
+        guard comp.elements[index].zIndex != comp.elements[neighborIndex].zIndex else { return }
+
+        // 只交换 zIndex，保留元素数组顺序和时间轴顺序不变。
+        let zIndex = comp.elements[index].zIndex
+        comp.elements[index].zIndex = comp.elements[neighborIndex].zIndex
+        comp.elements[neighborIndex].zIndex = zIndex
+        composition = comp
     }
 
     private func nextElementZIndex(in composition: Composition) -> Int {
@@ -1946,34 +2731,86 @@ final class AppState: ObservableObject {
             }
     }
 
+    /// 保存作品时统一维护草稿箱规则：全局只保留更新时间最新的一份草稿。
+    /// 当前作品不存在于内存列表时（例如新工程第一次自动保存）会插入列表。
+    private func saveWorkApplyingDraftPolicy(_ work: WorkItem) async -> (Bool, [WorkItem]) {
+        var candidates = works
+        if let index = candidates.firstIndex(where: { $0.id == work.id }) {
+            candidates[index] = work
+        } else {
+            candidates.insert(work, at: 0)
+        }
+        let normalized = WorkItem.retainingOnlyLatestDraft(in: candidates)
+        let changed = normalized.filter { normalizedWork in
+            candidates.first(where: { $0.id == normalizedWork.id }) != normalizedWork
+        }
+        // 当前作品即使没有触发“草稿互斥”变化，也必须写入磁盘。
+        // 否则首次自动保存或手动保存时 changed 为空，saveAndLoad 会直接
+        // 重新加载旧数据，界面会误以为保存成功但重启后内容消失。
+        var toPersist = changed
+        if let current = normalized.first(where: { $0.id == work.id }),
+           !toPersist.contains(where: { $0.id == current.id }) {
+            toPersist.append(current)
+        }
+        return await workPersistence.saveAndLoad(toPersist)
+    }
+
     /// 自动保存当前工程的草稿，不修改正式作品快照。
-    /// 新工程尚未有作品 ID 时只保留在当前编辑会话中，点击“保存”后才创建正式作品。
+    /// 新工程第一次自动保存时会先创建一个仅包含草稿的作品容器；点击“保存”后
+    /// 才会把同一个容器转为正式作品，因此自动保存不会覆盖正式版本。
     @discardableResult
     private func saveCurrentDraft(expectedComposition: Composition? = nil) async -> Bool {
         guard let comp = composition else { return false }
         guard expectedComposition == nil || expectedComposition == comp else { return false }
-        guard let editingWorkID,
-              let existing = works.first(where: { $0.id == editingWorkID }) else {
-            // 未保存的新工程不能因为自动保存出现在作品列表中。
-            return true
+
+        let existing = editingWorkID.flatMap { id in
+            works.first(where: { $0.id == id })
+        }
+        let posterData: Data
+        if let existing {
+            posterData = existing.posterData
+        } else {
+            // 草稿也需要一个封面，否则新工程虽然写入了磁盘，草稿箱里只能看到黑色占位图。
+            posterData = await Task.detached(priority: .utility) {
+                guard let poster = CompositionRenderer(frameMaxPixelSize: 900).render(comp, at: 0) else {
+                    return Data()
+                }
+                return pngData(from: poster) ?? Data()
+            }.value
         }
 
-        var work = existing
-        work.draft = WorkDraft(
-            updatedAt: Date(),
-            composition: comp,
-            clipSettings: clipSettingsSnapshot(for: comp)
+        let now = Date()
+        let work = WorkItem(
+            id: existing?.id ?? UUID(),
+            name: comp.name,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: existing?.updatedAt ?? now,
+            composition: existing?.composition ?? comp,
+            clipSettings: existing?.clipSettings ?? [],
+            posterData: posterData,
+            format: existing?.format ?? defaultFormat,
+            draft: WorkDraft(
+                updatedAt: now,
+                composition: comp,
+                clipSettings: clipSettingsSnapshot(for: comp)
+            )
         )
-        let persistence = await workPersistence.saveAndLoad(work)
+        let persistence = await saveWorkApplyingDraftPolicy(work)
         guard persistence.0 else { return false }
+        if existing == nil {
+            editingWorkID = work.id
+        }
         works = persistence.1
-        LogStore.log("work.draft saved id=\(work.id)")
+        LogStore.log("work.draft saved id=\(work.id) created=\(existing == nil)")
         return true
     }
 
     /// 立即写入当前草稿，用于用户离开当前作品前确保最近一次修改已落盘。
     @discardableResult
     func saveCurrentDraftNow() async -> Bool {
+        // 没有修改时不创建“空草稿”。这也避免应用启动后第一次进入后台
+        // 就把默认工程错误地放进草稿箱。
+        guard hasUnsavedChanges else { return true }
         cancelDraftAutosave()
         guard let snapshot = composition else { return false }
         let saved = await saveCurrentDraft(expectedComposition: snapshot)
@@ -2020,7 +2857,7 @@ final class AppState: ObservableObject {
             format: existing?.format ?? defaultFormat,
             draft: nil
         )
-        let persistence = await workPersistence.saveAndLoad(work)
+        let persistence = await saveWorkApplyingDraftPolicy(work)
         guard persistence.0 else {
             saveError = "作品保存失败，请稍后重试。"
             return false
@@ -2141,7 +2978,7 @@ final class AppState: ObservableObject {
               work.draft != nil else { return }
         var clearedWork = work
         clearedWork.draft = nil
-        let persistence = await workPersistence.saveAndLoad(clearedWork)
+        let persistence = await saveWorkApplyingDraftPolicy(clearedWork)
         guard persistence.0 else {
             saveError = "无法删除草稿，请稍后重试。"
             return

@@ -1,4 +1,13 @@
 /* Deutsch */
+"添加背景" = "Hintergrund hinzufügen";
+"拼接编辑器" = "Collage-Editor";
+"实时预览" = "Live-Vorschau";
+"点击切换" = "Zum Wechseln tippen";
+"图片区域" = "Bildbereich";
+"分割线角度" = "Winkel der Trennlinie";
+"请选择拼接素材" = "Collage-Medien auswählen";
+"拼接素材" = "Collage-Medien";
+"拼接" = "Collage";
 "素材库" = "Bibliothek";
 "编辑" = "Bearbeiten";
 "作品" = "Werke";
@@ -260,3 +269,27 @@
 "复古" = "Vintage";
 "漫画" = "Comic";
 "粗" = "Dick";
+
+/* Person cutout terminology */
+"人物素材" = "Personen-Freistellung";
+"自动提取人物，生成透明人物素材，全程在设备端处理" = "Personen werden automatisch extrahiert und als transparente Freistellungen erstellt. Alles wird auf deinem Gerät verarbeitet.";
+"动态人物（默认）" = "Bewegte Person (Standard)";
+"静态人物（只取首帧）" = "Statische Person (nur erstes Bild)";
+"动态人物" = "Bewegte Person";
+"静态人物" = "Statische Person";
+"人物素材 · %@ · %@ fps" = "Personen-Freistellung · %@ · %@ fps";
+"人物素材设置" = "Einstellungen für Personen-Freistellungen";
+"人物素材生成失败" = "Personen-Freistellung fehlgeschlagen";
+"整理人物素材" = "Personen-Freistellungen organisieren";
+"正在生成素材" = "Personen-Freistellung wird erstellt";
+"正在准备人物素材" = "Personen-Freistellung wird vorbereitet";
+"取消生成" = "Erstellung abbrechen";
+"选择视频、Live Photo 或照片，\n人物会被自动提取为透明素材" = "Wähle ein Video, eine Live Photo oder ein Foto,\ndie Person wird automatisch als transparente Freistellung extrahiert";
+"去「素材库」页面提取人物素材，\n或在素材上长按移动到文件夹" = "Erstelle in der Bibliothek eine Personen-Freistellung\noder verschiebe ein Asset per langem Druck in einen Ordner";
+"保留原始帧率和分辨率" = "Originale Bildrate und Auflösung beibehalten";
+"开启后按源素材实际帧率处理，并保留原始像素尺寸；处理帧率和处理分辨率预设将暂时不生效，处理时间和占用空间可能明显增加。" = "Bei Aktivierung werden die originale Bildrate und Pixelgröße beibehalten. Die Verarbeitung kann länger dauern und mehr Speicher benötigen.";
+"当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。" = "Die originale Bildrate und Größe werden verwendet. Es werden keine Bilder ergänzt und keine Assets vergrößert.";
+"仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，人物素材越精细，处理时间越长。" = "Mehr Bilder werden nur bei einer höheren Quellbildrate beibehalten. Höhere Auflösung und Bildrate ergeben feinere Freistellungen, benötigen aber mehr Zeit.";
+"清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。" = "Das Löschen temporärer Dateien entfernt keine Assets, auch keine Personen-Freistellungen in oder außerhalb von Ordnern.";
+"人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Erstellung, Rendering und Export der Personen-Freistellungen erfolgen auf deinem Gerät. Fotos und Videos werden nicht hochgeladen.";
+"日志摘要" = "%d Zeilen · %@\nLadevorgänge und die Erstellung von Personen-Freistellungen werden nach der Auswahl aufgezeichnet und können nach dem Export analysiert werden.";

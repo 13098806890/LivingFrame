@@ -4,10 +4,50 @@ import XCTest
 final class TimelinePlaybackRulesTests: XCTestCase {
     private let sourceFrames = [1, 2, 3, 4, 5, 6]
 
+    func testDraftBoxRetainsOnlyTheMostRecentlyUpdatedDraft() {
+        let older = makeWork(name: "older", draftDate: Date(timeIntervalSince1970: 100))
+        let newest = makeWork(name: "newest", draftDate: Date(timeIntervalSince1970: 200))
+        let saved = makeWork(name: "saved", draftDate: nil)
+
+        let normalized = WorkItem.retainingOnlyLatestDraft(in: [older, newest, saved])
+
+        XCTAssertNil(normalized[0].draft)
+        XCTAssertNotNil(normalized[1].draft)
+        XCTAssertNil(normalized[2].draft)
+    }
+
+    func testDraftBoxUsesTheLaterInputWhenDraftDatesAreEqual() {
+        let date = Date(timeIntervalSince1970: 100)
+        let first = makeWork(name: "first", draftDate: date)
+        let second = makeWork(name: "second", draftDate: date)
+
+        let normalized = WorkItem.retainingOnlyLatestDraft(in: [first, second])
+
+        XCTAssertNil(normalized[0].draft)
+        XCTAssertNotNil(normalized[1].draft)
+    }
+
     func testExportFPSOptionsAreCappedByMaximumSourceFPS() {
         XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 30), [10, 15, 30])
         XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 60), [10, 15, 30, 60])
         XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 24), [10, 15, 24])
+    }
+
+    private func makeWork(name: String, draftDate: Date?) -> WorkItem {
+        let composition = Composition(
+            name: name,
+            canvas: CanvasSpec(width: 100, height: 100)
+        )
+        let draft = draftDate.map {
+            WorkDraft(updatedAt: $0, composition: composition)
+        }
+        return WorkItem(
+            name: name,
+            composition: composition,
+            posterData: Data(),
+            format: .gif,
+            draft: draft
+        )
     }
 
     func testRotationSnapsToNearbyThirtyDegreeMultiples() {

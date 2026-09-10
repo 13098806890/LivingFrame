@@ -38,7 +38,7 @@ struct WorksView: View {
                                 }
                             }
                         } else {
-                            Text("暂无草稿。编辑已保存作品后的修改会自动出现在这里。")
+                            Text("暂无草稿。编辑中的内容会自动出现在这里，正式作品不会被覆盖。")
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
                                 .padding(.horizontal, 4)
@@ -72,25 +72,18 @@ struct WorksView: View {
                 }
             }
             .confirmationDialog("开始新工程？", isPresented: $showNewProjectConfirmation, titleVisibility: .visible) {
-                if appState.editingWorkID != nil {
-                    Button("新建并保留草稿") {
-                        Task { @MainActor in
-                            guard await appState.saveCurrentDraftNow() else { return }
-                            createNewProject()
-                        }
-                    }
-                } else {
-                    Button("放弃并新建", role: .destructive) {
+                Button("新建并保留草稿") {
+                    Task { @MainActor in
+                        guard await appState.saveCurrentDraftNow() else { return }
                         createNewProject()
                     }
                 }
+                Button("放弃并新建", role: .destructive) {
+                    createNewProject()
+                }
                 Button("取消", role: .cancel) {}
             } message: {
-                if appState.editingWorkID != nil {
-                    Text("当前修改尚未正式保存，继续新建会先将其保留为当前作品的草稿。")
-                } else {
-                    Text("当前工程尚未保存为作品，继续新建会丢失这些修改。")
-                }
+                Text("当前修改尚未正式保存，继续新建前会先将其保留为草稿。")
             }
         }
         .magicBackground()
@@ -246,28 +239,21 @@ private struct WorkCell: View {
             Text("删除后无法恢复，素材库中的素材不会被删除。")
         }
         .confirmationDialog("切换作品？", isPresented: $showDiscardConfirmation, titleVisibility: .visible) {
-            if appState.editingWorkID != nil {
-                Button("切换并保留草稿") {
-                    guard let pendingAction else { return }
-                    Task { @MainActor in
-                        guard await appState.saveCurrentDraftNow() else { return }
-                        perform(pendingAction)
-                    }
+            Button("切换并保留草稿") {
+                guard let pendingAction else { return }
+                Task { @MainActor in
+                    guard await appState.saveCurrentDraftNow() else { return }
+                    perform(pendingAction)
                 }
-            } else {
-                Button("放弃并继续", role: .destructive) {
-                    if let pendingAction {
-                        perform(pendingAction)
-                    }
+            }
+            Button("放弃并继续", role: .destructive) {
+                if let pendingAction {
+                    perform(pendingAction)
                 }
             }
             Button("取消", role: .cancel) {}
         } message: {
-            if appState.editingWorkID != nil {
-                Text("当前修改尚未正式保存，切换作品后会保留为草稿；正式作品仍需点击“保存”。")
-            } else {
-                Text("当前工程尚未保存为作品，切换后这些修改会丢失。")
-            }
+            Text("当前修改尚未正式保存，切换作品前会先将其保留为草稿；正式作品仍需点击“保存”。")
         }
         .alert("重命名作品", isPresented: $showRenameAlert) {
             TextField("作品名称", text: $renameText)

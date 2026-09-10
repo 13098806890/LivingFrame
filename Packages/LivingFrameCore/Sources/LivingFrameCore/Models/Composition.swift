@@ -137,25 +137,65 @@ public enum BackgroundSplitCount: String, Codable, CaseIterable, Identifiable, S
     }
 }
 
+/// 一条可独立编辑的背景分割线。
+/// 线的方向每 180° 重复，但保留原始角度值用于连续的 UI 交互。
+public struct BackgroundDivider: Codable, Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var angle: CGFloat
+    public var offset: CGFloat
+    public var pivot: CGPoint
+
+    public init(
+        id: UUID = UUID(),
+        angle: CGFloat = 90,
+        offset: CGFloat = 0,
+        pivot: CGPoint = CGPoint(x: 0.5, y: 0.5)
+    ) {
+        self.id = id
+        self.angle = angle
+        self.offset = BackgroundDividerGeometry.clampedOffset(offset)
+        self.pivot = BackgroundDividerGeometry.clampedPivot(pivot)
+    }
+}
+
 /// 背景图片元素的独有设置。
 /// cropScale/cropOffset 只影响图片在区域内部的取景，不改变元素本身在画布上的位置。
 public struct BackgroundElementSettings: Codable, Equatable, Sendable {
+    /// 背景素材取景缩放范围；低于 1× 可以看到更多原图内容。
+    /// 保留一个极小的正数，避免缩放到 0 后素材无法再通过手势抓取；
+    /// 对用户而言等同于不限制缩小范围。
+    public static let minimumCropScale: CGFloat = 0.01
+    public static let maximumCropScale: CGFloat = 4
+
     public var region: BackgroundRegion
     public var edgeStyle: BackgroundEdgeStyle
     public var cropScale: CGFloat
     public var cropOffset: CGPoint
     public var splitCount: BackgroundSplitCount
-    /// 第一条分割线角度（度）。4区模式的第二条线自动为 angle + 90°。
+    /// 第一条分割线角度（度）。兼容旧数据时，第二条线默认使用 angle + 90°。
     public var dividerAngle: CGFloat
+    /// 4 区模式下第二条分割线的独立角度（度）。
+    public var secondaryDividerAngle: CGFloat
     /// 第一条分割线沿法线方向的偏移，单位为该方向可移动范围的比例（-0.85...0.85）。
     public var primaryDividerOffset: CGFloat
     /// 4 区模式下第二条分割线沿自身法线方向的独立偏移。
     public var secondaryDividerOffset: CGFloat
-    /// 当前被填充的分区索引：2区为 0...1，4区为 0...3。
+    /// 第一条分割线上的旋转中心，使用归一化 Core Image 坐标（原点在左下角）。
+    public var primaryDividerPivot: CGPoint
+    /// 4 区模式下第二条分割线上的旋转中心，使用归一化 Core Image 坐标。
+    public var secondaryDividerPivot: CGPoint
+    /// 当前正在编辑/显示标签的分区索引；保留用于兼容旧工程。
     public var selectedPartition: Int
+    /// 此素材实例实际覆盖的分区。一个实例可以跨越多个分区，共享同一套取景参数。
+    /// 空数组表示当前实例暂未分配到任何区域；旧数据解码时会回退到 selectedPartition。
+    public var assignedPartitions: [Int]
     /// 背景图片的额外旋转次数，每次为顺时针 90°。
     /// 图片导入时先按 EXIF 方向校正；这个值只记录用户后续的主动旋转。
     public var rotationQuarterTurns: Int
+    /// 当前工程中的全部分割线。旧字段保留用于兼容历史工程和单张背景编辑器。
+    public var dividerLines: [BackgroundDivider]
+    /// 拼接编辑器中的分割线布局是否已固定。单张背景编辑器不使用此字段。
+    public var isDividerLayoutLocked: Bool
 
     public init(
         region: BackgroundRegion = .full,
@@ -164,10 +204,16 @@ public struct BackgroundElementSettings: Codable, Equatable, Sendable {
         cropOffset: CGPoint = .zero,
         splitCount: BackgroundSplitCount = .full,
         dividerAngle: CGFloat = 90,
+        secondaryDividerAngle: CGFloat? = nil,
         primaryDividerOffset: CGFloat = 0,
         secondaryDividerOffset: CGFloat = 0,
+        primaryDividerPivot: CGPoint = CGPoint(x: 0.5, y: 0.5),
+        secondaryDividerPivot: CGPoint = CGPoint(x: 0.5, y: 0.5),
         selectedPartition: Int = 0,
-        rotationQuarterTurns: Int = 0
+        assignedPartitions: [Int]? = nil,
+        rotationQuarterTurns: Int = 0,
+        dividerLines: [BackgroundDivider]? = nil,
+        isDividerLayoutLocked: Bool = false
     ) {
         self.region = region
         self.edgeStyle = edgeStyle
@@ -175,16 +221,125 @@ public struct BackgroundElementSettings: Codable, Equatable, Sendable {
         self.cropOffset = cropOffset
         self.splitCount = splitCount
         self.dividerAngle = dividerAngle
+        self.secondaryDividerAngle = secondaryDividerAngle ?? dividerAngle + 90
         self.primaryDividerOffset = BackgroundDividerGeometry.clampedOffset(primaryDividerOffset)
         self.secondaryDividerOffset = BackgroundDividerGeometry.clampedOffset(secondaryDividerOffset)
+        self.primaryDividerPivot = BackgroundDividerGeometry.clampedPivot(primaryDividerPivot)
+        self.secondaryDividerPivot = BackgroundDividerGeometry.clampedPivot(secondaryDividerPivot)
         self.selectedPartition = selectedPartition
+        // nil 表示调用方没有提供新字段（兼容旧模型），需要回退到 selectedPartition；
+        // 显式传入空数组则表示用户主动取消了所有区域，必须保留为空。
+        let initialPartitions = assignedPartitions ?? [selectedPartition]
+        self.assignedPartitions = Array(Set(initialPartitions.filter { $0 >= 0 })).sorted()
         self.rotationQuarterTurns = rotationQuarterTurns
+        self.dividerLines = dividerLines ?? Self.legacyDividerLines(
+            splitCount: splitCount,
+            dividerAngle: dividerAngle,
+            secondaryDividerAngle: self.secondaryDividerAngle,
+            primaryDividerOffset: self.primaryDividerOffset,
+            secondaryDividerOffset: self.secondaryDividerOffset,
+            primaryDividerPivot: self.primaryDividerPivot,
+            secondaryDividerPivot: self.secondaryDividerPivot
+        )
+        self.isDividerLayoutLocked = isDividerLayoutLocked
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case region
+        case edgeStyle
+        case cropScale
+        case cropOffset
+        case splitCount
+        case dividerAngle
+        case secondaryDividerAngle
+        case primaryDividerOffset
+        case secondaryDividerOffset
+        case primaryDividerPivot
+        case secondaryDividerPivot
+        case selectedPartition
+        case assignedPartitions
+        case rotationQuarterTurns
+        case dividerLines
+        case isDividerLayoutLocked
+    }
+
+    /// 新增旋转中心字段时兼容旧工程；旧数据默认回到画布中心。
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            region: try container.decode(BackgroundRegion.self, forKey: .region),
+            edgeStyle: try container.decode(BackgroundEdgeStyle.self, forKey: .edgeStyle),
+            cropScale: try container.decode(CGFloat.self, forKey: .cropScale),
+            cropOffset: try container.decode(CGPoint.self, forKey: .cropOffset),
+            splitCount: try container.decode(BackgroundSplitCount.self, forKey: .splitCount),
+            dividerAngle: try container.decode(CGFloat.self, forKey: .dividerAngle),
+            secondaryDividerAngle: try container.decodeIfPresent(CGFloat.self, forKey: .secondaryDividerAngle),
+            primaryDividerOffset: try container.decode(CGFloat.self, forKey: .primaryDividerOffset),
+            secondaryDividerOffset: try container.decode(CGFloat.self, forKey: .secondaryDividerOffset),
+            primaryDividerPivot: try container.decodeIfPresent(CGPoint.self, forKey: .primaryDividerPivot)
+                ?? CGPoint(x: 0.5, y: 0.5),
+            secondaryDividerPivot: try container.decodeIfPresent(CGPoint.self, forKey: .secondaryDividerPivot)
+                ?? CGPoint(x: 0.5, y: 0.5),
+            selectedPartition: try container.decode(Int.self, forKey: .selectedPartition),
+            assignedPartitions: try container.decodeIfPresent([Int].self, forKey: .assignedPartitions),
+            rotationQuarterTurns: try container.decode(Int.self, forKey: .rotationQuarterTurns),
+            dividerLines: try container.decodeIfPresent([BackgroundDivider].self, forKey: .dividerLines),
+            isDividerLayoutLocked: try container.decodeIfPresent(Bool.self, forKey: .isDividerLayoutLocked) ?? false
+        )
+    }
+
+    /// 让旧的 splitCount 字段继续反映当前线数量，便于旧渲染缓存和旧代码兼容。
+    public mutating func synchronizeLegacySplitCount() {
+        splitCount = switch dividerLines.count {
+        case 0: .full
+        case 1: .two
+        default: .four
+        }
+    }
+
+    /// 当前实例覆盖的分区。旧工程解码时已经将缺失字段回退到 selectedPartition。
+    public var resolvedAssignedPartitions: [Int] {
+        Array(Set(assignedPartitions.filter { $0 >= 0 })).sorted()
+    }
+
+    private static func legacyDividerLines(
+        splitCount: BackgroundSplitCount,
+        dividerAngle: CGFloat,
+        secondaryDividerAngle: CGFloat,
+        primaryDividerOffset: CGFloat,
+        secondaryDividerOffset: CGFloat,
+        primaryDividerPivot: CGPoint,
+        secondaryDividerPivot: CGPoint
+    ) -> [BackgroundDivider] {
+        switch splitCount {
+        case .full:
+            []
+        case .two:
+            [BackgroundDivider(
+                angle: dividerAngle,
+                offset: primaryDividerOffset,
+                pivot: primaryDividerPivot
+            )]
+        case .four:
+            [
+                BackgroundDivider(
+                    angle: dividerAngle,
+                    offset: primaryDividerOffset,
+                    pivot: primaryDividerPivot
+                ),
+                BackgroundDivider(
+                    angle: secondaryDividerAngle,
+                    offset: secondaryDividerOffset,
+                    pivot: secondaryDividerPivot
+                )
+            ]
+        }
     }
 
 }
 
-/// 背景分割线在预览与导出间共用的偏移换算。
-/// offset 使用相对法线可移动范围的比例，因而不随画布比例变化而失真。
+/// 背景分割线在预览与导出间共用的几何换算。
+/// offset 使用相对画布中心沿法线方向可移动范围的比例，因而不随画布比例变化而失真。
 public enum BackgroundDividerGeometry {
     public static let maximumOffset: CGFloat = 0.85
 
@@ -193,21 +348,49 @@ public enum BackgroundDividerGeometry {
         return min(max(offset, -maximumOffset), maximumOffset)
     }
 
+    public static func clampedPivot(_ pivot: CGPoint) -> CGPoint {
+        CGPoint(
+            x: min(max(pivot.x.isFinite ? pivot.x : 0.5, 0), 1),
+            y: min(max(pivot.y.isFinite ? pivot.y : 0.5, 0), 1)
+        )
+    }
+
     public static func offset(
         for dividerIndex: Int,
         settings: BackgroundElementSettings
     ) -> CGFloat {
-        dividerIndex == 0 ? settings.primaryDividerOffset : settings.secondaryDividerOffset
+        switch dividerIndex {
+        case 0:
+            return settings.primaryDividerOffset
+        case 1:
+            return settings.secondaryDividerOffset
+        default:
+            return settings.dividerLines.indices.contains(dividerIndex)
+                ? settings.dividerLines[dividerIndex].offset
+                : 0
+        }
     }
 
-    /// 法线在当前坐标系下为单位向量（Core Image 与 SwiftUI 的 y 轴方向不同，调用方传入对应法线）。
-    public static func center(
+    public static func lineCenter(
         in rect: CGRect,
         normal: CGPoint,
         offset: CGFloat
     ) -> CGPoint {
         let distance = clampedOffset(offset) * extent(in: rect, normal: normal)
         return CGPoint(x: rect.midX + normal.x * distance, y: rect.midY + normal.y * distance)
+    }
+
+    /// 根据一个固定的画布点，计算分割线相对于画布中心的归一化偏移。
+    public static func offset(
+        keeping point: CGPoint,
+        normal: CGPoint,
+        in rect: CGRect
+    ) -> CGFloat {
+        let lineDistance = (point.x - rect.midX) * normal.x
+            + (point.y - rect.midY) * normal.y
+        let lineExtent = extent(in: rect, normal: normal)
+        guard lineExtent > 0.0001 else { return 0 }
+        return clampedOffset(lineDistance / lineExtent)
     }
 
     /// 直线仍与画布相交时，中心沿法线方向可移动的最大距离。
@@ -317,6 +500,9 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     public var filter: ElementFilter?
     /// 仅对 background 元素生效；其它元素为 nil。
     public var backgroundSettings: BackgroundElementSettings?
+    /// 仅对拼接创建的 background 元素生效；同一拼接组中的元素共享此标识。
+    /// nil 表示这是从素材页独立添加的普通背景。
+    public var collageGroupID: UUID?
 
     public init(
         id: UUID = UUID(),
@@ -332,7 +518,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         playbackCount: Int = 1,
         backgroundPattern: BackgroundPatternStyle? = nil,
         filter: ElementFilter? = nil,
-        backgroundSettings: BackgroundElementSettings? = nil
+        backgroundSettings: BackgroundElementSettings? = nil,
+        collageGroupID: UUID? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -348,6 +535,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         self.backgroundPattern = backgroundPattern
         self.filter = filter
         self.backgroundSettings = backgroundSettings
+        self.collageGroupID = collageGroupID
     }
 
     public func isVisible(at time: TimeInterval) -> Bool {

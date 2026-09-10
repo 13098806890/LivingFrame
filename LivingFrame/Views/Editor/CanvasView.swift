@@ -26,6 +26,11 @@ struct CanvasView: View {
     @State private var interactiveDragTranslation: CGSize = .zero
     @State private var interactivePreviewToken = 0
     @State private var clearInteractivePreviewAfterRender = false
+    /// 背景取景期间只合成一次其它图层，当前背景用 SwiftUI 直接变换，保证手指与图片 1:1 跟随。
+    @State private var interactiveBackgroundBaseImage: UIImage?
+    @State private var interactiveBackgroundFrame: CGImage?
+    @State private var interactiveBackgroundElementID: UUID?
+    @State private var backgroundPreviewToken = 0
     /// 双指手势活跃中（防止同时触发拖动）
     @State private var isPinching = false
     /// 缩放与旋转共享一组双指输入，但一旦确认意图就锁定模式，避免捏合时被微小角度变化带偏。
@@ -56,16 +61,41 @@ struct CanvasView: View {
 
     /// 双击画布素材时由编辑页打开检查器；全屏预览不传回调，因此保持只读预览。
     private let onRequestInspector: () -> Void
+    /// 拼接器的预览模式只渲染画面，不显示选中框，也不接收编辑手势。
+    private let allowsInteraction: Bool
 
-    init(drivesPlayback: Bool = true, onRequestInspector: @escaping () -> Void = {}) {
+    init(
+        drivesPlayback: Bool = true,
+        allowsInteraction: Bool = true,
+        onRequestInspector: @escaping () -> Void = {}
+    ) {
         self.drivesPlayback = drivesPlayback
+        self.allowsInteraction = allowsInteraction
         self.onRequestInspector = onRequestInspector
     }
 
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
-                if isLiveDragPreview,
+                if isBackgroundInteracting,
+                   let interactiveBackgroundBaseImage,
+                   let interactiveBackgroundFrame,
+                   let interactiveBackgroundElementID,
+                   let interactiveBackgroundElement = appState.composition?.elements.first(where: {
+                       $0.id == interactiveBackgroundElementID
+                   }),
+                   let composition = appState.composition,
+                   case .background = interactiveBackgroundElement.kind {
+                    Image(uiImage: interactiveBackgroundBaseImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                    InteractiveBackgroundImageLayer(
+                        frame: interactiveBackgroundFrame,
+                        canvasSize: composition.canvasRect.size,
+                        settings: interactiveBackgroundElement.backgroundSettings ?? BackgroundElementSettings()
+                    )
+                } else if isLiveDragPreview,
                    let interactiveBaseImage,
                    let interactiveSelectionImage {
                     Image(uiImage: interactiveBaseImage)
@@ -85,11 +115,13 @@ struct CanvasView: View {
                 } else {
                     Color.black
                 }
-                if appState.isCropping {
-                    cropOverlay
-                } else {
-                    selectionOverlay
-                    backgroundInteractionOverlay
+                if allowsInteraction {
+                    if appState.isCropping {
+                        cropOverlay
+                    } else {
+                        selectionOverlay
+                        backgroundInteractionOverlay
+                    }
                 }
             }
             .background {
@@ -126,11 +158,14 @@ struct CanvasView: View {
             .onTapGesture { location in
                 handleTap(at: location)
             }
-            .simultaneousGesture(dragGesture)
+            // 画布可能嵌在拼接面板的 ScrollView 中；直接操作优先于外层滚动，
+            // 否则竖向拖动会被 ScrollView 抢走，背景图片看起来像没有响应。
+            .highPriorityGesture(dragGesture)
             .simultaneousGesture(magnifyGesture)
             .simultaneousGesture(rotateGesture)
+            .allowsHitTesting(allowsInteraction)
 
-            if appState.isCropping {
+            if allowsInteraction, appState.isCropping {
                 cropToolbar
             }
         }
@@ -141,7 +176,9 @@ struct CanvasView: View {
         .onChange(of: appState.composition) { _, _ in
             // 时间轴移动/裁剪只影响某个时间点是否可见，不值得在每一个触摸事件
             // 重做整张 CI 合成。拖拽结束时由 isTimelineEditing 的变化补一次最终预览。
-            guard !appState.isTimelineEditing else { return }
+            guard !appState.isTimelineEditing,
+                  !isCanvasManipulating,
+                  !isBackgroundInteracting else { return }
             if usesExactBackgroundPreview != needsExactBackgroundPreview {
                 refreshRendererScale()
             }
@@ -642,6 +679,9 @@ struct CanvasView: View {
             backgroundGestureKind = kind
             if !isBackgroundInteracting {
                 isBackgroundInteracting = true
+                if let comp = appState.composition {
+                    prepareInteractiveBackgroundPreview(comp)
+                }
                 beginCanvasManipulation()
             }
         }
@@ -659,9 +699,43 @@ struct CanvasView: View {
         backgroundGestureKind = nil
         isBackgroundInteracting = false
         isCanvasManipulating = false
+        backgroundPreviewToken &+= 1
+        interactiveBackgroundBaseImage = nil
+        interactiveBackgroundFrame = nil
+        interactiveBackgroundElementID = nil
         appState.finishCanvasEdit()
         refreshRendererScale()
         render()
+    }
+
+    /// 背景拖动/缩放期间不等待整张高质量合成：底层其它内容只渲染一次，选中背景直接作为图层变换。
+    private func prepareInteractiveBackgroundPreview(_ comp: Composition) {
+        guard let element = selectedBackgroundElement,
+              case .background(let backgroundID) = element.kind else { return }
+
+        backgroundPreviewToken &+= 1
+        let token = backgroundPreviewToken
+        let time = min(appState.currentTime, comp.duration)
+        interactiveBackgroundElementID = element.id
+        interactiveBackgroundFrame = nil
+        interactiveBackgroundBaseImage = nil
+
+        var baseComposition = comp
+        baseComposition.elements.removeAll { $0.id == element.id }
+        let previewRenderer = CompositionRenderer(
+            frameMaxPixelSize: 720,
+            isPlaybackReversed: appState.isReversed
+        )
+        Self.renderQueue.async { [baseComposition, previewRenderer, time, backgroundID] in
+            let frame = BackgroundStore.shared.loadFrame(named: backgroundID, at: time)
+            let baseImage = previewRenderer.render(baseComposition, at: time).map(UIImage.init(cgImage:))
+            DispatchQueue.main.async {
+                guard self.backgroundPreviewToken == token,
+                      self.isBackgroundInteracting else { return }
+                self.interactiveBackgroundFrame = frame
+                self.interactiveBackgroundBaseImage = baseImage
+            }
+        }
     }
 
     private func cornerPoints(of rect: CGRect) -> [CGPoint] {
@@ -979,7 +1053,7 @@ struct CanvasView: View {
         }
         // 分区遮罩必须与最终输出使用同一像素尺寸。单张背景也不能走预览降采样，
         // 否则 CI 的透明遮罩在缩放后可能出现分区边界错位；普通整幅背景仍保留降采样。
-        return backgrounds.contains { $0.splitCount != .full } || backgrounds.count > 1
+        return backgrounds.contains { !$0.dividerLines.isEmpty } || backgrounds.count > 1
     }
 
     private func render() {
@@ -1039,6 +1113,39 @@ struct CanvasView: View {
             guard self.appState.isPlaying else { return }
             self.appState.tick(delta: delta)
         }
+    }
+}
+
+/// 背景取景的轻量交互层。它只对原始帧做 SwiftUI 变换，不参与每个触摸采样点的 CI 合成。
+private struct InteractiveBackgroundImageLayer: View {
+    let frame: CGImage
+    let canvasSize: CGSize
+    let settings: BackgroundElementSettings
+
+    var body: some View {
+        GeometryReader { geometry in
+            let size = geometry.size
+            Image(decorative: frame, scale: 1)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size.width, height: size.height)
+                .rotationEffect(.degrees(Double(settings.rotationQuarterTurns * 90)))
+                .scaleEffect(rotationFillScale(in: size))
+                .scaleEffect(settings.cropScale)
+                .offset(
+                    x: settings.cropOffset.x * size.width / max(canvasSize.width, 1),
+                    y: -settings.cropOffset.y * size.height / max(canvasSize.height, 1)
+                )
+                .clipped()
+                .clipShape(BackgroundPartitionShape(settings: settings))
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func rotationFillScale(in size: CGSize) -> CGFloat {
+        let turns = ((settings.rotationQuarterTurns % 4) + 4) % 4
+        guard turns % 2 == 1 else { return 1 }
+        return max(size.width / max(size.height, 1), size.height / max(size.width, 1))
     }
 }
 

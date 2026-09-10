@@ -1,4 +1,13 @@
 /* Bahasa Indonesia */
+"添加背景" = "Tambah latar belakang";
+"拼接编辑器" = "Editor kolase";
+"实时预览" = "Pratinjau langsung";
+"点击切换" = "Ketuk untuk beralih";
+"图片区域" = "Area gambar";
+"分割线角度" = "Sudut pembatas";
+"请选择拼接素材" = "Pilih media kolase";
+"拼接素材" = "Media kolase";
+"拼接" = "Kolase";
 "素材库" = "Perpustakaan";
 "编辑" = "Edit";
 "作品" = "Karya";
@@ -260,3 +269,27 @@
 "复古" = "Vintage";
 "漫画" = "Kartun";
 "粗" = "Tebal";
+
+/* Person cutout terminology */
+"人物素材" = "Potongan Orang";
+"自动提取人物，生成透明人物素材，全程在设备端处理" = "Ekstrak orang secara otomatis untuk membuat potongan transparan. Semua diproses di perangkat Anda.";
+"动态人物（默认）" = "Orang Bergerak (Default)";
+"静态人物（只取首帧）" = "Orang Diam (Hanya bingkai pertama)";
+"动态人物" = "Orang Bergerak";
+"静态人物" = "Orang Diam";
+"人物素材 · %@ · %@ fps" = "Potongan Orang · %@ · %@ fps";
+"人物素材设置" = "Pengaturan Potongan Orang";
+"人物素材生成失败" = "Potongan orang gagal dibuat";
+"整理人物素材" = "Atur potongan orang";
+"正在生成素材" = "Membuat potongan orang";
+"正在准备人物素材" = "Menyiapkan potongan orang";
+"取消生成" = "Batalkan pembuatan";
+"选择视频、Live Photo 或照片，\n人物会被自动提取为透明素材" = "Pilih video, Live Photo, atau foto,\ndan orang akan diekstrak sebagai potongan transparan";
+"去「素材库」页面提取人物素材，\n或在素材上长按移动到文件夹" = "Buka Perpustakaan untuk membuat potongan orang,\natau tekan lama item untuk memindahkannya ke folder";
+"保留原始帧率和分辨率" = "Pertahankan laju bingkai dan resolusi asli";
+"开启后按源素材实际帧率处理，并保留原始像素尺寸；处理帧率和处理分辨率预设将暂时不生效，处理时间和占用空间可能明显增加。" = "Saat diaktifkan, laju bingkai dan ukuran piksel asli dipertahankan. Pemrosesan dapat memerlukan lebih banyak waktu dan penyimpanan.";
+"当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。" = "Menggunakan laju bingkai dan ukuran asli. Bingkai tidak ditambahkan dan item tidak diperbesar.";
+"仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，人物素材越精细，处理时间越长。" = "Bingkai tambahan hanya dipertahankan jika laju sumber lebih tinggi. Resolusi dan laju lebih tinggi menghasilkan potongan lebih detail, tetapi membutuhkan waktu lebih lama.";
+"清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。" = "Membersihkan file sementara tidak menghapus item apa pun, termasuk potongan orang di dalam atau di luar folder.";
+"人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Pembuatan, rendering, dan ekspor potongan orang dilakukan di perangkat. Foto dan video tidak diunggah.";
+"日志摘要" = "%d baris · %@\nPemuatan dan pembuatan potongan orang dicatat setelah Anda memilih item dan dapat dianalisis setelah ekspor.";

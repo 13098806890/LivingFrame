@@ -1,4 +1,13 @@
 /* Français */
+"添加背景" = "Ajouter un arrière-plan";
+"拼接编辑器" = "Éditeur de collage";
+"实时预览" = "Aperçu en direct";
+"点击切换" = "Touchez pour changer";
+"图片区域" = "Zone d’image";
+"分割线角度" = "Angle de séparation";
+"请选择拼接素材" = "Choisir les éléments du collage";
+"拼接素材" = "Éléments du collage";
+"拼接" = "Collage";
 "素材库" = "Bibliothèque";
 "编辑" = "Édition";
 "作品" = "Œuvres";
@@ -260,3 +269,27 @@
 "复古" = "Vintage";
 "漫画" = "Bande dessinée";
 "粗" = "Épais";
+
+/* Person cutout terminology */
+"人物素材" = "Détourage de personne";
+"自动提取人物，生成透明人物素材，全程在设备端处理" = "Extrayez automatiquement les personnes pour créer des détourages transparents. Tout est traité sur votre appareil.";
+"动态人物（默认）" = "Personne animée (par défaut)";
+"静态人物（只取首帧）" = "Personne fixe (première image uniquement)";
+"动态人物" = "Personne animée";
+"静态人物" = "Personne fixe";
+"人物素材 · %@ · %@ fps" = "Détourage · %@ · %@ fps";
+"人物素材设置" = "Réglages du détourage";
+"人物素材生成失败" = "Échec du détourage";
+"整理人物素材" = "Organiser les détourage";
+"正在生成素材" = "Création du détourage";
+"正在准备人物素材" = "Préparation du détourage";
+"取消生成" = "Annuler";
+"选择视频、Live Photo 或照片，\n人物会被自动提取为透明素材" = "Sélectionnez une vidéo, une Live Photo ou une photo,\net la personne sera extraite comme élément transparent";
+"去「素材库」页面提取人物素材，\n或在素材上长按移动到文件夹" = "Accédez à la Bibliothèque pour créer des détourage,\nou appuyez longuement sur un élément pour le déplacer dans un dossier";
+"保留原始帧率和分辨率" = "Conserver la fréquence d’images et la résolution d’origine";
+"开启后按源素材实际帧率处理，并保留原始像素尺寸；处理帧率和处理分辨率预设将暂时不生效，处理时间和占用空间可能明显增加。" = "Lorsque cette option est activée, la fréquence d’images et les dimensions d’origine sont conservées. Le traitement peut être plus long et utiliser davantage de stockage.";
+"当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。" = "La fréquence d’images et les dimensions d’origine sont utilisées. Aucune image n’est ajoutée et aucun élément n’est agrandi.";
+"仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，人物素材越精细，处理时间越长。" = "Davantage d’images sont conservées uniquement si la source a une fréquence plus élevée. Une résolution et une fréquence élevées donnent un détourage plus précis, mais prennent plus de temps.";
+"清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。" = "Le nettoyage des fichiers temporaires ne supprime aucun élément, y compris les détourage dans ou hors des dossiers.";
+"人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "La création des détourage, le rendu et l’exportation sont effectués sur votre appareil. Aucune photo ni vidéo n’est envoyée.";
+"日志摘要" = "%d lignes · %@\nLe chargement et la création des détourages sont enregistrés après la sélection d’éléments. Les journaux d’exportation peuvent être analysés.";

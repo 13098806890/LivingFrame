@@ -63,11 +63,11 @@ struct LibraryView: View {
                     newFolderName = ""
                 }
             } message: {
-                Text("把抠好的素材分门别类收纳")
+                Text("整理人物素材")
             }
             .alert(
                 NSLocalizedString(
-                    loadError != nil ? "导入失败" : "抠图失败",
+                    loadError != nil ? "导入失败" : "人物素材生成失败",
                     comment: "Import alert title"
                 ),
                 isPresented: Binding(
@@ -127,7 +127,7 @@ struct LibraryView: View {
                             .foregroundStyle(LF.gold)
                         Text("选择视频 / Live Photo / 照片")
                             .font(.headline)
-                        Text("自动抠出人物，生成透明素材，全程在设备端处理")
+                        Text("自动提取人物，生成透明人物素材，全程在设备端处理")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                     }
@@ -142,12 +142,12 @@ struct LibraryView: View {
                     Button {
                         defaultExtractKind = .live
                     } label: {
-                        Label("动态素材（默认）", systemImage: defaultExtractKind == .live ? "checkmark" : "sparkles")
+                        Label("动态人物（默认）", systemImage: defaultExtractKind == .live ? "checkmark" : "sparkles")
                     }
                     Button {
                         defaultExtractKind = .static
                     } label: {
-                        Label("静态素材（只取首帧）", systemImage: defaultExtractKind == .static ? "checkmark" : "photo")
+                        Label("静态人物（只取首帧）", systemImage: defaultExtractKind == .static ? "checkmark" : "photo")
                     }
                 }
 
@@ -165,14 +165,14 @@ struct LibraryView: View {
                 }
             } label: {
                 Label(
-                    "人物：\(defaultExtractKind == .live ? "动态" : "静态") · \(fpsTitle(appState.processingFPS)) fps",
+                    extractionSettingsLabel,
                     systemImage: "slider.horizontal.3"
                 )
                 .font(.caption.weight(.medium))
                 .foregroundStyle(LF.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .accessibilityLabel("人物设置")
+            .accessibilityLabel("人物素材设置")
         }
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
@@ -211,6 +211,17 @@ struct LibraryView: View {
     private func fpsTitle(_ fps: Double) -> String {
         if abs(fps.rounded() - fps) < 0.01 { return String(Int(fps.rounded())) }
         return String(format: "%.1f", fps)
+    }
+
+    private var extractionSettingsLabel: String {
+        let kind = defaultExtractKind == .live
+            ? NSLocalizedString("动态人物", comment: "Animated person asset")
+            : NSLocalizedString("静态人物", comment: "Still person asset")
+        return String(
+            format: NSLocalizedString("人物素材 · %@ · %@ fps", comment: "Person asset extraction summary"),
+            kind,
+            fpsTitle(appState.processingFPS)
+        )
     }
 
     private enum ExtractKind: Hashable {
@@ -514,7 +525,7 @@ struct LibraryView: View {
     }
 
     private var segmentationCard: some View {
-        SectionCard(title: "正在抠图") {
+        SectionCard(title: "正在生成素材") {
             HStack {
                 if appState.isSegmenting {
                     ProgressView(value: appState.segmentationProgress)
@@ -535,14 +546,14 @@ struct LibraryView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(LF.header)
             }
-            Text(appState.segmentingName.isEmpty ? "正在准备素材" : appState.segmentingName)
+            Text(appState.segmentingName.isEmpty ? "正在准备人物素材" : appState.segmentingName)
                 .font(.caption)
                 .foregroundStyle(LF.textSecondary)
                 .lineLimit(1)
             Text("本次最多处理 \(Int(appState.maxExtractionDuration)) 秒，超出部分从开头截取")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
-            Button("取消抠图", role: .cancel) {
+            Button("取消生成", role: .cancel) {
                 importTask?.cancel()
             }
             .buttonStyle(.bordered)
@@ -557,7 +568,7 @@ struct LibraryView: View {
                 EmptyStateView(
                     icon: "folder",
                     title: "还没有素材",
-                    message: "选择视频、Live Photo 或照片，\n人物会被自动抠出来"
+                    message: "选择视频、Live Photo 或照片，\n人物会被自动提取为透明素材"
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)

@@ -1,4 +1,13 @@
 /* Português (Brasil) */
+"添加背景" = "Adicionar fundo";
+"拼接编辑器" = "Editor de colagem";
+"实时预览" = "Pré-visualização ao vivo";
+"点击切换" = "Toque para alternar";
+"图片区域" = "Área da imagem";
+"分割线角度" = "Ângulo da divisão";
+"请选择拼接素材" = "Escolha mídias para a colagem";
+"拼接素材" = "Mídias da colagem";
+"拼接" = "Colagem";
 "素材库" = "Biblioteca";
 "编辑" = "Editar";
 "作品" = "Obras";
@@ -260,3 +269,27 @@
 "复古" = "Vintage";
 "漫画" = "Quadrinhos";
 "粗" = "Espesso";
+
+/* Person cutout terminology */
+"人物素材" = "Recorte de pessoa";
+"自动提取人物，生成透明人物素材，全程在设备端处理" = "Extraia pessoas automaticamente para criar recortes transparentes. Tudo é processado no dispositivo.";
+"动态人物（默认）" = "Pessoa animada (padrão)";
+"静态人物（只取首帧）" = "Pessoa estática (somente o primeiro quadro)";
+"动态人物" = "Pessoa animada";
+"静态人物" = "Pessoa estática";
+"人物素材 · %@ · %@ fps" = "Recorte de pessoa · %@ · %@ fps";
+"人物素材设置" = "Ajustes do recorte de pessoa";
+"人物素材生成失败" = "Falha ao criar o recorte de pessoa";
+"整理人物素材" = "Organizar recortes de pessoas";
+"正在生成素材" = "Criando recorte de pessoa";
+"正在准备人物素材" = "Preparando recorte de pessoa";
+"取消生成" = "Cancelar criação";
+"选择视频、Live Photo 或照片，\n人物会被自动提取为透明素材" = "Selecione um vídeo, uma Live Photo ou uma foto,\ne a pessoa será extraída como um recorte transparente";
+"去「素材库」页面提取人物素材，\n或在素材上长按移动到文件夹" = "Acesse a Biblioteca para criar recortes de pessoas,\nou mantenha um material pressionado para movê-lo para uma pasta";
+"保留原始帧率和分辨率" = "Manter a taxa de quadros e a resolução originais";
+"开启后按源素材实际帧率处理，并保留原始像素尺寸；处理帧率和处理分辨率预设将暂时不生效，处理时间和占用空间可能明显增加。" = "Quando ativado, mantém a taxa de quadros e as dimensões originais. O processamento pode demorar mais e usar mais espaço.";
+"当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。" = "A taxa de quadros e as dimensões originais serão usadas. Quadros não são adicionados e os materiais não são ampliados.";
+"仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，人物素材越精细，处理时间越长。" = "Mais quadros só são mantidos quando a fonte tem uma taxa maior. Resolução e taxa maiores geram recortes mais detalhados, mas demoram mais.";
+"清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。" = "Limpar arquivos temporários não exclui nenhum material, incluindo recortes de pessoas dentro ou fora das pastas.";
+"人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "A criação, renderização e exportação dos recortes acontecem no dispositivo. Fotos e vídeos não são enviados.";
+"日志摘要" = "%d linhas · %@\nO carregamento e a criação de recortes são registrados após a seleção; os logs podem ser analisados após a exportação.";

@@ -20,6 +20,19 @@ actor WorkPersistenceCoordinator {
         }
     }
 
+    /// 批量写入经过草稿策略整理后的作品，避免清理旧草稿时留下半套状态。
+    func saveAndLoad(_ works: [WorkItem]) -> (Bool, [WorkItem]) {
+        do {
+            for work in works {
+                try store.save(work)
+            }
+            return (true, store.loadWorks())
+        } catch {
+            LogStore.log("work.batchSave failed: \(error)")
+            return (false, [])
+        }
+    }
+
     func load() -> [WorkItem] {
         store.loadWorks()
     }

@@ -2,196 +2,9 @@ import LivingFrameCore
 import SwiftUI
 import UIKit
 
-/// 编辑一轮播放使用的完整源范围；草稿只在点“完成”时提交，取消不影响工程。
-private struct ElementSourceRangeEditor: View {
-    @EnvironmentObject private var appState: AppState
-    @Environment(\.dismiss) private var dismiss
-    let element: CompositionElement
-    let source: ElementPlaybackSource
-    let onApply: (TimeInterval, TimeInterval) -> Void
-    @State private var start: TimeInterval
-    @State private var end: TimeInterval
-
-    init(element: CompositionElement, source: ElementPlaybackSource,
-         onApply: @escaping (TimeInterval, TimeInterval) -> Void) {
-        self.element = element
-        self.source = source
-        self.onApply = onApply
-        let range = source.range(for: element)
-        _start = State(initialValue: range.start)
-        _end = State(initialValue: range.end)
-    }
-
-    private var minimumSpan: Double { min(0.1 * source.playbackRate, source.duration) }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text(element.name).font(.headline)
-                    SourceRangeFilmstrip(
-                        element: element, source: source, start: start, end: end,
-                        clip: clip
-                    )
-                    .frame(height: 76)
-                    endpointLabel("起始位置", time: start)
-                    Slider(value: Binding(
-                        get: { start },
-                        set: { start = min($0, max(end - minimumSpan, 0)) }
-                    ), in: 0...source.duration)
-                    .accessibilityLabel("源片段起始位置")
-                    endpointLabel("结束位置", time: end)
-                    Slider(value: Binding(
-                        get: { end },
-                        set: { end = max($0, min(start + minimumSpan, source.duration)) }
-                    ), in: 0...source.duration)
-                    .accessibilityLabel("源片段结束位置")
-                    Text(String(format: "每次播放 %.2f 秒", (end - start) / source.playbackRate))
-                        .font(.subheadline.monospacedDigit())
-                    Text("暗区不会播放。修改片段会应用到每一次重复，时间轴上的开始位置保持不动。")
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
-                    Button("恢复完整素材") {
-                        start = 0
-                        end = source.duration
-                    }
-                }
-                .padding(20)
-            }
-            .magicBackground()
-            .tint(LF.actionPrimary)
-            .lfNavigationTitle("编辑播放片段")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") {
-                        onApply(start, end)
-                        dismiss()
-                    }
-                }
-            }
-        }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-    }
-
-    private var clip: SegmentedClip? {
-        guard case .clip(let id) = element.kind else { return nil }
-        return FrameCache.shared.clip(id: id) ?? appState.clips.first(where: { $0.id == id })
-    }
-
-    private func endpointLabel(_ title: String, time: Double) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text(String(format: "%.2f s", time)).monospacedDigit()
-        }
-        .font(.subheadline)
-    }
-}
-
-/// 只采样 12 张低分辨率帧，拖动选区只更新遮罩，不反复解码或建立播放缓存。
-private struct SourceRangeFilmstrip: View {
-    let element: CompositionElement
-    let source: ElementPlaybackSource
-    let start: Double
-    let end: Double
-    let clip: SegmentedClip?
-    @State private var frames: [CGImage?] = []
-
-    var body: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            let left = width * start / source.duration
-            let right = width * end / source.duration
-            HStack(spacing: 0) {
-                ForEach(frames.indices, id: \.self) { index in
-                    Group {
-                        if let frame = frames[index] {
-                            Image(decorative: frame, scale: 1).resizable().scaledToFill()
-                        } else {
-                            LF.surface2
-                        }
-                    }
-                    .frame(width: width / CGFloat(max(frames.count, 1)), height: geometry.size.height)
-                    .clipped()
-                }
-            }
-            .frame(width: width, height: geometry.size.height)
-            .overlay(alignment: .leading) {
-                TimelineInactiveRangeMask(totalWidth: width, leftWidth: left,
-                                          rightWidth: width - right, height: geometry.size.height)
-                    .frame(width: width, height: geometry.size.height)
-                    .allowsHitTesting(false)
-            }
-            .overlay(alignment: .leading) {
-                Rectangle().strokeBorder(LF.selectionStroke, lineWidth: 3)
-                    .frame(width: max(right - left, 1))
-                    .offset(x: left)
-                    .allowsHitTesting(false)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .task(id: element.id) {
-            let kind = element.kind
-            let duration = source.duration
-            let clip = clip
-            let worker = Task.detached(priority: .utility) {
-                var result: [CGImage?] = []
-                for index in 0..<12 {
-                    guard !Task.isCancelled else { return result }
-                    let time = duration * (Double(index) + 0.5) / 12
-                    result.append(autoreleasepool {
-                        Self.thumbnail(kind: kind, clip: clip, time: time)
-                    })
-                }
-                return result
-            }
-            let result = await withTaskCancellationHandler {
-                await worker.value
-            } onCancel: {
-                worker.cancel()
-            }
-            guard !Task.isCancelled else { return }
-            frames = result
-        }
-    }
-
-    nonisolated private static func thumbnail(kind: ElementKind, clip: SegmentedClip?, time: Double) -> CGImage? {
-        let image: CGImage?
-        switch kind {
-        case .clip:
-            guard let clip, clip.fps.isFinite, !clip.playbackFrameIndices.isEmpty else { return nil }
-            let indices = clip.playbackFrameIndices
-            let offset = min(max(Int(time * max(clip.fps, 0.001)), 0), indices.count - 1)
-            return FrameCache.shared.cachedThumbnail(for: clip, index: indices[offset], maxPixelSize: 160)
-        case .background(let id):
-            image = BackgroundStore.shared.loadFrame(named: id, at: time)
-        case .decoration(let id), .effect(let id):
-            return DecorationRenderer.previewThumbnail(for: id, at: time)
-        case .text, .canvasEdge:
-            return nil
-        }
-        guard let image else { return nil }
-        let scale = min(160 / Double(max(image.width, image.height)), 1)
-        let width = max(Int(Double(image.width) * scale), 1)
-        let height = max(Int(Double(image.height) * scale), 1)
-        guard let context = CGContext(data: nil, width: width, height: height,
-                                      bitsPerComponent: 8, bytesPerRow: 0,
-                                      space: CGColorSpaceCreateDeviceRGB(),
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        context.draw(image, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
-        return context.makeImage()
-    }
-}
-
 /// 检查器：按选中类型分派（视频元素 / 音频段）
 struct ElementInspectorView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var editingSourceElement: CompositionElement?
 
     var body: some View {
         // 底部属性面板：高度受限（外部 frame），内容多时内部滚动
@@ -217,13 +30,6 @@ struct ElementInspectorView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-        }
-        .sheet(item: $editingSourceElement) { element in
-            if let source = appState.playbackSource(for: element) {
-                ElementSourceRangeEditor(element: element, source: source) { start, end in
-                    appState.setElementSourceRange(element.id, start: start, end: end)
-                }
-            }
         }
     }
 
@@ -563,7 +369,7 @@ struct ElementInspectorView: View {
             .padding(.vertical, 2)
 
             if let source = appState.playbackSource(for: element) {
-                playbackControls(element, source: source)
+                ElementPlaybackControls(element: element, source: source)
             }
 
             if case .canvasEdge = element.kind {
@@ -601,65 +407,6 @@ struct ElementInspectorView: View {
         }
     }
 
-    private func playbackControls(_ element: CompositionElement, source: ElementPlaybackSource) -> some View {
-        let count = element.resolvedPlaybackCount(cycleDuration: source.cycleDuration(for: element))
-        let range = source.range(for: element)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("重复播放", systemImage: "repeat")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Menu {
-                    ForEach([1, 2, 3], id: \.self) { value in
-                        Button(value == 1 ? "仅播放一次" : "播放 \(value) 次") {
-                            appState.setElementPlaybackCount(element.id, count: value)
-                        }
-                    }
-                    Button("自定义次数") {
-                        appState.setElementPlaybackCount(element.id, count: max(count, 4))
-                    }
-                } label: {
-                    Text(count == 1 ? "仅播放一次" : "播放 \(count) 次")
-                        .foregroundStyle(LF.selectionText)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(LF.selectionFill, in: Capsule())
-                }
-            }
-            if count > 3 {
-                Stepper("总共播放 \(count) 次", value: Binding(
-                    get: { min(count, 99) },
-                    set: { appState.setElementPlaybackCount(element.id, count: $0) }
-                ), in: 1...99)
-                .font(.caption)
-            }
-            HStack(spacing: 8) {
-                Label("源片段", systemImage: "film")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(LF.textSecondary)
-                Spacer(minLength: 8)
-                Text(String(format: "%.2f–%.2f / %.2f s", range.start, range.end, source.duration))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(LF.textPrimary)
-            }
-            Button {
-                appState.pause()
-                editingSourceElement = element
-            } label: {
-                Label("编辑起始帧和结束帧", systemImage: "scissors")
-                    .font(.subheadline)
-                    .foregroundStyle(LF.actionPrimary)
-            }
-            Text(count > 1
-                 ? "每次重复当前选中的源片段；修改后保持时间轴起点不变。"
-                 : "动态素材可调整源片段的起始帧和结束帧；时间轴左右手柄用于单次播放。")
-                .font(.caption2)
-                .foregroundStyle(LF.textSecondary)
-        }
-        .padding(10)
-        .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12))
-    }
-
     private var canvasEdgeElementInspector: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("画布边框是透明图层，可在时间轴左侧长按拖动调整层级")
@@ -681,13 +428,24 @@ struct ElementInspectorView: View {
             if let comp = appState.composition,
                case .background(let backgroundID) = element.kind,
                let frame = BackgroundStore.shared.loadFrame(named: backgroundID, at: appState.currentTime) {
-                BackgroundFillPreview(
-                    frame: frame,
+                BackgroundEditingPreview(
+                    items: [BackgroundEditingPreviewItem(
+                        id: element.id,
+                        frame: frame,
+                        settings: settings,
+                        zIndex: element.zIndex
+                    )],
+                    layoutSettings: settings,
+                    activeElementSettings: settings,
                     canvasAspect: comp.canvasRect.width / comp.canvasRect.height,
                     canvasSize: comp.canvasRect.size,
-                    settings: settings,
+                    activeElementID: element.id,
+                    isDividerLayoutLocked: settings.isDividerLayoutLocked,
+                    onElementTap: { _, partition in
+                        appState.toggleBackgroundPartition(element.id, partition)
+                    },
                     onPartitionTap: { partition in
-                        appState.setBackgroundPartition(element.id, partition)
+                        appState.toggleBackgroundPartition(element.id, partition)
                     },
                     onDividerOffsetChange: { dividerIndex, offset in
                         appState.setBackgroundDividerOffset(
@@ -695,27 +453,45 @@ struct ElementInspectorView: View {
                             dividerIndex: dividerIndex,
                             offset: offset
                         )
+                    },
+                    onDividerPivotChange: { dividerIndex, pivot in
+                        appState.setBackgroundDividerPivot(
+                            element.id,
+                            dividerIndex: dividerIndex,
+                            pivot
+                        )
+                    },
+                    onCropScaleChange: { scale in
+                        appState.setBackgroundCropScale(element.id, scale)
+                    },
+                    onCropOffsetChange: { offset in
+                        appState.setBackgroundCropOffset(element.id, offset)
                     }
                 )
             }
 
-            inspectorChoiceRow(
-                title: "分区",
-                items: BackgroundSplitCount.allCases,
-                selected: settings.splitCount
-            ) { splitCount in
-                appState.setBackgroundSplitCount(element.id, splitCount)
-            }
-
-            if settings.splitCount != .full {
-                partitionChoiceRow(
-                    title: "填充区域",
-                    count: settings.splitCount == .two ? 2 : 4,
-                    selected: settings.selectedPartition
-                ) { partition in
-                    appState.setBackgroundPartition(element.id, partition)
+            BackgroundDividerControls(
+                settings: settings,
+                canvasRect: appState.composition?.canvasRect
+                    ?? CGRect(x: 0, y: 0, width: 1, height: 1),
+                isDividerLayoutLocked: backgroundDividerLayoutLockBinding(for: element.id),
+                onAddDivider: {
+                    appState.addBackgroundDividerLine(element.id)
+                },
+                onRemoveDivider: { dividerIndex in
+                    appState.removeBackgroundDividerLine(element.id, dividerIndex: dividerIndex)
+                },
+                onAngleChange: { dividerIndex, angle in
+                    appState.setBackgroundDividerAngle(
+                        element.id,
+                        dividerIndex: dividerIndex,
+                        angle
+                    )
+                },
+                onPartitionSelect: { partition in
+                    appState.toggleBackgroundPartition(element.id, partition)
                 }
-            }
+            )
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
@@ -727,7 +503,7 @@ struct ElementInspectorView: View {
                             get: { Double(settings.cropScale) },
                             set: { appState.setBackgroundCropScale(element.id, CGFloat($0)) }
                         ),
-                        in: 1...4
+                        in: Double(BackgroundElementSettings.minimumCropScale)...Double(BackgroundElementSettings.maximumCropScale)
                     )
                     .tint(LF.header)
                     Text(String(format: "%.1f×", settings.cropScale))
@@ -758,6 +534,18 @@ struct ElementInspectorView: View {
 
             inspectorFooter("点击画布空白处可返回画布背景设置")
         }
+    }
+
+    private func backgroundDividerLayoutLockBinding(for elementID: UUID) -> Binding<Bool> {
+        Binding(
+            get: {
+                appState.composition?.elements.first(where: { $0.id == elementID })?
+                    .backgroundSettings?.isDividerLayoutLocked ?? false
+            },
+            set: { locked in
+                appState.setBackgroundDividerLayoutLocked(elementID, locked)
+            }
+        )
     }
 
     private var backgroundInspectorHeader: some View {
@@ -1251,19 +1039,47 @@ struct ElementInspectorView: View {
     }
 }
 
-private struct BackgroundFillPreview: View {
+struct BackgroundFillPreview: View {
     let frame: CGImage
     let canvasAspect: CGFloat
     let canvasSize: CGSize
     let settings: BackgroundElementSettings
     let onPartitionTap: (Int) -> Void
     let onDividerOffsetChange: (Int, CGFloat) -> Void
+    let onDividerPivotChange: (Int, CGPoint) -> Void
+    let onCropScaleChange: (CGFloat) -> Void
+    let onCropOffsetChange: (CGPoint) -> Void
     @State private var activeDividerIndex: Int?
     @State private var dividerOffsetAtDragStart: CGFloat = 0
+    @State private var activePivotIndex: Int?
+    @State private var imageDragStartOffset: CGPoint?
+    @State private var imageScaleStart: CGFloat?
+
+    init(
+        frame: CGImage,
+        canvasAspect: CGFloat,
+        canvasSize: CGSize,
+        settings: BackgroundElementSettings,
+        onPartitionTap: @escaping (Int) -> Void,
+        onDividerOffsetChange: @escaping (Int, CGFloat) -> Void,
+        onDividerPivotChange: @escaping (Int, CGPoint) -> Void = { _, _ in },
+        onCropScaleChange: @escaping (CGFloat) -> Void = { _ in },
+        onCropOffsetChange: @escaping (CGPoint) -> Void = { _ in }
+    ) {
+        self.frame = frame
+        self.canvasAspect = canvasAspect
+        self.canvasSize = canvasSize
+        self.settings = settings
+        self.onPartitionTap = onPartitionTap
+        self.onDividerOffsetChange = onDividerOffsetChange
+        self.onDividerPivotChange = onDividerPivotChange
+        self.onCropScaleChange = onCropScaleChange
+        self.onCropOffsetChange = onCropOffsetChange
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("实时预览 · 点击区域选择图片显示位置 · 拖动圆点平移分割线")
+            Text("编辑画面 · 拖动分割线调整位置 · 沿线拖动圆点调整旋转中心")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
 
@@ -1290,9 +1106,10 @@ private struct BackgroundFillPreview: View {
                     BackgroundDividerShape(settings: settings)
                         .stroke(LF.header.opacity(0.85), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
 
-                    if settings.splitCount != .full {
+                    if !settings.dividerLines.isEmpty {
                         ForEach(0..<dividerCount, id: \.self) { index in
                             dividerHandle(index: index, in: rect)
+                            pivotHandle(index: index, in: rect)
                         }
 
                         Text("区域 \(settings.selectedPartition + 1)")
@@ -1316,6 +1133,9 @@ private struct BackgroundFillPreview: View {
                     }
                 }
                 .simultaneousGesture(dividerDragGesture(in: rect))
+                .simultaneousGesture(pivotDragGesture(in: rect))
+                .simultaneousGesture(imageDragGesture(in: rect))
+                .simultaneousGesture(imageMagnifyGesture())
             }
             .aspectRatio(canvasAspect, contentMode: .fit)
             .frame(maxWidth: .infinity)
@@ -1341,7 +1161,7 @@ private struct BackgroundFillPreview: View {
     }
 
     private var dividerCount: Int {
-        settings.splitCount == .four ? 2 : (settings.splitCount == .two ? 1 : 0)
+        settings.dividerLines.count
     }
 
     @ViewBuilder
@@ -1355,9 +1175,9 @@ private struct BackgroundFillPreview: View {
                 Image(systemName: "arrow.left.and.right")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.white)
-                    .rotationEffect(.degrees(Double(index == 0
-                        ? 90 - settings.dividerAngle
-                        : 180 - settings.dividerAngle)))
+                    .rotationEffect(.degrees(Double(
+                        90 - BackgroundPartitionGeometry.angle(for: index, settings: settings)
+                    )))
             }
             .shadow(color: .black.opacity(0.22), radius: 2, y: 1)
             .position(point)
@@ -1367,6 +1187,7 @@ private struct BackgroundFillPreview: View {
     private func dividerDragGesture(in rect: CGRect) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                guard pivotIndex(near: value.startLocation, in: rect) == nil else { return }
                 let draggedDividerIndex: Int
                 let startingOffset: CGFloat
                 if let activeDividerIndex {
@@ -1399,6 +1220,96 @@ private struct BackgroundFillPreview: View {
             }
     }
 
+    @ViewBuilder
+    private func pivotHandle(index: Int, in rect: CGRect) -> some View {
+        let point = BackgroundPartitionGeometry.pivot(
+            for: index,
+            in: rect,
+            settings: settings,
+            coordinateSpace: .screen
+        )
+        let isActive = activePivotIndex == index
+        Circle()
+            .fill(isActive ? LF.gold : LF.selectionStroke)
+            .frame(width: isActive ? 25 : 21, height: isActive ? 25 : 21)
+            .overlay {
+                Image(systemName: "scope")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .overlay {
+                Circle().stroke(.white.opacity(0.85), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+            .position(point)
+            .allowsHitTesting(false)
+    }
+
+    private func pivotDragGesture(in rect: CGRect) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                let index: Int
+                if let activePivotIndex {
+                    index = activePivotIndex
+                } else {
+                    guard let nearest = pivotIndex(near: value.startLocation, in: rect) else { return }
+                    index = nearest
+                    activePivotIndex = nearest
+                }
+                let projected = BackgroundPartitionGeometry.projectedPivot(
+                    at: value.location,
+                    for: index,
+                    settings: settings,
+                    in: rect,
+                    coordinateSpace: .screen
+                )
+                let pivot = BackgroundPartitionGeometry.normalizedPivot(
+                    at: projected,
+                    in: rect,
+                    coordinateSpace: .screen
+                )
+                onDividerPivotChange(index, pivot)
+            }
+            .onEnded { _ in
+                activePivotIndex = nil
+            }
+    }
+
+    /// 非分割线区域拖动图片取景；与分割线拖动共用同一块编辑画面，
+    /// 从分割线附近开始时让分割线手势优先，避免两个参数同时变化。
+    private func imageDragGesture(in rect: CGRect) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                guard dividerIndex(near: value.startLocation, in: rect) == nil,
+                      pivotIndex(near: value.startLocation, in: rect) == nil else { return }
+                let startOffset = imageDragStartOffset ?? settings.cropOffset
+                imageDragStartOffset = startOffset
+                let dx = value.translation.width * canvasSize.width / max(rect.width, 1)
+                let dy = -value.translation.height * canvasSize.height / max(rect.height, 1)
+                onCropOffsetChange(
+                    CGPoint(x: startOffset.x + dx, y: startOffset.y + dy)
+                )
+            }
+            .onEnded { _ in
+                imageDragStartOffset = nil
+            }
+    }
+
+    private func imageMagnifyGesture() -> some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                let startScale = imageScaleStart ?? settings.cropScale
+                imageScaleStart = startScale
+                onCropScaleChange(min(
+                    max(startScale * value, BackgroundElementSettings.minimumCropScale),
+                    BackgroundElementSettings.maximumCropScale
+                ))
+            }
+            .onEnded { _ in
+                imageScaleStart = nil
+            }
+    }
+
     private func dividerIndex(near point: CGPoint, in rect: CGRect) -> Int? {
         let threshold = max(16, min(rect.width, rect.height) * 0.1)
         return BackgroundPartitionGeometry.dividerIndex(
@@ -1408,6 +1319,26 @@ private struct BackgroundFillPreview: View {
             threshold: threshold
         )
     }
+
+    private func pivotIndex(near point: CGPoint, in rect: CGRect) -> Int? {
+        let threshold = max(18, min(rect.width, rect.height) * 0.08)
+        let count = dividerCount
+        guard count > 0 else { return nil }
+        let candidates = (0..<count).map { index in
+            let pivot = BackgroundPartitionGeometry.pivot(
+                for: index,
+                in: rect,
+                settings: settings,
+                coordinateSpace: .screen
+            )
+            let distance = hypot(point.x - pivot.x, point.y - pivot.y)
+            return (index, distance)
+        }
+        guard let nearest = candidates.min(by: { $0.1 < $1.1 }), nearest.1 <= threshold else {
+            return nil
+        }
+        return nearest.0
+    }
 }
 
 /// 背景遮罩的 SwiftUI 对应路径；检查器预览与画布命中测试共用它，保证可见区域和可选区域一致。
@@ -1415,17 +1346,25 @@ struct BackgroundPartitionShape: Shape {
     let settings: BackgroundElementSettings
 
     func path(in rect: CGRect) -> Path {
-        guard settings.splitCount != .full else { return Path(rect) }
-        let polygon = BackgroundPartitionGeometry.polygon(
+        var path = Path()
+        guard !settings.resolvedAssignedPartitions.isEmpty else {
+            return path
+        }
+        guard !settings.dividerLines.isEmpty else {
+            path.addRect(rect)
+            return path
+        }
+        let polygons = BackgroundPartitionGeometry.assignedPolygons(
             for: settings,
             in: rect,
             coordinateSpace: .screen
         )
-        var path = Path()
-        guard let first = polygon.first else { return path }
-        path.move(to: first)
-        for point in polygon.dropFirst() { path.addLine(to: point) }
-        path.closeSubpath()
+        for polygon in polygons {
+            guard let first = polygon.first else { continue }
+            path.move(to: first)
+            for point in polygon.dropFirst() { path.addLine(to: point) }
+            path.closeSubpath()
+        }
         return path
     }
 
@@ -1457,25 +1396,27 @@ struct BackgroundPartitionShape: Shape {
     static func samplePoint(settings: BackgroundElementSettings, in rect: CGRect) -> CGPoint {
         BackgroundPartitionGeometry.samplePoint(settings: settings, in: rect)
     }
+
+    static func regionCount(settings: BackgroundElementSettings, in rect: CGRect) -> Int {
+        BackgroundPartitionGeometry.regionCount(for: settings, in: rect)
+    }
 }
 
-private struct BackgroundDividerShape: Shape {
+struct BackgroundDividerShape: Shape {
     let settings: BackgroundElementSettings
 
     func path(in rect: CGRect) -> Path {
-        guard settings.splitCount != .full else { return Path() }
-        let angle = BackgroundPartitionGeometry.radians(settings.dividerAngle)
-        let direction = CGPoint(x: cos(angle), y: -sin(angle))
-        let firstCenter = BackgroundPartitionShape.dividerCenter(for: 0, settings: settings, in: rect)
+        guard !settings.dividerLines.isEmpty else { return Path() }
         let length = max(rect.width, rect.height) * 2
         var path = Path()
-        path.move(to: CGPoint(x: firstCenter.x - direction.x * length, y: firstCenter.y - direction.y * length))
-        path.addLine(to: CGPoint(x: firstCenter.x + direction.x * length, y: firstCenter.y + direction.y * length))
-        if settings.splitCount == .four {
-            let perpendicular = CGPoint(x: -direction.y, y: direction.x)
-            let secondCenter = BackgroundPartitionShape.dividerCenter(for: 1, settings: settings, in: rect)
-            path.move(to: CGPoint(x: secondCenter.x - perpendicular.x * length, y: secondCenter.y - perpendicular.y * length))
-            path.addLine(to: CGPoint(x: secondCenter.x + perpendicular.x * length, y: secondCenter.y + perpendicular.y * length))
+        for dividerIndex in settings.dividerLines.indices {
+            let secondAngle = BackgroundPartitionGeometry.radians(
+                BackgroundPartitionGeometry.angle(for: dividerIndex, settings: settings)
+            )
+            let secondDirection = CGPoint(x: cos(secondAngle), y: -sin(secondAngle))
+            let secondCenter = BackgroundPartitionShape.dividerCenter(for: dividerIndex, settings: settings, in: rect)
+            path.move(to: CGPoint(x: secondCenter.x - secondDirection.x * length, y: secondCenter.y - secondDirection.y * length))
+            path.addLine(to: CGPoint(x: secondCenter.x + secondDirection.x * length, y: secondCenter.y + secondDirection.y * length))
         }
         return path
     }

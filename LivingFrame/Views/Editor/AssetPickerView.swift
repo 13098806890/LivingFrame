@@ -21,11 +21,17 @@ struct AssetPickerView: View {
     @State private var backgroundImportTask: Task<Void, Never>?
     /// 当前浏览的文件夹（nil = 全部素材），按钮直接切换，不依赖 NavigationLink
     @State private var folderID: String?
+    /// 拼接素材选完后交给独立拼接编辑器；普通人物素材选择不需要这个回调。
+    private let onCollageSelection: (([String]) -> Void)?
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 10)]
 
-    init(collageOnly: Bool = false) {
+    init(
+        collageOnly: Bool = false,
+        onCollageSelection: (([String]) -> Void)? = nil
+    ) {
         self.collageOnly = collageOnly
+        self.onCollageSelection = onCollageSelection
         _pickerMode = State(initialValue: collageOnly ? .background : .person)
     }
 
@@ -37,7 +43,7 @@ struct AssetPickerView: View {
 
         var title: LocalizedStringKey {
             switch self {
-            case .person: "人物"
+            case .person: "人物素材"
             case .background: "拼接素材"
             }
         }
@@ -77,15 +83,12 @@ struct AssetPickerView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     if !collageOnly {
-                        modePicker
-                    }
-                    if !collageOnly && pickerMode == .person {
                         folderBar
                         if let folder = currentFolder, !appState.childFolders(of: folder.id).isEmpty {
                             childFolderBar(folder)
                         }
                         clipsGrid
-                    } else if collageOnly || pickerMode == .background {
+                    } else {
                         backgroundGrid
                     }
                 }
@@ -104,8 +107,12 @@ struct AssetPickerView: View {
                             for clipID in selectedIDs {
                                 appState.addElementFromClipID(clipID)
                             }
+                        } else if let onCollageSelection {
+                            onCollageSelection(orderedSelectedBackgroundIDs)
                         } else {
-                            appState.addBackgroundElements(mediaIDs: orderedSelectedBackgroundIDs)
+                            for mediaID in orderedSelectedBackgroundIDs {
+                                appState.addBackgroundElement(mediaID: mediaID)
+                            }
                         }
                         dismiss()
                     } label: {
@@ -163,16 +170,6 @@ struct AssetPickerView: View {
                 backgroundImportTask = nil
             }
         }
-    }
-
-    private var modePicker: some View {
-        Picker("素材类型", selection: $pickerMode) {
-            ForEach(PickerMode.allCases) { mode in
-                Text(mode.title).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
-        .tint(LF.actionPrimary)
     }
 
     /// 顶层：全部素材 + 根文件夹
@@ -255,7 +252,7 @@ struct AssetPickerView: View {
                 EmptyStateView(
                     icon: "photo.on.rectangle.angled",
                     title: "暂无素材",
-                    message: "去「素材库」页面抠出人物素材，\n或在素材上长按移动到文件夹"
+                    message: "去「素材库」页面提取人物素材，\n或在素材上长按移动到文件夹"
                 )
             } else {
                 LazyVGrid(columns: columns, spacing: 10) {

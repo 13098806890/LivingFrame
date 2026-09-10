@@ -181,6 +181,7 @@ enum BackgroundMaskRenderer {
         let key = cacheKey(prefix: "mask", size: size, settings: settings)
         if let cached = maskCache.object(forKey: key) { return cached }
         let image = ProceduralRasterRenderer.makeImage(size: size) { context, rect in
+            guard !settings.resolvedAssignedPartitions.isEmpty else { return }
             context.setFillColor(CGColor(gray: 1, alpha: 1))
             context.addPath(path(for: settings, in: rect))
             context.fillPath()
@@ -208,7 +209,7 @@ enum BackgroundMaskRenderer {
         let key = cacheKey(prefix: "edge", size: size, settings: settings)
         if let cached = edgeCache.object(forKey: key) { return cached }
         if let profile = tornProfile(for: settings.edgeStyle),
-           settings.splitCount != .full,
+           !settings.dividerLines.isEmpty,
            let authoredImage = PaperAssetRenderer.internalDividerOverlay(
                size: size,
                profile: profile,
@@ -266,15 +267,22 @@ enum BackgroundMaskRenderer {
         for settings: BackgroundElementSettings,
         in rect: CGRect
     ) -> CGPath {
-        guard settings.splitCount != .full else {
+        guard !settings.resolvedAssignedPartitions.isEmpty else {
+            return CGMutablePath()
+        }
+        guard !settings.dividerLines.isEmpty else {
             return path(for: settings.region, in: rect, edgeStyle: settings.edgeStyle)
         }
-        let polygon = BackgroundPartitionGeometry.polygon(
+        let polygons = BackgroundPartitionGeometry.assignedPolygons(
             for: settings,
             in: rect,
             coordinateSpace: .coreImage
         )
-        return paperPath(polygon, edgeStyle: settings.edgeStyle, canvas: rect)
+        let combinedPath = CGMutablePath()
+        for polygon in polygons {
+            combinedPath.addPath(paperPath(polygon, edgeStyle: settings.edgeStyle, canvas: rect))
+        }
+        return combinedPath
     }
 
     /// Returns only the internal sides of the selected partition. The existing
@@ -284,13 +292,28 @@ enum BackgroundMaskRenderer {
         in rect: CGRect,
         settings: BackgroundElementSettings
     ) -> [(CGPoint, CGPoint)] {
-        guard settings.splitCount != .full else { return [] }
-        let partitionPolygon = BackgroundPartitionGeometry.polygon(
+        guard !settings.dividerLines.isEmpty else { return [] }
+        let segments = BackgroundPartitionGeometry.assignedPolygons(
             for: settings,
             in: rect,
             coordinateSpace: .coreImage
-        )
-        return internalSegments(of: partitionPolygon, in: rect)
+        ).flatMap { internalSegments(of: $0, in: rect) }
+        // 相邻区域属于同一个素材实例时，它们之间的分割边也应被视为内部
+        // 连接面，不再绘制撕纸边缘；只有联合遮罩的外轮廓保留边缘效果。
+        return segments.filter { segment in
+            !segments.contains { other in
+                areSameSegment(segment, reversed: other)
+            }
+        }
+    }
+
+    private static func areSameSegment(
+        _ segment: (CGPoint, CGPoint),
+        reversed other: (CGPoint, CGPoint)
+    ) -> Bool {
+        let tolerance: CGFloat = 0.75
+        return hypot(segment.0.x - other.1.x, segment.0.y - other.1.y) <= tolerance
+            && hypot(segment.1.x - other.0.x, segment.1.y - other.0.y) <= tolerance
     }
 
     private static func internalSegments(
@@ -429,10 +452,21 @@ enum BackgroundMaskRenderer {
         size: CGSize,
         settings: BackgroundElementSettings
     ) -> NSString {
-        let angle = Int(settings.dividerAngle.isFinite ? settings.dividerAngle.rounded() : 90)
-        let primaryOffset = Int((settings.primaryDividerOffset * 1_000).rounded())
-        let secondaryOffset = Int((settings.secondaryDividerOffset * 1_000).rounded())
-        return "\(prefix)-\(Int(size.width.rounded()))x\(Int(size.height.rounded()))-\(settings.region.rawValue)-\(settings.edgeStyle.rawValue)-\(settings.splitCount.rawValue)-\(angle)-\(primaryOffset)-\(secondaryOffset)-\(settings.selectedPartition)" as NSString
+        let dividerKey = settings.dividerLines.enumerated().map { index, _ in
+            let angle = Int(BackgroundPartitionGeometry.angle(for: index, settings: settings).rounded())
+            let offset = Int((BackgroundDividerGeometry.offset(for: index, settings: settings) * 1_000).rounded())
+            let pivot = BackgroundPartitionGeometry.pivot(
+                for: index,
+                in: CGRect(origin: .zero, size: size),
+                settings: settings,
+                coordinateSpace: .coreImage
+            )
+            let pivotX = Int((pivot.x / max(size.width, 1) * 1_000).rounded())
+            let pivotY = Int((pivot.y / max(size.height, 1) * 1_000).rounded())
+            return "\(angle)-\(offset)-\(pivotX)-\(pivotY)"
+        }.joined(separator: ";")
+        let assignedKey = settings.resolvedAssignedPartitions.map(String.init).joined(separator: ",")
+        return "\(prefix)-\(Int(size.width.rounded()))x\(Int(size.height.rounded()))-\(settings.region.rawValue)-\(settings.edgeStyle.rawValue)-\(dividerKey)-\(assignedKey)" as NSString
     }
 
     private static func addHorizontalBoundary(

@@ -61,8 +61,9 @@ enum EditorTool: String, CaseIterable, Identifiable {
 struct EditorView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showAssetPicker = false
-    /// 独立的照片/动态素材拼接选择器。
-    @State private var showCollagePicker = false
+    /// 双击已有背景元素时，直接复用拼接编辑器而不是进入通用检查器。
+    @State private var pendingCollageElementIDs: [UUID] = []
+    @State private var showCollageEditor = false
     /// 长按贴纸后显示的动态预览。
     @State private var previewSticker: StickerDefinition?
     /// 贴纸面板当前选中的视觉分类。
@@ -101,8 +102,7 @@ struct EditorView: View {
                 // ② 纵向工作区：画布 → 播放控制 → 时间轴，避免手机屏幕横向拥挤。
                 VStack(spacing: 0) {
                     CanvasView {
-                        appState.pause()
-                        showInspectorSheet = true
+                        requestInspectorForSelection()
                     }
                         .frame(width: canvasSize.width, height: canvasSize.height)
                         .frame(maxWidth: .infinity)
@@ -147,8 +147,12 @@ struct EditorView: View {
         .sheet(isPresented: $showAssetPicker) {
             AssetPickerView().environmentObject(appState)
         }
-        .sheet(isPresented: $showCollagePicker) {
-            AssetPickerView(collageOnly: true)
+        .sheet(isPresented: $showCollageEditor, onDismiss: {
+            pendingCollageElementIDs.removeAll()
+        }) {
+            CollageEditorView(
+                existingElementIDs: pendingCollageElementIDs
+            )
                 .environmentObject(appState)
         }
         .sheet(isPresented: $showInspectorSheet) {
@@ -425,10 +429,7 @@ struct EditorView: View {
     // MARK: - 时间轴区域（播放控制下方：双轨时间轴）
 
     private var timelineArea: some View {
-        TimelineView(onRequestInspector: {
-            appState.pause()
-            showInspectorSheet = true
-        })
+        TimelineView(onRequestInspector: requestInspectorForSelection)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -563,7 +564,7 @@ struct EditorView: View {
         case .asset:
             showAssetPicker = true
         case .collage:
-            showCollagePicker = true
+            openCollageEditor()
         case .text:
             // 选中文字时打开当前文字；否则新增一个文字元素，支持叠加多段文字。
             if let selected = appState.primarySelectedElement,
@@ -577,6 +578,40 @@ struct EditorView: View {
             appState.isCropping = true
         default:
             toolSheet = tool
+        }
+    }
+
+    private func openCollageEditor() {
+        pendingCollageElementIDs.removeAll()
+        showCollageEditor = true
+    }
+
+    /// 根据元素来源决定进入普通检查器还是拼接编辑器。
+    /// 三个入口（画布双击、时间轴检查器按钮、时间轴双击）都经过这里，避免行为分叉。
+    private func requestInspectorForSelection() {
+        appState.pause()
+        guard let selected = appState.primarySelectedElement,
+              case .background = selected.kind,
+              let composition = appState.composition else {
+            showInspectorSheet = true
+            return
+        }
+
+        // 单张背景和多张拼接都进入同一个编辑器。旧工程里的单张背景没有组标识，
+        // 先作为只有一个元素的拼接会话打开；用户追加素材后会在会话中补齐组标识。
+        if let collageGroupID = selected.collageGroupID {
+            pendingCollageElementIDs = composition.elements.compactMap { element in
+                guard element.collageGroupID == collageGroupID,
+                      case .background = element.kind else { return nil }
+                return element.id
+            }
+        } else {
+            pendingCollageElementIDs = [selected.id]
+        }
+        if pendingCollageElementIDs.isEmpty {
+            showInspectorSheet = true
+        } else {
+            showCollageEditor = true
         }
     }
 

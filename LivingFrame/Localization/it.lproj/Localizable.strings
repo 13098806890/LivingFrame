@@ -1,4 +1,13 @@
 /* Italiano */
+"添加背景" = "Aggiungi sfondo";
+"拼接编辑器" = "Editor collage";
+"实时预览" = "Anteprima live";
+"点击切换" = "Tocca per cambiare";
+"图片区域" = "Area immagine";
+"分割线角度" = "Angolo della divisione";
+"请选择拼接素材" = "Scegli i media per il collage";
+"拼接素材" = "Media collage";
+"拼接" = "Collage";
 "素材库" = "Libreria";
 "编辑" = "Modifica";
 "作品" = "Opere";
@@ -260,3 +269,27 @@
 "复古" = "Vintage";
 "漫画" = "Fumetto";
 "粗" = "Spesso";
+
+/* Person cutout terminology */
+"人物素材" = "Ritaglio persona";
+"自动提取人物，生成透明人物素材，全程在设备端处理" = "Estrai automaticamente le persone per creare ritagli trasparenti. Tutto viene elaborato sul dispositivo.";
+"动态人物（默认）" = "Persona animata (default)";
+"静态人物（只取首帧）" = "Persona statica (solo primo fotogramma)";
+"动态人物" = "Persona animata";
+"静态人物" = "Persona statica";
+"人物素材 · %@ · %@ fps" = "Ritaglio persona · %@ · %@ fps";
+"人物素材设置" = "Impostazioni ritaglio persona";
+"人物素材生成失败" = "Creazione del ritaglio non riuscita";
+"整理人物素材" = "Organizza i ritagli delle persone";
+"正在生成素材" = "Creazione del ritaglio";
+"正在准备人物素材" = "Preparazione del ritaglio";
+"取消生成" = "Annulla creazione";
+"选择视频、Live Photo 或照片，\n人物会被自动提取为透明素材" = "Seleziona un video, una Live Photo o una foto,\ne la persona verrà estratta come ritaglio trasparente";
+"去「素材库」页面提取人物素材，\n或在素材上长按移动到文件夹" = "Vai nella Libreria per creare ritagli di persone,\no tieni premuto un elemento per spostarlo in una cartella";
+"保留原始帧率和分辨率" = "Mantieni frequenza fotogrammi e risoluzione originali";
+"开启后按源素材实际帧率处理，并保留原始像素尺寸；处理帧率和处理分辨率预设将暂时不生效，处理时间和占用空间可能明显增加。" = "Quando attivo, mantiene la frequenza fotogrammi e le dimensioni originali. L’elaborazione può richiedere più tempo e spazio.";
+"当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。" = "Vengono usati la frequenza fotogrammi e le dimensioni originali. Non vengono aggiunti fotogrammi né ingranditi gli elementi.";
+"仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，人物素材越精细，处理时间越长。" = "Vengono mantenuti più fotogrammi solo se la sorgente ha una frequenza maggiore. Risoluzione e frequenza più alte creano ritagli più dettagliati ma richiedono più tempo.";
+"清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。" = "La pulizia dei file temporanei non elimina alcun elemento, inclusi i ritagli dentro o fuori dalle cartelle.";
+"人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Creazione, rendering ed esportazione dei ritagli avvengono sul dispositivo. Foto e video non vengono caricati.";
+"日志摘要" = "%d righe · %@\nDopo la selezione vengono registrati caricamento e creazione dei ritagli; i log possono essere analizzati dopo l’esportazione.";

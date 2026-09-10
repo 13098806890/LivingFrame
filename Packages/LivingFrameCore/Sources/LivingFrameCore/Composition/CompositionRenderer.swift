@@ -486,7 +486,13 @@ public struct CompositionRenderer {
             target: localRect
         ))
 
-        let cropScale = min(max(settings.cropScale.isFinite ? settings.cropScale : 1, 1), 4)
+        let cropScale = min(
+            max(
+                settings.cropScale.isFinite ? settings.cropScale : 1,
+                BackgroundElementSettings.minimumCropScale
+            ),
+            BackgroundElementSettings.maximumCropScale
+        )
         let center = CGPoint(x: localRect.midX, y: localRect.midY)
         var cropTransform = CGAffineTransform(translationX: center.x, y: center.y)
         cropTransform = cropTransform.scaledBy(x: cropScale, y: cropScale)
