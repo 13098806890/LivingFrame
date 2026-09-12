@@ -27,6 +27,58 @@ final class TimelinePlaybackRulesTests: XCTestCase {
         XCTAssertNotNil(normalized[1].draft)
     }
 
+    func testAutosaveOnlyWorkDoesNotHaveSavedVersion() {
+        let date = Date(timeIntervalSince1970: 100)
+        let work = makeWork(name: "draft-only", draftDate: date)
+
+        XCTAssertFalse(work.hasSavedVersion)
+    }
+
+    func testManuallySavedWorkWithLaterDraftKeepsSavedVersion() {
+        let composition = Composition(
+            name: "saved-and-draft",
+            canvas: CanvasSpec(width: 100, height: 100)
+        )
+        let work = WorkItem(
+            name: composition.name,
+            createdAt: Date(timeIntervalSince1970: 50),
+            updatedAt: Date(timeIntervalSince1970: 100),
+            composition: composition,
+            posterData: Data([1]),
+            format: .gif,
+            draft: WorkDraft(
+                updatedAt: Date(timeIntervalSince1970: 200),
+                composition: composition,
+                posterData: Data([2])
+            ),
+            savedAt: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertTrue(work.hasSavedVersion)
+        XCTAssertEqual(work.posterData, Data([1]))
+        XCTAssertEqual(work.draft?.posterData, Data([2]))
+    }
+
+    func testLegacySavedWorkWithoutSavedAtStillHasSavedVersion() {
+        let composition = Composition(
+            name: "legacy",
+            canvas: CanvasSpec(width: 100, height: 100)
+        )
+        let work = WorkItem(
+            name: composition.name,
+            updatedAt: Date(timeIntervalSince1970: 100),
+            composition: composition,
+            posterData: Data(),
+            format: .gif,
+            draft: WorkDraft(
+                updatedAt: Date(timeIntervalSince1970: 200),
+                composition: composition
+            )
+        )
+
+        XCTAssertTrue(work.hasSavedVersion)
+    }
+
     func testExportFPSOptionsAreCappedByMaximumSourceFPS() {
         XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 30), [10, 15, 30])
         XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 60), [10, 15, 30, 60])

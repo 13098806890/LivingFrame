@@ -1,0 +1,4 @@
+interface:
+  display_name: "LivingFrame UI 巡检"
+  short_description: "自动运行 iOS Simulator、截图并诊断 LivingFrame 界面问题"
+  default_prompt: "Use $livingframe-ui-audit to run a full Simulator visual audit and report reproducible UI issues."

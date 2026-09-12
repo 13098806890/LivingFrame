@@ -2530,6 +2530,71 @@ final class AppState: ObservableObject {
 
     // MARK: - 导出
 
+    /// 从素材详情页直接导出单个抠图素材，不借用或修改当前作品工程。
+    /// 输出固定为透明背景、最长边 720 px、15 fps 的循环 GIF。
+    func exportClipAsTransparentGIF(_ clipID: String) async throws -> URL {
+        guard let clip = clips.first(where: { $0.id == clipID }) else {
+            throw AppStateError.clipNotFound
+        }
+
+        FrameCache.shared.registerInMemory(clip)
+        let width = max(clip.orientedWidth, 1)
+        let height = max(clip.orientedHeight, 1)
+        let duration = max(clip.effectiveDuration, 1.0 / 15.0)
+        let sourceDuration = clip.playbackSourceDuration
+        let element = CompositionElement(
+            kind: .clip(clipID: clip.id),
+            name: clip.name,
+            transform: ElementTransform(
+                position: CGPoint(x: CGFloat(width) / 2, y: CGFloat(height) / 2),
+                scale: 1,
+                rotation: 0
+            ),
+            startTime: 0,
+            endTime: duration,
+            sourceStartTime: 0,
+            sourceEndTime: sourceDuration
+        )
+        let exportComposition = Composition(
+            name: clip.name,
+            canvas: CanvasSpec(width: CGFloat(width), height: CGFloat(height)),
+            duration: duration,
+            fps: 15,
+            elements: [element],
+            background: .clear
+        )
+
+        isExporting = true
+        exportProgress = 0
+        exportNotice = nil
+        RenderMemoryController.prepareForExport()
+        defer {
+            RenderMemoryController.finishExport()
+            isExporting = false
+        }
+
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "\(exportFileBaseName(clip.name))-透明-720p-15fps-\(UUID().uuidString).gif"
+        )
+        do {
+            try await GIFExporter().export(
+                exportComposition,
+                to: url,
+                fps: 15,
+                maxPixelSize: ExportResolution.p720.maxPixelSize,
+                loops: true,
+                progress: { [weak self] value in
+                    Task { @MainActor in self?.exportProgress = value }
+                }
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
+        exportedURL = url
+        return url
+    }
+
     func export(
         format: ExportFormat,
         fps: Double,
@@ -2766,18 +2831,15 @@ final class AppState: ObservableObject {
         let existing = editingWorkID.flatMap { id in
             works.first(where: { $0.id == id })
         }
-        let posterData: Data
-        if let existing {
-            posterData = existing.posterData
-        } else {
-            // 草稿也需要一个封面，否则新工程虽然写入了磁盘，草稿箱里只能看到黑色占位图。
-            posterData = await Task.detached(priority: .utility) {
-                guard let poster = CompositionRenderer(frameMaxPixelSize: 900).render(comp, at: 0) else {
-                    return Data()
-                }
-                return pngData(from: poster) ?? Data()
-            }.value
-        }
+        // 草稿必须保存自己的实时封面。复用正式作品封面会让拼接等后续修改在
+        // 草稿箱里仍显示旧图，首次自动保存也可能只看到默认白色画布。
+        let draftPosterData = await Task.detached(priority: .utility) {
+            guard let poster = CompositionRenderer(frameMaxPixelSize: 900).render(comp, at: 0) else {
+                return Data()
+            }
+            return pngData(from: poster) ?? Data()
+        }.value
+        let posterData = existing?.posterData ?? draftPosterData
 
         let now = Date()
         let work = WorkItem(
@@ -2792,8 +2854,10 @@ final class AppState: ObservableObject {
             draft: WorkDraft(
                 updatedAt: now,
                 composition: comp,
-                clipSettings: clipSettingsSnapshot(for: comp)
-            )
+                clipSettings: clipSettingsSnapshot(for: comp),
+                posterData: draftPosterData
+            ),
+            savedAt: existing?.savedAt
         )
         let persistence = await saveWorkApplyingDraftPolicy(work)
         guard persistence.0 else { return false }
@@ -2855,7 +2919,8 @@ final class AppState: ObservableObject {
             clipSettings: clipSettings,
             posterData: posterData,
             format: existing?.format ?? defaultFormat,
-            draft: nil
+            draft: nil,
+            savedAt: now
         )
         let persistence = await saveWorkApplyingDraftPolicy(work)
         guard persistence.0 else {
@@ -3004,11 +3069,13 @@ final class AppState: ObservableObject {
 
 enum AppStateError: LocalizedError {
     case noComposition
+    case clipNotFound
     case photoLibraryDenied
 
     var errorDescription: String? {
         switch self {
         case .noComposition: NSLocalizedString("还没有可导出的工程", comment: "Export error")
+        case .clipNotFound: NSLocalizedString("找不到要导出的素材", comment: "Export error")
         case .photoLibraryDenied: NSLocalizedString("需要相册权限才能保存 Live Photo，请在设置中开启", comment: "Export error")
         }
     }

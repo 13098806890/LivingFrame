@@ -147,7 +147,7 @@ struct TimelineView: View {
 
     private var rows: Int {
         guard let comp = appState.composition else { return 0 }
-        return comp.elements.count + comp.audioClips.count
+        return timelineElements(comp).count + comp.audioClips.count
     }
 
     private var totalHeight: CGFloat {
@@ -156,7 +156,14 @@ struct TimelineView: View {
 
     /// 时间轴从上到下直接对应画布从上层到下层；同层级按插入顺序稳定显示。
     private func timelineElements(_ comp: Composition) -> [CompositionElement] {
-        comp.elements.enumerated()
+        comp.elements
+            .filter { element in
+                guard case .background = element.kind else { return true }
+                // 未分配区域的拼接素材没有实际画面输出，不占用编辑页时间轴轨道。
+                // 缺少设置的数据保留显示，避免旧工程素材被误隐藏。
+                return element.backgroundSettings?.resolvedAssignedPartitions.isEmpty != true
+            }
+            .enumerated()
             .sorted { lhs, rhs in
                 if lhs.element.zIndex != rhs.element.zIndex {
                     return lhs.element.zIndex > rhs.element.zIndex
@@ -181,7 +188,7 @@ struct TimelineView: View {
     /// 或未播放的源素材尾部带入全局时间轴。
     private func contentTimelineDuration() -> TimeInterval {
         guard let comp = appState.composition else { return 0.1 }
-        let fullContentEnd = comp.elements.map { max($0.startTime, $0.endTime) }.max() ?? 0
+        let fullContentEnd = timelineElements(comp).map { max($0.startTime, $0.endTime) }.max() ?? 0
         return max(comp.duration, fullContentEnd, 0.1)
     }
 
@@ -255,7 +262,8 @@ struct TimelineView: View {
         VStack(alignment: .leading, spacing: 8) {
             timelineHeader
 
-            if let comp = appState.composition, !comp.elements.isEmpty || !comp.audioClips.isEmpty {
+            if let comp = appState.composition,
+               !timelineElements(comp).isEmpty || !comp.audioClips.isEmpty {
                 GeometryReader { geo in
                     // 给左侧轨道标识预留固定宽度，时间内容从同一条左边线开始。
                     let viewportWidth = max(
@@ -1737,7 +1745,7 @@ struct TimelineView: View {
     }
 
     private func trackSnapPoints(for elementID: UUID, comp: Composition) -> [TimeInterval] {
-        comp.elements
+        timelineElements(comp)
             .filter { $0.id != elementID }
             .flatMap { [$0.startTime, $0.endTime] }
             .filter { $0.isFinite && $0 >= 0 }
@@ -1756,7 +1764,7 @@ struct TimelineView: View {
         comp: Composition,
         secondsPerPoint: CGFloat
     ) {
-        let points = comp.elements
+        let points = timelineElements(comp)
             .filter { $0.id != elementID }
             .flatMap { [$0.startTime, $0.endTime] }
             .filter { $0.isFinite && $0 >= 0 }

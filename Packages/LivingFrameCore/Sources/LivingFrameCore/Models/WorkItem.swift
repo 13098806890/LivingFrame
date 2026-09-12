@@ -116,15 +116,19 @@ public struct WorkDraft: Codable, Equatable {
     public var composition: Composition
     /// 草稿对应的素材级编辑设置。
     public var clipSettings: [WorkClipSettings]
+    /// 草稿自己的封面。旧数据没有此字段时由正式封面兜底。
+    public var posterData: Data?
 
     public init(
         updatedAt: Date = Date(),
         composition: Composition,
-        clipSettings: [WorkClipSettings] = []
+        clipSettings: [WorkClipSettings] = [],
+        posterData: Data? = nil
     ) {
         self.updatedAt = updatedAt
         self.composition = composition
         self.clipSettings = clipSettings
+        self.posterData = posterData
     }
 }
 
@@ -145,6 +149,9 @@ public struct WorkItem: Codable, Identifiable, Equatable {
     public var format: ExportFormat
     /// 自动保存的未提交草稿；nil 表示当前作品没有草稿。
     public var draft: WorkDraft?
+    /// 最近一次明确点击“保存”的时间。nil 表示只有自动保存草稿。
+    /// 该字段为可选值，以兼容升级前已经写入磁盘的作品数据。
+    public var savedAt: Date?
 
     public init(
         id: UUID = UUID(),
@@ -155,7 +162,8 @@ public struct WorkItem: Codable, Identifiable, Equatable {
         clipSettings: [WorkClipSettings] = [],
         posterData: Data,
         format: ExportFormat,
-        draft: WorkDraft? = nil
+        draft: WorkDraft? = nil,
+        savedAt: Date? = nil
     ) {
         self.id = id
         self.name = name
@@ -166,9 +174,19 @@ public struct WorkItem: Codable, Identifiable, Equatable {
         self.posterData = posterData
         self.format = format
         self.draft = draft
+        self.savedAt = savedAt
     }
 
     public var lastSavedAt: Date { updatedAt }
+
+    /// 是否存在可展示在“已保存作品”中的正式版本。
+    /// 旧数据没有 savedAt：无草稿的一定是正式作品；同时含草稿时，可用草稿时间
+    /// 晚于正式更新时间这一旧保存规则恢复出“正式版本 + 后续草稿”的状态。
+    public var hasSavedVersion: Bool {
+        if savedAt != nil { return true }
+        guard let draft else { return true }
+        return draft.updatedAt > updatedAt
+    }
 
     /// 草稿箱是全局入口，只展示最近更新的一份草稿。
     /// 旧版本可能已经把草稿写在多个作品上，因此启动和保存时都使用这个规则

@@ -80,8 +80,8 @@ struct EditorView: View {
     @State private var showPreview = false
     /// 时间轴默认显示；用户收起后记住选择，避免每次进入编辑页都重复操作。
     @AppStorage("gifbloom.editor.showTimeline") private var showTimeline = true
-    /// 作品名称采用内联编辑，不在新建或首次导出时打断用户。
-    @State private var isEditingWorkName = false
+    /// 作品名称平时作为紧凑标题展示，点击后使用独立 Sheet 编辑并管理键盘焦点。
+    @State private var showRenameWorkEditor = false
     @State private var workNameDraft = ""
 
     var body: some View {
@@ -146,6 +146,11 @@ struct EditorView: View {
         }
         .sheet(isPresented: $showAssetPicker) {
             AssetPickerView().environmentObject(appState)
+        }
+        .sheet(isPresented: $showRenameWorkEditor) {
+            WorkNameEditorSheet(name: workNameDraft) { name in
+                appState.renameCurrentComposition(to: name)
+            }
         }
         .sheet(isPresented: $showCollageEditor, onDismiss: {
             pendingCollageElementIDs.removeAll()
@@ -279,125 +284,119 @@ struct EditorView: View {
         }
     }
 
-    /// 自定义顶部栏（作品名称 + 保存状态 + 导出）
+    /// 自定义顶部栏：名称区弹性伸缩，右侧操作始终保持固定尺寸。
     private var topBar: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                if let comp = appState.composition {
-                    if isEditingWorkName {
-                        HStack(spacing: 5) {
-                            TextField("作品名称", text: $workNameDraft)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 190)
-                                .onSubmit { finishWorkNameEditing() }
-                            Button {
-                                finishWorkNameEditing()
-                            } label: {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(LF.actionPrimary)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("保存作品名称")
-                        }
-                    } else {
-                        Button {
-                            beginWorkNameEditing(comp.name)
-                        } label: {
-                            HStack(spacing: 5) {
-                                Text(comp.name)
-                                    .font(.subheadline.weight(.semibold))
-                                    .lineLimit(1)
-                                Image(systemName: "pencil.line")
-                                    .font(.caption2.weight(.semibold))
-                            }
-                            .foregroundStyle(LF.header)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("编辑作品名称")
-                    }
-                    HStack(spacing: 5) {
-                        Text(frameInfoText(comp))
-                        if appState.isSavingWork {
-                            ProgressView()
-                                .controlSize(.mini)
-                            Text("保存中…")
-                                .foregroundStyle(LF.header)
-                        } else if appState.isAutosavingDraft {
-                            ProgressView()
-                                .controlSize(.mini)
-                            Text("草稿保存中…")
-                                .foregroundStyle(LF.header)
-                        } else if appState.hasUnsavedChanges {
-                            Text(appState.currentWorkHasDraft ? "草稿已保存" : "未保存修改")
-                                .foregroundStyle(LF.header)
-                        } else if appState.editingWorkID != nil {
-                            Text("已保存")
-                                .foregroundStyle(LF.textSecondary)
-                        }
-                        if appState.currentWorkHasDraft {
-                            Button("恢复正式版") {
-                                showDiscardDraftConfirmation = true
-                            }
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(LF.actionPrimary)
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(LF.textSecondary)
-                }
-            }
-
-            HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            if let comp = appState.composition {
                 Button {
-                    showClearConfirmation = true
+                    beginWorkNameEditing(comp.name)
                 } label: {
-                    Label("清空", systemImage: "trash")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.red)
-                        .frame(width: 54, height: 30)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 5) {
+                            Text(comp.name)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Image(systemName: "pencil.line")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .foregroundStyle(LF.header)
+
+                        HStack(spacing: 5) {
+                            Text(frameInfoText(comp))
+                                .lineLimit(1)
+                            saveStatusView
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("清空编辑内容")
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("编辑作品名称，当前名称：\(comp.name)")
 
                 Button {
                     Task { _ = await appState.saveCurrentToWorks() }
                 } label: {
-                    Label("保存", systemImage: appState.isSavingWork ? "hourglass" : "square.and.arrow.down")
-                        .font(.caption.weight(.bold))
+                    Group {
+                        if appState.isSavingWork {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 15, weight: .bold))
+                        }
+                    }
                         .foregroundStyle(LF.selectionText)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(LF.selectionFill, in: Capsule())
+                        .frame(width: 34, height: 34)
+                        .background(LF.selectionFill, in: Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(appState.isSavingWork)
                 .accessibilityLabel("保存作品")
 
-                Button { appState.showExportView = true } label: {
-                    Text("导出")
+                Button {
+                    appState.showExportView = true
+                } label: {
+                    Label("导出", systemImage: "arrow.up")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.black)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 11)
+                        .frame(height: 34)
                         .background(LF.gold, in: Capsule())
                 }
                 .buttonStyle(.plain)
+
+                Menu {
+                    if appState.currentWorkHasDraft {
+                        Button {
+                            showDiscardDraftConfirmation = true
+                        } label: {
+                            Label("恢复正式版", systemImage: "arrow.uturn.backward")
+                        }
+                    }
+                    Button(role: .destructive) {
+                        showClearConfirmation = true
+                    } label: {
+                        Label("清空编辑内容", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(LF.textPrimary)
+                        .frame(width: 30, height: 34)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("更多作品操作")
             }
         }
         .padding(.horizontal, 4)
     }
 
-    private func beginWorkNameEditing(_ name: String) {
-        workNameDraft = name
-        isEditingWorkName = true
+    @ViewBuilder
+    private var saveStatusView: some View {
+        if appState.isSavingWork {
+            Text("保存中…")
+                .foregroundStyle(LF.header)
+        } else if appState.isAutosavingDraft {
+            ProgressView()
+                .controlSize(.mini)
+            Text("草稿保存中…")
+                .foregroundStyle(LF.header)
+        } else if appState.hasUnsavedChanges {
+            Text(appState.currentWorkHasDraft ? "草稿已保存" : "未保存修改")
+                .foregroundStyle(LF.header)
+        } else if appState.editingWorkID != nil {
+            Text("已保存")
+                .foregroundStyle(LF.textSecondary)
+        }
     }
 
-    private func finishWorkNameEditing() {
-        appState.renameCurrentComposition(to: workNameDraft)
-        isEditingWorkName = false
+    private func beginWorkNameEditing(_ name: String) {
+        workNameDraft = name
+        showRenameWorkEditor = true
     }
 
     // MARK: - 帧信息
@@ -582,8 +581,44 @@ struct EditorView: View {
     }
 
     private func openCollageEditor() {
-        pendingCollageElementIDs.removeAll()
+        guard let composition = appState.composition else {
+            pendingCollageElementIDs.removeAll()
+            showCollageEditor = true
+            return
+        }
+
+        if let selected = appState.primarySelectedElement,
+           case .background = selected.kind {
+            pendingCollageElementIDs = collageElementIDs(for: selected, in: composition)
+        } else if pendingCollageElementIDs.isEmpty {
+            // 拼接编辑器完成后保留当前素材选中状态；如果用户之后点了其它地方，
+            // 仍优先恢复工程中已有的第一个拼接组，而不是重新打开空白画布。
+            pendingCollageElementIDs = firstExistingCollageElementIDs(in: composition)
+        }
         showCollageEditor = true
+    }
+
+    private func collageElementIDs(
+        for element: CompositionElement,
+        in composition: Composition
+    ) -> [UUID] {
+        guard case .background = element.kind else { return [] }
+        if let groupID = element.collageGroupID {
+            return composition.elements.compactMap { candidate in
+                guard candidate.collageGroupID == groupID,
+                      case .background = candidate.kind else { return nil }
+                return candidate.id
+            }
+        }
+        return [element.id]
+    }
+
+    private func firstExistingCollageElementIDs(in composition: Composition) -> [UUID] {
+        guard let first = composition.elements.first(where: {
+            if case .background = $0.kind { return true }
+            return false
+        }) else { return [] }
+        return collageElementIDs(for: first, in: composition)
     }
 
     /// 根据元素来源决定进入普通检查器还是拼接编辑器。
@@ -599,15 +634,7 @@ struct EditorView: View {
 
         // 单张背景和多张拼接都进入同一个编辑器。旧工程里的单张背景没有组标识，
         // 先作为只有一个元素的拼接会话打开；用户追加素材后会在会话中补齐组标识。
-        if let collageGroupID = selected.collageGroupID {
-            pendingCollageElementIDs = composition.elements.compactMap { element in
-                guard element.collageGroupID == collageGroupID,
-                      case .background = element.kind else { return nil }
-                return element.id
-            }
-        } else {
-            pendingCollageElementIDs = [selected.id]
-        }
+        pendingCollageElementIDs = collageElementIDs(for: selected, in: composition)
         if pendingCollageElementIDs.isEmpty {
             showInspectorSheet = true
         } else {
@@ -1116,6 +1143,101 @@ struct EditorView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// 独立管理输入焦点，保存或取消时先释放键盘，再关闭编辑界面。
+private struct WorkNameEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var isNameFocused: Bool
+    @State private var name: String
+
+    let onSave: (String) -> Void
+
+    init(name: String, onSave: @escaping (String) -> Void) {
+        _name = State(initialValue: name)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("作品名称")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LF.textSecondary)
+
+                TextField("输入作品名称", text: $name)
+                    .focused($isNameFocused)
+                    .submitLabel(.done)
+                    .autocorrectionDisabled()
+                    .padding(.horizontal, 12)
+                    .frame(height: 44)
+                    .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(isNameFocused ? LF.selectionStroke : LF.header.opacity(0.18), lineWidth: 1)
+                    }
+                    .onSubmit(saveAndDismiss)
+
+                Text("按键盘上的“完成”，或点击右上角保存。")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .lfNavigationTitle("修改名称")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消", action: cancelAndDismiss)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存", action: saveAndDismiss)
+                        .fontWeight(.semibold)
+                        .disabled(trimmedName.isEmpty)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完成", action: saveAndDismiss)
+                    .fontWeight(.semibold)
+                    .disabled(trimmedName.isEmpty)
+                }
+            }
+            .magicBackground()
+        }
+        .presentationDetents([.height(190)])
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            DispatchQueue.main.async {
+                isNameFocused = true
+            }
+        }
+        .onDisappear {
+            isNameFocused = false
+        }
+    }
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func saveAndDismiss() {
+        guard !trimmedName.isEmpty else { return }
+        isNameFocused = false
+        onSave(trimmedName)
+        dismissAfterReleasingFocus()
+    }
+
+    private func cancelAndDismiss() {
+        isNameFocused = false
+        dismissAfterReleasingFocus()
+    }
+
+    private func dismissAfterReleasingFocus() {
+        DispatchQueue.main.async {
+            dismiss()
         }
     }
 }

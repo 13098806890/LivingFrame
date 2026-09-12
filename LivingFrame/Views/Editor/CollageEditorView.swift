@@ -27,12 +27,12 @@ struct CollageEditorView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    collageWorkspace
+                VStack(alignment: .leading, spacing: 10) {
                     sourceStrip
+                    collageWorkspace
                     collageControls
                 }
-                .padding(16)
+                .padding(12)
             }
             .scrollIndicators(.hidden)
             .lfNavigationTitle("拼接编辑器")
@@ -45,7 +45,6 @@ struct CollageEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") {
                         didFinish = true
-                        appState.clearElementSelection()
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -81,6 +80,7 @@ struct CollageEditorView: View {
                 items: collagePreviewItems,
                 layoutSettings: collageLayoutSettings,
                 activeElementSettings: activeElement?.backgroundSettings,
+                focusedPartition: focusedPartition,
                 canvasAspect: composition.canvasRect.width / max(composition.canvasRect.height, 1),
                 canvasSize: composition.canvasRect.size,
                 activeElementID: activeElementID,
@@ -92,7 +92,8 @@ struct CollageEditorView: View {
                     focusedPartition = partition
                 },
                 onPartitionTap: { partition in
-                    // 点击空白只聚焦区域，不直接修改素材归属，避免误触移除素材。
+                    // 点击空区域只聚焦区域；添加/移除统一通过下方操作栏完成，
+                    // 避免和点击区域内已有素材的选中行为冲突。
                     focusedPartition = partition
                 },
                 onDividerOffsetChange: { dividerIndex, offset in
@@ -164,10 +165,10 @@ struct CollageEditorView: View {
     }
 
     private var sourceStrip: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("拼接素材")
                 .font(.subheadline.weight(.semibold))
-            Text("新增素材不会自动占用区域；点击图片实际显示的位置可选中，点击空白区域后再明确添加或移除。图片重叠时优先选中上层，可在下方选择图层。")
+            Text("点击素材选中；区域归属和图层顺序都可以直接在卡片上调整。")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
 
@@ -179,11 +180,20 @@ struct CollageEditorView: View {
                            let media = appState.backgroundMedia.first(where: { $0.id == mediaID }) {
                             CollageSourceChip(
                                 item: media,
+                                assignedPartitions: element.backgroundSettings?.resolvedAssignedPartitions ?? [],
+                                layerIndex: collageLayerOrder.firstIndex(where: { $0.id == elementID }).map { $0 + 1 } ?? 1,
+                                layerOptions: collageLayerOptions,
                                 isSelected: elementID == activeElement?.id,
                                 canDuplicate: true
                             ) {
                                 activeElementID = elementID
                                 appState.selectElement(elementID)
+                            } onSelectLayer: { layerID in
+                                selectCollageElement(layerID)
+                            } onMoveUp: {
+                                appState.moveCollageElementZ(elementID, up: true)
+                            } onMoveDown: {
+                                appState.moveCollageElementZ(elementID, up: false)
                             } onDuplicate: {
                                 duplicateMediaAsIndependentInstance(mediaID: mediaID)
                             } onDelete: {
@@ -198,54 +208,10 @@ struct CollageEditorView: View {
                         Label("添加素材", systemImage: "plus")
                             .font(.subheadline.weight(.medium))
                             .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 8)
                     }
                     .buttonStyle(.bordered)
                     .tint(LF.actionPrimary)
-                }
-            }
-
-            if let activeElementID,
-               let activeIndex = collageLayerOrder.firstIndex(where: { $0.id == activeElementID }) {
-                let layerCount = collageLayerOrder.count
-                HStack(spacing: 10) {
-                    Label(
-                        "当前图层 \(activeIndex + 1)/\(layerCount)",
-                        systemImage: "square.3.layers.3d.top.filled"
-                    )
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(LF.selectionText)
-
-                    Text("1 为最前")
-                        .font(.caption2)
-                        .foregroundStyle(LF.textSecondary)
-
-                    layerPicker
-
-                    Spacer(minLength: 8)
-
-                    Button {
-                        appState.moveCollageElementZ(activeElementID, up: true)
-                    } label: {
-                        Label("上移", systemImage: "chevron.up")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(activeIndex == 0)
-
-                    Button {
-                        appState.moveCollageElementZ(activeElementID, up: false)
-                    } label: {
-                        Label("下移", systemImage: "chevron.down")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(activeIndex == layerCount - 1)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(LF.selectionFill.opacity(0.8), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(LF.selectionStroke, lineWidth: 1)
                 }
             }
         }
@@ -255,7 +221,7 @@ struct CollageEditorView: View {
     private var collageControls: some View {
         let settings = collageLayoutSettings
         let selectedSettings = activeElement?.backgroundSettings ?? settings
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 8) {
             BackgroundDividerControls(
                 settings: selectedSettings,
                 canvasRect: appState.composition?.canvasRect
@@ -323,8 +289,8 @@ struct CollageEditorView: View {
                     .foregroundStyle(LF.textSecondary)
             }
         }
-        .padding(14)
-        .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(10)
+        .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var collageDividerLayoutLockBinding: Binding<Bool> {
@@ -391,24 +357,15 @@ struct CollageEditorView: View {
         }
     }
 
-    private var layerPicker: some View {
-        Menu {
-            ForEach(Array(collageLayerOrder.enumerated()), id: \.element.id) { index, element in
-                Button {
-                    selectCollageElement(element.id)
-                } label: {
-                    HStack {
-                        Text("图层 \(index + 1)")
-                        if element.id == activeElementID {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-        } label: {
-            Label("选择图层", systemImage: "list.number")
+    private var collageLayerOptions: [CollageLayerOption] {
+        collageLayerOrder.enumerated().map { index, element in
+            CollageLayerOption(
+                id: element.id,
+                title: "图层 \(index + 1)",
+                index: index + 1,
+                isSelected: element.id == activeElementID
+            )
         }
-        .buttonStyle(.bordered)
     }
 
     private func selectCollageElement(_ elementID: UUID) {
@@ -472,25 +429,46 @@ struct CollageEditorView: View {
     private func partitionActionBar(for partition: Int) -> some View {
         if let activeElement {
             let isAssigned = activeElement.backgroundSettings?.resolvedAssignedPartitions.contains(partition) == true
-            HStack(spacing: 10) {
-                Image(systemName: isAssigned ? "checkmark.circle.fill" : "plus.circle.fill")
+            HStack(spacing: 8) {
+                if case .background(let mediaID) = activeElement.kind,
+                   let frame = BackgroundStore.shared.loadFrame(named: mediaID, at: 0) {
+                    ZStack(alignment: .bottomTrailing) {
+                        Image(decorative: frame, scale: 1)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 34, height: 27)
+                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        Image(systemName: isAssigned ? "checkmark" : "plus")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 13, height: 13)
+                            .background(isAssigned ? LF.selectionStroke : LF.actionPrimary, in: Circle())
+                            .overlay { Circle().stroke(.white.opacity(0.9), lineWidth: 0.7) }
+                            .offset(x: 3, y: 3)
+                    }
+                    .frame(width: 34, height: 27)
+                    .accessibilityLabel(isAssigned ? "当前素材已在此区域" : "当前素材待添加到此区域")
+                }
+                Image(systemName: isAssigned ? "checkmark.circle.fill" : "arrow.down.circle")
                     .foregroundStyle(isAssigned ? LF.selectionStroke : LF.actionPrimary)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("区域 \(partition + 1)")
-                        .font(.subheadline.weight(.semibold))
-                    Text(isAssigned ? "当前素材已在此区域" : "将当前素材添加到此区域")
+                        .font(.caption.weight(.semibold))
+                    Text(isAssigned ? "当前素材已在此区域" : "点击按钮添加到这里")
                         .font(.caption2)
                         .foregroundStyle(LF.textSecondary)
                 }
                 Spacer(minLength: 8)
-                Button(isAssigned ? "移出区域" : "添加到区域") {
+                Button(isAssigned ? "移除" : "点击添加") {
                     appState.toggleBackgroundPartition(activeElement.id, partition)
                 }
-                .buttonStyle(.borderedProminent)
+                .font(.caption2.weight(.semibold))
+                .buttonStyle(.bordered)
                 .tint(isAssigned ? LF.header : LF.actionPrimary)
             }
-            .padding(12)
-            .background(LF.surface2.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         } else {
             Text("先选择一个拼接素材，再添加到区域 \(partition + 1)。")
                 .font(.caption)
@@ -614,6 +592,7 @@ struct BackgroundEditingPreview: View {
     let items: [BackgroundEditingPreviewItem]
     let layoutSettings: BackgroundElementSettings
     let activeElementSettings: BackgroundElementSettings?
+    let focusedPartition: Int?
     let canvasAspect: CGFloat
     let canvasSize: CGSize
     let activeElementID: UUID?
@@ -649,8 +628,8 @@ struct BackgroundEditingPreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(isDividerLayoutLocked
-                ? "编辑画面 · 分割线已固定 · 素材仍可移动和缩放"
-                : "编辑画面 · 拖动分割线调整位置 · 拖动线上的按钮调整旋转中心")
+                ? "编辑画面 · 分割线已固定 · 拖动图片调整取景"
+                : "编辑画面 · 拖动图片调整取景 · 拖动分割线调整布局")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
 
@@ -679,6 +658,18 @@ struct BackgroundEditingPreview: View {
                             // Composition 的 zIndex 可能是负数；转换成从 0 开始的
                             // 相对值，避免素材被白色画布底板压到下面。
                             .zIndex(Double(item.zIndex - minimumZIndex))
+                    }
+
+                    if let focusedPartition {
+                        let settings = focusedPartitionSettings(for: focusedPartition)
+                        BackgroundPartitionShape(settings: settings)
+                            .fill(LF.selectionFill.opacity(0.14))
+                            .overlay {
+                                BackgroundPartitionShape(settings: settings)
+                                    .stroke(LF.selectionStroke.opacity(0.72), lineWidth: 1.5)
+                            }
+                            .allowsHitTesting(false)
+                            .zIndex(900)
                     }
 
                     BackgroundDividerShape(settings: sharedSettings)
@@ -721,6 +712,7 @@ struct BackgroundEditingPreview: View {
                                 .allowsHitTesting(false)
                         }
                     }
+
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay {
@@ -768,6 +760,13 @@ struct BackgroundEditingPreview: View {
             settings: settings,
             in: rect
         )
+    }
+
+    private func focusedPartitionSettings(for partition: Int) -> BackgroundElementSettings {
+        var settings = sharedSettings
+        settings.selectedPartition = partition
+        settings.assignedPartitions = [partition]
+        return settings
     }
 
     private func partition(at point: CGPoint, in rect: CGRect) -> Int? {
@@ -862,15 +861,41 @@ struct BackgroundEditingPreview: View {
             }
             .shadow(color: .black.opacity(isEnabled ? 0.25 : 0.12), radius: 2, y: 1)
             .position(point)
-            .allowsHitTesting(false)
+            .zIndex(2000)
+            .contentShape(Circle().inset(by: -4))
+            .allowsHitTesting(isEnabled)
+            .highPriorityGesture(
+                // 圆心点击只用于选中/聚焦，必须有明确拖动距离后才改变圆心，
+                // 避免点击区域时因为命中圆心的扩大区域而让圆心轻微跳动。
+                DragGesture(minimumDistance: 6)
+                    .onChanged { value in
+                        guard isEnabled else { return }
+                        activePivotIndex = index
+                        let projected = BackgroundPartitionGeometry.projectedPivot(
+                            at: value.location,
+                            for: index,
+                            settings: sharedSettings,
+                            in: rect,
+                            coordinateSpace: .screen
+                        )
+                        let pivot = BackgroundPartitionGeometry.normalizedPivot(
+                            at: projected,
+                            in: rect,
+                            coordinateSpace: .screen
+                        )
+                        onDividerPivotChange(index, pivot)
+                    }
+                    .onEnded { _ in
+                        if activePivotIndex == index {
+                            activePivotIndex = nil
+                        }
+                    }
+            )
     }
 
     private func canvasDragGesture(in rect: CGRect) -> some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
-                if hypot(value.translation.width, value.translation.height) >= 8 {
-                    didMoveCanvasDuringDrag = true
-                }
                 let mode: CanvasDragMode
                 if let activeDividerIndex {
                     guard !isDividerLayoutLocked else { return }
@@ -906,6 +931,10 @@ struct BackgroundEditingPreview: View {
                         return
                     }
                     mode = .image
+                }
+
+                if hypot(value.translation.width, value.translation.height) >= 8 {
+                    didMoveCanvasDuringDrag = true
                 }
 
                 switch mode {
@@ -991,7 +1020,8 @@ struct BackgroundEditingPreview: View {
     }
 
     private func pivotIndex(near point: CGPoint, in rect: CGRect) -> Int? {
-        let threshold = max(18, min(rect.width, rect.height) * 0.08)
+        // 命中范围只略大于圆心本身，避免区域点击被误判成圆心拖动。
+        let threshold = max(14, min(18, min(rect.width, rect.height) * 0.05))
         let count = dividerCount
         guard count > 0 else { return nil }
         let candidates = (0..<count).map { index in
@@ -1024,10 +1054,10 @@ struct BackgroundDividerControls: View {
     private var dividerEditingEnabled: Bool { !isDividerLayoutLocked }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
                 Text("分割线布局")
-                    .font(.caption)
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(LF.textSecondary)
                 Spacer()
                 Picker("分割线布局", selection: $isDividerLayoutLocked) {
@@ -1035,20 +1065,22 @@ struct BackgroundDividerControls: View {
                     Text("固定").tag(true)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 132)
+                .frame(width: 116)
                 .accessibilityLabel("分割线布局状态")
             }
 
-            HStack {
+            HStack(spacing: 6) {
                 Text(isDividerLayoutLocked ? "已固定" : "可编辑")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(isDividerLayoutLocked ? LF.textSecondary : LF.actionPrimary)
                 Spacer()
                 Button(action: onAddDivider) {
                     Label("添加分割线", systemImage: "plus")
-                        .font(.caption.weight(.semibold))
+                        .font(.caption2.weight(.semibold))
+                        .padding(.vertical, 2)
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
                 .tint(LF.actionPrimary)
                 .disabled(!dividerEditingEnabled || settings.dividerLines.count >= BackgroundPartitionGeometry.maximumDividerCount)
             }
@@ -1061,6 +1093,7 @@ struct BackgroundDividerControls: View {
             )
             .font(.caption2)
             .foregroundStyle(LF.textSecondary)
+            .lineLimit(2)
 
             if settings.dividerLines.isEmpty {
                 Text("添加分割线后，图片可以分别填充到生成的区域中。")
@@ -1068,22 +1101,23 @@ struct BackgroundDividerControls: View {
                     .foregroundStyle(LF.textSecondary)
             } else {
                 ForEach(Array(settings.dividerLines.enumerated()), id: \.element.id) { index, divider in
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 5) {
                             Text("分割线 \(index + 1) 角度")
-                                .font(.caption)
+                                .font(.caption2)
                                 .foregroundStyle(LF.textSecondary)
                             Spacer()
                             Text(String(format: "%.0f°", divider.angle))
-                                .font(.caption.monospacedDigit())
+                                .font(.caption2.monospacedDigit())
                                 .foregroundStyle(LF.textSecondary)
                             Button(role: .destructive) {
                                 onRemoveDivider(index)
                             } label: {
-                                Label("删除", systemImage: "trash")
+                                Image(systemName: "trash")
                             }
-                            .font(.caption)
+                            .font(.caption2)
                             .buttonStyle(.bordered)
+                            .controlSize(.small)
                             .tint(.red)
                             .accessibilityLabel("删除分割线")
                             .disabled(!dividerEditingEnabled)
@@ -1098,6 +1132,7 @@ struct BackgroundDividerControls: View {
                         )
                         .tint(LF.actionPrimary)
                         .disabled(!dividerEditingEnabled)
+                        .frame(height: 20)
                     }
                 }
             }
@@ -1107,19 +1142,19 @@ struct BackgroundDividerControls: View {
                 in: canvasRect
             )
             if regionCount > 1 {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text("素材覆盖区域（可多选）")
-                        .font(.caption)
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(LF.textSecondary)
-                    HStack(spacing: 8) {
+                    HStack(spacing: 5) {
                         ForEach(0..<regionCount, id: \.self) { partition in
                             Button {
                                 onPartitionSelect(partition)
                             } label: {
                                 Text("区域 \(partition + 1)")
-                                    .font(.caption.weight(.medium))
+                                    .font(.caption2.weight(.medium))
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
+                                    .padding(.vertical, 5)
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(settings.resolvedAssignedPartitions.contains(partition)
@@ -1151,21 +1186,34 @@ struct BackgroundDividerControls: View {
                     .foregroundStyle(LF.textSecondary)
             }
         }
-        .padding(14)
-        .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(10)
+        .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
+}
+
+private struct CollageLayerOption: Identifiable {
+    let id: UUID
+    let title: String
+    let index: Int
+    let isSelected: Bool
 }
 
 private struct CollageSourceChip: View {
     let item: BackgroundMediaItem
+    let assignedPartitions: [Int]
+    let layerIndex: Int
+    let layerOptions: [CollageLayerOption]
     let isSelected: Bool
     let canDuplicate: Bool
     let onSelect: () -> Void
+    let onSelectLayer: (UUID) -> Void
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
     let onDuplicate: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 4) {
+        VStack(spacing: 4) {
             Button(action: onSelect) {
                 VStack(spacing: 5) {
                     ZStack(alignment: .topTrailing) {
@@ -1178,50 +1226,104 @@ private struct CollageSourceChip: View {
                                 LF.surface2
                             }
                         }
-                        .frame(width: 88, height: 64)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .frame(width: 84, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                         if isSelected {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.white, LF.actionPrimary)
-                                .padding(5)
+                                .padding(4)
                         }
                     }
                     Text(item.name)
                         .font(.caption2)
                         .lineLimit(1)
-                        .frame(width: 88)
+                        .frame(width: 84)
+                    if assignedPartitions.isEmpty {
+                        Text("未分配")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(LF.textSecondary)
+                    } else {
+                        Text(assignedPartitions.map { "区\($0 + 1)" }.joined(separator: " · "))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(LF.selectionText)
+                            .lineLimit(1)
+                            .frame(width: 84)
+                    }
                 }
-                .padding(5)
+                .padding(.top, 4)
             }
             .buttonStyle(.plain)
             .foregroundStyle(LF.textPrimary)
 
-            Button(action: onDuplicate) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(LF.actionPrimary)
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canDuplicate)
-            .accessibilityLabel("创建此素材的独立实例")
+            HStack(spacing: 1) {
+                Menu {
+                    ForEach(layerOptions) { option in
+                        Button {
+                            onSelectLayer(option.id)
+                        } label: {
+                            HStack {
+                                Text(option.title)
+                                if option.isSelected {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Text("\(layerIndex)")
+                        .font(.caption2.monospacedDigit().weight(.bold))
+                        .frame(width: 22, height: 22)
+                        .background(LF.selectionFill, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(LF.selectionText)
+                .accessibilityLabel("选择图层")
 
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.red)
-            .accessibilityLabel("删除拼接素材")
+                Button(action: onMoveUp) {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 10, weight: .bold))
+                        .frame(width: 20, height: 22)
+                }
+                .buttonStyle(.plain)
+                .disabled(layerIndex == 1)
+                .accessibilityLabel("上移图层")
 
+                Button(action: onMoveDown) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .frame(width: 20, height: 22)
+                }
+                .buttonStyle(.plain)
+                .disabled(layerIndex == layerOptions.count)
+                .accessibilityLabel("下移图层")
+
+                Button(action: onDuplicate) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 20, height: 22)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canDuplicate)
+                .accessibilityLabel("创建此素材的独立实例")
+
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 20, height: 22)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.red)
+                .accessibilityLabel("删除拼接素材")
+            }
+            .foregroundStyle(LF.textSecondary)
         }
-        .padding(.trailing, 4)
-        .background(isSelected ? LF.selectionFill : LF.surface2.opacity(0.55), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .padding(5)
+        .frame(width: 112)
+        .background(isSelected ? LF.selectionFill : LF.surface2.opacity(0.55), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .stroke(isSelected ? LF.selectionStroke : LF.header.opacity(0.18), lineWidth: isSelected ? 1.5 : 1)
         }
     }

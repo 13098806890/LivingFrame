@@ -39,18 +39,27 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                if isDownloading {
-                    downloadCard
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    if isDownloading {
+                        downloadCard
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    if isExtractionActive {
+                        segmentationCard
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    pickerSection
+                    foldersSection
+                    clipsSection
                 }
-                if isExtractionActive {
-                    segmentationCard
-                }
-                pickerSection
-                foldersSection
-                clipsSection
+                .padding(.horizontal)
+                .padding(.bottom, 16)
             }
-            .padding(.horizontal)
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+            .animation(.easeInOut(duration: 0.22), value: isDownloading)
+            .animation(.easeInOut(duration: 0.22), value: isExtractionActive)
             .navigationTitle("素材库")
             .magicBackground()
             .alert("新建文件夹", isPresented: $showNewFolderAlert) {
@@ -573,32 +582,29 @@ struct LibraryView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
             } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(appState.clips) { clip in
-                            // 单击 = 打开素材详情；拖拽从右上角把手开始。
-                            ZStack(alignment: .topTrailing) {
-                                ClipCell(clip: clip) {
-                                    menuClip = clip
-                                }
-
-                                // 拖入文件夹改为从明确的拖拽把手开始，避免播放按钮
-                                // 在素材缩略图尚未完成解码时被系统拖拽手势抢走。
-                                Image(systemName: "line.3.horizontal")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(LF.textSecondary)
-                                    .frame(width: 30, height: 30)
-                                    .background(.ultraThinMaterial, in: Circle())
-                                    .contentShape(Circle())
-                                    .draggable(clip.id) {
-                                        ClipDragPreview(clip: clip)
-                                    }
-                                    .accessibilityLabel("拖动到文件夹")
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(appState.clips) { clip in
+                        // 单击 = 打开素材详情；拖拽从右上角把手开始。
+                        ZStack(alignment: .topTrailing) {
+                            ClipCell(clip: clip) {
+                                menuClip = clip
                             }
+
+                            // 拖入文件夹改为从明确的拖拽把手开始，避免播放按钮
+                            // 在素材缩略图尚未完成解码时被系统拖拽手势抢走。
+                            Image(systemName: "line.3.horizontal")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(LF.textSecondary)
+                                .frame(width: 30, height: 30)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .contentShape(Circle())
+                                .draggable(clip.id) {
+                                    ClipDragPreview(clip: clip)
+                                }
+                                .accessibilityLabel("拖动到文件夹")
                         }
                     }
                 }
-                .scrollIndicators(.hidden)
             }
         }
     }
@@ -1240,6 +1246,10 @@ struct ClipMenuView: View {
     @State private var isDeletingClip = false
     @State private var showRenameAlert = false
     @State private var renameText = ""
+    @State private var isExportingGIF = false
+    @State private var exportedGIFURL: URL?
+    @State private var exportGIFError: String?
+    @State private var exportGIFTask: Task<Void, Never>?
 
     /// 读取最新值，避免详情页打开后修改样式仍显示旧状态。
     private var currentClip: SegmentedClip {
@@ -1297,6 +1307,17 @@ struct ClipMenuView: View {
             }
             Button("取消", role: .cancel) {}
         }
+        .alert("GIF 导出失败", isPresented: Binding(
+            get: { exportGIFError != nil },
+            set: { if !$0 { exportGIFError = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(exportGIFError ?? "请稍后重试。")
+        }
+        .onDisappear {
+            exportGIFTask?.cancel()
+        }
     }
 
     private var detailScrollView: some View {
@@ -1304,12 +1325,101 @@ struct ClipMenuView: View {
             VStack(alignment: .leading, spacing: 18) {
                 clipIdentityHeader
                 ClipDetailPreview(clip: currentClip, isPlaying: $isPlayingPreview)
+                gifExportSection
                 rotateClipButton
                 frameEditorButton
                 foldersSection
                 deleteClipButton
             }
             .padding(20)
+        }
+    }
+
+    private var gifExportSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles.rectangle.stack")
+                    .font(.headline)
+                    .foregroundStyle(LF.gold)
+                    .frame(width: 34, height: 34)
+                    .background(LF.selectionFill, in: Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("透明 GIF")
+                        .font(.subheadline.weight(.semibold))
+                    Text("透明背景 · 720p · 15 fps")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+                Spacer(minLength: 8)
+            }
+
+            if isExportingGIF {
+                HStack(spacing: 10) {
+                    ProgressView(value: appState.exportProgress)
+                        .tint(LF.gold)
+                    Text("\(Int(appState.exportProgress * 100))%")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(LF.textSecondary)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    if isExportingGIF {
+                        exportGIFTask?.cancel()
+                    } else {
+                        exportTransparentGIF()
+                    }
+                } label: {
+                    Label(
+                        isExportingGIF ? "取消导出" : "直接导出",
+                        systemImage: isExportingGIF ? "xmark" : "square.and.arrow.up"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(isExportingGIF ? LF.header : LF.actionPrimary)
+
+                if let exportedGIFURL {
+                    ShareLink(item: exportedGIFURL) {
+                        Label("分享", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(LF.textPrimary)
+                }
+            }
+
+            if exportedGIFURL != nil {
+                Label("GIF 已生成，可分享到其他 App 或保存到“文件”。", systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(LF.selectionText)
+            }
+        }
+        .padding(14)
+        .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func exportTransparentGIF() {
+        exportedGIFURL = nil
+        exportGIFError = nil
+        isExportingGIF = true
+        let clipID = clip.id
+        exportGIFTask = Task { @MainActor in
+            defer {
+                isExportingGIF = false
+                exportGIFTask = nil
+            }
+            do {
+                exportedGIFURL = try await appState.exportClipAsTransparentGIF(clipID)
+            } catch is CancellationError {
+                // 用户主动取消，不显示错误。
+            } catch ExportError.cancelled {
+                // 用户主动取消，不显示错误。
+            } catch {
+                exportGIFError = error.localizedDescription
+            }
         }
     }
 

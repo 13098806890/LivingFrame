@@ -33,6 +33,11 @@ struct CanvasView: View {
     @State private var backgroundPreviewToken = 0
     /// 双指手势活跃中（防止同时触发拖动）
     @State private var isPinching = false
+    /// 同一区域内多个素材完全重叠时，连续点击同一位置可以依次选中下层素材。
+    /// 这是画布上唯一能在没有可见边缘时访问下层图片的交互入口。
+    @State private var overlapSelectionAnchor: CGPoint?
+    @State private var overlapSelectionIDs: [UUID] = []
+    @State private var overlapSelectionIndex = 0
     /// 缩放与旋转共享一组双指输入，但一旦确认意图就锁定模式，避免捏合时被微小角度变化带偏。
     @State private var transformGestureMode: TransformGestureMode?
     /// 裁剪模式下的临时裁剪框（画布坐标系）
@@ -244,10 +249,10 @@ struct CanvasView: View {
         guard let comp = appState.composition, !appState.isCropping else { return }
         let geometry = viewportGeometry(for: comp)
         let time = appState.currentTime
-        // 从顶层往下命中（忽略不可见元素）
-        let hit = comp.elements
+        // 从顶层往下命中（忽略不可见元素）。同一点有多个候选时，连续点击会循环选中。
+        let candidates = comp.elements
             .sorted { $0.zIndex > $1.zIndex }
-            .first { element in
+            .filter { element in
                 if case .canvasEdge = element.kind { return false }
                 guard element.isVisible(at: time) else { return false }
                 return rotatedHitTest(
@@ -258,12 +263,31 @@ struct CanvasView: View {
                     time: time
                 )
             }
-        if let hit {
-            appState.selectElement(hit.id)
-        } else {
+        if candidates.isEmpty {
+            resetOverlapSelectionCycle()
             // 点空白处 = 选中背景对象（检查器可编辑背景纯色/图案）
             appState.selectBackground()
+            return
         }
+
+        let candidateIDs = candidates.map(\.id)
+        let isSameOverlapPoint = overlapSelectionAnchor.map {
+            hypot($0.x - location.x, $0.y - location.y) <= 18
+        } ?? false
+        if isSameOverlapPoint, overlapSelectionIDs == candidateIDs {
+            overlapSelectionIndex = (overlapSelectionIndex + 1) % candidates.count
+        } else {
+            overlapSelectionAnchor = location
+            overlapSelectionIDs = candidateIDs
+            overlapSelectionIndex = 0
+        }
+        appState.selectElement(candidates[overlapSelectionIndex].id)
+    }
+
+    private func resetOverlapSelectionCycle() {
+        overlapSelectionAnchor = nil
+        overlapSelectionIDs.removeAll()
+        overlapSelectionIndex = 0
     }
 
     /// 双击先按同一套命中测试选中素材，再打开检查器；点到空白处不会误弹检查器。
@@ -284,13 +308,21 @@ struct CanvasView: View {
     ) -> Bool {
         let frame = elementFrame(element, in: comp, geometry: geometry, at: time)
         // 分区背景虽然使用整张画布尺寸生成图像，但画布中只有当前分区实际可见。
-        // 命中测试必须使用同一遮罩路径，否则点击空白分区会错误选中上层背景。
+        // 命中测试必须同时满足分区遮罩和图片实际取景范围，否则点击空白分区
+        // 会错误选中上层背景，同一区域内多张图片也无法按位置区分。
         if case .background = element.kind {
             let settings = element.backgroundSettings ?? BackgroundElementSettings()
-            return BackgroundPartitionShape(settings: settings)
+            let isInsidePartition = BackgroundPartitionShape(settings: settings)
                 .path(in: frame)
                 .cgPath
                 .contains(point)
+            guard isInsidePartition else { return false }
+            return backgroundImageBounds(
+                for: element,
+                in: comp,
+                geometry: geometry,
+                at: time
+            )?.contains(point) ?? true
         }
         let center = CGPoint(x: frame.midX, y: frame.midY)
         let rotation = element.transform.rotation
@@ -305,6 +337,66 @@ struct CanvasView: View {
         let localX = dx * cosR + dy * sinR
         let localY = -dx * sinR + dy * cosR
         return abs(localX) <= frame.width / 2 && abs(localY) <= frame.height / 2
+    }
+
+    /// 背景素材在画布上的实际取景范围，与拼接编辑器的 imageBounds 保持一致。
+    /// 背景元素本身的 frame 是整张画布，真正可点击的范围还会受到素材原始比例、
+    /// cropScale、cropOffset 和 90° 旋转影响。
+    private func backgroundImageBounds(
+        for element: CompositionElement,
+        in comp: Composition,
+        geometry: ViewportGeometry,
+        at time: TimeInterval
+    ) -> CGRect? {
+        guard case .background(let backgroundID) = element.kind else { return nil }
+        let media = appState.backgroundMedia.first(where: { $0.id == backgroundID })
+            ?? BackgroundStore.shared.media(named: backgroundID)
+        let sourceSize: CGSize
+        if let media, media.width > 0, media.height > 0 {
+            sourceSize = CGSize(width: media.width, height: media.height)
+        } else if let frame = BackgroundStore.shared.loadFrame(named: backgroundID, at: time) {
+            sourceSize = CGSize(width: frame.width, height: frame.height)
+        } else {
+            return nil
+        }
+
+        // geometry.rect 使用画布坐标；命中点使用视口坐标，先还原成画布在视口中的实际矩形，
+        // 这样画布上下/左右留白时，图片命中范围仍与屏幕显示位置一致。
+        let rect = CGRect(
+            x: geometry.offsetX,
+            y: geometry.offsetY,
+            width: geometry.rect.width * geometry.scale,
+            height: geometry.rect.height * geometry.scale
+        )
+        let fillScale = max(
+            rect.width / max(sourceSize.width, 1),
+            rect.height / max(sourceSize.height, 1)
+        )
+        var size = CGSize(
+            width: sourceSize.width * fillScale,
+            height: sourceSize.height * fillScale
+        )
+        let settings = element.backgroundSettings ?? BackgroundElementSettings()
+        let turns = ((settings.rotationQuarterTurns % 4) + 4) % 4
+        if turns % 2 == 1 {
+            size = CGSize(width: size.height, height: size.width)
+        }
+        let rotationScale = turns % 2 == 1
+            ? max(rect.width / max(rect.height, 1), rect.height / max(rect.width, 1))
+            : 1
+        size.width *= rotationScale * settings.cropScale
+        size.height *= rotationScale * settings.cropScale
+
+        let center = CGPoint(
+            x: rect.midX + settings.cropOffset.x * rect.width / max(comp.canvasRect.width, 1),
+            y: rect.midY - settings.cropOffset.y * rect.height / max(comp.canvasRect.height, 1)
+        )
+        return CGRect(
+            x: center.x - size.width / 2,
+            y: center.y - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
     }
 
     // MARK: - 拖动（移动全部选中素材）

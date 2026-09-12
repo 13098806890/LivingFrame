@@ -42,26 +42,16 @@ struct ExportView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                if appState.isExporting || isSavingToLibrary {
-                    exportProgressBanner
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                } else if let exportedURL {
-                    exportResultBanner(url: exportedURL)
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                } else if let exportError {
-                    exportErrorBanner(message: exportError)
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    if appState.isExporting || isSavingToLibrary {
+                        exportProgressBanner
+                    } else if let exportedURL {
+                        exportResultBanner(url: exportedURL)
+                    } else if let exportError {
+                        exportErrorBanner(message: exportError)
+                    }
 
-                ScrollView {
-                    VStack(spacing: 16) {
                     if let comp = appState.composition {
                         exportContext(comp)
                     }
@@ -129,10 +119,9 @@ struct ExportView: View {
                         .multilineTextAlignment(.center)
                         .padding(.top, 2)
                 }
-                        .padding()
-                    }
-                    .scrollIndicators(.hidden)
+                .padding()
             }
+            .scrollIndicators(.hidden)
             .lfNavigationTitle("导出")
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()

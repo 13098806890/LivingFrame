@@ -15,6 +15,11 @@ struct LivingFrameApp: App {
                 .environmentObject(appState)
                 .preferredColorScheme(.light)
                 .tint(LF.gold)
+#if DEBUG
+                .task {
+                    await UIAuditFixtureSeeder.seedIfRequested(into: appState)
+                }
+#endif
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .inactive || phase == .background else { return }

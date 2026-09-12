@@ -23,7 +23,9 @@ struct WorksView: View {
                     .padding(.top, 80)
                 } else {
                     let draftWorks = appState.works.filter { $0.draft != nil }
-                    let savedWorks = appState.works.filter { $0.draft == nil }
+                    // 自动保存只进入草稿箱；只有存在主动保存快照的条目才进入作品。
+                    // 同一工程既有正式版本又有后续草稿时，两区分别展示各自版本。
+                    let savedWorks = appState.works.filter(\.hasSavedVersion)
 
                     LazyVStack(alignment: .leading, spacing: 18) {
                         worksSectionHeader(
@@ -34,7 +36,7 @@ struct WorksView: View {
                         if !draftWorks.isEmpty {
                             LazyVGrid(columns: columns, spacing: 12) {
                                 ForEach(draftWorks) { work in
-                                    WorkCell(work: work)
+                                    WorkCell(work: work, version: .draft)
                                 }
                             }
                         } else {
@@ -52,7 +54,7 @@ struct WorksView: View {
                             )
                             LazyVGrid(columns: columns, spacing: 12) {
                                 ForEach(savedWorks) { work in
-                                    WorkCell(work: work)
+                                    WorkCell(work: work, version: .saved)
                                 }
                             }
                         }
@@ -139,6 +141,12 @@ private struct WorkCell: View {
     @State private var renameText = ""
     @State private var pendingAction: WorkAction?
     let work: WorkItem
+    let version: WorkVersion
+
+    enum WorkVersion: Equatable {
+        case draft
+        case saved
+    }
 
     private enum WorkAction {
         case edit
@@ -147,7 +155,7 @@ private struct WorkCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let image = UIImage(data: work.posterData) {
+            if let image = UIImage(data: displayedPosterData) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -164,10 +172,10 @@ private struct WorkCell: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
             HStack {
-                Text((work.draft?.updatedAt ?? work.lastSavedAt).formatted(date: .abbreviated, time: .omitted))
+                Text(displayedDate.formatted(date: .abbreviated, time: .omitted))
                 Spacer()
-                if work.draft != nil {
-                    Label("有草稿", systemImage: "pencil.circle.fill")
+                if version == .draft {
+                    Label("草稿", systemImage: "pencil.circle.fill")
                         .foregroundStyle(LF.header)
                 } else {
                     Text("已保存")
@@ -180,19 +188,21 @@ private struct WorkCell: View {
                 Button {
                     request(.edit)
                 } label: {
-                    Label("编辑", systemImage: "pencil")
+                    Image(systemName: "pencil")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 .tint(LF.textPrimary)
+                .accessibilityLabel("编辑")
 
                 Button(role: .destructive) {
                     showDeleteConfirmation = true
                 } label: {
-                    Label("删除", systemImage: "trash")
+                    Image(systemName: "trash")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("删除")
             }
             .font(.caption.weight(.semibold))
         }
@@ -274,7 +284,7 @@ private struct WorkCell: View {
     }
 
     private func perform(_ action: WorkAction) {
-        appState.reopen(work)
+        appState.reopen(work, includingDraft: version == .draft)
         appState.selectedTab = .editor
         if case .export = action {
             Task { @MainActor in
@@ -282,5 +292,19 @@ private struct WorkCell: View {
                 appState.showExportView = true
             }
         }
+    }
+
+    private var displayedPosterData: Data {
+        if version == .draft {
+            return work.draft?.posterData ?? work.posterData
+        }
+        return work.posterData
+    }
+
+    private var displayedDate: Date {
+        if version == .draft, let draftDate = work.draft?.updatedAt {
+            return draftDate
+        }
+        return work.savedAt ?? work.lastSavedAt
     }
 }

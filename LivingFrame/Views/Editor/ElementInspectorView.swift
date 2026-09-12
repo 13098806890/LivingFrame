@@ -437,6 +437,7 @@ struct ElementInspectorView: View {
                     )],
                     layoutSettings: settings,
                     activeElementSettings: settings,
+                    focusedPartition: nil,
                     canvasAspect: comp.canvasRect.width / comp.canvasRect.height,
                     canvasSize: comp.canvasRect.size,
                     activeElementID: element.id,

@@ -7,13 +7,20 @@ xcuserdata/
 *.xccheckout
 xcworkspace/
 project.xcworkspace/
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
 
 # Swift Package Manager
 .build/
 .swiftpm/
+Packages/*/.build/
+Packages/*/.swiftpm/
 
 # macOS
 .DS_Store
 
 # 日志
 *.log
+
+# UI audit artifacts
+Artifacts/UIAudit/
