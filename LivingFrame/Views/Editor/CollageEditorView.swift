@@ -150,10 +150,14 @@ struct CollageEditorView: View {
 
     private var collagePreviewItems: [BackgroundEditingPreviewItem] {
         collageElements.compactMap { element in
-            guard case .background(let mediaID) = element.kind,
+            guard case .background(let mediaID) = element.kind else { return nil }
+            let media = appState.backgroundMedia.first(where: { $0.id == mediaID })
+                ?? BackgroundStore.shared.media(named: mediaID)
+            let frameTime = previewFrameTime(for: element, media: media)
+            guard
                   let frame = BackgroundStore.shared.loadFrame(
                       named: mediaID,
-                      at: appState.currentTime
+                      at: frameTime
                   ) else { return nil }
             return BackgroundEditingPreviewItem(
                 id: element.id,
@@ -162,6 +166,23 @@ struct CollageEditorView: View {
                 zIndex: element.zIndex
             )
         }
+    }
+
+    private func previewFrameTime(
+        for element: CompositionElement,
+        media: BackgroundMediaItem?
+    ) -> TimeInterval {
+        guard let media, media.isAnimated else { return 0 }
+        let sourceRange = SourcePlaybackRange(
+            duration: max(media.duration, 0.1),
+            start: element.sourceStartTime,
+            end: element.sourceEndTime
+        )
+        return sourceRange.sourceTime(
+            at: max(appState.currentTime - element.startTime, 0),
+            phase: element.sourcePlaybackOffset ?? 0,
+            looping: element.shouldLoop(cycleDuration: sourceRange.span)
+        )
     }
 
     private var sourceStrip: some View {
@@ -177,10 +198,12 @@ struct CollageEditorView: View {
                     ForEach(elementIDs, id: \.self) { elementID in
                         if let element = collageElements.first(where: { $0.id == elementID }),
                            case .background(let mediaID) = element.kind,
-                           let media = appState.backgroundMedia.first(where: { $0.id == mediaID }) {
+                           let media = appState.backgroundMedia.first(where: { $0.id == mediaID })
+                            ?? BackgroundStore.shared.media(named: mediaID) {
                             CollageSourceChip(
                                 item: media,
                                 assignedPartitions: element.backgroundSettings?.resolvedAssignedPartitions ?? [],
+                                settings: element.backgroundSettings ?? BackgroundElementSettings(),
                                 layerIndex: collageLayerOrder.firstIndex(where: { $0.id == elementID }).map { $0 + 1 } ?? 1,
                                 layerOptions: collageLayerOptions,
                                 isSelected: elementID == activeElement?.id,
@@ -326,6 +349,7 @@ struct CollageEditorView: View {
                 set: { appState.setBackgroundCropScale(elementID, CGFloat($0)) }
             ), in: Double(BackgroundElementSettings.minimumCropScale)...Double(BackgroundElementSettings.maximumCropScale), step: 0.05)
             .tint(LF.actionPrimary)
+            .accessibilityIdentifier("collage-crop-scale")
 
             HStack {
                 Button("重置") {
@@ -338,6 +362,7 @@ struct CollageEditorView: View {
                     appState.rotateBackground90(elementID)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier("collage-rotate-active")
             }
         }
     }
@@ -720,6 +745,10 @@ struct BackgroundEditingPreview: View {
                         .stroke(LF.header.opacity(0.45), lineWidth: 1)
                 }
                 .contentShape(Rectangle())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("拼接画布")
+                .accessibilityIdentifier("collage-canvas-preview")
+                .accessibilityValue(collageCanvasAccessibilityValue)
                 .onTapGesture { location in
                     guard !didMoveCanvasDuringDrag else {
                         didMoveCanvasDuringDrag = false
@@ -745,6 +774,15 @@ struct BackgroundEditingPreview: View {
 
     private var dividerCount: Int {
         sharedSettings.dividerLines.count
+    }
+
+    private var collageCanvasAccessibilityValue: String {
+        guard !sharedSettings.dividerLines.isEmpty else { return "无分割线" }
+        return sharedSettings.dividerLines.indices.map { index in
+            let angle = BackgroundPartitionGeometry.angle(for: index, settings: sharedSettings)
+            let offset = BackgroundDividerGeometry.offset(for: index, settings: sharedSettings)
+            return "分割线 \(index + 1)，角度 \(String(format: "%.0f", angle)) 度，偏移 \(String(format: "%.2f", offset))"
+        }.joined(separator: "；")
     }
 
     private func rotationFillScale(_ settings: BackgroundElementSettings, in size: CGSize) -> CGFloat {
@@ -1110,6 +1148,7 @@ struct BackgroundDividerControls: View {
                             Text(String(format: "%.0f°", divider.angle))
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(LF.textSecondary)
+                                .accessibilityIdentifier("collage-divider-angle-value-\(index)")
                             Button(role: .destructive) {
                                 onRemoveDivider(index)
                             } label: {
@@ -1133,6 +1172,7 @@ struct BackgroundDividerControls: View {
                         .tint(LF.actionPrimary)
                         .disabled(!dividerEditingEnabled)
                         .frame(height: 20)
+                        .accessibilityIdentifier("collage-divider-angle-\(index)")
                     }
                 }
             }
@@ -1201,6 +1241,7 @@ private struct CollageLayerOption: Identifiable {
 private struct CollageSourceChip: View {
     let item: BackgroundMediaItem
     let assignedPartitions: [Int]
+    let settings: BackgroundElementSettings
     let layerIndex: Int
     let layerOptions: [CollageLayerOption]
     let isSelected: Bool
@@ -1256,6 +1297,12 @@ private struct CollageSourceChip: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(LF.textPrimary)
+            .accessibilityIdentifier("collage-source-\(item.id)")
+            .accessibilityValue(
+                "\(item.isAnimated ? "动态素材" : "静态素材")，缩放 \(String(format: "%.2f", settings.cropScale)) 倍，"
+                    + "偏移 \(String(format: "%.1f", settings.cropOffset.x)),\(String(format: "%.1f", settings.cropOffset.y))，"
+                    + "旋转 \(settings.rotationQuarterTurns * 90) 度"
+            )
 
             HStack(spacing: 1) {
                 Menu {

@@ -28,6 +28,59 @@ final class LivingFrameUITests: XCTestCase {
         try runAudit([Self.simplifiedChinese])
     }
 
+    /// 覆盖素材库的提取入口与系统相册选择器；真实媒体导入由审计环境提供测试图片。
+    @MainActor
+    func testExtractionEntryAudit() throws {
+        launch(Self.simplifiedChinese)
+        tapTab(index: 0)
+        waitForUIToSettle()
+        attachScreenshot(named: "extraction--01-library-entry")
+
+        let pickerEntry = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "选择视频")
+        ).firstMatch
+        XCTAssertTrue(pickerEntry.waitForExistence(timeout: 10), "Extraction picker entry did not appear")
+        XCTAssertTrue(pickerEntry.isHittable, "Extraction picker entry is not hittable")
+        pickerEntry.tap()
+        waitForUIToSettle()
+        attachScreenshot(named: "extraction--02-photo-picker")
+        attachAccessibilityHierarchy(named: "extraction-photo-picker")
+
+        let firstPhoto = app.images.matching(
+            NSPredicate(format: "identifier == %@", "PXGGridLayout-Info")
+        ).firstMatch
+        if firstPhoto.waitForExistence(timeout: 10) {
+            if firstPhoto.isHittable {
+                firstPhoto.tap()
+            } else {
+                // PhotosPicker 的缩略图在部分 Simulator 版本只暴露为 Image，
+                // 但仍可通过网格内的稳定坐标选择第一张照片。
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.47)).tap()
+            }
+            waitForUIToSettle()
+            attachScreenshot(named: "extraction--03-photo-selected")
+
+            let done = app.buttons.matching(
+                NSPredicate(format: "label IN %@", ["完成", "Done"])
+            ).firstMatch
+            if done.waitForExistence(timeout: 5), done.isHittable {
+                done.tap()
+                waitForUIToSettle()
+                attachScreenshot(named: "extraction--04-extraction-started")
+                RunLoop.current.run(until: Date().addingTimeInterval(15))
+                attachScreenshot(named: "extraction--05-extraction-result")
+            }
+        }
+
+        let cancel = app.buttons.matching(
+            NSPredicate(format: "label IN %@", ["取消", "Cancel"])
+        ).firstMatch
+        if cancel.waitForExistence(timeout: 5), cancel.isHittable {
+            cancel.tap()
+        }
+        app.terminate()
+    }
+
     @MainActor
     func testStandardVisualAudit() throws {
         try runAudit([Self.simplifiedChinese, Self.english, Self.arabic])
@@ -129,24 +182,49 @@ final class LivingFrameUITests: XCTestCase {
         waitForUIToSettle()
         attachScreenshot(named: "functional--13-theme-changed")
 
-        let preserveQuality = matchingSwitch([
-            "Preserve original frame rate and resolution",
-            "保留原始帧率和分辨率"
-        ])
+        let preserveQuality = app.switches["settings-preserve-original-media-quality"]
+        XCTAssertTrue(preserveQuality.exists, "Settings preserve-quality switch identifier is missing")
         scrollToElement(preserveQuality)
-        if preserveQuality.value as? String != "1" {
+        if preserveQuality.value as? String == "1" {
             preserveQuality.tap()
         }
+        waitForSwitchValue(preserveQuality, expected: "0", timeout: 5)
+        XCTAssertEqual(preserveQuality.value as? String, "0", "Settings toggle did not reach the off state")
+
+        // Always exercise the off → on interaction, even when the previous
+        // test run left the persisted preference enabled.
+        preserveQuality.tap()
+        waitForSwitchValue(preserveQuality, expected: "1", timeout: 5)
+        XCTAssertEqual(preserveQuality.value as? String, "1", "Settings toggle did not turn on")
+
+        let processingResolution = settingsControl(identifier: "settings-processing-resolution")
+        let processingFrameRate = settingsControl(identifier: "settings-processing-frame-rate")
+        XCTAssertTrue(processingResolution.waitForExistence(timeout: 10), "Processing resolution picker did not appear")
+        XCTAssertTrue(processingFrameRate.waitForExistence(timeout: 10), "Processing frame rate picker did not appear")
+        waitForElementEnabled(processingResolution, expected: false, timeout: 5)
+        waitForElementEnabled(processingFrameRate, expected: false, timeout: 5)
+        XCTAssertFalse(processingResolution.isEnabled, "Processing resolution picker should be disabled when preserving original media quality")
+        XCTAssertFalse(processingFrameRate.isEnabled, "Processing frame rate picker should be disabled when preserving original media quality")
+
+        preserveQuality.tap()
+        waitForSwitchValue(preserveQuality, expected: "0", timeout: 5)
+        XCTAssertEqual(preserveQuality.value as? String, "0", "Settings toggle did not turn off")
+        waitForElementEnabled(processingResolution, expected: true, timeout: 5)
+        waitForElementEnabled(processingFrameRate, expected: true, timeout: 5)
+        XCTAssertTrue(processingResolution.isEnabled, "Processing resolution picker did not recover after disabling preserve mode")
+        XCTAssertTrue(processingFrameRate.isEnabled, "Processing frame rate picker did not recover after disabling preserve mode")
+
+        // Leave the persisted state enabled for the relaunch assertion below.
+        preserveQuality.tap()
+        waitForSwitchValue(preserveQuality, expected: "1", timeout: 5)
+        XCTAssertEqual(preserveQuality.value as? String, "1", "Settings toggle did not return to on state")
         attachScreenshot(named: "functional--14-settings-changed")
         attachAccessibilityHierarchy(named: "functional-before-relaunch")
 
         app.terminate()
         launch(profile, extraArguments: ["-UIAuditSeedProject"])
         tapTab(index: 3)
-        let persistedQuality = matchingSwitch([
-            "Preserve original frame rate and resolution",
-            "保留原始帧率和分辨率"
-        ])
+        let persistedQuality = app.switches["settings-preserve-original-media-quality"]
         scrollToElement(persistedQuality)
         XCTAssertEqual(persistedQuality.value as? String, "1", "Setting did not survive relaunch")
         attachScreenshot(named: "functional--15-settings-persisted")
@@ -296,6 +374,10 @@ final class LivingFrameUITests: XCTestCase {
         app.switches.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
     }
 
+    private func settingsControl(identifier: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
     @discardableResult
     private func tapButton(_ labels: [String], timeout: TimeInterval = 10) -> XCUIElement {
         let element = matchingButton(labels)
@@ -322,6 +404,34 @@ final class LivingFrameUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: timeout), .completed)
     }
 
+    private func waitForSwitchValue(
+        _ element: XCUIElement,
+        expected: String,
+        timeout: TimeInterval
+    ) {
+        let predicate = NSPredicate(format: "value == %@", expected)
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [expectation], timeout: timeout),
+            .completed,
+            "Settings switch did not reach value \(expected) within \(timeout)s"
+        )
+    }
+
+    private func waitForElementEnabled(
+        _ element: XCUIElement,
+        expected: Bool,
+        timeout: TimeInterval
+    ) {
+        let predicate = NSPredicate(format: "enabled == %@", NSNumber(value: expected))
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [expectation], timeout: timeout),
+            .completed,
+            "Settings control did not reach enabled=\(expected) within \(timeout)s"
+        )
+    }
+
     private func tapTab(index: Int) {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "Main tab bar did not appear")
@@ -335,14 +445,17 @@ final class LivingFrameUITests: XCTestCase {
         XCTAssertTrue(element.waitForExistence(timeout: 10), "Expected settings control is missing")
         let scrollView = app.scrollViews.firstMatch
         let tabBarTop = app.tabBars.firstMatch.frame.minY
-        for _ in 0..<5 {
+        // The settings page has several cards and the tab bar overlays the
+        // bottom edge on iPhone 17. Keep scrolling until the switch itself
+        // reports hittable instead of relying on one fixed content offset.
+        for _ in 0..<12 {
             let isComfortablyVisible = element.isHittable && element.frame.maxY < tabBarTop - 24
             if isComfortablyVisible { break }
             scrollView.swipeUp()
         }
         XCTAssertTrue(
-            element.isHittable && element.frame.maxY < tabBarTop,
-            "Could not scroll settings control above the tab bar"
+            element.isHittable,
+            "Could not scroll settings control into a hittable position"
         )
     }
 }

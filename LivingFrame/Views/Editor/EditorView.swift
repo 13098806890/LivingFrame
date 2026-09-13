@@ -55,6 +55,11 @@ enum EditorTool: String, CaseIterable, Identifiable {
     static let visibleCases: [EditorTool] = [.timeline, .asset, .collage, .canvas, .text, .sticker, .frame, .crop]
 }
 
+private struct CollageEditorRequest: Identifiable {
+    let id = UUID()
+    let elementIDs: [UUID]
+}
+
 /// 编辑页（参考 ImgPlay 布局）
 /// 固定工作区：顶部信息 → 有层次的画布 → 播放控制 → 独立滚动时间轴 → 固定工具栏。
 /// 页面本身不再纵向滚动，避免与时间轴轨道列表争抢同方向手势。
@@ -62,8 +67,7 @@ struct EditorView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showAssetPicker = false
     /// 双击已有背景元素时，直接复用拼接编辑器而不是进入通用检查器。
-    @State private var pendingCollageElementIDs: [UUID] = []
-    @State private var showCollageEditor = false
+    @State private var collageEditorRequest: CollageEditorRequest?
     /// 长按贴纸后显示的动态预览。
     @State private var previewSticker: StickerDefinition?
     /// 贴纸面板当前选中的视觉分类。
@@ -152,11 +156,9 @@ struct EditorView: View {
                 appState.renameCurrentComposition(to: name)
             }
         }
-        .sheet(isPresented: $showCollageEditor, onDismiss: {
-            pendingCollageElementIDs.removeAll()
-        }) {
+        .sheet(item: $collageEditorRequest) { request in
             CollageEditorView(
-                existingElementIDs: pendingCollageElementIDs
+                existingElementIDs: request.elementIDs
             )
                 .environmentObject(appState)
         }
@@ -582,20 +584,20 @@ struct EditorView: View {
 
     private func openCollageEditor() {
         guard let composition = appState.composition else {
-            pendingCollageElementIDs.removeAll()
-            showCollageEditor = true
+            collageEditorRequest = CollageEditorRequest(elementIDs: [])
             return
         }
 
+        let elementIDs: [UUID]
         if let selected = appState.primarySelectedElement,
            case .background = selected.kind {
-            pendingCollageElementIDs = collageElementIDs(for: selected, in: composition)
-        } else if pendingCollageElementIDs.isEmpty {
+            elementIDs = collageElementIDs(for: selected, in: composition)
+        } else {
             // 拼接编辑器完成后保留当前素材选中状态；如果用户之后点了其它地方，
             // 仍优先恢复工程中已有的第一个拼接组，而不是重新打开空白画布。
-            pendingCollageElementIDs = firstExistingCollageElementIDs(in: composition)
+            elementIDs = firstExistingCollageElementIDs(in: composition)
         }
-        showCollageEditor = true
+        collageEditorRequest = CollageEditorRequest(elementIDs: elementIDs)
     }
 
     private func collageElementIDs(
@@ -634,11 +636,11 @@ struct EditorView: View {
 
         // 单张背景和多张拼接都进入同一个编辑器。旧工程里的单张背景没有组标识，
         // 先作为只有一个元素的拼接会话打开；用户追加素材后会在会话中补齐组标识。
-        pendingCollageElementIDs = collageElementIDs(for: selected, in: composition)
-        if pendingCollageElementIDs.isEmpty {
+        let elementIDs = collageElementIDs(for: selected, in: composition)
+        if elementIDs.isEmpty {
             showInspectorSheet = true
         } else {
-            showCollageEditor = true
+            collageEditorRequest = CollageEditorRequest(elementIDs: elementIDs)
         }
     }
 

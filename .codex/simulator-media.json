@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "resource_root": "TestResources/SimulatorMedia",
+  "default_device": "iPhone 17",
+  "photo_library_bundle_id": "com.livingframe.app",
+  "extensions": ["jpg", "jpeg", "png", "heic", "heif", "gif", "mov", "mp4", "m4v"],
+  "live_photo_pairs": []
+}

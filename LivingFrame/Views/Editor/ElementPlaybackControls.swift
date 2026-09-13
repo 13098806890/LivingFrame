@@ -278,6 +278,7 @@ struct ElementPlaybackControls: View {
         }
         .padding(10)
         .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityIdentifier("element-playback-controls")
         .sheet(isPresented: $isEditingSourceRange) {
             ElementSourceRangeEditor(element: element, source: source)
                 .environmentObject(appState)

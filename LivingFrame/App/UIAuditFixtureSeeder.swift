@@ -1,6 +1,8 @@
 #if DEBUG
+import ImageIO
 import LivingFrameCore
 import UIKit
+import UniformTypeIdentifiers
 
 /// 为 Simulator 功能巡检准备确定性工程。仅在显式传入
 /// `-UIAuditSeedProject` 时执行，不影响正常启动和 Release 构建。
@@ -15,17 +17,26 @@ enum UIAuditFixtureSeeder {
 
         appState.createComposition(aspect: .square1x1)
 
+        var mediaIDs: [String] = []
         if let mediaID = await appState.importBackgroundMedia(
             data: makeFixtureImage(),
             preferredFileExtension: "png"
         ) {
-            await appState.reloadBackgroundMediaAndWait()
-            let elementIDs = appState.addBackgroundElements(mediaIDs: [mediaID])
-            if let elementID = elementIDs.first {
-                // 拼接素材新建后与真实用户流程一样处于“待分配”状态；
-                // 单图巡检将它明确放入完整画布的第一个区域。
-                appState.setBackgroundPartition(elementID, 0)
-            }
+            mediaIDs.append(mediaID)
+        }
+        if ProcessInfo.processInfo.arguments.contains("-UIAuditSeedAnimatedCollage"),
+           let mediaID = await appState.importBackgroundMedia(
+            data: makeAnimatedFixtureImage(),
+            preferredFileExtension: "gif"
+           ) {
+            mediaIDs.append(mediaID)
+        }
+        await appState.reloadBackgroundMediaAndWait()
+        let elementIDs = appState.addBackgroundElements(mediaIDs: mediaIDs)
+        for elementID in elementIDs {
+            // 拼接素材新建后与真实用户流程一样处于“待分配”状态；
+            // 巡检将测试素材明确放入完整画布的第一个区域。
+            appState.setBackgroundPartition(elementID, 0)
         }
 
         // 同时准备动态内容与可编辑文字，使播放、文字、保存和导出流程
@@ -104,6 +115,36 @@ enum UIAuditFixtureSeeder {
                 ]
             )
         }
+    }
+
+    /// 仅供显式动态拼接巡检使用的两帧 GIF；普通 seed 仍只创建静态素材。
+    private static func makeAnimatedFixtureImage() -> Data {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data,
+            UTType.gif.identifier as CFString,
+            2,
+            nil
+        ) else { return Data() }
+
+        CGImageDestinationSetProperties(destination, [
+            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]
+        ] as CFDictionary)
+        for color in [UIColor.systemPink, UIColor.systemTeal] {
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 360, height: 360)).image { context in
+                color.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 360, height: 360))
+            }
+            guard let frame = image.cgImage else { continue }
+            CGImageDestinationAddImage(destination, frame, [
+                kCGImagePropertyGIFDictionary: [
+                    kCGImagePropertyGIFDelayTime: 0.4,
+                    kCGImagePropertyGIFUnclampedDelayTime: 0.4
+                ]
+            ] as CFDictionary)
+        }
+        guard CGImageDestinationFinalize(destination) else { return Data() }
+        return data as Data
     }
 }
 #endif

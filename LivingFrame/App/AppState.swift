@@ -190,7 +190,16 @@ final class AppState: ObservableObject {
     /// 是否在人物提取时保留源素材的实际帧率和分辨率。
     /// 开启后会覆盖处理帧率与处理分辨率预设，但仍受视频起止时间限制。
     @Published var preserveOriginalMediaQuality = false {
-        didSet { UserDefaults.standard.set(preserveOriginalMediaQuality, forKey: settingPreserveOriginalMediaQualityKey) }
+        // Keep the Toggle's state transition lightweight. Full settings
+        // persistence is reserved for scene transitions; synchronously
+        // synchronizing every preference here can delay SwiftUI's control
+        // update and leave XCTest's accessibility snapshot stale.
+        didSet {
+            UserDefaults.standard.set(
+                preserveOriginalMediaQuality,
+                forKey: settingPreserveOriginalMediaQualityKey
+            )
+        }
     }
 
     /// 当前工程引用的动态素材中，最高的实际提取帧率。
@@ -216,8 +225,12 @@ final class AppState: ObservableObject {
     /// 单个视频/Live Photo 默认最多抠取的时长；超出部分从视频开头截断。
     @Published var maxExtractionDuration: Double = 5 {
         didSet {
-            maxExtractionDuration = Self.clampedExtractionDuration(maxExtractionDuration)
-            UserDefaults.standard.set(maxExtractionDuration, forKey: settingMaxExtractionDurationKey)
+            let clamped = Self.clampedExtractionDuration(maxExtractionDuration)
+            guard abs(maxExtractionDuration - clamped) > 0.0001 else {
+                UserDefaults.standard.set(clamped, forKey: settingMaxExtractionDurationKey)
+                return
+            }
+            maxExtractionDuration = clamped
         }
     }
     /// 全局视觉皮肤；切换后所有使用 LF 语义色的页面会立即刷新。
@@ -237,6 +250,29 @@ final class AppState: ObservableObject {
     private let settingAppThemeKey = "setting.appTheme"
     private let canvasPreferenceAspectKey = "canvasPreference.aspect"
     private let canvasPreferenceBackgroundKey = "canvasPreference.background"
+
+    /// 将当前设置集中落盘。
+    ///
+    /// 设置可能在应用即将进入后台时被系统终止；统一从这里写入可以避免
+    /// 各个设置属性分别依赖 SwiftUI Binding 的最后一次回调。
+    func persistUserSettings() {
+        let defaults = UserDefaults.standard
+        defaults.set(defaultFormat.rawValue, forKey: settingDefaultFormatKey)
+        defaults.set(exportFPS, forKey: settingExportFPSKey)
+        defaults.set(maxDimension, forKey: settingMaxDimensionKey)
+        defaults.set(processingFPS, forKey: settingProcessingFPSKey)
+        defaults.set(preserveOriginalMediaQuality, forKey: settingPreserveOriginalMediaQualityKey)
+        defaults.set(maxExtractionDuration, forKey: settingMaxExtractionDurationKey)
+        defaults.set(appTheme.rawValue, forKey: settingAppThemeKey)
+        defaults.synchronize()
+        CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication)
+    }
+
+    /// 设置页使用显式入口更新该开关，确保 SwiftUI 控件的 Binding 写入后立即落盘。
+    func setPreserveOriginalMediaQuality(_ value: Bool) {
+        guard preserveOriginalMediaQuality != value else { return }
+        preserveOriginalMediaQuality = value
+    }
 
     // MARK: - 编辑交互
 

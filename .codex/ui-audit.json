@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "project": "LivingFrame.xcodeproj",
+  "scheme": "LivingFrame",
+  "bundle_id": "com.livingframe.app",
+  "process_name": "LivingFrame",
+  "ui_test_target": "LivingFrameUITests",
+  "ui_test_class": "LivingFrameUITests",
+  "default_device": "iPhone 17",
+  "default_profile": "full",
+  "code_signing_allowed": false,
+  "phases": {
+    "smoke": {
+      "test": "testSmokeVisualAudit",
+      "appearance": "light",
+      "content_size": "large"
+    },
+    "functional": {
+      "test": "testFunctionalWorkflowAudit",
+      "appearance": "light",
+      "content_size": "large"
+    },
+    "standard": {
+      "test": "testStandardVisualAudit",
+      "appearance": "light",
+      "content_size": "large"
+    },
+    "dark": {
+      "test": "testDarkAppearanceVisualAudit",
+      "appearance": "dark",
+      "content_size": "large"
+    },
+    "accessibility": {
+      "test": "testAccessibilityTextVisualAudit",
+      "appearance": "light",
+      "content_size": "accessibility-extra-extra-extra-large"
+    }
+  },
+  "profiles": {
+    "smoke": ["smoke"],
+    "functional": ["functional"],
+    "full": ["functional", "standard", "dark", "accessibility"]
+  },
+  "coverage_notes": [
+    "UIAuditFixtureSeeder 仅在 DEBUG 和 -UIAuditSeedProject 参数下启用。",
+    "Vision 成功抠图需要包含人物的真实照片或视频；模拟器不代表真机性能。",
+    "Live Photo、真实 Photos 写入和 Widget App Group 行为需要单独验证。"
+  ]
+}

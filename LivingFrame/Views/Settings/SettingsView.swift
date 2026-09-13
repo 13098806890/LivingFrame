@@ -6,6 +6,10 @@ struct SettingsView: View {
     @State private var logRefresh = 0
     @State private var isClearingLogs = false
     @State private var showAdvancedExportFormats = false
+    // Keep the switch's interaction state local to this view. SwiftUI's
+    // environment-object binding can otherwise leave the UIKit accessibility
+    // switch snapshot at 0 while AppState is being persisted synchronously.
+    @State private var preserveOriginalMediaQuality = false
 
     var body: some View {
         NavigationStack {
@@ -73,8 +77,38 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
 
-                        Toggle("保留原始帧率和分辨率", isOn: $appState.preserveOriginalMediaQuality)
+                        HStack(spacing: 12) {
+                            // Keep the label as a separate control. SwiftUI's
+                            // labelled Toggle exposes both a full-row
+                            // accessibility Switch and a nested native
+                            // UISwitch. XCTest can tap the former's label
+                            // frame instead of the actual switch, leaving its
+                            // value unchanged. The explicit label button and
+                            // labelsHidden Toggle make the identifier/value
+                            // belong to the real switch only.
+                            Button {
+                                preserveOriginalMediaQuality.toggle()
+                            } label: {
+                                Text("保留原始帧率和分辨率")
+                                    .foregroundStyle(LF.textPrimary)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            .buttonStyle(.plain)
+
+                            Spacer(minLength: 8)
+
+                            Toggle(
+                                "保留原始帧率和分辨率",
+                                isOn: Binding(
+                                    get: { preserveOriginalMediaQuality },
+                                    set: { preserveOriginalMediaQuality = $0 }
+                                )
+                            )
+                            .labelsHidden()
+                            .accessibilityLabel("保留原始帧率和分辨率")
+                            .accessibilityIdentifier("settings-preserve-original-media-quality")
                             .tint(LF.actionPrimary)
+                        }
                         Text("开启后按源素材实际帧率处理，并保留原始像素尺寸；处理帧率和处理分辨率预设将暂时不生效，处理时间和占用空间可能明显增加。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
@@ -84,15 +118,17 @@ struct SettingsView: View {
                             Text("720p（快）").tag(1280.0)
                             Text("1080p（慢，更精细）").tag(1920.0)
                         }
-                        .disabled(appState.preserveOriginalMediaQuality)
+                        .accessibilityIdentifier("settings-processing-resolution")
+                        .disabled(preserveOriginalMediaQuality)
                         Picker("处理帧率", selection: $appState.processingFPS) {
                             Text("10 fps（最快）").tag(10.0)
                             Text("15 fps（快）").tag(15.0)
                             Text("30 fps（流畅）").tag(30.0)
                             Text("60 fps（保留高帧率）").tag(60.0)
                         }
-                        .disabled(appState.preserveOriginalMediaQuality)
-                        Text(appState.preserveOriginalMediaQuality
+                        .accessibilityIdentifier("settings-processing-frame-rate")
+                        .disabled(preserveOriginalMediaQuality)
+                        Text(preserveOriginalMediaQuality
                              ? "当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。"
                              : "仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，人物素材越精细，处理时间越长。")
                             .font(.caption)
@@ -184,7 +220,11 @@ struct SettingsView: View {
         .magicBackground()
         .task {
             showAdvancedExportFormats = appState.defaultFormat != .gif
+            preserveOriginalMediaQuality = appState.preserveOriginalMediaQuality
             appState.refreshCacheSize()
+        }
+        .onChange(of: preserveOriginalMediaQuality) { _, value in
+            appState.setPreserveOriginalMediaQuality(value)
         }
     }
 
