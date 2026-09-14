@@ -96,6 +96,26 @@ final class LivingFrameUITests: XCTestCase {
         try runAudit([Self.accessibilityEnglish])
     }
 
+    @MainActor
+    func testLibraryFolderControlsShareOneCompactHorizontalScrollView() throws {
+        launch(Self.simplifiedChinese)
+
+        let foldersScroll = app.scrollViews["library-folders-scroll"]
+        XCTAssertTrue(
+            foldersScroll.waitForExistence(timeout: 10),
+            "Folder controls should be inside one identified horizontal scroll view"
+        )
+        XCTAssertTrue(
+            foldersScroll.buttons["新建文件夹"].exists,
+            "New-folder control should move with the existing folders"
+        )
+        XCTAssertLessThanOrEqual(
+            foldersScroll.frame.height,
+            60,
+            "Folder strip should stay compact"
+        )
+    }
+
     /// 使用 App 自己的编辑、存储和导出能力走一条完整用户链路。
     /// 测试素材由 Debug-only 启动参数生成，因此不依赖照片权限和宿主机相册状态。
     @MainActor

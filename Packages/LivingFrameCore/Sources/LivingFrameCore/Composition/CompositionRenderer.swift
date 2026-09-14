@@ -12,6 +12,8 @@ public struct CompositionRenderer {
     private let frameMaxPixelSize: CGFloat?
     /// 排除帧的补位方向；倒放预览时使用右侧最近保留帧。
     private let isPlaybackReversed: Bool
+    /// Whether clip-level edge and sticker effects should be applied.
+    private let appliesClipEffects: Bool
     /// 背景素材的读取入口由调用方提供，避免渲染器把磁盘存储和渲染逻辑绑在一起。
     private let backgroundMediaProvider: any BackgroundMediaProviding
 
@@ -19,11 +21,13 @@ public struct CompositionRenderer {
         context: CIContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()]),
         frameMaxPixelSize: CGFloat? = nil,
         isPlaybackReversed: Bool = false,
+        appliesClipEffects: Bool = true,
         backgroundMediaProvider: any BackgroundMediaProviding
     ) {
         self.context = context
         self.frameMaxPixelSize = frameMaxPixelSize
         self.isPlaybackReversed = isPlaybackReversed
+        self.appliesClipEffects = appliesClipEffects
         self.backgroundMediaProvider = backgroundMediaProvider
     }
 
@@ -111,8 +115,8 @@ public struct CompositionRenderer {
         if case .clip(let clipID) = element.kind,
            let clip = FrameCache.shared.clip(id: clipID) {
             return CGSize(
-                width: max(clip.orientedWidth, 1),
-                height: max(clip.orientedHeight, 1)
+                width: max(clip.renderedWidth, 1),
+                height: max(clip.renderedHeight, 1)
             )
         }
 
@@ -362,13 +366,15 @@ public struct CompositionRenderer {
                 // 预览用缩略图（尺寸 < 素材实际像素）。不把源图放大回全尺寸——
                 // 放大插值会在人物边缘产生半透明残留像素（贴边时形成"阴影线"）。
                 // 改为把归一化因子并入元素缩放，源图始终一次缩放到位。
-                let targetWidth = CGFloat(max(clip.orientedWidth, 1))
+                let targetWidth = CGFloat(max(clip.renderedWidth, 1))
                 fixScale = targetWidth > 0 && Int(frame.extent.width) > 0
                     ? targetWidth / frame.extent.width
                     : 1
                 // 元素级背景图案垫在底层（先画背景，再叠加人物及其边缘/风格）
                 var content: CIImage
-                if clip.stickerStyle == .customOutline {
+                if !appliesClipEffects {
+                    content = frame
+                } else if clip.stickerStyle == .customOutline {
                     // 自定义描边：线型×粗细×颜色参数直接渲染，不叠加旧边缘层
                     content = outlined(
                         frame,
@@ -584,10 +590,7 @@ public struct CompositionRenderer {
         let fps = clip.fps
         guard fps.isFinite, fps > 0 else {
             if let frame = FrameCache.shared.cachedFrame(for: clip, index: playbackFrames[0]) {
-                return rotatedClipImage(
-                    CIImage(cgImage: frame),
-                    quarterTurns: clip.normalizedRotationQuarterTurns
-                )
+                return clipFrameImage(frame, clip: clip)
             }
             return nil
         }
@@ -608,10 +611,7 @@ public struct CompositionRenderer {
         let cycleFrameCount = max(endIndex - startIndex, 1)
         guard time.isFinite else {
             if let frame = FrameCache.shared.cachedFrame(for: clip, index: playbackFrames[startIndex]) {
-                return rotatedClipImage(
-                    CIImage(cgImage: frame),
-                    quarterTurns: clip.normalizedRotationQuarterTurns
-                )
+                return clipFrameImage(frame, clip: clip)
             }
             return nil
         }
@@ -630,7 +630,26 @@ public struct CompositionRenderer {
             frame = FrameCache.shared.cachedFrame(for: clip, index: index)
         }
         guard let frame else { return nil }
-        return rotatedClipImage(CIImage(cgImage: frame), quarterTurns: clip.normalizedRotationQuarterTurns)
+        return clipFrameImage(frame, clip: clip)
+    }
+
+    private func clipFrameImage(_ frame: CGImage, clip: SegmentedClip) -> CIImage {
+        var image = CIImage(cgImage: frame)
+        // Thumbnail decoding already applies the crop in FrameCache. Full-resolution
+        // frames are cropped here before the stored clockwise rotation is applied.
+        if frameMaxPixelSize == nil, clip.cropRect != nil {
+            let raw = clip.rawCropRect
+            let crop = CGRect(
+                x: image.extent.minX + raw.minX * image.extent.width,
+                y: image.extent.minY + raw.minY * image.extent.height,
+                width: raw.width * image.extent.width,
+                height: raw.height * image.extent.height
+            ).intersection(image.extent)
+            if crop.width > 0, crop.height > 0 {
+                image = image.cropped(to: crop)
+            }
+        }
+        return rotatedClipImage(image, quarterTurns: clip.normalizedRotationQuarterTurns)
     }
 
     /// 素材详情页的旋转属于素材本身，因此在进入元素变换和描边处理前统一应用。

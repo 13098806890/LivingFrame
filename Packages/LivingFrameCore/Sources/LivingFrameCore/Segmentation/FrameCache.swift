@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreImage
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -6,6 +7,8 @@ import UniformTypeIdentifiers
 /// 磁盘素材库：管理抠图素材的 PNG 序列目录（Documents/Library/Clips，持久保存）
 public final class FrameCache {
     public static let shared = FrameCache()
+    /// 素材动态预览统一使用的缩略帧尺寸，保证不同入口命中同一组缓存。
+    public static let previewThumbnailMaxPixelSize: CGFloat = 640
 
     private let rootURL: URL
     private let registryLock = NSLock()
@@ -19,6 +22,7 @@ public final class FrameCache {
     /// 预览缓存最多保留约 96MB，避免多素材播放时无限增长。
     private let frameCacheMaxCost = 96 * 1024 * 1024
     private let frameCacheMaxCount = 256
+    private let cropContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
     /// 素材占用空间缓存（clipID → bytes）
     private var clipSizes: [String: Int64] = [:]
     /// 清单写入串行化，避免连续修改素材属性时出现旧状态覆盖新状态。
@@ -94,7 +98,19 @@ public final class FrameCache {
                 kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
                 kCGImageSourceCreateThumbnailWithTransform: true
             ] as CFDictionary
-            return CGImageSourceCreateThumbnailAtIndex(source, 0, options)
+            guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
+            guard clip.cropRect != nil else { return thumbnail }
+            let image = CIImage(cgImage: thumbnail)
+            let rawRect = clip.rawCropRect
+            let crop = CGRect(
+                x: image.extent.minX + rawRect.minX * image.extent.width,
+                y: image.extent.minY + rawRect.minY * image.extent.height,
+                width: rawRect.width * image.extent.width,
+                height: rawRect.height * image.extent.height
+            ).intersection(image.extent)
+            guard crop.width > 0, crop.height > 0 else { return thumbnail }
+            let cropped = image.cropped(to: crop)
+            return cropContext.createCGImage(cropped, from: cropped.extent)
         }
     }
 
@@ -142,7 +158,7 @@ public final class FrameCache {
     }
 
     private func thumbnailKey(clip: SegmentedClip, index: Int, maxPixelSize: CGFloat) -> String {
-        "\(clip.id):\(index):thumb\(Int(maxPixelSize))"
+        "\(clip.id):\(index):thumb\(Int(maxPixelSize)):\(clip.cropCacheKey)"
     }
 
     private func touch(_ key: String) {
@@ -191,7 +207,8 @@ public final class FrameCache {
                 stickerStyle: manifest.stickerStyle,
                 playbackSpeed: manifest.playbackSpeed,
                 excludedFrames: Set(manifest.excludedFrames),
-                rotationQuarterTurns: manifest.rotationQuarterTurns
+                rotationQuarterTurns: manifest.rotationQuarterTurns,
+                cropRect: manifest.cropRect
             )
         }
         registryLock.lock()
@@ -369,7 +386,8 @@ public final class FrameCache {
             stickerStyle: clip.stickerStyle,
             playbackSpeed: clip.playbackSpeed,
             excludedFrames: Array(clip.excludedFrames).sorted(),
-            rotationQuarterTurns: clip.rotationQuarterTurns
+            rotationQuarterTurns: clip.rotationQuarterTurns,
+            cropRect: clip.cropRect
         )
         return try JSONEncoder().encode(manifest)
     }
@@ -393,11 +411,12 @@ private struct ClipManifest: Codable {
     let playbackSpeed: Double
     let excludedFrames: [Int]
     let rotationQuarterTurns: Int
+    let cropRect: CGRect?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, fps, frameCount, width, height, createdAt, audioFilename
         case edgeStyle, edgeLineStyle, edgeThickness, edgeColorHex, stickerStyle
-        case playbackSpeed, excludedFrames, rotationQuarterTurns
+        case playbackSpeed, excludedFrames, rotationQuarterTurns, cropRect
     }
 
     init(
@@ -416,7 +435,8 @@ private struct ClipManifest: Codable {
         stickerStyle: StickerStyle,
         playbackSpeed: Double,
         excludedFrames: [Int],
-        rotationQuarterTurns: Int
+        rotationQuarterTurns: Int,
+        cropRect: CGRect?
     ) {
         self.id = id
         self.name = name
@@ -434,6 +454,7 @@ private struct ClipManifest: Codable {
         self.playbackSpeed = playbackSpeed
         self.excludedFrames = excludedFrames
         self.rotationQuarterTurns = rotationQuarterTurns
+        self.cropRect = cropRect
     }
 
     init(from decoder: Decoder) throws {
@@ -487,6 +508,7 @@ private struct ClipManifest: Codable {
         playbackSpeed = try values.decodeIfPresent(Double.self, forKey: .playbackSpeed) ?? 1
         excludedFrames = try values.decodeIfPresent([Int].self, forKey: .excludedFrames) ?? []
         rotationQuarterTurns = try values.decodeIfPresent(Int.self, forKey: .rotationQuarterTurns) ?? 0
+        cropRect = try values.decodeIfPresent(CGRect.self, forKey: .cropRect)
     }
 }
 

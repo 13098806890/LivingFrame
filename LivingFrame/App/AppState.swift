@@ -47,6 +47,7 @@ final class AppState: ObservableObject {
         }
         didSet {
             hasUnsavedChanges = composition != cleanCompositionSnapshot
+            hasPendingDraftAutosave = hasUnsavedChanges
             // 画布手势会在每个触摸采样点更新取景参数；撤销和自动保存都在手势结束时合并，
             // 避免高频创建/取消保存任务拖慢主线程。
             if hasUnsavedChanges, !isCoalescingCanvasHistory {
@@ -58,6 +59,9 @@ final class AppState: ObservableObject {
     }
     /// 当前工程是否有尚未保存到“作品”的修改。
     @Published private(set) var hasUnsavedChanges = false
+    /// 当前编辑快照是否还没有进入草稿。不能仅用“作品是否存在草稿”推断，
+    /// 因为已有草稿之后用户仍可能继续编辑。
+    @Published private(set) var hasPendingDraftAutosave = false
     /// 编辑中的草稿是否正在后台自动保存。
     @Published private(set) var isAutosavingDraft = false
     /// 最近一次自动保存失败时的提示；下一次编辑会重新尝试保存。
@@ -68,6 +72,17 @@ final class AppState: ObservableObject {
     private var autosaveTask: Task<Void, Never>?
     /// 自动保存任务可以在渲染封面或写盘期间继续运行；序号用于忽略已经过期任务的结果。
     private var autosaveGeneration = 0
+    private struct DraftSaveContext {
+        let composition: Composition
+        let editingWorkID: UUID?
+        let generation: Int
+    }
+
+    private enum DraftSaveResult {
+        case saved
+        case failed
+        case superseded
+    }
     private var isApplyingHistory = false
     /// 时间轴一次拖拽会产生数十次位置更新；只在手势开始时保留一份撤销快照。
     private var isCoalescingTimelineHistory = false
@@ -219,6 +234,19 @@ final class AppState: ObservableObject {
         return max(dynamicFPS.max() ?? composition.fps, 1)
     }
 
+    /// 当前工程引用素材的最高有效画布边长，用于限制 GIF 分辨率选项。
+    var maximumSourceDimension: CGFloat {
+        guard let composition else { return 0 }
+        let clipDimensions = composition.elements.compactMap { element -> CGFloat? in
+            guard case .clip(let clipID) = element.kind,
+                  let clip = FrameCache.shared.clip(id: clipID) ?? clips.first(where: { $0.id == clipID }) else {
+                return nil
+            }
+            return CGFloat(max(clip.renderedWidth, clip.renderedHeight, 1))
+        }
+        return clipDimensions.max() ?? max(composition.renderRect.width, composition.renderRect.height, 1)
+    }
+
     var availableExportFPSOptions: [Double] {
         ExportFPSPolicy.availableOptions(maxSourceFPS: maximumSourceFPS)
     }
@@ -362,10 +390,12 @@ final class AppState: ObservableObject {
         }
         cleanCompositionSnapshot = composition
         hasUnsavedChanges = false
+        hasPendingDraftAutosave = false
     }
 
     private func markProjectDirty() {
         hasUnsavedChanges = true
+        hasPendingDraftAutosave = true
         scheduleDraftAutosave()
     }
 
@@ -375,7 +405,8 @@ final class AppState: ObservableObject {
         autosaveGeneration &+= 1
         let generation = autosaveGeneration
         autosaveTask?.cancel()
-        let snapshot = composition
+        isAutosavingDraft = false
+        guard let snapshot = composition else { return }
         autosaveTask = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: 800_000_000)
@@ -388,16 +419,30 @@ final class AppState: ObservableObject {
                   self.hasUnsavedChanges,
                   self.composition == snapshot else { return }
 
+            // 在防抖结束时读取当前作品 ID。先前正在完成的首次草稿保存可能刚刚
+            // 为这个工程分配 ID；新的快照应接着写入同一个草稿容器。
+            let context = DraftSaveContext(
+                composition: snapshot,
+                editingWorkID: self.editingWorkID,
+                generation: generation
+            )
             self.autosaveError = nil
             self.isAutosavingDraft = true
-            let saved = await self.saveCurrentDraft(expectedComposition: snapshot)
+            let result = await self.saveCurrentDraft(context: context)
             // 保存期间可能已经开始了新的编辑或新的保存任务；旧任务不能再修改状态，
             // 更不能把“快照已过期”误报成自动保存失败。
             guard self.autosaveGeneration == generation else { return }
             self.isAutosavingDraft = false
-            guard !Task.isCancelled, self.composition == snapshot else { return }
-            if !saved {
+            guard !Task.isCancelled else { return }
+            if case .failed = result {
                 self.autosaveError = "草稿自动保存失败，请稍后重试。"
+            } else if case .superseded = result,
+                      self.hasPendingDraftAutosave,
+                      self.hasUnsavedChanges,
+                      self.composition == snapshot {
+                // 若同一工程的另一个已完成保存刚更新了作品 ID，使用新 ID 重试，
+                // 避免把当前快照留在待保存状态。
+                self.scheduleDraftAutosave()
             }
         }
     }
@@ -426,7 +471,7 @@ final class AppState: ObservableObject {
         sourceStartTime: TimeInterval = 0,
         sourceEndTime: TimeInterval? = nil,
         stillOrientation: CGImagePropertyOrientation = .up
-    ) async {
+    ) async -> SegmentedClip? {
         isSegmenting = true
         segmentationProgress = 0
         segmentingName = name
@@ -447,21 +492,25 @@ final class AppState: ObservableObject {
             }
             addClip(clip)
             isSegmenting = false
+            return clip
         } catch is CancellationError {
             isSegmenting = false
             segmentationProgress = 0
+            return nil
         } catch SegmentationError.cancelled {
             isSegmenting = false
             segmentationProgress = 0
+            return nil
         } catch {
             LogStore.log("startSegmenting failed: \(error)")
             isSegmenting = false
             segmentationProgress = 0
             segmentationError = error.localizedDescription
+            return nil
         }
     }
 
-    func startPhotoSegmenting(cgImage: CGImage, name: String) async {
+    func startPhotoSegmenting(cgImage: CGImage, name: String) async -> SegmentedClip? {
         isSegmenting = true
         segmentationProgress = 0
         segmentingName = name
@@ -476,17 +525,21 @@ final class AppState: ObservableObject {
             )
             addClip(clip)
             isSegmenting = false
+            return clip
         } catch is CancellationError {
             isSegmenting = false
             segmentationProgress = 0
+            return nil
         } catch SegmentationError.cancelled {
             isSegmenting = false
             segmentationProgress = 0
+            return nil
         } catch {
             LogStore.log("startPhotoSegmenting failed: \(error)")
             isSegmenting = false
             segmentationProgress = 0
             segmentationError = error.localizedDescription
+            return nil
         }
     }
 
@@ -693,8 +746,20 @@ final class AppState: ObservableObject {
     /// 素材详情页每次顺时针旋转 90°，持久化到 clip.json。
     func rotateClip(_ clipID: String) {
         updateClip(clipID) {
-            $0.rotationQuarterTurns = ($0.rotationQuarterTurns + 1) % 4
+            $0.rotateClockwiseQuarterTurn()
         }
+    }
+
+    /// 素材详情页每次逆时针旋转 90°，持久化到 clip.json。
+    func rotateClipCounterclockwise(_ clipID: String) {
+        updateClip(clipID) {
+            $0.rotateCounterclockwiseQuarterTurn()
+        }
+    }
+
+    /// 设置素材自身的裁剪区域；坐标使用旋转后素材的归一化画布。
+    func setClipCrop(_ clipID: String, _ rect: CGRect?) {
+        updateClip(clipID) { $0.setCropRect(rect) }
     }
 
     /// 统一处理素材属性更新、清单持久化和画布刷新，避免多个设置入口行为不一致。
@@ -2311,10 +2376,10 @@ final class AppState: ObservableObject {
         guard var comp = composition ?? defaultComposition() else { return }
         // 素材尺寸异常时给默认缩放，避免产生 Inf 变换导致渲染失败
         let scale: CGFloat
-        if clip.orientedWidth > 0, clip.orientedHeight > 0 {
+        if clip.renderedWidth > 0, clip.renderedHeight > 0 {
             scale = min(
-                0.8 * comp.canvas.width / CGFloat(clip.orientedWidth),
-                0.8 * comp.canvas.height / CGFloat(clip.orientedHeight)
+                0.8 * comp.canvas.width / CGFloat(clip.renderedWidth),
+                0.8 * comp.canvas.height / CGFloat(clip.renderedHeight)
             )
         } else {
             scale = 0.5
@@ -2566,39 +2631,53 @@ final class AppState: ObservableObject {
 
     // MARK: - 导出
 
+    /// 返回素材详情页 GIF 导出的候选规格及其预估大小。
+    func estimateClipGIFPresets(
+        _ clipID: String,
+        resolutions: [ExportResolution],
+        fpsOptions: [Double]
+    ) async throws -> [GIFExportPreset] {
+        guard let clip = clips.first(where: { $0.id == clipID }) else {
+            throw AppStateError.clipNotFound
+        }
+        FrameCache.shared.registerInMemory(clip)
+        let jobs = resolutions.flatMap { resolution in
+            fpsOptions.map { fps in
+                (resolution: resolution, fps: fps, composition: clipGIFComposition(for: clip, fps: fps))
+            }
+        }
+        return await Task.detached(priority: .utility) {
+            jobs.compactMap { job -> GIFExportPreset? in
+                guard let bytes = try? GIFExporter().estimateSize(
+                    job.composition,
+                    fps: job.fps,
+                    maxPixelSize: job.resolution.maxPixelSize,
+                    sampleFrameCount: 6,
+                    appliesClipEffects: false
+                ) else { return nil }
+                return GIFExportPreset(
+                    resolution: job.resolution,
+                    fps: job.fps,
+                    estimatedBytes: bytes
+                )
+            }
+        }.value
+    }
+
     /// 从素材详情页直接导出单个抠图素材，不借用或修改当前作品工程。
-    /// 输出固定为透明背景、最长边 720 px、15 fps 的循环 GIF。
-    func exportClipAsTransparentGIF(_ clipID: String) async throws -> URL {
+    func exportClipAsTransparentGIF(
+        _ clipID: String,
+        resolution: ExportResolution = .p720,
+        fps: Double = 15
+    ) async throws -> URL {
         guard let clip = clips.first(where: { $0.id == clipID }) else {
             throw AppStateError.clipNotFound
         }
 
         FrameCache.shared.registerInMemory(clip)
-        let width = max(clip.orientedWidth, 1)
-        let height = max(clip.orientedHeight, 1)
         let duration = max(clip.effectiveDuration, 1.0 / 15.0)
-        let sourceDuration = clip.playbackSourceDuration
-        let element = CompositionElement(
-            kind: .clip(clipID: clip.id),
-            name: clip.name,
-            transform: ElementTransform(
-                position: CGPoint(x: CGFloat(width) / 2, y: CGFloat(height) / 2),
-                scale: 1,
-                rotation: 0
-            ),
-            startTime: 0,
-            endTime: duration,
-            sourceStartTime: 0,
-            sourceEndTime: sourceDuration
-        )
-        let exportComposition = Composition(
-            name: clip.name,
-            canvas: CanvasSpec(width: CGFloat(width), height: CGFloat(height)),
-            duration: duration,
-            fps: 15,
-            elements: [element],
-            background: .clear
-        )
+        var exportComposition = clipGIFComposition(for: clip, fps: fps)
+        exportComposition.duration = duration
 
         isExporting = true
         exportProgress = 0
@@ -2610,16 +2689,17 @@ final class AppState: ObservableObject {
         }
 
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "\(exportFileBaseName(clip.name))-透明-720p-15fps-\(UUID().uuidString).gif"
+            "\(exportFileBaseName(clip.name))-透明-\(resolution.gifTitle(for: CGFloat(max(clip.renderedWidth, clip.renderedHeight, 1))))-\(Int(fps))fps-\(UUID().uuidString).gif"
         )
         do {
             try await GIFExporter().export(
                 exportComposition,
                 to: url,
-                fps: 15,
-                maxPixelSize: ExportResolution.p720.maxPixelSize,
-                loops: true,
-                progress: { [weak self] value in
+                    fps: fps,
+                    maxPixelSize: resolution.maxPixelSize,
+                    loops: true,
+                    appliesClipEffects: false,
+                    progress: { [weak self] value in
                     Task { @MainActor in self?.exportProgress = value }
                 }
             )
@@ -2627,8 +2707,52 @@ final class AppState: ObservableObject {
             try? FileManager.default.removeItem(at: url)
             throw error
         }
+        let authorized = await requestAddOnlyAuthorization()
+        guard authorized else {
+            try? FileManager.default.removeItem(at: url)
+            throw AppStateError.photoLibraryDenied
+        }
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                let request = PHAssetCreationRequest.forAsset()
+                let options = PHAssetResourceCreationOptions()
+                options.uniformTypeIdentifier = GIFPhotoLibraryResourceType.gif.rawValue
+                options.originalFilename = url.lastPathComponent
+                request.addResource(with: .photo, fileURL: url, options: options)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
         exportedURL = url
         return url
+    }
+
+    private func clipGIFComposition(for clip: SegmentedClip, fps: Double) -> Composition {
+        let width = max(clip.renderedWidth, 1)
+        let height = max(clip.renderedHeight, 1)
+        let duration = max(clip.effectiveDuration, 1.0 / max(fps, 1))
+        let element = CompositionElement(
+            kind: .clip(clipID: clip.id),
+            name: clip.name,
+            transform: ElementTransform(
+                position: CGPoint(x: CGFloat(width) / 2, y: CGFloat(height) / 2),
+                scale: 1,
+                rotation: 0
+            ),
+            startTime: 0,
+            endTime: duration,
+            sourceStartTime: 0,
+            sourceEndTime: clip.playbackSourceDuration
+        )
+        return Composition(
+            name: clip.name,
+            canvas: CanvasSpec(width: CGFloat(width), height: CGFloat(height)),
+            duration: duration,
+            fps: fps,
+            elements: [element],
+            background: .clear
+        )
     }
 
     func export(
@@ -2832,39 +2956,26 @@ final class AppState: ObservableObject {
             }
     }
 
-    /// 保存作品时统一维护草稿箱规则：全局只保留更新时间最新的一份草稿。
-    /// 当前作品不存在于内存列表时（例如新工程第一次自动保存）会插入列表。
+    /// 保存作品时统一维护草稿箱规则：基于磁盘最新状态，仅保留更新时间最新的一份草稿。
     private func saveWorkApplyingDraftPolicy(_ work: WorkItem) async -> (Bool, [WorkItem]) {
-        var candidates = works
-        if let index = candidates.firstIndex(where: { $0.id == work.id }) {
-            candidates[index] = work
-        } else {
-            candidates.insert(work, at: 0)
-        }
-        let normalized = WorkItem.retainingOnlyLatestDraft(in: candidates)
-        let changed = normalized.filter { normalizedWork in
-            candidates.first(where: { $0.id == normalizedWork.id }) != normalizedWork
-        }
-        // 当前作品即使没有触发“草稿互斥”变化，也必须写入磁盘。
-        // 否则首次自动保存或手动保存时 changed 为空，saveAndLoad 会直接
-        // 重新加载旧数据，界面会误以为保存成功但重启后内容消失。
-        var toPersist = changed
-        if let current = normalized.first(where: { $0.id == work.id }),
-           !toPersist.contains(where: { $0.id == current.id }) {
-            toPersist.append(current)
-        }
-        return await workPersistence.saveAndLoad(toPersist)
+        await workPersistence.saveApplyingDraftPolicy(work)
     }
 
     /// 自动保存当前工程的草稿，不修改正式作品快照。
     /// 新工程第一次自动保存时会先创建一个仅包含草稿的作品容器；点击“保存”后
     /// 才会把同一个容器转为正式作品，因此自动保存不会覆盖正式版本。
     @discardableResult
-    private func saveCurrentDraft(expectedComposition: Composition? = nil) async -> Bool {
-        guard let comp = composition else { return false }
-        guard expectedComposition == nil || expectedComposition == comp else { return false }
+    private func isCurrent(_ context: DraftSaveContext) -> Bool {
+        !Task.isCancelled
+            && autosaveGeneration == context.generation
+            && editingWorkID == context.editingWorkID
+            && composition == context.composition
+    }
 
-        let existing = editingWorkID.flatMap { id in
+    private func saveCurrentDraft(context: DraftSaveContext) async -> DraftSaveResult {
+        guard isCurrent(context) else { return .superseded }
+        let comp = context.composition
+        let existing = context.editingWorkID.flatMap { id in
             works.first(where: { $0.id == id })
         }
         // 草稿必须保存自己的实时封面。复用正式作品封面会让拼接等后续修改在
@@ -2875,6 +2986,9 @@ final class AppState: ObservableObject {
             }
             return pngData(from: poster) ?? Data()
         }.value
+        // 封面渲染可能耗时；这期间切换工程或编辑内容后，旧快照不得进入
+        // “只保留最新草稿”的持久化流程。
+        guard isCurrent(context) else { return .superseded }
         let posterData = existing?.posterData ?? draftPosterData
 
         let now = Date()
@@ -2893,16 +3007,29 @@ final class AppState: ObservableObject {
                 clipSettings: clipSettingsSnapshot(for: comp),
                 posterData: draftPosterData
             ),
-            savedAt: existing?.savedAt
+            savedAt: existing?.savedAt,
+            hasManualSave: existing?.hasManualSave ?? existing?.hasSavedVersion ?? false
         )
         let persistence = await saveWorkApplyingDraftPolicy(work)
-        guard persistence.0 else { return false }
+        guard persistence.0 else { return .failed }
+        // 写盘期间状态也可能发生变化；旧请求不能反向覆盖编辑器的内存状态。
+        guard isCurrent(context) else {
+            // 首次自动保存可能已经提交到磁盘后，工程才发生新编辑/切换。若仍是
+            // 同一个工程，复用刚生成的作品 ID，避免下一次自动保存再创建一份。
+            if composition?.id == comp.id, editingWorkID == context.editingWorkID {
+                if existing == nil { editingWorkID = work.id }
+                works = await workPersistence.load()
+            }
+            return .superseded
+        }
         if existing == nil {
             editingWorkID = work.id
         }
         works = persistence.1
+        hasPendingDraftAutosave = false
+        autosaveError = nil
         LogStore.log("work.draft saved id=\(work.id) created=\(existing == nil)")
-        return true
+        return .saved
     }
 
     /// 立即写入当前草稿，用于用户离开当前作品前确保最近一次修改已落盘。
@@ -2910,14 +3037,37 @@ final class AppState: ObservableObject {
     func saveCurrentDraftNow() async -> Bool {
         // 没有修改时不创建“空草稿”。这也避免应用启动后第一次进入后台
         // 就把默认工程错误地放进草稿箱。
-        guard hasUnsavedChanges else { return true }
-        cancelDraftAutosave()
-        guard let snapshot = composition else { return false }
-        let saved = await saveCurrentDraft(expectedComposition: snapshot)
-        if !saved {
-            autosaveError = "草稿保存失败，请稍后重试。"
+        guard hasPendingDraftAutosave else { return true }
+        while hasPendingDraftAutosave {
+            cancelDraftAutosave()
+            guard let snapshot = composition else { return false }
+            let context = DraftSaveContext(
+                composition: snapshot,
+                editingWorkID: editingWorkID,
+                generation: autosaveGeneration
+            )
+            isAutosavingDraft = true
+            let result = await saveCurrentDraft(context: context)
+            if autosaveGeneration == context.generation {
+                isAutosavingDraft = false
+            }
+            switch result {
+            case .saved:
+                return true
+            case .failed:
+                autosaveError = "草稿保存失败，请稍后重试。"
+                return false
+            case .superseded:
+                if Task.isCancelled {
+                    scheduleDraftAutosave()
+                    return false
+                }
+                // 等待封面或磁盘写入期间如有新编辑，立刻以最新快照再保存；
+                // while 条件也会在工程切换后停止，不把旧工程继续写入。
+                continue
+            }
         }
-        return saved
+        return true
     }
 
     /// 手动保存当前工程；这是唯一会更新正式作品快照的入口。
@@ -2956,7 +3106,8 @@ final class AppState: ObservableObject {
             posterData: posterData,
             format: existing?.format ?? defaultFormat,
             draft: nil,
-            savedAt: now
+            savedAt: now,
+            hasManualSave: true
         )
         let persistence = await saveWorkApplyingDraftPolicy(work)
         guard persistence.0 else {
@@ -2972,6 +3123,7 @@ final class AppState: ObservableObject {
             markProjectClean(invalidateAutosave: false)
         } else {
             hasUnsavedChanges = true
+            hasPendingDraftAutosave = true
             scheduleDraftAutosave()
         }
         LogStore.log("work.save done id=\(work.id) updated=\(existing != nil)")
@@ -2990,6 +3142,8 @@ final class AppState: ObservableObject {
         copy.composition.id = UUID()
         copy.composition.name = copy.name
         copy.draft = nil
+        copy.savedAt = now
+        copy.hasManualSave = true
         let saved = await workPersistence.save(copy, failureMessage: "work.duplicate failed")
         guard saved else { return false }
         works.insert(copy, at: 0)
@@ -3112,7 +3266,7 @@ enum AppStateError: LocalizedError {
         switch self {
         case .noComposition: NSLocalizedString("还没有可导出的工程", comment: "Export error")
         case .clipNotFound: NSLocalizedString("找不到要导出的素材", comment: "Export error")
-        case .photoLibraryDenied: NSLocalizedString("需要相册权限才能保存 Live Photo，请在设置中开启", comment: "Export error")
+        case .photoLibraryDenied: NSLocalizedString("需要相册权限才能保存到相册，请在设置中开启", comment: "Export error")
         }
     }
 }

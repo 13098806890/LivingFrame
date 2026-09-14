@@ -34,6 +34,41 @@ final class TimelinePlaybackRulesTests: XCTestCase {
         XCTAssertFalse(work.hasSavedVersion)
     }
 
+    func testRepeatedDraftAutosavesRemainDraftOnlyAfterReload() throws {
+        let formalDate = Date(timeIntervalSince1970: 100)
+        let firstDraftDate = Date(timeIntervalSince1970: 100)
+        let laterDraftDate = Date(timeIntervalSince1970: 200)
+        let composition = Composition(
+            name: "draft-only",
+            canvas: CanvasSpec(width: 100, height: 100)
+        )
+        let firstSave = WorkItem(
+            name: composition.name,
+            updatedAt: formalDate,
+            composition: composition,
+            posterData: Data(),
+            format: .gif,
+            draft: WorkDraft(updatedAt: firstDraftDate, composition: composition),
+            hasManualSave: false
+        )
+        let secondSave = WorkItem(
+            id: firstSave.id,
+            name: composition.name,
+            updatedAt: firstSave.updatedAt,
+            composition: composition,
+            posterData: Data(),
+            format: .gif,
+            draft: WorkDraft(updatedAt: laterDraftDate, composition: composition),
+            hasManualSave: firstSave.hasManualSave
+        )
+
+        let data = try JSONEncoder().encode(secondSave)
+        let reloaded = try JSONDecoder().decode(WorkItem.self, from: data)
+
+        XCTAssertGreaterThan(try XCTUnwrap(reloaded.draft).updatedAt, reloaded.updatedAt)
+        XCTAssertFalse(reloaded.hasSavedVersion)
+    }
+
     func testManuallySavedWorkWithLaterDraftKeepsSavedVersion() {
         let composition = Composition(
             name: "saved-and-draft",

@@ -11,6 +11,10 @@ public enum ExportError: Error {
     case writerStalled
 }
 
+public enum GIFPhotoLibraryResourceType: String {
+    case gif = "com.compuserve.gif"
+}
+
 /// 微信收藏 GIF 的实际输出信息，用于在界面上如实提示是否进行了均匀抽帧。
 public struct ChatStickerExportResult: Sendable, Equatable {
     public let fps: Double
@@ -72,6 +76,7 @@ public struct GIFExporter {
         maxPixelSize: CGFloat? = nil,
         outputSize: CGSize? = nil,
         loops: Bool = false,
+        appliesClipEffects: Bool = true,
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws {
@@ -95,7 +100,11 @@ public struct GIFExporter {
             .outputColorSpace: NSNull(),
             .cacheIntermediates: false
         ])
-        let renderer = CompositionRenderer(context: renderContext, frameMaxPixelSize: maxPixelSize)
+        let renderer = CompositionRenderer(
+            context: renderContext,
+            frameMaxPixelSize: maxPixelSize,
+            appliesClipEffects: appliesClipEffects
+        )
         defer { renderContext.clearCaches() }
         var skipped = 0
         for index in 0..<frameCount {
@@ -149,6 +158,93 @@ public struct GIFExporter {
         memory.log("after-finalize")
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         LogStore.log("GIFExporter: done elapsed=\(Int(Date().timeIntervalSince(start)))s skipped=\(skipped) size=\(size) bytes")
+    }
+
+    /// Encodes a small sample of the final GIF and extrapolates its byte size.
+    /// This is intentionally an estimate: GIF compression depends on every frame's content.
+    public func estimateSize(
+        _ composition: Composition,
+        fps: Double,
+        maxPixelSize: CGFloat?,
+        sampleFrameCount: Int = 8,
+        appliesClipEffects: Bool = true
+    ) throws -> Int64 {
+        let totalFrames = max(1, Int((composition.duration * fps).rounded(.up)))
+        let sampleCount = min(max(sampleFrameCount, 1), totalFrames)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LF-gif-estimate-\(UUID().uuidString).gif")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let renderer = CompositionRenderer(
+            frameMaxPixelSize: maxPixelSize,
+            appliesClipEffects: appliesClipEffects
+        )
+        var sampledImages: [CGImage] = []
+        sampledImages.reserveCapacity(sampleCount)
+        for sampleIndex in 0..<sampleCount {
+            let frameIndex = sampleCount == 1
+                ? 0
+                : Int((Double(sampleIndex) * Double(totalFrames - 1) / Double(sampleCount - 1)).rounded())
+            guard let image = renderer.render(composition, at: Double(frameIndex) / fps) else { continue }
+            sampledImages.append(image)
+        }
+        guard !sampledImages.isEmpty else { throw ExportError.renderFailed }
+
+        let sampleBytes = try encodedGIFSize(for: sampledImages, fps: fps, at: url)
+        let baselineURL = url.deletingLastPathComponent()
+            .appendingPathComponent("LF-gif-estimate-baseline-\(UUID().uuidString).gif")
+        defer { try? FileManager.default.removeItem(at: baselineURL) }
+        guard let baselineImage = onePixelImage() else { throw ExportError.renderFailed }
+        let baselineBytes = try encodedGIFSize(for: [baselineImage], fps: fps, at: baselineURL)
+        let sampledFrameBytes = max(sampleBytes - baselineBytes, 1)
+        let averageFrameBytes = Double(sampledFrameBytes) / Double(sampledImages.count)
+        return max(
+            1,
+            Int64((Double(baselineBytes) + averageFrameBytes * Double(totalFrames)).rounded())
+        )
+    }
+
+    private func encodedGIFSize(
+        for images: [CGImage],
+        fps: Double,
+        at url: URL
+    ) throws -> Int64 {
+        guard let destination = CGImageDestinationCreateWithURL(
+            url as CFURL,
+            UTType.gif.identifier as CFString,
+            images.count,
+            nil
+        ) else { throw ExportError.destinationFailed }
+        CGImageDestinationSetProperties(destination, [
+            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]
+        ] as CFDictionary)
+        for image in images {
+            CGImageDestinationAddImage(
+                destination,
+                image,
+                [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1.0 / fps]] as CFDictionary
+            )
+        }
+        guard CGImageDestinationFinalize(destination) else {
+            throw ExportError.destinationFailed
+        }
+        return Int64(
+            (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        )
+    }
+
+    private func onePixelImage() -> CGImage? {
+        guard let context = CGContext(
+            data: nil,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.clear(CGRect(x: 0, y: 0, width: 1, height: 1))
+        return context.makeImage()
     }
 
     /// GIF 的每一帧必须同尺寸。把非 1:1 的编辑画布等比居中在透明正方形里，

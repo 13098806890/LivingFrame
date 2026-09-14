@@ -71,15 +71,21 @@ public enum ExportFormat: String, Codable, CaseIterable, Identifiable {
 /// 导出最长边预设。`original` 从不放大工程画布，其他档位只会按比例缩小。
 public enum ExportResolution: String, Codable, CaseIterable, Identifiable, Sendable {
     case original
+    case p360
     case p480
     case p720
     case p1080
+
+    public static var allCases: [ExportResolution] {
+        [.original, .p480, .p720, .p1080]
+    }
 
     public var id: String { rawValue }
 
     public var maxPixelSize: CGFloat? {
         switch self {
         case .original: nil
+        case .p360: 360
         case .p480: 480
         case .p720: 720
         case .p1080: 1080
@@ -89,6 +95,7 @@ public enum ExportResolution: String, Codable, CaseIterable, Identifiable, Senda
     public var title: String {
         switch self {
         case .original: NSLocalizedString("原始", comment: "Export resolution")
+        case .p360: "360p"
         case .p480: "480p"
         case .p720: "720p"
         case .p1080: "1080p"
@@ -105,6 +112,33 @@ public enum ExportResolution: String, Codable, CaseIterable, Identifiable, Senda
             height = max(height - height % 2, 2)
         }
         return CGSize(width: width, height: height)
+    }
+
+    public var gifTitle: String {
+        self == .original ? "最高" : title
+    }
+
+    /// Shared GIF resolution choices. The original option is never upscaled,
+    /// and duplicate effective sizes are removed.
+    public static func gifOptions(maxSourceDimension: CGFloat) -> [ExportResolution] {
+        let safeMax = max(maxSourceDimension.isFinite ? maxSourceDimension : 0, 0)
+        guard safeMax > 0 else { return [] }
+        let candidates: [ExportResolution] = [.p360, .p720, .original].filter { option in
+            guard let maxPixelSize = option.maxPixelSize else { return true }
+            return maxPixelSize <= safeMax + 0.01
+        }
+        var seen: Set<Int> = []
+        return candidates.filter { option in
+            let size = option.outputSize(for: CGSize(width: safeMax, height: safeMax))
+            let longest = Int(max(size.width, size.height).rounded())
+            guard longest > 0 else { return false }
+            return seen.insert(longest).inserted
+        }
+    }
+
+    public func gifTitle(for sourceDimension: CGFloat) -> String {
+        let effective = Int(max(outputSize(for: CGSize(width: sourceDimension, height: sourceDimension)).width, 1).rounded())
+        return "\(effective)p"
     }
 }
 
@@ -152,6 +186,9 @@ public struct WorkItem: Codable, Identifiable, Equatable {
     /// 最近一次明确点击“保存”的时间。nil 表示只有自动保存草稿。
     /// 该字段为可选值，以兼容升级前已经写入磁盘的作品数据。
     public var savedAt: Date?
+    /// 正式版本状态的持久化标记。nil 代表旧数据，需使用时间字段兼容推断；
+    /// 新建记录始终显式写入 true/false，避免草稿更新后被误判为正式作品。
+    public var hasManualSave: Bool?
 
     public init(
         id: UUID = UUID(),
@@ -163,7 +200,8 @@ public struct WorkItem: Codable, Identifiable, Equatable {
         posterData: Data,
         format: ExportFormat,
         draft: WorkDraft? = nil,
-        savedAt: Date? = nil
+        savedAt: Date? = nil,
+        hasManualSave: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -175,14 +213,15 @@ public struct WorkItem: Codable, Identifiable, Equatable {
         self.format = format
         self.draft = draft
         self.savedAt = savedAt
+        self.hasManualSave = hasManualSave
     }
 
     public var lastSavedAt: Date { updatedAt }
 
     /// 是否存在可展示在“已保存作品”中的正式版本。
-    /// 旧数据没有 savedAt：无草稿的一定是正式作品；同时含草稿时，可用草稿时间
-    /// 晚于正式更新时间这一旧保存规则恢复出“正式版本 + 后续草稿”的状态。
+    /// 优先使用新数据的显式标记；旧数据才通过保存时间兼容推断。
     public var hasSavedVersion: Bool {
+        if let hasManualSave { return hasManualSave }
         if savedAt != nil { return true }
         guard let draft else { return true }
         return draft.updatedAt > updatedAt

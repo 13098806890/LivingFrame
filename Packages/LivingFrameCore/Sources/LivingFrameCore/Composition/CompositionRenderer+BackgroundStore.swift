@@ -7,12 +7,14 @@ public extension CompositionRenderer {
     init(
         context: CIContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()]),
         frameMaxPixelSize: CGFloat? = nil,
-        isPlaybackReversed: Bool = false
+        isPlaybackReversed: Bool = false,
+        appliesClipEffects: Bool = true
     ) {
         self.init(
             context: context,
             frameMaxPixelSize: frameMaxPixelSize,
             isPlaybackReversed: isPlaybackReversed,
+            appliesClipEffects: appliesClipEffects,
             backgroundMediaProvider: BackgroundStore.shared
         )
     }
