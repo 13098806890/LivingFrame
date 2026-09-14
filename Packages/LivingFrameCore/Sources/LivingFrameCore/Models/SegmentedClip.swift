@@ -39,6 +39,11 @@ public struct SegmentedClip: Identifiable {
         ((rotationQuarterTurns % 4) + 4) % 4
     }
 
+    /// 连续旋转动画使用的未归一化角度，避免 270° 到 360° 时反向插值。
+    public var continuousRotationDegrees: Double {
+        Double(rotationQuarterTurns) * 90
+    }
+
     /// 保留累计次数，让界面动画可以连续经过 360°，而不是从 270° 跳回 0°。
     public mutating func rotateClockwiseQuarterTurn() {
         if let cropRect {
@@ -50,6 +55,19 @@ public struct SegmentedClip: Identifiable {
             )
         }
         rotationQuarterTurns += 1
+    }
+
+    /// 旋转当前素材及其裁剪框；累计角度保持连续，供逆时针动画使用。
+    public mutating func rotateCounterclockwiseQuarterTurn() {
+        if let cropRect {
+            self.cropRect = CGRect(
+                x: 1 - cropRect.maxY,
+                y: cropRect.minX,
+                width: cropRect.height,
+                height: cropRect.width
+            )
+        }
+        rotationQuarterTurns -= 1
     }
 
     public var orientedWidth: Int {
@@ -94,11 +112,11 @@ public struct SegmentedClip: Identifiable {
         let rect = normalizedCropRect
         switch normalizedRotationQuarterTurns {
         case 1:
-            return CGRect(x: rect.minY, y: 1 - rect.maxX, width: rect.height, height: rect.width)
+            return CGRect(x: 1 - rect.maxY, y: rect.minX, width: rect.height, height: rect.width)
         case 2:
             return CGRect(x: 1 - rect.maxX, y: 1 - rect.maxY, width: rect.width, height: rect.height)
         case 3:
-            return CGRect(x: 1 - rect.maxY, y: rect.minX, width: rect.height, height: rect.width)
+            return CGRect(x: rect.minY, y: 1 - rect.maxX, width: rect.height, height: rect.width)
         default:
             return rect
         }

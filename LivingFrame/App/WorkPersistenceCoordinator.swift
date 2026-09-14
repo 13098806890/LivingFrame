@@ -33,6 +33,39 @@ actor WorkPersistenceCoordinator {
         }
     }
 
+    /// 在 actor 内基于磁盘上的最新列表执行“只保留最新一份草稿”策略，
+    /// 避免两个自动保存任务各自拿旧内存列表归一化，互相覆盖草稿状态。
+    func saveApplyingDraftPolicy(_ work: WorkItem) -> (Bool, [WorkItem]) {
+        var candidates = store.loadWorks()
+        if let index = candidates.firstIndex(where: { $0.id == work.id }) {
+            candidates[index] = work
+        } else {
+            candidates.insert(work, at: 0)
+        }
+
+        let normalized = WorkItem.retainingOnlyLatestDraft(in: candidates)
+        let changed = normalized.filter { normalizedWork in
+            candidates.first(where: { $0.id == normalizedWork.id }) != normalizedWork
+        }
+        var toPersist: [WorkItem] = []
+        if let current = normalized.first(where: { $0.id == work.id }) {
+            // 先提交当前作品，再清理旧草稿；中断时宁可暂时多留一份旧草稿，
+            // 也不要先删掉旧稿却还没把用户最新编辑写进去。
+            toPersist.append(current)
+        }
+        toPersist.append(contentsOf: changed.filter { $0.id != work.id })
+
+        do {
+            for item in toPersist {
+                try store.save(item)
+            }
+            return (true, store.loadWorks())
+        } catch {
+            LogStore.log("work.draftPolicySave failed: \(error)")
+            return (false, [])
+        }
+    }
+
     func load() -> [WorkItem] {
         store.loadWorks()
     }

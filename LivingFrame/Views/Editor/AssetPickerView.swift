@@ -627,8 +627,8 @@ struct ClipPreviewImage: View {
 
     private var baseImage: some View {
         GeometryReader { proxy in
-            let turns = clip.normalizedRotationQuarterTurns
-            let isQuarterTurn = turns % 2 == 1
+            let normalizedTurns = clip.normalizedRotationQuarterTurns
+            let isQuarterTurn = normalizedTurns % 2 == 1
             let imageSize = CGSize(
                 width: isQuarterTurn ? proxy.size.height : proxy.size.width,
                 height: isQuarterTurn ? proxy.size.width : proxy.size.height
@@ -637,7 +637,7 @@ struct ClipPreviewImage: View {
                 .resizable()
                 .scaledToFill()
                 .frame(width: imageSize.width, height: imageSize.height)
-                .rotationEffect(.degrees(Double(turns) * 90))
+                .rotationEffect(.degrees(clip.continuousRotationDegrees))
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
         }

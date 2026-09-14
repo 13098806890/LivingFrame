@@ -1335,7 +1335,7 @@ private struct ClipCropEditorView: View {
                     )
                 }
                 .aspectRatio(
-                    CGFloat(max(clip.renderedWidth, 1)) / CGFloat(max(clip.renderedHeight, 1)),
+                    CGFloat(max(clip.orientedWidth, 1)) / CGFloat(max(clip.orientedHeight, 1)),
                     contentMode: .fit
                 )
                 .padding(20)
@@ -1362,6 +1362,7 @@ private struct ClipCropEditorView: View {
 struct ClipMenuView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let clip: SegmentedClip
     let onClose: () -> Void
     @State private var showFrameEditor = false
@@ -1381,6 +1382,7 @@ struct ClipMenuView: View {
     @State private var isEstimatingGIF = false
     @State private var isCroppingClip = false
     @State private var cropRect: CGRect?
+    @State private var didManuallySelectGIFPreset = false
 
     /// 读取最新值，避免详情页打开后修改样式仍显示旧状态。
     private var currentClip: SegmentedClip {
@@ -1542,7 +1544,13 @@ struct ClipMenuView: View {
             }
 
             HStack(spacing: 10) {
-                Picker("尺寸", selection: $gifResolution) {
+                Picker("尺寸", selection: Binding(
+                    get: { gifResolution },
+                    set: {
+                        gifResolution = $0
+                        didManuallySelectGIFPreset = true
+                    }
+                )) {
                     ForEach(gifResolutionOptions) { resolution in
                         Text(resolution.gifTitle(for: CGFloat(max(currentClip.renderedWidth, currentClip.renderedHeight, 1))))
                             .tag(resolution)
@@ -1550,7 +1558,13 @@ struct ClipMenuView: View {
                 }
                 .pickerStyle(.menu)
 
-                Picker("帧率", selection: $gifFPS) {
+                Picker("帧率", selection: Binding(
+                    get: { gifFPS },
+                    set: {
+                        gifFPS = $0
+                        didManuallySelectGIFPreset = true
+                    }
+                )) {
                     ForEach(gifFPSOptions, id: \.self) { fps in
                         Text("\(Int(fps)) fps").tag(fps)
                     }
@@ -1675,7 +1689,8 @@ struct ClipMenuView: View {
             )
             guard !Task.isCancelled, !presets.isEmpty else { return }
             gifPresets = presets
-            if let preferred = GIFExportPreset.defaultPreset(from: presets) {
+            if !didManuallySelectGIFPreset,
+               let preferred = GIFExportPreset.defaultPreset(from: presets) {
                 gifResolution = preferred.resolution
                 gifFPS = preferred.fps
             }
@@ -1714,31 +1729,58 @@ struct ClipMenuView: View {
     }
 
     private var rotateClipButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                appState.rotateClip(clip.id)
-                clipExportState = ClipExportState()
-            }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "rotate.right")
-                    .foregroundStyle(LF.gold)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("旋转 90°")
-                        .font(.subheadline.weight(.semibold))
-                    Text("当前方向：\(currentClip.normalizedRotationQuarterTurns * 90)°")
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("素材方向")
+                    .font(.subheadline.weight(.semibold))
                 Spacer()
-                Image(systemName: "arrow.clockwise")
-                    .font(.caption.weight(.semibold))
+                Text("当前：\(currentClip.normalizedRotationQuarterTurns * 90)°")
+                    .font(.caption)
                     .foregroundStyle(LF.textSecondary)
             }
-            .padding(14)
-            .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
+
+            HStack(spacing: 10) {
+                rotationActionButton(clockwise: false)
+                rotationActionButton(clockwise: true)
+            }
+        }
+        .padding(14)
+        .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func rotationActionButton(clockwise: Bool) -> some View {
+        Button {
+            rotateClip(clockwise: clockwise)
+        } label: {
+            Label(
+                clockwise ? "顺时针 90°" : "逆时针 90°",
+                systemImage: clockwise ? "rotate.right" : "rotate.left"
+            )
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(LF.surface2, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(clockwise ? "顺时针旋转90度" : "逆时针旋转90度")
+    }
+
+    private func rotateClip(clockwise: Bool) {
+        if reduceMotion {
+            applyClipRotation(clockwise: clockwise)
+        } else {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                applyClipRotation(clockwise: clockwise)
+            }
+        }
+    }
+
+    private func applyClipRotation(clockwise: Bool) {
+        if clockwise {
+            appState.rotateClip(clip.id)
+        } else {
+            appState.rotateClipCounterclockwise(clip.id)
+        }
+        clipExportState = ClipExportState()
     }
 
     private var frameEditorButton: some View {

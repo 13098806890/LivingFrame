@@ -47,6 +47,7 @@ final class AppState: ObservableObject {
         }
         didSet {
             hasUnsavedChanges = composition != cleanCompositionSnapshot
+            hasPendingDraftAutosave = hasUnsavedChanges
             // 画布手势会在每个触摸采样点更新取景参数；撤销和自动保存都在手势结束时合并，
             // 避免高频创建/取消保存任务拖慢主线程。
             if hasUnsavedChanges, !isCoalescingCanvasHistory {
@@ -58,6 +59,9 @@ final class AppState: ObservableObject {
     }
     /// 当前工程是否有尚未保存到“作品”的修改。
     @Published private(set) var hasUnsavedChanges = false
+    /// 当前编辑快照是否还没有进入草稿。不能仅用“作品是否存在草稿”推断，
+    /// 因为已有草稿之后用户仍可能继续编辑。
+    @Published private(set) var hasPendingDraftAutosave = false
     /// 编辑中的草稿是否正在后台自动保存。
     @Published private(set) var isAutosavingDraft = false
     /// 最近一次自动保存失败时的提示；下一次编辑会重新尝试保存。
@@ -68,6 +72,17 @@ final class AppState: ObservableObject {
     private var autosaveTask: Task<Void, Never>?
     /// 自动保存任务可以在渲染封面或写盘期间继续运行；序号用于忽略已经过期任务的结果。
     private var autosaveGeneration = 0
+    private struct DraftSaveContext {
+        let composition: Composition
+        let editingWorkID: UUID?
+        let generation: Int
+    }
+
+    private enum DraftSaveResult {
+        case saved
+        case failed
+        case superseded
+    }
     private var isApplyingHistory = false
     /// 时间轴一次拖拽会产生数十次位置更新；只在手势开始时保留一份撤销快照。
     private var isCoalescingTimelineHistory = false
@@ -339,10 +354,12 @@ final class AppState: ObservableObject {
         }
         cleanCompositionSnapshot = composition
         hasUnsavedChanges = false
+        hasPendingDraftAutosave = false
     }
 
     private func markProjectDirty() {
         hasUnsavedChanges = true
+        hasPendingDraftAutosave = true
         scheduleDraftAutosave()
     }
 
@@ -352,7 +369,8 @@ final class AppState: ObservableObject {
         autosaveGeneration &+= 1
         let generation = autosaveGeneration
         autosaveTask?.cancel()
-        let snapshot = composition
+        isAutosavingDraft = false
+        guard let snapshot = composition else { return }
         autosaveTask = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: 800_000_000)
@@ -365,16 +383,30 @@ final class AppState: ObservableObject {
                   self.hasUnsavedChanges,
                   self.composition == snapshot else { return }
 
+            // 在防抖结束时读取当前作品 ID。先前正在完成的首次草稿保存可能刚刚
+            // 为这个工程分配 ID；新的快照应接着写入同一个草稿容器。
+            let context = DraftSaveContext(
+                composition: snapshot,
+                editingWorkID: self.editingWorkID,
+                generation: generation
+            )
             self.autosaveError = nil
             self.isAutosavingDraft = true
-            let saved = await self.saveCurrentDraft(expectedComposition: snapshot)
+            let result = await self.saveCurrentDraft(context: context)
             // 保存期间可能已经开始了新的编辑或新的保存任务；旧任务不能再修改状态，
             // 更不能把“快照已过期”误报成自动保存失败。
             guard self.autosaveGeneration == generation else { return }
             self.isAutosavingDraft = false
-            guard !Task.isCancelled, self.composition == snapshot else { return }
-            if !saved {
+            guard !Task.isCancelled else { return }
+            if case .failed = result {
                 self.autosaveError = "草稿自动保存失败，请稍后重试。"
+            } else if case .superseded = result,
+                      self.hasPendingDraftAutosave,
+                      self.hasUnsavedChanges,
+                      self.composition == snapshot {
+                // 若同一工程的另一个已完成保存刚更新了作品 ID，使用新 ID 重试，
+                // 避免把当前快照留在待保存状态。
+                self.scheduleDraftAutosave()
             }
         }
     }
@@ -679,6 +711,13 @@ final class AppState: ObservableObject {
     func rotateClip(_ clipID: String) {
         updateClip(clipID) {
             $0.rotateClockwiseQuarterTurn()
+        }
+    }
+
+    /// 素材详情页每次逆时针旋转 90°，持久化到 clip.json。
+    func rotateClipCounterclockwise(_ clipID: String) {
+        updateClip(clipID) {
+            $0.rotateCounterclockwiseQuarterTurn()
         }
     }
 
@@ -2881,39 +2920,26 @@ final class AppState: ObservableObject {
             }
     }
 
-    /// 保存作品时统一维护草稿箱规则：全局只保留更新时间最新的一份草稿。
-    /// 当前作品不存在于内存列表时（例如新工程第一次自动保存）会插入列表。
+    /// 保存作品时统一维护草稿箱规则：基于磁盘最新状态，仅保留更新时间最新的一份草稿。
     private func saveWorkApplyingDraftPolicy(_ work: WorkItem) async -> (Bool, [WorkItem]) {
-        var candidates = works
-        if let index = candidates.firstIndex(where: { $0.id == work.id }) {
-            candidates[index] = work
-        } else {
-            candidates.insert(work, at: 0)
-        }
-        let normalized = WorkItem.retainingOnlyLatestDraft(in: candidates)
-        let changed = normalized.filter { normalizedWork in
-            candidates.first(where: { $0.id == normalizedWork.id }) != normalizedWork
-        }
-        // 当前作品即使没有触发“草稿互斥”变化，也必须写入磁盘。
-        // 否则首次自动保存或手动保存时 changed 为空，saveAndLoad 会直接
-        // 重新加载旧数据，界面会误以为保存成功但重启后内容消失。
-        var toPersist = changed
-        if let current = normalized.first(where: { $0.id == work.id }),
-           !toPersist.contains(where: { $0.id == current.id }) {
-            toPersist.append(current)
-        }
-        return await workPersistence.saveAndLoad(toPersist)
+        await workPersistence.saveApplyingDraftPolicy(work)
     }
 
     /// 自动保存当前工程的草稿，不修改正式作品快照。
     /// 新工程第一次自动保存时会先创建一个仅包含草稿的作品容器；点击“保存”后
     /// 才会把同一个容器转为正式作品，因此自动保存不会覆盖正式版本。
     @discardableResult
-    private func saveCurrentDraft(expectedComposition: Composition? = nil) async -> Bool {
-        guard let comp = composition else { return false }
-        guard expectedComposition == nil || expectedComposition == comp else { return false }
+    private func isCurrent(_ context: DraftSaveContext) -> Bool {
+        !Task.isCancelled
+            && autosaveGeneration == context.generation
+            && editingWorkID == context.editingWorkID
+            && composition == context.composition
+    }
 
-        let existing = editingWorkID.flatMap { id in
+    private func saveCurrentDraft(context: DraftSaveContext) async -> DraftSaveResult {
+        guard isCurrent(context) else { return .superseded }
+        let comp = context.composition
+        let existing = context.editingWorkID.flatMap { id in
             works.first(where: { $0.id == id })
         }
         // 草稿必须保存自己的实时封面。复用正式作品封面会让拼接等后续修改在
@@ -2924,6 +2950,9 @@ final class AppState: ObservableObject {
             }
             return pngData(from: poster) ?? Data()
         }.value
+        // 封面渲染可能耗时；这期间切换工程或编辑内容后，旧快照不得进入
+        // “只保留最新草稿”的持久化流程。
+        guard isCurrent(context) else { return .superseded }
         let posterData = existing?.posterData ?? draftPosterData
 
         let now = Date()
@@ -2942,16 +2971,29 @@ final class AppState: ObservableObject {
                 clipSettings: clipSettingsSnapshot(for: comp),
                 posterData: draftPosterData
             ),
-            savedAt: existing?.savedAt
+            savedAt: existing?.savedAt,
+            hasManualSave: existing?.hasManualSave ?? existing?.hasSavedVersion ?? false
         )
         let persistence = await saveWorkApplyingDraftPolicy(work)
-        guard persistence.0 else { return false }
+        guard persistence.0 else { return .failed }
+        // 写盘期间状态也可能发生变化；旧请求不能反向覆盖编辑器的内存状态。
+        guard isCurrent(context) else {
+            // 首次自动保存可能已经提交到磁盘后，工程才发生新编辑/切换。若仍是
+            // 同一个工程，复用刚生成的作品 ID，避免下一次自动保存再创建一份。
+            if composition?.id == comp.id, editingWorkID == context.editingWorkID {
+                if existing == nil { editingWorkID = work.id }
+                works = await workPersistence.load()
+            }
+            return .superseded
+        }
         if existing == nil {
             editingWorkID = work.id
         }
         works = persistence.1
+        hasPendingDraftAutosave = false
+        autosaveError = nil
         LogStore.log("work.draft saved id=\(work.id) created=\(existing == nil)")
-        return true
+        return .saved
     }
 
     /// 立即写入当前草稿，用于用户离开当前作品前确保最近一次修改已落盘。
@@ -2959,14 +3001,37 @@ final class AppState: ObservableObject {
     func saveCurrentDraftNow() async -> Bool {
         // 没有修改时不创建“空草稿”。这也避免应用启动后第一次进入后台
         // 就把默认工程错误地放进草稿箱。
-        guard hasUnsavedChanges else { return true }
-        cancelDraftAutosave()
-        guard let snapshot = composition else { return false }
-        let saved = await saveCurrentDraft(expectedComposition: snapshot)
-        if !saved {
-            autosaveError = "草稿保存失败，请稍后重试。"
+        guard hasPendingDraftAutosave else { return true }
+        while hasPendingDraftAutosave {
+            cancelDraftAutosave()
+            guard let snapshot = composition else { return false }
+            let context = DraftSaveContext(
+                composition: snapshot,
+                editingWorkID: editingWorkID,
+                generation: autosaveGeneration
+            )
+            isAutosavingDraft = true
+            let result = await saveCurrentDraft(context: context)
+            if autosaveGeneration == context.generation {
+                isAutosavingDraft = false
+            }
+            switch result {
+            case .saved:
+                return true
+            case .failed:
+                autosaveError = "草稿保存失败，请稍后重试。"
+                return false
+            case .superseded:
+                if Task.isCancelled {
+                    scheduleDraftAutosave()
+                    return false
+                }
+                // 等待封面或磁盘写入期间如有新编辑，立刻以最新快照再保存；
+                // while 条件也会在工程切换后停止，不把旧工程继续写入。
+                continue
+            }
         }
-        return saved
+        return true
     }
 
     /// 手动保存当前工程；这是唯一会更新正式作品快照的入口。
@@ -3005,7 +3070,8 @@ final class AppState: ObservableObject {
             posterData: posterData,
             format: existing?.format ?? defaultFormat,
             draft: nil,
-            savedAt: now
+            savedAt: now,
+            hasManualSave: true
         )
         let persistence = await saveWorkApplyingDraftPolicy(work)
         guard persistence.0 else {
@@ -3021,6 +3087,7 @@ final class AppState: ObservableObject {
             markProjectClean(invalidateAutosave: false)
         } else {
             hasUnsavedChanges = true
+            hasPendingDraftAutosave = true
             scheduleDraftAutosave()
         }
         LogStore.log("work.save done id=\(work.id) updated=\(existing != nil)")
@@ -3039,6 +3106,8 @@ final class AppState: ObservableObject {
         copy.composition.id = UUID()
         copy.composition.name = copy.name
         copy.draft = nil
+        copy.savedAt = now
+        copy.hasManualSave = true
         let saved = await workPersistence.save(copy, failureMessage: "work.duplicate failed")
         guard saved else { return false }
         works.insert(copy, at: 0)

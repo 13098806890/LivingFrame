@@ -386,7 +386,7 @@ struct EditorView: View {
             Text("草稿保存中…")
                 .foregroundStyle(LF.header)
         } else if appState.hasUnsavedChanges {
-            Text(appState.currentWorkHasDraft ? "草稿已保存" : "未保存修改")
+            Text(appState.currentWorkHasDraft && !appState.hasPendingDraftAutosave ? "草稿已保存" : "未保存修改")
                 .foregroundStyle(LF.header)
         } else if appState.editingWorkID != nil {
             Text("已保存")

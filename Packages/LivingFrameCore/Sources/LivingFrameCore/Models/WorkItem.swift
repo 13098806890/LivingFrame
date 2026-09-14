@@ -186,6 +186,9 @@ public struct WorkItem: Codable, Identifiable, Equatable {
     /// 最近一次明确点击“保存”的时间。nil 表示只有自动保存草稿。
     /// 该字段为可选值，以兼容升级前已经写入磁盘的作品数据。
     public var savedAt: Date?
+    /// 正式版本状态的持久化标记。nil 代表旧数据，需使用时间字段兼容推断；
+    /// 新建记录始终显式写入 true/false，避免草稿更新后被误判为正式作品。
+    public var hasManualSave: Bool?
 
     public init(
         id: UUID = UUID(),
@@ -197,7 +200,8 @@ public struct WorkItem: Codable, Identifiable, Equatable {
         posterData: Data,
         format: ExportFormat,
         draft: WorkDraft? = nil,
-        savedAt: Date? = nil
+        savedAt: Date? = nil,
+        hasManualSave: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -209,14 +213,15 @@ public struct WorkItem: Codable, Identifiable, Equatable {
         self.format = format
         self.draft = draft
         self.savedAt = savedAt
+        self.hasManualSave = hasManualSave
     }
 
     public var lastSavedAt: Date { updatedAt }
 
     /// 是否存在可展示在“已保存作品”中的正式版本。
-    /// 旧数据没有 savedAt：无草稿的一定是正式作品；同时含草稿时，可用草稿时间
-    /// 晚于正式更新时间这一旧保存规则恢复出“正式版本 + 后续草稿”的状态。
+    /// 优先使用新数据的显式标记；旧数据才通过保存时间兼容推断。
     public var hasSavedVersion: Bool {
+        if let hasManualSave { return hasManualSave }
         if savedAt != nil { return true }
         guard let draft else { return true }
         return draft.updatedAt > updatedAt

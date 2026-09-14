@@ -19,7 +19,7 @@ public struct GIFExportPreset: Identifiable, Equatable, Sendable {
     }
 
     public static func fpsOptions(maxSourceFPS: Double) -> [Double] {
-        ExportFPSPolicy.availableOptions(maxSourceFPS: maxSourceFPS)
+        ExportFPSPolicy.availableOptions(maxSourceFPS: maxSourceFPS, presets: [15, 30])
     }
 
     /// Chooses the largest estimated output that remains under the limit.
