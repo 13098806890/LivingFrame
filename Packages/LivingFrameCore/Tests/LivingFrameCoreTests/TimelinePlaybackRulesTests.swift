@@ -80,9 +80,9 @@ final class TimelinePlaybackRulesTests: XCTestCase {
     }
 
     func testExportFPSOptionsAreCappedByMaximumSourceFPS() {
-        XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 30), [10, 15, 30])
-        XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 60), [10, 15, 30, 60])
-        XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 24), [10, 15, 24])
+        XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 30), [15, 30])
+        XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 60), [15, 30, 60])
+        XCTAssertEqual(ExportFPSPolicy.availableOptions(maxSourceFPS: 24), [15, 24])
     }
 
     private func makeWork(name: String, draftDate: Date?) -> WorkItem {

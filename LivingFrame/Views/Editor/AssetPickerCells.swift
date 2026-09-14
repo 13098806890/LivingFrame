@@ -69,7 +69,11 @@ struct AssetCell: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            AnimatedClipPreview(clip: clip, maxPixelSize: 320, isPlaying: $isPlaying)
+             AnimatedClipPreview(
+                 clip: clip,
+                 maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
+                 isPlaying: $isPlaying
+             )
                 .frame(height: 90)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(alignment: .bottomLeading) {

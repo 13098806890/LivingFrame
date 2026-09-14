@@ -71,15 +71,21 @@ public enum ExportFormat: String, Codable, CaseIterable, Identifiable {
 /// 导出最长边预设。`original` 从不放大工程画布，其他档位只会按比例缩小。
 public enum ExportResolution: String, Codable, CaseIterable, Identifiable, Sendable {
     case original
+    case p360
     case p480
     case p720
     case p1080
+
+    public static var allCases: [ExportResolution] {
+        [.original, .p480, .p720, .p1080]
+    }
 
     public var id: String { rawValue }
 
     public var maxPixelSize: CGFloat? {
         switch self {
         case .original: nil
+        case .p360: 360
         case .p480: 480
         case .p720: 720
         case .p1080: 1080
@@ -89,6 +95,7 @@ public enum ExportResolution: String, Codable, CaseIterable, Identifiable, Senda
     public var title: String {
         switch self {
         case .original: NSLocalizedString("原始", comment: "Export resolution")
+        case .p360: "360p"
         case .p480: "480p"
         case .p720: "720p"
         case .p1080: "1080p"
@@ -105,6 +112,33 @@ public enum ExportResolution: String, Codable, CaseIterable, Identifiable, Senda
             height = max(height - height % 2, 2)
         }
         return CGSize(width: width, height: height)
+    }
+
+    public var gifTitle: String {
+        self == .original ? "最高" : title
+    }
+
+    /// Shared GIF resolution choices. The original option is never upscaled,
+    /// and duplicate effective sizes are removed.
+    public static func gifOptions(maxSourceDimension: CGFloat) -> [ExportResolution] {
+        let safeMax = max(maxSourceDimension.isFinite ? maxSourceDimension : 0, 0)
+        guard safeMax > 0 else { return [] }
+        let candidates: [ExportResolution] = [.p360, .p720, .original].filter { option in
+            guard let maxPixelSize = option.maxPixelSize else { return true }
+            return maxPixelSize <= safeMax + 0.01
+        }
+        var seen: Set<Int> = []
+        return candidates.filter { option in
+            let size = option.outputSize(for: CGSize(width: safeMax, height: safeMax))
+            let longest = Int(max(size.width, size.height).rounded())
+            guard longest > 0 else { return false }
+            return seen.insert(longest).inserted
+        }
+    }
+
+    public func gifTitle(for sourceDimension: CGFloat) -> String {
+        let effective = Int(max(outputSize(for: CGSize(width: sourceDimension, height: sourceDimension)).width, 1).rounded())
+        return "\(effective)p"
     }
 }
 

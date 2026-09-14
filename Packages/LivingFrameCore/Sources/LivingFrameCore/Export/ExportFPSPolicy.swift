@@ -3,7 +3,7 @@ import Foundation
 /// 导出帧率选项由工程中动态素材的最高实际帧率决定。
 public enum ExportFPSPolicy {
     /// 常用帧率预设；素材的非标准最高帧率会额外加入选项。
-    public static let presets: [Double] = [10, 15, 30, 60]
+    public static let presets: [Double] = [15, 30]
 
     public static func availableOptions(
         maxSourceFPS: Double,

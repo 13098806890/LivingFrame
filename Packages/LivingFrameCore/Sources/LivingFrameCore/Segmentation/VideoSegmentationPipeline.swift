@@ -33,6 +33,13 @@ public struct VideoSegmentationPipeline {
         }
     }
 
+    static func usesStillOrientation(for transform: CGAffineTransform) -> Bool {
+        abs(transform.a - 1) < 0.001
+            && abs(transform.b) < 0.001
+            && abs(transform.c) < 0.001
+            && abs(transform.d - 1) < 0.001
+    }
+
     private let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
 
     public init() {}
@@ -132,7 +139,7 @@ public struct VideoSegmentationPipeline {
             // 拍摄，方向一致；普通视频不传 stillOrientation（.up）不受影响
             let derived = Self.orientation(from: preferredTransform)
             let oriented: CIImage
-            if derived == .up || derived == .down {
+            if Self.usesStillOrientation(for: preferredTransform) {
                 oriented = stillOrientation == .up
                     ? source
                     : source.oriented(stillOrientation)

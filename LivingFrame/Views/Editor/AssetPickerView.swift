@@ -445,7 +445,7 @@ struct AnimatedClipPreview: View {
                 ClipThumbnailView(clip: clip, index: previewFrame, maxPixelSize: maxPixelSize)
             }
         }
-        .task(id: isPlaying) {
+        .task(id: "\(isPlaying)-\(clip.cropCacheKey)") {
             await playOnceIfNeeded()
         }
         .onAppear {
@@ -458,6 +458,10 @@ struct AnimatedClipPreview: View {
         .onChange(of: clip.id) { _, _ in
             framePosition = 0
             isPlaying = false
+            decodedFrames.removeAll(keepingCapacity: false)
+        }
+        .onChange(of: clip.cropCacheKey) { _, _ in
+            framePosition = 0
             decodedFrames.removeAll(keepingCapacity: false)
         }
         .onChange(of: isPlaying) { _, playing in
@@ -570,7 +574,7 @@ struct ClipThumbnailView: View {
                 Color.black.opacity(0.25)
             }
         }
-        .task(id: "\(clip.id)-\(index)-\(Int(maxPixelSize))") {
+        .task(id: "\(clip.id)-\(index)-\(Int(maxPixelSize))-\(clip.cropCacheKey)") {
             let clipValue = clip
             let indexValue = index
             let maxPixelSizeValue = maxPixelSize
@@ -622,10 +626,21 @@ struct ClipPreviewImage: View {
     }
 
     private var baseImage: some View {
-        Image(decorative: image, scale: 1)
-            .resizable()
-            .scaledToFill()
-            .rotationEffect(.degrees(Double(clip.normalizedRotationQuarterTurns * 90)))
+        GeometryReader { proxy in
+            let turns = clip.normalizedRotationQuarterTurns
+            let isQuarterTurn = turns % 2 == 1
+            let imageSize = CGSize(
+                width: isQuarterTurn ? proxy.size.height : proxy.size.width,
+                height: isQuarterTurn ? proxy.size.width : proxy.size.height
+            )
+            Image(decorative: image, scale: 1)
+                .resizable()
+                .scaledToFill()
+                .frame(width: imageSize.width, height: imageSize.height)
+                .rotationEffect(.degrees(Double(turns) * 90))
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+        }
     }
 
     private func halo(color: Color, radius: CGFloat, opacity: Double) -> some View {

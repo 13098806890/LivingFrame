@@ -32,9 +32,24 @@ public struct SegmentedClip: Identifiable {
     public var excludedFrames: Set<Int> = []
     /// 用户在素材详情页主动旋转的次数；每次为顺时针 90°。
     public var rotationQuarterTurns: Int = 0
+    /// 素材裁剪区域，使用当前旋转后画面的归一化坐标（原点在左下角）。nil 表示完整素材。
+    public var cropRect: CGRect?
 
     public var normalizedRotationQuarterTurns: Int {
         ((rotationQuarterTurns % 4) + 4) % 4
+    }
+
+    /// 保留累计次数，让界面动画可以连续经过 360°，而不是从 270° 跳回 0°。
+    public mutating func rotateClockwiseQuarterTurn() {
+        if let cropRect {
+            self.cropRect = CGRect(
+                x: cropRect.minY,
+                y: 1 - cropRect.maxX,
+                width: cropRect.height,
+                height: cropRect.width
+            )
+        }
+        rotationQuarterTurns += 1
     }
 
     public var orientedWidth: Int {
@@ -43,6 +58,64 @@ public struct SegmentedClip: Identifiable {
 
     public var orientedHeight: Int {
         normalizedRotationQuarterTurns % 2 == 1 ? width : height
+    }
+
+    public var normalizedCropRect: CGRect {
+        let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
+        guard let cropRect,
+              cropRect.minX.isFinite, cropRect.minY.isFinite,
+              cropRect.width.isFinite, cropRect.height.isFinite,
+              cropRect.width > 0, cropRect.height > 0 else {
+            return unit
+        }
+        let minX = min(max(cropRect.minX, 0), 1)
+        let minY = min(max(cropRect.minY, 0), 1)
+        let maxX = min(max(cropRect.maxX, 0), 1)
+        let maxY = min(max(cropRect.maxY, 0), 1)
+        guard maxX > minX, maxY > minY else { return unit }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    public var renderedWidth: Int {
+        max(Int((CGFloat(orientedWidth) * normalizedCropRect.width).rounded()), 1)
+    }
+
+    public var renderedHeight: Int {
+        max(Int((CGFloat(orientedHeight) * normalizedCropRect.height).rounded()), 1)
+    }
+
+    public var cropCacheKey: String {
+        let rect = normalizedCropRect
+        return "crop\(Int((rect.minX * 100_000).rounded()))-\(Int((rect.minY * 100_000).rounded()))-\(Int((rect.width * 100_000).rounded()))-\(Int((rect.height * 100_000).rounded()))"
+    }
+
+    /// Converts the oriented crop rectangle into the unrotated source image's coordinates.
+    public var rawCropRect: CGRect {
+        let rect = normalizedCropRect
+        switch normalizedRotationQuarterTurns {
+        case 1:
+            return CGRect(x: rect.minY, y: 1 - rect.maxX, width: rect.height, height: rect.width)
+        case 2:
+            return CGRect(x: 1 - rect.maxX, y: 1 - rect.maxY, width: rect.width, height: rect.height)
+        case 3:
+            return CGRect(x: 1 - rect.maxY, y: rect.minX, width: rect.height, height: rect.width)
+        default:
+            return rect
+        }
+    }
+
+    public mutating func setCropRect(_ rect: CGRect?) {
+        guard let rect else {
+            cropRect = nil
+            return
+        }
+        let normalized = CGRect(
+            x: min(max(rect.minX, 0), 1),
+            y: min(max(rect.minY, 0), 1),
+            width: min(max(rect.width, 0), 1),
+            height: min(max(rect.height, 0), 1)
+        )
+        cropRect = normalized == CGRect(x: 0, y: 0, width: 1, height: 1) ? nil : normalized
     }
 
     public var duration: TimeInterval {

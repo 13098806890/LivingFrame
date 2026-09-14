@@ -81,7 +81,7 @@ struct ExportView: View {
 
                         if format != .livePhoto && !(format == .gif && chatSticker) {
                         Picker("分辨率", selection: $resolution) {
-                            ForEach(ExportResolution.allCases) { option in
+                            ForEach(availableResolutionOptions) { option in
                                 Text(option.title).tag(option)
                             }
                         }
@@ -150,7 +150,11 @@ struct ExportView: View {
             format = appState.defaultFormat
             showAdvancedFormats = appState.defaultFormat != .gif
             fps = normalizedFPSSelection(appState.exportFPS)
+            resolution = normalizedResolutionSelection(resolution)
             previewTime = appState.currentTime
+        }
+        .onChange(of: format) { _, _ in
+            resolution = normalizedResolutionSelection(resolution)
         }
         .onDisappear {
             exportTask?.cancel()
@@ -405,6 +409,21 @@ struct ExportView: View {
             return exact
         }
         return options.last ?? preferred
+    }
+
+    private var availableResolutionOptions: [ExportResolution] {
+        if format == .gif {
+            return GIFExportPreset.resolutionOptions(
+                maxSourceDimension: appState.maximumSourceDimension
+            )
+        }
+        return ExportResolution.allCases
+    }
+
+    private func normalizedResolutionSelection(_ preferred: ExportResolution) -> ExportResolution {
+        let options = availableResolutionOptions
+        guard !options.isEmpty else { return preferred }
+        return options.contains(preferred) ? preferred : (options.last ?? preferred)
     }
 
     private func fpsTitle(_ fps: Double) -> String {

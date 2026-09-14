@@ -78,7 +78,7 @@ struct FolderDetailView: View {
             FolderAddClipsView(folder: folder)
                 .environmentObject(appState)
         }
-        .sheet(item: $menuClip) { clip in
+        .fullScreenCover(item: $menuClip) { clip in
             ClipMenuView(
                 clip: clip,
                 onClose: { menuClip = nil }

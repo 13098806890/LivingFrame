@@ -42,8 +42,6 @@ struct CanvasView: View {
     @State private var transformGestureMode: TransformGestureMode?
     /// 裁剪模式下的临时裁剪框（画布坐标系）
     @State private var cropRect: CGRect?
-    /// 当前裁剪手势的起始矩形；所有位移都基于同一快照，避免拖动过程中累计误差。
-    @State private var cropGestureStartRect: CGRect?
     /// 渲染版本号：异步渲染完成时只有最新版本才写入，避免旧帧覆盖新帧。
     @State private var renderVersion = 0
     /// 是否有一个预览渲染正在执行；执行期间只保留最新请求，避免任务堆积或全部被跳过。
@@ -163,9 +161,12 @@ struct CanvasView: View {
             .onTapGesture { location in
                 handleTap(at: location)
             }
-            // 画布可能嵌在拼接面板的 ScrollView 中；直接操作优先于外层滚动，
-            // 否则竖向拖动会被 ScrollView 抢走，背景图片看起来像没有响应。
-            .highPriorityGesture(dragGesture)
+            // 裁剪模式下由裁剪框/手柄独占拖动；普通编辑模式才让画布拖动优先，
+            // 避免外层拖动手势抢走裁剪框的触摸事件。
+            .highPriorityGesture(
+                dragGesture,
+                including: appState.isCropping ? .none : .all
+            )
             .simultaneousGesture(magnifyGesture)
             .simultaneousGesture(rotateGesture)
             .allowsHitTesting(allowsInteraction)
@@ -216,11 +217,9 @@ struct CanvasView: View {
         .onChange(of: appState.isCropping) { _, cropping in
             if cropping {
                 cropRect = appState.composition.map(initialCropRect(for:))
-                cropGestureStartRect = nil
                 refreshRendererScale()
                 render()
             } else {
-                cropGestureStartRect = nil
                 refreshRendererScale()
                 render()
             }
@@ -239,7 +238,9 @@ struct CanvasView: View {
 
     private var canvasAspect: CGFloat {
         guard let comp = appState.composition else { return 9 / 16 }
-        let rect = appState.isCropping ? comp.canvasRect : comp.renderRect
+        // 进入裁剪模式只增加裁剪框，不改变编辑器原有的画布布局尺寸。
+        // 裁剪框仍以完整画布坐标绘制，最终输出由 composition.renderRect 决定。
+        let rect = comp.renderRect
         return rect.width / rect.height
     }
 
@@ -849,7 +850,6 @@ struct CanvasView: View {
             .buttonStyle(MagicButtonStyle(prominent: false))
             Button("重置") {
                 cropRect = appState.composition?.canvasRect
-                cropGestureStartRect = nil
             }
             .buttonStyle(MagicButtonStyle(prominent: false))
             Button("完成") {
@@ -864,177 +864,18 @@ struct CanvasView: View {
 
     /// 裁剪框叠加层：外部压暗 + 九宫格 + 可移动/缩放的矩形裁剪框。
     private var cropOverlay: some View {
-        GeometryReader { geo in
-            let viewport = geo.size
-            if let cropRect, let comp = appState.composition {
-                // 裁剪框在视口中的位置
-                // 裁剪编辑时始终以完整画布为坐标系，允许把已裁剪区域重新扩大。
-                let g = viewportGeometry(for: comp, contentRect: comp.canvasRect)
-                let frame = CGRect(
-                    x: g.offsetX + (cropRect.minX - g.rect.minX) * g.scale,
-                    y: g.offsetY + (g.rect.maxY - cropRect.maxY) * g.scale,
-                    width: cropRect.width * g.scale,
-                    height: cropRect.height * g.scale
-                )
-                ZStack {
-                    // 外部压暗（不拦截手势）
-                    Path { path in
-                        path.addRect(CGRect(origin: .zero, size: viewport))
-                        path.addRect(frame)
-                    }
-                    .fill(LF.background.opacity(0.6), style: FillStyle(eoFill: true))
-                    .allowsHitTesting(false)
-
-                    // 裁剪框内部可直接拖动，移动范围被限制在完整画布内。
-                    Color.clear
-                        .frame(width: frame.width, height: frame.height)
-                        .contentShape(Rectangle())
-                        .position(x: frame.midX, y: frame.midY)
-                        .gesture(cropMoveGesture(geometry: g))
-
-                    // 边框
-                    RoundedRectangle(cornerRadius: 2)
-                        .stroke(LF.gold, lineWidth: 1.5)
-                        .frame(width: frame.width, height: frame.height)
-                        .position(x: frame.midX, y: frame.midY)
-                        .allowsHitTesting(false)
-                    cropGrid(in: frame)
-
-                    // 四角 + 四边手柄（可拖拽）
-                    ForEach(CropHandle.allCases, id: \.self) { handle in
-                        cropHandleView(handle)
-                            .position(cropHandlePoint(handle, in: frame))
-                            .gesture(cropHandleGesture(handle: handle, geometry: g))
-                    }
-                }
-            }
-        }
-    }
-
-    private func cropGrid(in frame: CGRect) -> some View {
-        Path { path in
-            let column = frame.width / 3
-            let row = frame.height / 3
-            for index in 1...2 {
-                let x = frame.minX + column * CGFloat(index)
-                path.move(to: CGPoint(x: x, y: frame.minY))
-                path.addLine(to: CGPoint(x: x, y: frame.maxY))
-                let y = frame.minY + row * CGFloat(index)
-                path.move(to: CGPoint(x: frame.minX, y: y))
-                path.addLine(to: CGPoint(x: frame.maxX, y: y))
-            }
-        }
-        .stroke(LF.gold.opacity(0.34), lineWidth: 0.8)
-        .allowsHitTesting(false)
-    }
-
-    private func cropHandleView(_ handle: CropHandle) -> some View {
         Group {
-            if handle.isCorner {
-                Circle()
-                    .fill(LF.gold)
-                    .frame(width: 22, height: 22)
-                    .overlay {
-                        Circle().stroke(.black.opacity(0.4), lineWidth: 1)
-                    }
-            } else {
-                Capsule()
-                    .fill(LF.gold)
-                    .frame(
-                        width: handle.isHorizontal ? 34 : 4,
-                        height: handle.isVertical ? 34 : 4
+            if let comp = appState.composition {
+                CropOverlayView(
+                    contentRect: comp.canvasRect,
+                    minimumCropSize: 50,
+                    cropRect: Binding(
+                        get: { cropRect },
+                        set: { cropRect = $0 }
                     )
-                    .overlay {
-                        Capsule().stroke(.black.opacity(0.28), lineWidth: 0.8)
-                    }
+                )
             }
         }
-        .frame(width: handle.touchWidth, height: handle.touchHeight)
-        .contentShape(Rectangle())
-    }
-
-    private func cropHandlePoint(_ handle: CropHandle, in frame: CGRect) -> CGPoint {
-        switch handle {
-        case .topLeading: CGPoint(x: frame.minX, y: frame.minY)
-        case .top: CGPoint(x: frame.midX, y: frame.minY)
-        case .topTrailing: CGPoint(x: frame.maxX, y: frame.minY)
-        case .leading: CGPoint(x: frame.minX, y: frame.midY)
-        case .trailing: CGPoint(x: frame.maxX, y: frame.midY)
-        case .bottomLeading: CGPoint(x: frame.minX, y: frame.maxY)
-        case .bottom: CGPoint(x: frame.midX, y: frame.maxY)
-        case .bottomTrailing: CGPoint(x: frame.maxX, y: frame.maxY)
-        }
-    }
-
-    /// 拖动裁剪框主体，保持裁剪框大小不变并限制在完整画布内。
-    private func cropMoveGesture(geometry: ViewportGeometry) -> some Gesture {
-        DragGesture(minimumDistance: 1)
-            .onChanged { value in
-                guard let comp = appState.composition,
-                      let rect = cropRect else { return }
-                if cropGestureStartRect == nil {
-                    cropGestureStartRect = rect
-                }
-                guard let start = cropGestureStartRect else { return }
-                let dx = value.translation.width / geometry.scale
-                let dy = -value.translation.height / geometry.scale
-                let canvas = comp.canvasRect
-                let x = min(max(start.minX + dx, canvas.minX), canvas.maxX - start.width)
-                let y = min(max(start.minY + dy, canvas.minY), canvas.maxY - start.height)
-                cropRect = CGRect(x: x, y: y, width: start.width, height: start.height)
-            }
-            .onEnded { _ in
-                cropGestureStartRect = nil
-            }
-    }
-
-    /// 拖动裁剪框手柄（视口坐标 → 画布坐标，夹取到画布范围内，最小 50×50）。
-    private func cropHandleGesture(
-        handle: CropHandle, geometry: ViewportGeometry
-    ) -> some Gesture {
-        DragGesture(minimumDistance: 1)
-            .onChanged { value in
-                guard let comp = appState.composition, let rect = cropRect else { return }
-                if cropGestureStartRect == nil {
-                    cropGestureStartRect = rect
-                }
-                guard let start = cropGestureStartRect else { return }
-                // 屏幕位移 → 画布位移（画布 y 向上，屏幕 y 向下：dy 取反）
-                let dx = value.translation.width / geometry.scale
-                let dy = -value.translation.height / geometry.scale
-                let canvas = comp.canvasRect
-                let minSize: CGFloat = 50
-                var minX = start.minX
-                var minY = start.minY
-                var maxX = start.maxX
-                var maxY = start.maxY
-                switch handle {
-                case .topLeading:
-                    minX = min(max(start.minX + dx, canvas.minX), start.maxX - minSize)
-                    maxY = max(min(start.maxY + dy, canvas.maxY), start.minY + minSize)
-                case .top:
-                    maxY = max(min(start.maxY + dy, canvas.maxY), start.minY + minSize)
-                case .topTrailing:
-                    maxX = max(min(start.maxX + dx, canvas.maxX), start.minX + minSize)
-                    maxY = max(min(start.maxY + dy, canvas.maxY), start.minY + minSize)
-                case .leading:
-                    minX = min(max(start.minX + dx, canvas.minX), start.maxX - minSize)
-                case .trailing:
-                    maxX = max(min(start.maxX + dx, canvas.maxX), start.minX + minSize)
-                case .bottomLeading:
-                    minX = min(max(start.minX + dx, canvas.minX), start.maxX - minSize)
-                    minY = min(max(start.minY + dy, canvas.minY), start.maxY - minSize)
-                case .bottom:
-                    minY = min(max(start.minY + dy, canvas.minY), start.maxY - minSize)
-                case .bottomTrailing:
-                    maxX = max(min(start.maxX + dx, canvas.maxX), start.minX + minSize)
-                    minY = min(max(start.minY + dy, canvas.minY), start.maxY - minSize)
-                }
-                cropRect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
-            }
-            .onEnded { _ in
-                cropGestureStartRect = nil
-            }
     }
 
     // MARK: - 坐标换算
@@ -1258,52 +1099,6 @@ private enum BackgroundGestureKind: Equatable {
         case .moving: "正在移动背景"
         case .scaling: "正在缩放背景"
         }
-    }
-}
-
-private enum CropHandle: CaseIterable, Hashable {
-    case topLeading
-    case top
-    case topTrailing
-    case leading
-    case trailing
-    case bottomLeading
-    case bottom
-    case bottomTrailing
-
-    var isCorner: Bool {
-        switch self {
-        case .topLeading, .topTrailing, .bottomLeading, .bottomTrailing:
-            return true
-        case .top, .leading, .trailing, .bottom:
-            return false
-        }
-    }
-
-    var isHorizontal: Bool {
-        switch self {
-        case .top, .bottom:
-            return true
-        case .topLeading, .topTrailing, .leading, .trailing, .bottomLeading, .bottomTrailing:
-            return false
-        }
-    }
-
-    var isVertical: Bool {
-        switch self {
-        case .leading, .trailing:
-            return true
-        case .topLeading, .top, .topTrailing, .bottomLeading, .bottom, .bottomTrailing:
-            return false
-        }
-    }
-
-    var touchWidth: CGFloat {
-        isVertical ? 24 : 44
-    }
-
-    var touchHeight: CGFloat {
-        isHorizontal ? 24 : 44
     }
 }
 

@@ -107,7 +107,7 @@ struct LibraryView: View {
                     }
                 )
             }
-            .sheet(item: $menuClip) { clip in
+            .fullScreenCover(item: $menuClip) { clip in
                 ClipMenuView(
                     clip: clip,
                     onClose: { menuClip = nil }
@@ -249,6 +249,7 @@ struct LibraryView: View {
         extractionQueueTotal = sources.count
         extractionQueuePosition = nil
         importTask = Task { @MainActor in
+            var lastExtractedClip: SegmentedClip?
             for (index, pair) in zip(sources.indices, zip(sources, kinds)) {
                 guard !Task.isCancelled else { break }
                 extractionQueuePosition = index + 1
@@ -271,31 +272,38 @@ struct LibraryView: View {
                                 }
                             }
                             guard let range else { continue }
-                            await appState.startSegmenting(
+                            let extractedClip = await appState.startSegmenting(
                                 url: url,
                                 name: name,
                                 sourceStartTime: range.lowerBound,
                                 sourceEndTime: range.upperBound,
                                 stillOrientation: stillOrientation
                             )
+                            lastExtractedClip = extractedClip ?? lastExtractedClip
                         } else {
-                            await appState.startSegmenting(
+                            let extractedClip = await appState.startSegmenting(
                                 url: url,
                                 name: name,
                                 stillOrientation: stillOrientation
                             )
+                            lastExtractedClip = extractedClip ?? lastExtractedClip
                         }
                     case .static:
                         if let cgImage = await firstFrame(of: url, stillURL: stillURL) {
-                            await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
+                            let extractedClip = await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
+                            lastExtractedClip = extractedClip ?? lastExtractedClip
                         }
                     }
                 case .photo(let cgImage, let name):
-                    await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
+                    let extractedClip = await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
+                    lastExtractedClip = extractedClip ?? lastExtractedClip
                 }
             }
             extractionQueuePosition = nil
             extractionQueueTotal = 0
+            if !Task.isCancelled, let lastExtractedClip {
+                menuClip = lastExtractedClip
+            }
         }
     }
 
@@ -413,95 +421,93 @@ struct LibraryView: View {
 
     // MARK: - 文件夹
 
-    /// 文件夹栏：最左侧「新建」固定不动，右侧已有文件夹可横向滑动
+    /// 文件夹栏：新建入口和已有文件夹共享同一个横向滚动区域。
     private var foldersSection: some View {
         SectionCard(title: nil) {
-            HStack(spacing: 10) {
-                // 新建（图标按钮，固定位置，不随滚动）
-                Button {
-                    showNewFolderAlert = true
-                } label: {
-                    Image(systemName: "folder.badge.plus")
-                        .font(.title3)
-                        .frame(width: 46, height: 46)
-                        .background(LF.surface2.opacity(0.5), in: Circle())
-                        .overlay {
-                            Circle()
-                                .strokeBorder(LF.surface2, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                        }
-                        .foregroundStyle(LF.textPrimary)
-                }
-                .buttonStyle(.plain)
-                .fixedSize()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    Button {
+                        showNewFolderAlert = true
+                    } label: {
+                        Image(systemName: "folder.badge.plus")
+                            .font(.title3)
+                            .frame(width: 44, height: 44)
+                            .background(LF.surface2.opacity(0.5), in: Circle())
+                            .overlay {
+                                Circle()
+                                    .strokeBorder(LF.surface2, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                            }
+                            .foregroundStyle(LF.textPrimary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("新建文件夹")
 
-                // 已有文件夹（可横向滑动）
-                if appState.rootFolders().isEmpty {
-                    Text(NSLocalizedString("还没有文件夹", comment: "No folders"))
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(appState.rootFolders()) { folder in
-                                NavigationLink {
-                                    FolderDetailView(folder: folder)
-                                } label: {
-                                    HStack(spacing: 7) {
-                                        Image(systemName: "folder.fill")
-                                            .font(.title2)
-                                            .foregroundStyle(LF.folderIcon)
-                                        Text(folder.name)
-                                            .lineLimit(1)
-                                        Text("\(folder.clipIDs.count)")
-                                            .font(.subheadline.monospacedDigit())
+                    if appState.rootFolders().isEmpty {
+                        Text(NSLocalizedString("还没有文件夹", comment: "No folders"))
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                    } else {
+                        ForEach(appState.rootFolders()) { folder in
+                            NavigationLink {
+                                FolderDetailView(folder: folder)
+                            } label: {
+                                HStack(spacing: 7) {
+                                    Image(systemName: "folder.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(LF.folderIcon)
+                                    Text(folder.name)
+                                        .lineLimit(1)
+                                    Text("\(folder.clipIDs.count)")
+                                        .font(.subheadline.monospacedDigit())
+                                        .foregroundStyle(dragOverFolderID == folder.id ? LF.folderIcon : LF.textSecondary)
+                                    if appState.hasChildFolders(folder.id) {
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2)
                                             .foregroundStyle(dragOverFolderID == folder.id ? LF.folderIcon : LF.textSecondary)
-                                        if appState.hasChildFolders(folder.id) {
-                                            Image(systemName: "chevron.right")
-                                                .font(.caption2)
-                                                .foregroundStyle(dragOverFolderID == folder.id ? LF.folderIcon : LF.textSecondary)
-                                        }
-                                    }
-                                    .font(.subheadline.weight(.semibold))
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 14)
-                                    .frame(minHeight: 56)
-                                    .contentShape(Capsule())
-                                    .background(
-                                        dragOverFolderID == folder.id ? LF.selectionFill : LF.surface2,
-                                        in: Capsule()
-                                    )
-                                    .overlay {
-                                        Capsule()
-                                            .stroke(
-                                                dragOverFolderID == folder.id ? LF.brandTint : .clear,
-                                                lineWidth: 2
-                                            )
-                                    }
-                                    .foregroundStyle(LF.textPrimary)
-                                }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    Button(role: .destructive) {
-                                        appState.deleteFolder(folder)
-                                    } label: {
-                                        Label(NSLocalizedString("删除文件夹", comment: "Delete folder"), systemImage: "trash")
                                     }
                                 }
-                                // 拖拽素材到此文件夹
-                                .dropDestination(for: String.self) { clipIDs, _ in
-                                    for clipID in clipIDs {
-                                        appState.moveClip(clipID, toFolder: folder.id)
-                                    }
-                                    dragOverFolderID = nil
-                                    return true
-                                } isTargeted: { targeted in
-                                    dragOverFolderID = targeted ? folder.id : nil
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .frame(minHeight: 44)
+                                .contentShape(Capsule())
+                                .background(
+                                    dragOverFolderID == folder.id ? LF.selectionFill : LF.surface2,
+                                    in: Capsule()
+                                )
+                                .overlay {
+                                    Capsule()
+                                        .stroke(
+                                            dragOverFolderID == folder.id ? LF.brandTint : .clear,
+                                            lineWidth: 2
+                                        )
                                 }
+                                .foregroundStyle(LF.textPrimary)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    appState.deleteFolder(folder)
+                                } label: {
+                                    Label(NSLocalizedString("删除文件夹", comment: "Delete folder"), systemImage: "trash")
+                                }
+                            }
+                            // 拖拽素材到此文件夹
+                            .dropDestination(for: String.self) { clipIDs, _ in
+                                for clipID in clipIDs {
+                                    appState.moveClip(clipID, toFolder: folder.id)
+                                }
+                                dragOverFolderID = nil
+                                return true
+                            } isTargeted: { targeted in
+                                dragOverFolderID = targeted ? folder.id : nil
                             }
                         }
                     }
                 }
             }
+            .frame(height: 46)
+            .accessibilityIdentifier("library-folders-scroll")
         }
     }
 
@@ -1130,7 +1136,11 @@ struct ClipCell: View {
     var body: some View {
         VStack(spacing: 6) {
             ZStack {
-                AnimatedClipPreview(clip: clip, maxPixelSize: 320, isPlaying: $isPlaying)
+                AnimatedClipPreview(
+                    clip: clip,
+                    maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
+                    isPlaying: $isPlaying
+                )
             }
             .frame(height: 120)
             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -1202,6 +1212,7 @@ struct ClipCell: View {
 private struct ClipDetailPreview: View {
     let clip: SegmentedClip
     @Binding var isPlaying: Bool
+    let onCrop: () -> Void
 
     /// 详情页只负责检查原始素材，不在这里模拟编辑器/导出的边缘效果。
     private var unstyledClip: SegmentedClip {
@@ -1211,12 +1222,16 @@ private struct ClipDetailPreview: View {
     }
 
     private var aspectRatio: CGFloat {
-        CGFloat(max(clip.orientedWidth, 1)) / CGFloat(max(clip.orientedHeight, 1))
+        CGFloat(max(clip.renderedWidth, 1)) / CGFloat(max(clip.renderedHeight, 1))
     }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            AnimatedClipPreview(clip: unstyledClip, maxPixelSize: 640, isPlaying: $isPlaying)
+            AnimatedClipPreview(
+                clip: unstyledClip,
+                maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
+                isPlaying: $isPlaying
+            )
                 .aspectRatio(aspectRatio, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
@@ -1224,10 +1239,121 @@ private struct ClipDetailPreview: View {
                 ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
                     .padding(4)
             }
+            Button(action: onCrop) {
+                Image(systemName: "crop")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(.black.opacity(0.55), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .accessibilityLabel("裁剪素材")
         }
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(LF.surface2, lineWidth: 1)
+        }
+    }
+}
+
+/// 素材详情页复用编辑器的裁剪框交互；这里只保存素材自身的归一化裁剪区域。
+private struct ClipCropEditorView: View {
+    let clip: SegmentedClip
+    let initialRect: CGRect
+    let onCancel: () -> Void
+    let onFinish: (CGRect?) -> Void
+    @State private var draftRect: CGRect
+    @State private var isPlaying = false
+
+    init(
+        clip: SegmentedClip,
+        initialRect: CGRect,
+        onCancel: @escaping () -> Void,
+        onFinish: @escaping (CGRect?) -> Void
+    ) {
+        self.clip = clip
+        self.initialRect = initialRect
+        self.onCancel = onCancel
+        self.onFinish = onFinish
+        _draftRect = State(initialValue: initialRect)
+    }
+
+    private var contentRect: CGRect {
+        CGRect(
+            x: 0,
+            y: 0,
+                    width: CGFloat(max(clip.orientedWidth, 1)),
+                    height: CGFloat(max(clip.orientedHeight, 1))
+        )
+    }
+
+    private var previewClip: SegmentedClip {
+        var value = clip
+        value.edgeStyle = .none
+        value.cropRect = nil
+        return value
+    }
+
+    private var pixelCropRect: Binding<CGRect?> {
+        Binding(
+            get: {
+                CGRect(
+                    x: contentRect.width * draftRect.minX,
+                    y: contentRect.height * draftRect.minY,
+                    width: contentRect.width * draftRect.width,
+                    height: contentRect.height * draftRect.height
+                )
+            },
+            set: { value in
+                guard let value else { return }
+                draftRect = CGRect(
+                    x: value.minX / max(contentRect.width, 1),
+                    y: value.minY / max(contentRect.height, 1),
+                    width: value.width / max(contentRect.width, 1),
+                    height: value.height / max(contentRect.height, 1)
+                )
+            }
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                ZStack {
+                    AnimatedClipPreview(
+                        clip: previewClip,
+                        maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
+                        isPlaying: $isPlaying
+                    )
+                    CropOverlayView(
+                        contentRect: contentRect,
+                        minimumCropSize: 50,
+                        cropRect: pixelCropRect
+                    )
+                }
+                .aspectRatio(
+                    CGFloat(max(clip.renderedWidth, 1)) / CGFloat(max(clip.renderedHeight, 1)),
+                    contentMode: .fit
+                )
+                .padding(20)
+            }
+            .lfNavigationTitle("裁剪素材")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消", action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") {
+                        let full = CGRect(x: 0, y: 0, width: 1, height: 1)
+                        onFinish(draftRect == full ? nil : draftRect)
+                    }
+                }
+            }
+            .magicBackground()
         }
     }
 }
@@ -1240,20 +1366,44 @@ struct ClipMenuView: View {
     let onClose: () -> Void
     @State private var showFrameEditor = false
     @State private var isPlayingPreview = false
-    @State private var showDeleteConfirmation = false
-    @State private var showReferencedWorkAlert = false
+    @State private var deleteAlert: DeleteAlert?
     @State private var referencedWorkNames: [String] = []
     @State private var isDeletingClip = false
     @State private var showRenameAlert = false
     @State private var renameText = ""
     @State private var isExportingGIF = false
-    @State private var exportedGIFURL: URL?
     @State private var exportGIFError: String?
     @State private var exportGIFTask: Task<Void, Never>?
+    @State private var clipExportState = ClipExportState()
+    @State private var gifPresets: [GIFExportPreset] = []
+    @State private var gifResolution: ExportResolution = .p720
+    @State private var gifFPS = 15.0
+    @State private var isEstimatingGIF = false
+    @State private var isCroppingClip = false
+    @State private var cropRect: CGRect?
 
     /// 读取最新值，避免详情页打开后修改样式仍显示旧状态。
     private var currentClip: SegmentedClip {
         appState.clips.first(where: { $0.id == clip.id }) ?? clip
+    }
+
+    private var hasCurrentExport: Bool {
+        clipExportState.isCurrent(
+            for: currentClip.rotationQuarterTurns,
+            cropKey: currentClip.cropCacheKey,
+            resolution: gifResolution,
+            fps: gifFPS
+        )
+    }
+
+    private var gifResolutionOptions: [ExportResolution] {
+        GIFExportPreset.resolutionOptions(
+            maxSourceDimension: CGFloat(max(currentClip.renderedWidth, currentClip.renderedHeight, 1))
+        )
+    }
+
+    private var gifFPSOptions: [Double] {
+        GIFExportPreset.fpsOptions(maxSourceFPS: currentClip.fps)
     }
 
     /// 素材当前是否已在指定文件夹。
@@ -1272,33 +1422,52 @@ struct ClipMenuView: View {
             .lfNavigationTitle("素材详情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(role: .destructive) {
+                        requestDeleteClip()
+                    } label: {
+                        Image(systemName: isDeletingClip ? "hourglass" : "trash")
+                    }
+                    .disabled(isDeletingClip)
+                    .accessibilityLabel("删除素材")
+                }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { close() }
+                    Button {
+                        close()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .accessibilityLabel("完成")
                 }
             }
             .magicBackground()
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
         .sheet(isPresented: $showFrameEditor) {
             FrameGridView(clipID: clip.id)
                 .environmentObject(appState)
         }
-        .confirmationDialog("删除素材？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-            Button("删除", role: .destructive) {
-                guard !isDeletingClip else { return }
-                isDeletingClip = true
-                appState.deleteClip(clip.id)
-                close()
+        .alert(item: $deleteAlert) { alert in
+            switch alert {
+            case .confirm:
+                return Alert(
+                    title: Text("删除素材？"),
+                    message: Text("删除后无法恢复，但不会影响素材库中的其他内容。"),
+                    primaryButton: .destructive(Text("删除")) {
+                        guard !isDeletingClip else { return }
+                        isDeletingClip = true
+                        appState.deleteClip(clip.id)
+                        close()
+                    },
+                    secondaryButton: .cancel(Text("取消"))
+                )
+            case .referenced:
+                return Alert(
+                    title: Text("素材正在使用中"),
+                    message: Text("请先从以下作品中移除它，再删除素材：\n\(referencedWorkNames.joined(separator: "、"))"),
+                    dismissButton: .cancel(Text("取消"))
+                )
             }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("删除后无法恢复，但不会影响素材库中的其他内容。")
-        }
-        .alert("素材正在使用中", isPresented: $showReferencedWorkAlert) {
-            Button("知道了", role: .cancel) {}
-        } message: {
-            Text("请先从以下作品中移除它，再删除素材：\n\(referencedWorkNames.joined(separator: "、"))")
         }
         .alert("重命名素材", isPresented: $showRenameAlert) {
             TextField("素材名称", text: $renameText)
@@ -1318,18 +1487,36 @@ struct ClipMenuView: View {
         .onDisappear {
             exportGIFTask?.cancel()
         }
+        .task(id: "\(currentClip.id)-\(currentClip.rotationQuarterTurns)-\(currentClip.cropCacheKey)") {
+            await loadGIFPresets()
+        }
+        .fullScreenCover(isPresented: $isCroppingClip) {
+            ClipCropEditorView(
+                clip: currentClip,
+                initialRect: cropRect ?? currentClip.normalizedCropRect,
+                onCancel: { isCroppingClip = false },
+                onFinish: { rect in
+                    appState.setClipCrop(clip.id, rect)
+                    clipExportState = ClipExportState()
+                    isCroppingClip = false
+                }
+            )
+        }
     }
 
     private var detailScrollView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 clipIdentityHeader
-                ClipDetailPreview(clip: currentClip, isPlaying: $isPlayingPreview)
+                ClipDetailPreview(
+                    clip: currentClip,
+                    isPlaying: $isPlayingPreview,
+                    onCrop: beginClipCrop
+                )
                 gifExportSection
                 rotateClipButton
                 frameEditorButton
                 foldersSection
-                deleteClipButton
             }
             .padding(20)
         }
@@ -1347,12 +1534,45 @@ struct ClipMenuView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("透明 GIF")
                         .font(.subheadline.weight(.semibold))
-                    Text("透明背景 · 720p · 15 fps")
+                    Text("透明背景")
                         .font(.caption)
                         .foregroundStyle(LF.textSecondary)
                 }
                 Spacer(minLength: 8)
             }
+
+            HStack(spacing: 10) {
+                Picker("尺寸", selection: $gifResolution) {
+                    ForEach(gifResolutionOptions) { resolution in
+                        Text(resolution.gifTitle(for: CGFloat(max(currentClip.renderedWidth, currentClip.renderedHeight, 1))))
+                            .tag(resolution)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker("帧率", selection: $gifFPS) {
+                    ForEach(gifFPSOptions, id: \.self) { fps in
+                        Text("\(Int(fps)) fps").tag(fps)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Spacer()
+
+                if isEstimatingGIF {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if let selectedPreset {
+                    Text("约 \(formattedFileSize(selectedPreset.estimatedBytes))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(selectedPreset.estimatedBytes <= 10 * 1024 * 1024 ? LF.textSecondary : LF.destructive)
+                }
+            }
+            .font(.caption.weight(.medium))
+
+            Text("默认选择最接近 10 MB 的规格，实际大小以导出结果为准")
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
 
             if isExportingGIF {
                 HStack(spacing: 10) {
@@ -1364,35 +1584,29 @@ struct ClipMenuView: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                Button {
-                    if isExportingGIF {
-                        exportGIFTask?.cancel()
-                    } else {
-                        exportTransparentGIF()
+            if !hasCurrentExport {
+                HStack(spacing: 10) {
+                    Button {
+                        if isExportingGIF {
+                            exportGIFTask?.cancel()
+                        } else {
+                            exportTransparentGIF()
+                        }
+                    } label: {
+                        Label(
+                            isExportingGIF ? "取消导出" : "保存到相册",
+                            systemImage: isExportingGIF ? "xmark" : "photo.badge.plus"
+                        )
+                        .frame(maxWidth: .infinity)
                     }
-                } label: {
-                    Label(
-                        isExportingGIF ? "取消导出" : "直接导出",
-                        systemImage: isExportingGIF ? "xmark" : "square.and.arrow.up"
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(isExportingGIF ? LF.header : LF.actionPrimary)
-
-                if let exportedGIFURL {
-                    ShareLink(item: exportedGIFURL) {
-                        Label("分享", systemImage: "square.and.arrow.up")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(LF.textPrimary)
+                    .buttonStyle(.borderedProminent)
+                    .tint(isExportingGIF ? LF.header : LF.actionPrimary)
+                    .disabled(isEstimatingGIF && !isExportingGIF)
                 }
             }
 
-            if exportedGIFURL != nil {
-                Label("GIF 已生成，可分享到其他 App 或保存到“文件”。", systemImage: "checkmark.circle.fill")
+            if hasCurrentExport {
+                Label("GIF 已保存到相册。", systemImage: "checkmark.circle.fill")
                     .font(.caption)
                     .foregroundStyle(LF.selectionText)
             }
@@ -1402,7 +1616,6 @@ struct ClipMenuView: View {
     }
 
     private func exportTransparentGIF() {
-        exportedGIFURL = nil
         exportGIFError = nil
         isExportingGIF = true
         let clipID = clip.id
@@ -1412,7 +1625,18 @@ struct ClipMenuView: View {
                 exportGIFTask = nil
             }
             do {
-                exportedGIFURL = try await appState.exportClipAsTransparentGIF(clipID)
+                _ = try await appState.exportClipAsTransparentGIF(
+                    clipID,
+                    resolution: gifResolution,
+                    fps: gifFPS
+                )
+                let exportedClip = appState.clips.first(where: { $0.id == clipID }) ?? clip
+                clipExportState.markExported(
+                    for: exportedClip.rotationQuarterTurns,
+                    cropKey: exportedClip.cropCacheKey,
+                    resolution: gifResolution,
+                    fps: gifFPS
+                )
             } catch is CancellationError {
                 // 用户主动取消，不显示错误。
             } catch ExportError.cancelled {
@@ -1423,13 +1647,54 @@ struct ClipMenuView: View {
         }
     }
 
+    private func beginClipCrop() {
+        cropRect = currentClip.normalizedCropRect
+        isCroppingClip = true
+    }
+
+    private var selectedPreset: GIFExportPreset? {
+        gifPresets.first { $0.resolution == gifResolution && abs($0.fps - gifFPS) < 0.01 }
+    }
+
+    private func loadGIFPresets() async {
+        let resolutionOptions = gifResolutionOptions
+        let fpsOptions = gifFPSOptions
+        if !resolutionOptions.contains(gifResolution) {
+            gifResolution = resolutionOptions.last ?? gifResolution
+        }
+        if !fpsOptions.contains(where: { abs($0 - gifFPS) < 0.01 }) {
+            gifFPS = fpsOptions.last ?? gifFPS
+        }
+        isEstimatingGIF = true
+        defer { isEstimatingGIF = false }
+        do {
+            let presets = try await appState.estimateClipGIFPresets(
+                clip.id,
+                resolutions: resolutionOptions,
+                fpsOptions: fpsOptions
+            )
+            guard !Task.isCancelled, !presets.isEmpty else { return }
+            gifPresets = presets
+            if let preferred = GIFExportPreset.defaultPreset(from: presets) {
+                gifResolution = preferred.resolution
+                gifFPS = preferred.fps
+            }
+        } catch {
+            gifPresets = []
+        }
+    }
+
+    private func formattedFileSize(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
     private var clipIdentityHeader: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(currentClip.name)
                     .font(.headline)
                     .lineLimit(2)
-                Text("\(currentClip.orientedWidth)×\(currentClip.orientedHeight) · \(Int(currentClip.fps.rounded())) fps · \(currentClip.frameCount) 帧")
+                Text("\(currentClip.renderedWidth)×\(currentClip.renderedHeight) · \(Int(currentClip.fps.rounded())) fps · \(currentClip.frameCount) 帧")
                     .font(.caption)
                     .foregroundStyle(LF.textSecondary)
             }
@@ -1452,6 +1717,7 @@ struct ClipMenuView: View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
                 appState.rotateClip(clip.id)
+                clipExportState = ClipExportState()
             }
         } label: {
             HStack(spacing: 12) {
@@ -1553,33 +1819,21 @@ struct ClipMenuView: View {
         .buttonStyle(.plain)
     }
 
-    private var deleteClipButton: some View {
-        Button {
-            requestDeleteClip()
-        } label: {
-            Group {
-                if isDeletingClip {
-                    Label("正在删除…", systemImage: "hourglass")
-                } else {
-                    Label("删除素材", systemImage: "trash")
-                }
-            }
-            .font(.subheadline.weight(.semibold))
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        .disabled(isDeletingClip)
-        .padding(.top, 2)
-    }
-
     private func requestDeleteClip() {
         referencedWorkNames = appState.worksReferencingClip(clip.id).map(\.name)
         if referencedWorkNames.isEmpty {
-            showDeleteConfirmation = true
+            deleteAlert = .confirm
         } else {
-            showReferencedWorkAlert = true
+            deleteAlert = .referenced
         }
     }
+}
+
+private enum DeleteAlert: Hashable, Identifiable {
+    case confirm
+    case referenced
+
+    var id: Self { self }
 }
 
 /// 拖拽预览：小尺寸素材缩略图（长按拖到文件夹时用）
