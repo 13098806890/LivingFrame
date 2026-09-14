@@ -1,4 +1,4 @@
-LivingFrame bundled fonts
+GIFBloom bundled fonts
 =========================
 
 Noto Sans SC

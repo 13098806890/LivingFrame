@@ -57,7 +57,7 @@
 "说明" = "Info";
 "当前 Widget 画面" = "Current Widget Frame";
 "未设置" = "Not Set";
-"长按桌面 → 添加小组件 → 活影" = "Long-press Home Screen → Add Widget → LivingFrame";
+"长按桌面 → 添加小组件 → 活影" = "Long-press Home Screen → Add Widget → GIFBloom";
 "Widget 无法播放视频或动图（WidgetKit 限制）" = "Widgets cannot play video or animation (WidgetKit limitation)";
 "我们展示作品的第一帧静态画面；点按 Widget 会打开 App 查看动态效果。" = "We show the first frame of your work as a still image; tap the widget to open the app and see it animate.";
 "暂无作品，先导出一次吧" = "No works yet — export one first";
@@ -73,14 +73,14 @@
 "全部在设备端处理" = "Everything Processed on Device";
 "抠图、渲染、导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Extraction, rendering and export all happen on your device. No photos or videos are uploaded; no network or account required.";
 "关于" = "About";
-"活影 LivingFrame" = "LivingFrame";
+"活影 GIFBloom" = "GIFBloom";
 "哈利波特风格动态照片制作工具" = "A Harry Potter style living photo maker";
 "版本 1.0" = "Version 1.0";
 "还没有作品" = "No Works Yet";
 "编辑完成后导出，作品会自动保存到这里" = "Works are saved here automatically after you export";
 "我的动态照片" = "My Living Photo";
 "还没有可导出的工程" = "Nothing to export yet";
-"活影" = "LivingFrame";
+"活影" = "GIFBloom";
 "打开 App 制作你的动态照片" = "Open the app to create your living photo";
 "展示你的动态照片静态帧" = "Shows a still frame of your living photos";
 "魔法画框" = "Magic Frame";
@@ -294,3 +294,13 @@
 "清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。" = "Cleaning temporary files will not delete any assets, including person cutouts inside or outside folders.";
 "人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Person cutout creation, rendering, and export all happen on your device. No photos or videos are uploaded; no network or account is required.";
 "日志摘要" = "%d lines · %@\nLoading and person cutout activity is recorded after you select assets; export logs can be analyzed directly.";
+
+/* Extraction recovery */
+"当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。" = "This device can't identify people right now. Try again later, or choose another photo or video.";
+"这个素材格式暂不支持。请换一张照片或一段视频重试。" = "This media format isn't supported. Choose another photo or video and try again.";
+"无法读取这个素材。请确认素材仍在相册中，或选择其他素材。" = "This media couldn't be read. Make sure it is still in Photos, or choose another item.";
+"素材处理没有完成。请重试，或选择其他照片/视频。" = "The media couldn't be processed. Try again, or choose another photo or video.";
+"重试" = "Try Again";
+"选择其他素材" = "Choose Different Media";
+"部分素材未完成：成功 %d 项，%d 项失败。请重试或选择其他素材。" = "Some media didn't finish: %d succeeded and %d failed. Try again or choose different media.";
+"素材导入失败：%d 项素材无法读取。请重新选择素材。" = "Media import failed: %d item(s) couldn't be read. Select the media again.";

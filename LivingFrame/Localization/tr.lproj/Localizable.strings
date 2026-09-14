@@ -57,7 +57,7 @@
 "说明" = "Bilgi";
 "当前 Widget 画面" = "Geçerli Widget Görüntüsü";
 "未设置" = "Ayarlanmadı";
-"长按桌面 → 添加小组件 → 活影" = "Ana ekrana uzun basın → Widget ekle → LivingFrame";
+"长按桌面 → 添加小组件 → 活影" = "Ana ekrana uzun basın → Widget ekle → GIFBloom";
 "Widget 无法播放视频或动图（WidgetKit 限制）" = "Widget'lar video veya animasyon oynatamaz (WidgetKit sınırı)";
 "我们展示作品的第一帧静态画面；点按 Widget 会打开 App 查看动态效果。" = "Çalışmanızın ilk karesini sabit görüntü olarak gösteriyoruz; widget'a dokunun, hareketi görmek için uygulama açılır.";
 "暂无作品，先导出一次吧" = "Henüz çalışma yok — önce bir tane dışa aktarın";
@@ -73,14 +73,14 @@
 "全部在设备端处理" = "Her şey cihazda işlenir";
 "抠图、渲染、导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Ayrıştırma, işleme ve dışa aktarma tamamen cihazınızda gerçekleşir. Hiçbir fotoğraf veya video yüklenmez; ağ veya hesap gerekmez.";
 "关于" = "Hakkında";
-"活影 LivingFrame" = "LivingFrame";
+"活影 GIFBloom" = "GIFBloom";
 "哈利波特风格动态照片制作工具" = "Harry Potter tarzı canlı fotoğraf oluşturucu";
 "版本 1.0" = "Sürüm 1.0";
 "还没有作品" = "Henüz çalışma yok";
 "编辑完成后导出，作品会自动保存到这里" = "Dışa aktardıktan sonra çalışmalarınız otomatik olarak buraya kaydedilir";
 "我的动态照片" = "Canlı Fotoğrafım";
 "还没有可导出的工程" = "Henüz dışa aktarılacak bir şey yok";
-"活影" = "LivingFrame";
+"活影" = "GIFBloom";
 "打开 App 制作你的动态照片" = "Canlı fotoğrafınızı oluşturmak için uygulamayı açın";
 "展示你的动态照片静态帧" = "Canlı fotoğraflarınızın sabit karesini gösterir";
 "魔法画框" = "Sihirli Çerçeve";
@@ -293,3 +293,11 @@
 "清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。" = "Geçici dosyaları temizlemek, klasörlerin içindeki veya dışındaki kişi kesitleri dahil hiçbir öğeyi silmez.";
 "人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Kişi kesiti oluşturma, işleme ve dışa aktarma cihazınızda yapılır. Fotoğraf veya video yüklenmez.";
 "日志摘要" = "%d satır · %@\nÖğe seçtikten sonra yükleme ve kişi kesiti oluşturma kaydedilir; günlükler dışa aktarma sonrası incelenebilir.";
+"当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。" = "Bu aygıt şu anda kişileri tanımlayamıyor. Daha sonra tekrar deneyin veya başka bir fotoğraf ya da video seçin.";
+"这个素材格式暂不支持。请换一张照片或一段视频重试。" = "Bu medya biçimi desteklenmiyor. Başka bir fotoğraf veya video seçip tekrar deneyin.";
+"无法读取这个素材。请确认素材仍在相册中，或选择其他素材。" = "Bu medya okunamadı. Fotoğraflar’da hâlâ bulunduğunu doğrulayın veya başka bir öğe seçin.";
+"素材处理没有完成。请重试，或选择其他照片/视频。" = "Medya işlenemedi. Tekrar deneyin veya başka bir fotoğraf ya da video seçin.";
+"部分素材未完成：成功 %d 项，%d 项失败。请重试或选择其他素材。" = "Medyanın bir kısmı tamamlanamadı: %d başarılı, %d başarısız. Tekrar deneyin veya başka medya seçin.";
+"素材导入失败：%d 项素材无法读取。请重新选择素材。" = "Medya içe aktarılamadı: %d öğe okunamadı. Medyayı yeniden seçin.";
+"重试" = "Tekrar Dene";
+"选择其他素材" = "Başka Medya Seç";

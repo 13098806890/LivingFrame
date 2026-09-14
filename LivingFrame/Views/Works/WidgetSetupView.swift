@@ -40,7 +40,7 @@ struct WidgetSetupView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(FrameStore.loadTitle() ?? "未设置")
                                     .font(.subheadline.weight(.medium))
-                                Text("长按桌面 → 添加小组件 → GIFBloom")
+								Text("长按桌面 → 添加小组件 → GIFBloom")
                                     .font(.caption2)
                                     .foregroundStyle(LF.textSecondary)
                             }

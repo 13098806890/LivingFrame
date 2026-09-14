@@ -24,7 +24,7 @@ public enum LogStore {
         // 其他日志仍只写入文件，避免普通操作持续刷屏。
         #if DEBUG
         if message.hasPrefix("xdz.livephoto") || message.hasPrefix("export:") {
-            print("[LivingFrame] \(entry)")
+            print("[GIFBloom] \(entry)")
         }
         #endif
 

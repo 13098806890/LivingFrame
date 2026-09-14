@@ -57,7 +57,7 @@
 "说明" = "Informações";
 "当前 Widget 画面" = "Imagem atual do widget";
 "未设置" = "Não definido";
-"长按桌面 → 添加小组件 → 活影" = "Pressione e segure a tela inicial → Adicionar widget → LivingFrame";
+"长按桌面 → 添加小组件 → 活影" = "Pressione e segure a tela inicial → Adicionar widget → GIFBloom";
 "Widget 无法播放视频或动图（WidgetKit 限制）" = "Widgets não reproduzem vídeos nem animações (limitação do WidgetKit)";
 "我们展示作品的第一帧静态画面；点按 Widget 会打开 App 查看动态效果。" = "Mostramos o primeiro quadro da obra como imagem estática; toque no widget para abrir o app e ver em movimento.";
 "暂无作品，先导出一次吧" = "Nenhuma obra ainda — exporte uma primeiro";
@@ -73,14 +73,14 @@
 "全部在设备端处理" = "Tudo processado no dispositivo";
 "抠图、渲染、导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Recorte, renderização e exportação acontecem no seu dispositivo. Nenhuma foto ou vídeo é enviado; sem rede ou conta.";
 "关于" = "Sobre";
-"活影 LivingFrame" = "LivingFrame";
+"活影 GIFBloom" = "GIFBloom";
 "哈利波特风格动态照片制作工具" = "Um criador de fotos animadas estilo Harry Potter";
 "版本 1.0" = "Versão 1.0";
 "还没有作品" = "Nenhuma obra ainda";
 "编辑完成后导出，作品会自动保存到这里" = "Após exportar, suas obras são salvas aqui automaticamente";
 "我的动态照片" = "Minha foto animada";
 "还没有可导出的工程" = "Nada para exportar ainda";
-"活影" = "LivingFrame";
+"活影" = "GIFBloom";
 "打开 App 制作你的动态照片" = "Abra o app para criar sua foto animada";
 "展示你的动态照片静态帧" = "Mostra um quadro estático de suas fotos animadas";
 "魔法画框" = "Moldura mágica";
@@ -293,3 +293,11 @@
 "清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。" = "Limpar arquivos temporários não exclui nenhum material, incluindo recortes de pessoas dentro ou fora das pastas.";
 "人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "A criação, renderização e exportação dos recortes acontecem no dispositivo. Fotos e vídeos não são enviados.";
 "日志摘要" = "%d linhas · %@\nO carregamento e a criação de recortes são registrados após a seleção; os logs podem ser analisados após a exportação.";
+"当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。" = "Este dispositivo não consegue identificar pessoas agora. Tente novamente mais tarde ou escolha outra foto ou vídeo.";
+"这个素材格式暂不支持。请换一张照片或一段视频重试。" = "Este formato de mídia não é compatível. Escolha outra foto ou vídeo e tente novamente.";
+"无法读取这个素材。请确认素材仍在相册中，或选择其他素材。" = "Não foi possível ler esta mídia. Verifique se ela ainda está no Fotos ou escolha outro item.";
+"素材处理没有完成。请重试，或选择其他照片/视频。" = "Não foi possível processar a mídia. Tente novamente ou escolha outra foto ou vídeo.";
+"部分素材未完成：成功 %d 项，%d 项失败。请重试或选择其他素材。" = "Parte da mídia falhou: %d concluída(s) e %d com falha. Tente novamente ou escolha outra mídia.";
+"素材导入失败：%d 项素材无法读取。请重新选择素材。" = "Falha ao importar mídia: não foi possível ler %d item(ns). Selecione a mídia novamente.";
+"重试" = "Tentar Novamente";
+"选择其他素材" = "Escolher Outra Mídia";

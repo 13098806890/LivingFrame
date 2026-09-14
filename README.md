@@ -1,4 +1,4 @@
-# LivingFrame（活影）
+# GIFBloom（活影）
 
 > 哈利波特风格的「动态照片」制作工具 —— 从视频 / Live Photo 抠出人物，多元素合成 + 音轨，导出动图 / 视频，用 Widget 展示。
 

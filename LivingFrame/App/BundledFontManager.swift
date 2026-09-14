@@ -13,7 +13,7 @@ enum BundledFontManager {
         for font in bundledFonts {
             guard let url = url(for: font.name) else {
                 #if DEBUG
-                print("[LivingFrame] bundled font not found: \(font.name).ttf")
+                print("[GIFBloom] bundled font not found: \(font.name).ttf")
                 #endif
                 continue
             }
@@ -22,7 +22,7 @@ enum BundledFontManager {
             let registered = CTFontManagerRegisterFontsForURL(url as CFURL, .process, &error)
             #if DEBUG
             if !registered, let error {
-                print("[LivingFrame] bundled font registration skipped: \(font.postScriptName), \(error.takeUnretainedValue())")
+                print("[GIFBloom] bundled font registration skipped: \(font.postScriptName), \(error.takeUnretainedValue())")
             }
             #endif
         }

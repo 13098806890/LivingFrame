@@ -1,11 +1,11 @@
-# LivingFrame 架构清单（Architecture）
+# GIFBloom 架构清单（Architecture）
 
 > 活文档：随代码演进同步更新。状态：**设计阶段，待确认后开工**。
 
 ## 1. 目标与约束
 
 ### 产品定位
-- 名称：LivingFrame（活影）—— 哈利波特风格"动态照片"制作工具
+- 名称：GIFBloom（活影）—— 哈利波特风格"动态照片"制作工具
 - 定位：**纯本地工具类 App**，无联网、无账号、无素材下载，全部处理在设备端完成（隐私/离线是差异化卖点）
 - 核心链路：视频/Live Photo → 抠出人物 → 多元素合成 + 音轨 → 导出动图/视频 → Widget 展示
 
@@ -316,4 +316,3 @@ enum ExportFormat: String, Codable { case gif, hevcAlpha, h264 }
 6. **M6 模板与特效**：TemplateCatalog + 矢量装饰 + 模板页
 7. **M7 Widget 收尾**：静态帧展示 + 设置页
 8. **M8 打磨**：性能、空状态、隐私文案、图标
-

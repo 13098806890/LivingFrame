@@ -28,6 +28,20 @@ final class LivingFrameUITests: XCTestCase {
         try runAudit([Self.simplifiedChinese])
     }
 
+    /// The public app identity must stay GIFBloom even though the Xcode
+    /// targets and Swift modules retain their historical LivingFrame names.
+    @MainActor
+    func testBrandingUsesGIFBloom() throws {
+        launch(Self.simplifiedChinese)
+        XCTAssertEqual(app.label, "GIFBloom", "The installed app display name must be GIFBloom")
+        tapTab(index: 3)
+        XCTAssertTrue(
+            app.staticTexts["GIFBloom"].waitForExistence(timeout: 10),
+            "Settings About card must show GIFBloom"
+        )
+        app.terminate()
+    }
+
     /// 覆盖素材库的提取入口与系统相册选择器；真实媒体导入由审计环境提供测试图片。
     @MainActor
     func testExtractionEntryAudit() throws {
@@ -81,6 +95,109 @@ final class LivingFrameUITests: XCTestCase {
         app.terminate()
     }
 
+    /// 高级提取设置是用户可回归的配置入口；不要依赖动态菜单文案定位。
+    @MainActor
+    func testExtractionSettingsHaveStableIdentifiers() throws {
+        launch(Self.simplifiedChinese)
+        tapTab(index: 0)
+
+        let settings = app.buttons["library-extraction-settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10), "Extraction settings identifier is missing")
+        settings.tap()
+
+        XCTAssertTrue(
+            app.buttons["library-extraction-kind-live"].waitForExistence(timeout: 5),
+            "Animated extraction option identifier is missing"
+        )
+        XCTAssertTrue(
+            app.buttons["library-extraction-kind-static"].exists,
+            "Still extraction option identifier is missing"
+        )
+        XCTAssertTrue(
+            app.buttons["library-extraction-fps-10"].exists,
+            "10 fps option identifier is missing"
+        )
+        XCTAssertTrue(
+            app.buttons["library-extraction-fps-60"].exists,
+            "60 fps option identifier is missing"
+        )
+        app.terminate()
+    }
+
+    /// Deterministic regression for the user-visible import failure recovery
+    /// alert. The fixture models the same UI boundary used by loadPhoto/loadMovie.
+    @MainActor
+    func testExtractionImportFailureFeedbackAudit() throws {
+        launch(Self.simplifiedChinese, extraArguments: ["-UIAuditInjectImportFailure"])
+
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "Import failure alert did not appear")
+        XCTAssertTrue(
+            alert.staticTexts["无法读取这个素材。请确认素材仍在相册中，或选择其他素材。"].exists,
+            "Import failure reason is missing"
+        )
+        XCTAssertTrue(alert.buttons["选择其他素材"].exists, "Choose-different-media action is missing")
+        XCTAssertTrue(alert.buttons["取消"].exists, "Cancel action is missing")
+        attachScreenshot(named: "extraction--import-failure-feedback")
+        alert.buttons["取消"].tap()
+        app.terminate()
+    }
+
+    /// A mixed batch retries only its failed item; an already successful item
+    /// must not be added again.
+    @MainActor
+    func testExtractionMixedBatchRetryDoesNotDuplicateSuccessfulSources() throws {
+        launch(Self.simplifiedChinese, extraArguments: ["-UIAuditInjectMixedBatchRetry"])
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "Mixed-batch failure alert did not appear")
+        XCTAssertTrue(alert.buttons["重试"].exists, "Mixed-batch retry action is missing")
+        alert.buttons["重试"].tap()
+        XCTAssertTrue(
+            alert.staticTexts["重试完成：成功素材仍为 1 项；没有重复添加。"].waitForExistence(timeout: 5),
+            "Retry should preserve the successful-source count"
+        )
+        app.terminate()
+    }
+
+    /// All-import-failure is distinct from a person-segmentation failure.
+    @MainActor
+    func testExtractionAllImportFailureUsesImportTitle() throws {
+        launch(Self.simplifiedChinese, extraArguments: ["-UIAuditInjectAllImportFailure"])
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "All-import failure alert did not appear")
+        XCTAssertTrue(alert.staticTexts["导入失败"].exists, "All-import failure should use the 导入失败 title")
+        XCTAssertTrue(alert.buttons["选择其他素材"].exists, "Choose-different-media action is missing")
+        app.terminate()
+    }
+
+    /// Import and person-segmentation failures must not share the import copy.
+    /// Keep both locales covered because these strings are shown in a blocking
+    /// alert and are the user's recovery decision point.
+    @MainActor
+    func testExtractionFailureClassificationLocalization() throws {
+        launch(Self.simplifiedChinese, extraArguments: ["-UIAuditInjectSegmentationFailure"])
+        var alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "Person-segmentation failure alert did not appear in Chinese")
+        XCTAssertTrue(alert.staticTexts["人物素材生成失败"].exists, "Chinese title must describe person generation")
+        XCTAssertTrue(
+            alert.staticTexts["当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。"].exists,
+            "Chinese body must describe person recognition, not media import"
+        )
+        XCTAssertFalse(alert.staticTexts["素材导入失败"].exists, "Person failure must not use the import title")
+        app.terminate()
+
+        launch(Self.english, extraArguments: ["-UIAuditInjectSegmentationFailure"])
+        alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "Person-segmentation failure alert did not appear in English")
+        XCTAssertTrue(alert.staticTexts["Person cutout failed"].exists, "English title must describe person generation")
+        XCTAssertTrue(
+            alert.staticTexts["This device can't identify people right now. Try again later, or choose another photo or video."].exists,
+            "English body must describe person recognition, not media import"
+        )
+        XCTAssertFalse(alert.staticTexts["Media import failed"].exists, "Person failure must not use the import title")
+        app.terminate()
+    }
+
     @MainActor
     func testStandardVisualAudit() throws {
         try runAudit([Self.simplifiedChinese, Self.english, Self.arabic])
@@ -94,6 +211,56 @@ final class LivingFrameUITests: XCTestCase {
     @MainActor
     func testAccessibilityTextVisualAudit() throws {
         try runAudit([Self.accessibilityEnglish])
+    }
+
+    /// Explicitly exercise the XXXL content-size configuration used by the
+    /// accessibility audit, including the extraction entry and TabBar safe area.
+    @MainActor
+    func testExtractionAccessibilityXXXL() throws {
+        launch(Self.accessibilityEnglish)
+        tapTab(index: 0)
+        let pickerEntry = app.buttons["library-extraction-entry"]
+        XCTAssertTrue(pickerEntry.waitForExistence(timeout: 10), "Extraction entry is missing at XXXL")
+        XCTAssertTrue(pickerEntry.isHittable, "Extraction entry is not hittable at XXXL")
+
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "TabBar is missing at XXXL")
+        XCTAssertLessThan(
+            pickerEntry.frame.maxY,
+            tabBar.frame.minY,
+            "Extraction entry overlaps the TabBar at XXXL"
+        )
+        let newFolder = app.buttons["library-new-folder"]
+        XCTAssertTrue(newFolder.waitForExistence(timeout: 5), "The extraction-page folder action is missing at XXXL")
+        if newFolder.isHittable {
+            XCTAssertLessThan(
+                newFolder.frame.maxY,
+                tabBar.frame.minY,
+                "The extraction-page folder action overlaps the TabBar at XXXL"
+            )
+        }
+
+        let extractionScroll = app.scrollViews.firstMatch
+        let clipsSection = app.descendants(matching: .any)
+            .matching(identifier: "library-extraction-clips-section")
+            .firstMatch
+        XCTAssertTrue(clipsSection.waitForExistence(timeout: 10), "Extraction clips section is missing at XXXL")
+        for _ in 0..<12 {
+            if clipsSection.frame.maxY < tabBar.frame.minY - 8 {
+                break
+            }
+            extractionScroll.swipeUp()
+            waitForUIToSettle()
+        }
+        XCTAssertTrue(clipsSection.isHittable, "The extraction page bottom section is not hittable at XXXL")
+        XCTAssertLessThan(
+            clipsSection.frame.maxY,
+            tabBar.frame.minY,
+            "Extraction page bottom section overlaps the TabBar at XXXL"
+        )
+        attachScreenshot(named: "extraction--xxxl-entry")
+        attachAccessibilityHierarchy(named: "extraction--xxxl-entry")
+        app.terminate()
     }
 
     @MainActor
@@ -300,7 +467,7 @@ final class LivingFrameUITests: XCTestCase {
         language: "en",
         locale: "en_US",
         appearance: "Light",
-        contentSizeCategory: nil
+        contentSizeCategory: "UICTContentSizeCategoryAccessibilityXXXL"
     )
 
     private static let functionalEnglish = AuditProfile(

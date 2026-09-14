@@ -2860,7 +2860,7 @@ final class AppState: ObservableObject {
             .components(separatedBy: invalidCharacters)
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned.isEmpty ? "LivingFrame" : cleaned
+        return cleaned.isEmpty ? "GIFBloom" : cleaned
     }
 
     private func requestAddOnlyAuthorization() async -> Bool {

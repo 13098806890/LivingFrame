@@ -57,7 +57,7 @@
 "说明" = "Thông tin";
 "当前 Widget 画面" = "Hình widget hiện tại";
 "未设置" = "Chưa đặt";
-"长按桌面 → 添加小组件 → 活影" = "Giữ màn hình chính → Thêm widget → LivingFrame";
+"长按桌面 → 添加小组件 → 活影" = "Giữ màn hình chính → Thêm widget → GIFBloom";
 "Widget 无法播放视频或动图（WidgetKit 限制）" = "Widget không phát được video hoặc ảnh động (giới hạn của WidgetKit)";
 "我们展示作品的第一帧静态画面；点按 Widget 会打开 App 查看动态效果。" = "Chúng tôi hiển thị khung hình đầu tiên của tác phẩm dưới dạng ảnh tĩnh; chạm vào widget để mở app xem chuyển động.";
 "暂无作品，先导出一次吧" = "Chưa có tác phẩm — hãy xuất một cái trước";
@@ -73,14 +73,14 @@
 "全部在设备端处理" = "Mọi thứ xử lý trên thiết bị";
 "抠图、渲染、导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Tách nền, render và xuất đều thực hiện trên máy bạn. Không tải lên bất kỳ ảnh hay video nào; không cần mạng hay tài khoản.";
 "关于" = "Giới thiệu";
-"活影 LivingFrame" = "LivingFrame";
+"活影 GIFBloom" = "GIFBloom";
 "哈利波特风格动态照片制作工具" = "Công cụ tạo ảnh động phong cách Harry Potter";
 "版本 1.0" = "Phiên bản 1.0";
 "还没有作品" = "Chưa có tác phẩm";
 "编辑完成后导出，作品会自动保存到这里" = "Sau khi xuất, tác phẩm được lưu tự động tại đây";
 "我的动态照片" = "Ảnh động của tôi";
 "还没有可导出的工程" = "Chưa có gì để xuất";
-"活影" = "LivingFrame";
+"活影" = "GIFBloom";
 "打开 App 制作你的动态照片" = "Mở app để tạo ảnh động của bạn";
 "展示你的动态照片静态帧" = "Hiển thị khung hình tĩnh của ảnh động";
 "魔法画框" = "Khung ảnh phép thuật";
@@ -293,3 +293,11 @@
 "清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。" = "Dọn dẹp tệp tạm không xóa bất kỳ mục nào, kể cả ảnh cắt người trong hoặc ngoài thư mục.";
 "人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Việc tạo ảnh cắt, kết xuất và xuất được thực hiện trên thiết bị. Không tải ảnh hoặc video lên mạng.";
 "日志摘要" = "%d dòng · %@\nSau khi chọn mục, quá trình tải và tạo ảnh cắt người sẽ được ghi lại; có thể phân tích nhật ký sau khi xuất.";
+"当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。" = "Thiết bị này hiện không thể nhận diện người. Hãy thử lại sau hoặc chọn ảnh hay video khác.";
+"这个素材格式暂不支持。请换一张照片或一段视频重试。" = "Định dạng này không được hỗ trợ. Hãy chọn ảnh hoặc video khác rồi thử lại.";
+"无法读取这个素材。请确认素材仍在相册中，或选择其他素材。" = "Không thể đọc nội dung này. Hãy đảm bảo nội dung vẫn còn trong Ảnh hoặc chọn mục khác.";
+"素材处理没有完成。请重试，或选择其他照片/视频。" = "Không thể xử lý nội dung. Hãy thử lại hoặc chọn ảnh hay video khác.";
+"部分素材未完成：成功 %d 项，%d 项失败。请重试或选择其他素材。" = "Một số nội dung chưa hoàn tất: %d thành công, %d thất bại. Hãy thử lại hoặc chọn nội dung khác.";
+"素材导入失败：%d 项素材无法读取。请重新选择素材。" = "Nhập nội dung thất bại: không thể đọc %d mục. Hãy chọn lại nội dung.";
+"重试" = "Thử lại";
+"选择其他素材" = "Chọn nội dung khác";

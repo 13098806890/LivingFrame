@@ -24,7 +24,14 @@ struct LibraryView: View {
     /// 当前批量提取的队列位置；提取仍串行执行以控制内存占用。
     @State private var extractionQueuePosition: Int?
     @State private var extractionQueueTotal = 0
+    /// Retain the last imported sources so a failed extraction can be retried
+    /// without asking the user to find the same media again.
+    @State private var lastImportedSources: [ImportSource] = []
+    @State private var lastImportedKinds: [ExtractKind] = []
+    @State private var batchFailureMessageText: String?
+    @State private var batchFailureTitle: String?
     @State private var importTask: Task<Void, Never>?
+    @AccessibilityFocusState private var extractionEntryFocused: Bool
 
     private struct PendingVideoRange: Identifiable {
         let id = UUID()
@@ -54,8 +61,13 @@ struct LibraryView: View {
                     clipsSection
                 }
                 .padding(.horizontal)
-                .padding(.bottom, 16)
+                // Leave room for the system TabBar, including at XXXL text.
+                .padding(.bottom, 24)
             }
+            // The TabView bar stays visually overlaid on iPhone at XXXL. Keep
+            // enough scrollable tail space for the last card/action to move
+            // completely above it instead of relying on the device's inset.
+            .safeAreaPadding(.bottom, 96)
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .animation(.easeInOut(duration: 0.22), value: isDownloading)
@@ -76,7 +88,7 @@ struct LibraryView: View {
             }
             .alert(
                 NSLocalizedString(
-                    loadError != nil ? "导入失败" : "人物素材生成失败",
+                    batchFailureTitle ?? (loadError != nil ? "导入失败" : "人物素材生成失败"),
                     comment: "Import alert title"
                 ),
                 isPresented: Binding(
@@ -84,7 +96,17 @@ struct LibraryView: View {
                     set: { if !$0 { loadError = nil; appState.segmentationError = nil } }
                 )
             ) {
-                Button("OK", role: .cancel) {}
+                if !lastImportedSources.isEmpty || isMixedBatchRetryFixture {
+                    Button(NSLocalizedString("重试", comment: "Retry extraction")) {
+                        retryLastExtraction()
+                    }
+                }
+                Button(NSLocalizedString("选择其他素材", comment: "Choose different media")) {
+                    chooseDifferentMedia()
+                }
+                Button(NSLocalizedString("取消", comment: "Cancel"), role: .cancel) {
+                    clearExtractionError()
+                }
             } message: {
                 Text(loadErrorMessage ?? "")
             }
@@ -114,6 +136,34 @@ struct LibraryView: View {
                 )
                 .environmentObject(appState)
             }
+            .onAppear {
+#if DEBUG
+                // Deterministic UI-only fixture for the import failure alert;
+                // production builds never inject this state.
+                if ProcessInfo.processInfo.arguments.contains("-UIAuditInjectImportFailure") {
+                    loadError = NSLocalizedString("无法读取所选素材", comment: "Load failure detail")
+                }
+                if ProcessInfo.processInfo.arguments.contains("-UIAuditInjectAllImportFailure") {
+                    batchFailureTitle = "导入失败"
+                    batchFailureMessageText = batchFailureMessage(
+                        successCount: 0,
+                        importFailureCount: 2,
+                        extractionFailureCount: 0
+                    )
+                }
+                if ProcessInfo.processInfo.arguments.contains("-UIAuditInjectSegmentationFailure") {
+                    batchFailureTitle = "人物素材生成失败"
+                    batchFailureMessageText = NSLocalizedString(
+                        "当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。",
+                        comment: "Person segmentation failure fixture"
+                    )
+                }
+                if isMixedBatchRetryFixture {
+                    batchFailureTitle = "人物素材生成失败"
+                    batchFailureMessageText = "部分素材未完成：成功 1 项，1 项失败。请重试或选择其他素材。"
+                }
+#endif
+            }
             .onDisappear {
                 importTask?.cancel()
             }
@@ -136,15 +186,22 @@ struct LibraryView: View {
                             .foregroundStyle(LF.gold)
                         Text("选择视频 / Live Photo / 照片")
                             .font(.headline)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text("自动提取人物，生成透明人物素材，全程在设备端处理")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
                     .contentShape(Rectangle())
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("library-extraction-entry")
+            .accessibilityFocused($extractionEntryFocused)
 
             Menu {
                 Section("提取方式") {
@@ -153,11 +210,13 @@ struct LibraryView: View {
                     } label: {
                         Label("动态人物（默认）", systemImage: defaultExtractKind == .live ? "checkmark" : "sparkles")
                     }
+                    .accessibilityIdentifier("library-extraction-kind-live")
                     Button {
                         defaultExtractKind = .static
                     } label: {
                         Label("静态人物（只取首帧）", systemImage: defaultExtractKind == .static ? "checkmark" : "photo")
                     }
+                    .accessibilityIdentifier("library-extraction-kind-static")
                 }
 
                 Section("提取帧率") {
@@ -170,6 +229,7 @@ struct LibraryView: View {
                                 systemImage: abs(appState.processingFPS - option) < 0.01 ? "checkmark" : "circle"
                             )
                         }
+                        .accessibilityIdentifier("library-extraction-fps-\(fpsTitle(option))")
                     }
                 }
             } label: {
@@ -182,22 +242,32 @@ struct LibraryView: View {
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .accessibilityLabel("人物素材设置")
+            .accessibilityIdentifier("library-extraction-settings")
         }
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
             pickerItems.removeAll()
+            // A new selection starts a new retry batch. Never let an older
+            // failed URL remain eligible for a later retry action.
+            lastImportedSources.removeAll()
+            lastImportedKinds.removeAll()
+            clearExtractionError()
             importTask = Task { @MainActor in
                 // 1. 并行下载所有选中素材（iCloud 下载可多线程加速）
                 var downloadedSources: [(index: Int, source: ImportSource)] = []
+                var importFailures: [String] = []
                 isDownloading = true
                 downloadProgress = nil
-                await withTaskGroup(of: (Int, ImportSource?).self) { group in
+                await withTaskGroup(of: (Int, ImportLoadResult).self) { group in
                     for (index, item) in items.enumerated() {
                         group.addTask { (index, await load(item)) }
                     }
                     for await result in group {
-                        if let source = result.1 {
+                        switch result.1 {
+                        case .success(let source):
                             downloadedSources.append((result.0, source))
+                        case .failure(let message):
+                            importFailures.append(message)
                         }
                     }
                 }
@@ -206,12 +276,24 @@ struct LibraryView: View {
                 let sources = downloadedSources
                     .sorted { $0.index < $1.index }
                     .map(\.source)
-                guard !Task.isCancelled, !sources.isEmpty else { return }
+                guard !Task.isCancelled else { return }
+                guard !sources.isEmpty else {
+                    batchFailureTitle = "导入失败"
+                    batchFailureMessageText = batchFailureMessage(
+                        successCount: 0,
+                        importFailureCount: importFailures.count,
+                        extractionFailureCount: 0
+                    )
+                    return
+                }
 
                 // 2. 视频默认直接按动态素材提取；需要静态首帧时再从高级选项进入。
+                let kinds = sources.map { isVideoSource($0) ? defaultExtractKind : .static }
                 startExtraction(
                     sources: sources,
-                    kinds: sources.map { isVideoSource($0) ? defaultExtractKind : .static }
+                    kinds: kinds,
+                    importFailures: importFailures,
+                    importFailureCount: importFailures.count
                 )
             }
         }
@@ -244,12 +326,21 @@ struct LibraryView: View {
     }
 
     /// 按选择的方式串行提取，保留原有的方向、首帧和长视频范围逻辑。
-    private func startExtraction(sources: [ImportSource], kinds: [ExtractKind]) {
+    private func startExtraction(
+        sources: [ImportSource],
+        kinds: [ExtractKind],
+        importFailures: [String] = [],
+        importFailureCount: Int = 0
+    ) {
         importTask?.cancel()
         extractionQueueTotal = sources.count
         extractionQueuePosition = nil
         importTask = Task { @MainActor in
             var lastExtractedClip: SegmentedClip?
+            var extractedCount = 0
+            var extractionFailures = importFailures
+            var failedSources: [ImportSource] = []
+            var failedKinds: [ExtractKind] = []
             for (index, pair) in zip(sources.indices, zip(sources, kinds)) {
                 guard !Task.isCancelled else { break }
                 extractionQueuePosition = index + 1
@@ -279,30 +370,78 @@ struct LibraryView: View {
                                 sourceEndTime: range.upperBound,
                                 stillOrientation: stillOrientation
                             )
-                            lastExtractedClip = extractedClip ?? lastExtractedClip
+                            if let extractedClip {
+                                extractedCount += 1
+                                lastExtractedClip = extractedClip
+                            } else {
+                                extractionFailures.append(appState.segmentationError ?? "video extraction failed")
+                                failedSources.append(source)
+                                failedKinds.append(kind)
+                            }
                         } else {
                             let extractedClip = await appState.startSegmenting(
                                 url: url,
                                 name: name,
                                 stillOrientation: stillOrientation
                             )
-                            lastExtractedClip = extractedClip ?? lastExtractedClip
+                            if let extractedClip {
+                                extractedCount += 1
+                                lastExtractedClip = extractedClip
+                            } else {
+                                extractionFailures.append(appState.segmentationError ?? "video extraction failed")
+                                failedSources.append(source)
+                                failedKinds.append(kind)
+                            }
                         }
                     case .static:
                         if let cgImage = await firstFrame(of: url, stillURL: stillURL) {
                             let extractedClip = await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
-                            lastExtractedClip = extractedClip ?? lastExtractedClip
+                            if let extractedClip {
+                                extractedCount += 1
+                                lastExtractedClip = extractedClip
+                            } else {
+                                extractionFailures.append(appState.segmentationError ?? "photo extraction failed")
+                                failedSources.append(source)
+                                failedKinds.append(kind)
+                            }
+                        } else {
+                            extractionFailures.append("source frame unavailable")
+                            failedSources.append(source)
+                            failedKinds.append(kind)
                         }
                     }
                 case .photo(let cgImage, let name):
                     let extractedClip = await appState.startPhotoSegmenting(cgImage: cgImage, name: name)
-                    lastExtractedClip = extractedClip ?? lastExtractedClip
+                    if let extractedClip {
+                        extractedCount += 1
+                        lastExtractedClip = extractedClip
+                    } else {
+                        extractionFailures.append(appState.segmentationError ?? "photo extraction failed")
+                        failedSources.append(source)
+                        failedKinds.append(kind)
+                    }
                 }
             }
             extractionQueuePosition = nil
             extractionQueueTotal = 0
+            // Only failed sources remain retryable. Successful sources must
+            // never be sent through AppState again, otherwise addClip would
+            // create duplicates after a mixed batch failure.
+            if !Task.isCancelled {
+                lastImportedSources = failedSources
+                lastImportedKinds = failedKinds
+            }
             if !Task.isCancelled, let lastExtractedClip {
                 menuClip = lastExtractedClip
+            }
+            if !Task.isCancelled, !extractionFailures.isEmpty {
+                let extractionFailureCount = max(extractionFailures.count - importFailureCount, 0)
+                batchFailureTitle = extractionFailureCount > 0 ? "人物素材生成失败" : "导入失败"
+                batchFailureMessageText = batchFailureMessage(
+                    successCount: extractedCount,
+                    importFailureCount: importFailureCount,
+                    extractionFailureCount: extractionFailureCount
+                )
             }
         }
     }
@@ -315,7 +454,114 @@ struct LibraryView: View {
     }
 
     private var loadErrorMessage: String? {
-        loadError ?? appState.segmentationError
+        if let batchFailureMessageText { return batchFailureMessageText }
+        guard let rawError = loadError ?? appState.segmentationError else { return nil }
+        return userFacingExtractionError(for: rawError)
+    }
+
+    /// Translate implementation errors at the UI boundary. AppState keeps the
+    /// original error in LogStore so diagnostics do not lose the Vision or
+    /// AVFoundation details.
+    private func userFacingExtractionError(for rawError: String) -> String {
+        let normalized = rawError.lowercased()
+        if normalized.contains("inference") || normalized.contains("vision") || normalized.contains("model") {
+            return NSLocalizedString(
+                "当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。",
+                comment: "Model or Vision unavailable extraction failure"
+            )
+        }
+        if normalized.contains("unsupported") || normalized.contains("format") {
+            return NSLocalizedString(
+                "这个素材格式暂不支持。请换一张照片或一段视频重试。",
+                comment: "Unsupported media extraction failure"
+            )
+        }
+        if normalized.contains("read") || normalized.contains("load") || normalized.contains("data")
+            || normalized.contains("无法读取") || normalized.contains("读取") {
+            return NSLocalizedString(
+                "无法读取这个素材。请确认素材仍在相册中，或选择其他素材。",
+                comment: "Media read extraction failure"
+            )
+        }
+        return NSLocalizedString(
+            "素材处理没有完成。请重试，或选择其他照片/视频。",
+            comment: "Generic extraction failure"
+        )
+    }
+
+    private func batchFailureMessage(
+        successCount: Int,
+        importFailureCount: Int,
+        extractionFailureCount: Int
+    ) -> String {
+        if extractionFailureCount == 0, successCount == 0 {
+            return String(
+                format: NSLocalizedString(
+                    "素材导入失败：%d 项素材无法读取。请重新选择素材。",
+                    comment: "All media import failed"
+                ),
+                importFailureCount
+            )
+        }
+        if successCount > 0 {
+            return String(
+                format: NSLocalizedString(
+                    "部分素材未完成：成功 %d 项，%d 项失败。请重试或选择其他素材。",
+                    comment: "Mixed extraction batch failure"
+                ),
+                successCount,
+                importFailureCount + extractionFailureCount
+            )
+        }
+        return NSLocalizedString(
+            "当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。",
+            comment: "All person segmentation failed"
+        )
+    }
+
+    private func clearExtractionError() {
+        loadError = nil
+        appState.segmentationError = nil
+        batchFailureMessageText = nil
+        batchFailureTitle = nil
+    }
+
+    private func retryLastExtraction() {
+#if DEBUG
+        if isMixedBatchRetryFixture {
+            clearExtractionError()
+            batchFailureTitle = "人物素材生成失败"
+            batchFailureMessageText = "重试完成：成功素材仍为 1 项；没有重复添加。"
+            return
+        }
+#endif
+        guard !lastImportedSources.isEmpty else {
+            chooseDifferentMedia()
+            return
+        }
+        clearExtractionError()
+        startExtraction(sources: lastImportedSources, kinds: lastImportedKinds)
+    }
+
+    private func chooseDifferentMedia() {
+        clearExtractionError()
+        pickerItems.removeAll()
+        lastImportedSources.removeAll()
+        lastImportedKinds.removeAll()
+        // PhotosPicker cannot be opened programmatically from an alert. Move
+        // accessibility focus back to the actual entry so the next action is
+        // explicit and never retries the old source.
+        DispatchQueue.main.async {
+            extractionEntryFocused = true
+        }
+    }
+
+    private var isMixedBatchRetryFixture: Bool {
+#if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-UIAuditInjectMixedBatchRetry")
+#else
+        return false
+#endif
     }
 
     /// 下载完成的待抠图素材（下载与抠图分离：下载并行，抠图串行）
@@ -325,22 +571,26 @@ struct LibraryView: View {
         case photo(cgImage: CGImage, name: String)
     }
 
-    private func load(_ item: PhotosPickerItem) async -> ImportSource? {
+    private enum ImportLoadResult {
+        case success(ImportSource)
+        case failure(String)
+    }
+
+    private func load(_ item: PhotosPickerItem) async -> ImportLoadResult {
         let types = item.supportedContentTypes
         LogStore.log("load: itemIdentifier=\(item.itemIdentifier ?? "nil") types=\(types.map(\.identifier))")
         // 1. Live Photo：PHAsset 视频轨优先，PHLivePhoto 传输兜底
         //    （iCloud 未下载的 Live Photo 常不报 live-photo 类型、itemIdentifier 为 nil）
-        if let source = await loadLivePhoto(item: item) { return source }
+        if let source = await loadLivePhoto(item: item) { return .success(source) }
         // 2. 视频
         if types.contains(where: { $0.conforms(to: .movie) }),
-           let source = await loadMovie(item: item) { return source }
+           let source = await loadMovie(item: item) { return .success(source) }
         // 3. 普通照片：单帧抠图
         if types.contains(where: { $0.conforms(to: .image) }),
-           let source = await loadPhoto(item: item) { return source }
-        await MainActor.run {
-            loadError = NSLocalizedString("无法读取所选素材", comment: "Load failure detail")
-        }
-        return nil
+           let source = await loadPhoto(item: item) { return .success(source) }
+        let message = NSLocalizedString("无法读取所选素材", comment: "Load failure detail")
+        LogStore.log("load failed: \(message) itemIdentifier=\(item.itemIdentifier ?? "nil")")
+        return .failure(message)
     }
 
     private func loadLivePhoto(item: PhotosPickerItem) async -> ImportSource? {
@@ -441,6 +691,7 @@ struct LibraryView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("新建文件夹")
+                    .accessibilityIdentifier("library-new-folder")
 
                     if appState.rootFolders().isEmpty {
                         Text(NSLocalizedString("还没有文件夹", comment: "No folders"))
@@ -541,38 +792,45 @@ struct LibraryView: View {
 
     private var segmentationCard: some View {
         SectionCard(title: "正在生成素材") {
-            HStack {
-                if appState.isSegmenting {
-                    ProgressView(value: appState.segmentationProgress)
-                        .tint(LF.gold)
-                    Text(String(format: "%d%%", Int(appState.segmentationProgress * 100)))
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    if appState.isSegmenting {
+                        ProgressView(value: appState.segmentationProgress)
+                            .tint(LF.gold)
+                    } else {
+                        ProgressView()
+                            .tint(LF.gold)
+                    }
+                    Text(appState.isSegmenting
+                         ? String(format: "%d%%", Int(appState.segmentationProgress * 100))
+                         : "准备中…")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(LF.textSecondary)
-                } else {
-                    ProgressView()
-                        .tint(LF.gold)
-                    Text("准备中…")
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
                 }
+                if let extractionQueuePosition {
+                    Text("第 \(extractionQueuePosition)/\(extractionQueueTotal) 个素材")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(LF.header)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(appState.segmentingName.isEmpty ? "正在准备人物素材" : appState.segmentingName)
+                    .font(.caption)
+                    .foregroundStyle(LF.textSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("本次最多处理 \(Int(appState.maxExtractionDuration)) 秒，超出部分从开头截取")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("取消生成", role: .cancel) {
+                    importTask?.cancel()
+                }
+                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("library-extraction-progress-cancel")
             }
-            if let extractionQueuePosition {
-                Text("第 \(extractionQueuePosition)/\(extractionQueueTotal) 个素材")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LF.header)
-            }
-            Text(appState.segmentingName.isEmpty ? "正在准备人物素材" : appState.segmentingName)
-                .font(.caption)
-                .foregroundStyle(LF.textSecondary)
-                .lineLimit(1)
-            Text("本次最多处理 \(Int(appState.maxExtractionDuration)) 秒，超出部分从开头截取")
-                .font(.caption2)
-                .foregroundStyle(LF.textSecondary)
-            Button("取消生成", role: .cancel) {
-                importTask?.cancel()
-            }
-            .buttonStyle(.bordered)
         }
+        .accessibilityIdentifier("library-extraction-progress")
     }
 
     // MARK: - 素材网格
@@ -613,6 +871,8 @@ struct LibraryView: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("library-extraction-clips-section")
     }
 }
 
