@@ -14,6 +14,7 @@ struct AssetPickerView: View {
     @State private var pickerMode: PickerMode = .person
     @State private var backgroundFilter: BackgroundFilter = .all
     @State private var photoItems: [PhotosPickerItem] = []
+    @State private var isShowingBackgroundPicker = false
     @State private var isImportingBackground = false
     @State private var backgroundImportProgress: Double?
     @State private var backgroundImportCompletedCount = 0
@@ -136,39 +137,49 @@ struct AssetPickerView: View {
             selectedIDs.removeAll()
             selectedBackgroundIDs.removeAll()
         }
-        .onChange(of: photoItems) { _, items in
-            guard !items.isEmpty else { return }
-            photoItems.removeAll()
-            backgroundImportTask?.cancel()
-            backgroundImportTask = Task { @MainActor in
-                isImportingBackground = true
-                backgroundImportProgress = 0
-                backgroundImportCompletedCount = 0
-                backgroundImportTotalCount = items.count
-                for (index, item) in items.enumerated() {
-                    guard !Task.isCancelled else { break }
-                    let imported = await PhotoLibraryMediaImporter.loadBackgroundMedia(from: item) { progress in
-                        Task { @MainActor in
-                            guard backgroundImportTotalCount == items.count else { return }
-                            let completed = Double(index) / Double(max(items.count, 1))
-                            backgroundImportProgress = completed + progress / Double(max(items.count, 1))
-                        }
-                    }
-                    if let imported,
-                       let id = await appState.importBackgroundMedia(
-                        data: imported.data,
-                        preferredFileExtension: imported.fileExtension,
-                        isVideo: imported.isVideo
-                       ) {
-                        selectedBackgroundIDs.insert(id)
-                    }
-                    backgroundImportCompletedCount = index + 1
-                    backgroundImportProgress = Double(index + 1) / Double(max(items.count, 1))
-                }
-                await appState.reloadBackgroundMediaAndWait()
-                isImportingBackground = false
-                backgroundImportTask = nil
+        .onChange(of: isShowingBackgroundPicker) { wasPresented, isPresented in
+            guard wasPresented, !isPresented else { return }
+            Task { @MainActor in
+                // Wait for PhotosPicker to publish the complete ordered selection
+                // after its Done action, then reset the binding safely.
+                await Task.yield()
+                handleBackgroundSelection(photoItems)
             }
+        }
+    }
+
+    private func handleBackgroundSelection(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        photoItems.removeAll()
+        backgroundImportTask?.cancel()
+        isImportingBackground = true
+        backgroundImportProgress = 0
+        backgroundImportCompletedCount = 0
+        backgroundImportTotalCount = items.count
+        backgroundImportTask = Task { @MainActor in
+            for (index, item) in items.enumerated() {
+                guard !Task.isCancelled else { break }
+                let imported = await PhotoLibraryMediaImporter.loadBackgroundMedia(from: item) { progress in
+                    Task { @MainActor in
+                        guard backgroundImportTotalCount == items.count else { return }
+                        let completed = Double(index) / Double(max(items.count, 1))
+                        backgroundImportProgress = completed + progress / Double(max(items.count, 1))
+                    }
+                }
+                if let imported,
+                   let id = await appState.importBackgroundMedia(
+                    data: imported.data,
+                    preferredFileExtension: imported.fileExtension,
+                    isVideo: imported.isVideo
+                   ) {
+                    selectedBackgroundIDs.insert(id)
+                }
+                backgroundImportCompletedCount = index + 1
+                backgroundImportProgress = Double(index + 1) / Double(max(items.count, 1))
+            }
+            await appState.reloadBackgroundMediaAndWait()
+            isImportingBackground = false
+            backgroundImportTask = nil
         }
     }
 
@@ -292,13 +303,9 @@ struct AssetPickerView: View {
                 .font(.subheadline)
                 .foregroundStyle(LF.textSecondary)
 
-            PhotosPicker(
-                selection: $photoItems,
-                // 自动排版最多使用四个分区；之后仍可继续分批添加。
-                maxSelectionCount: 4,
-                matching: .any(of: [.images, .livePhotos, .videos]),
-                preferredItemEncoding: .current
-            ) {
+            Button {
+                isShowingBackgroundPicker = true
+            } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "photo.on.rectangle.angled")
                         .font(.title2)
@@ -322,10 +329,20 @@ struct AssetPickerView: View {
                 .background(LF.surface2, in: RoundedRectangle(cornerRadius: 14))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14)
-                        .stroke(LF.header.opacity(0.35), lineWidth: 1)
+                    .stroke(LF.header.opacity(0.35), lineWidth: 1)
                 }
             }
             .buttonStyle(.plain)
+            .photosPicker(
+                isPresented: $isShowingBackgroundPicker,
+                selection: $photoItems,
+                // 自动排版最多使用四个分区；之后仍可继续分批添加。
+                maxSelectionCount: 4,
+                selectionBehavior: .ordered,
+                matching: .any(of: [.images, .livePhotos, .videos]),
+                preferredItemEncoding: .current
+            )
+            .disabled(isImportingBackground)
 
             if isImportingBackground {
                 VStack(alignment: .leading, spacing: 7) {

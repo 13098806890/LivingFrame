@@ -10,6 +10,7 @@ struct FolderDetailView: View {
 
     @State private var showDeleteFolderConfirm = false
     @State private var showAddClips = false
+    @State private var showRemoveClips = false
     @State private var showNewFolderAlert = false
     @State private var newFolderName = ""
     /// 单击素材打开的详情页
@@ -37,6 +38,14 @@ struct FolderDetailView: View {
                 }
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    showRemoveClips = true
+                } label: {
+                    Image(systemName: "minus")
+                }
+                .disabled(folderClips.isEmpty)
+                .accessibilityLabel("从文件夹移除素材")
+
                 Button {
                     showAddClips = true
                 } label: {
@@ -76,6 +85,10 @@ struct FolderDetailView: View {
         }
         .sheet(isPresented: $showAddClips) {
             FolderAddClipsView(folder: folder)
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $showRemoveClips) {
+            FolderRemoveClipsView(folder: folder)
                 .environmentObject(appState)
         }
         .fullScreenCover(item: $menuClip) { clip in
@@ -157,23 +170,13 @@ struct FolderDetailView: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(folderClips) { clip in
-                        ZStack(alignment: .topTrailing) {
-                            ClipCell(clip: clip)
-                                .onTapGesture {
-                                    menuClip = clip
-                                }
-
-                            Image(systemName: "line.3.horizontal")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(LF.textSecondary)
-                                .frame(width: 30, height: 30)
-                                .background(.ultraThinMaterial, in: Circle())
-                                .contentShape(Circle())
-                                .draggable(clip.id) {
-                                    ClipDragPreview(clip: clip)
-                                }
-                                .accessibilityLabel("拖动到文件夹")
-                        }
+                        ClipCell(
+                            clip: clip,
+                            onOpen: { menuClip = clip },
+                            onDelete: { appState.removeClip(clip.id, fromFolder: folder.id) },
+                            deleteAccessibilityLabel: "从文件夹移除素材",
+                            deleteAccessibilityIdentifier: "folder-remove-clip-\(clip.id)"
+                        )
                     }
                 }
             }
@@ -186,6 +189,7 @@ private struct FolderAddClipsView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     let folder: LibraryFolder
+    @State private var selectedClipIDs: [String] = []
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 10)]
 
@@ -208,9 +212,11 @@ private struct FolderAddClipsView: View {
                 } else {
                     LazyVGrid(columns: columns, spacing: 10) {
                         ForEach(candidates) { clip in
-                            AssetCell(clip: clip) {
-                                appState.moveClip(clip.id, toFolder: folder.id)
-                                dismiss()
+                            FolderCandidateCell(
+                                clip: clip,
+                                isSelected: selectedClipIDs.contains(clip.id)
+                            ) {
+                                toggleSelection(for: clip)
                             }
                         }
                     }
@@ -224,8 +230,152 @@ private struct FolderAddClipsView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("取消") { dismiss() }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") {
+                        for clipID in selectedClipIDs where candidates.contains(where: { $0.id == clipID }) {
+                            appState.moveClip(clipID, toFolder: folder.id)
+                        }
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(selectedClipIDs.isEmpty)
+                }
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private func toggleSelection(for clip: SegmentedClip) {
+        if let index = selectedClipIDs.firstIndex(of: clip.id) {
+            selectedClipIDs.remove(at: index)
+        } else {
+            selectedClipIDs.append(clip.id)
+        }
+    }
+}
+
+/// 多选当前文件夹中的素材并批量移除归属；素材文件本身会保留。
+private struct FolderRemoveClipsView: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    let folder: LibraryFolder
+    @State private var selectedClipIDs: [String] = []
+
+    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 10)]
+
+    private var candidates: [SegmentedClip] {
+        guard let currentFolder = appState.folders.first(where: { $0.id == folder.id }) else { return [] }
+        return currentFolder.clipIDs.compactMap { clipID in
+            appState.clips.first(where: { $0.id == clipID })
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                if candidates.isEmpty {
+                    EmptyStateView(
+                        icon: "folder",
+                        title: "文件夹是空的",
+                        message: "当前没有可移除的素材"
+                    )
+                    .padding()
+                } else {
+                    VStack(spacing: 12) {
+                        Text("仅从当前文件夹移除，素材仍保留在素材库中")
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        LazyVGrid(columns: columns, spacing: 10) {
+                            ForEach(candidates) { clip in
+                                FolderCandidateCell(
+                                    clip: clip,
+                                    isSelected: selectedClipIDs.contains(clip.id)
+                                ) {
+                                    toggleSelection(for: clip)
+                                }
+                            }
+                        }
+                    }
+                    .padding()
+                }
+            }
+            .lfNavigationTitle("移除素材")
+            .navigationBarTitleDisplayMode(.inline)
+            .magicBackground()
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") {
+                        for clipID in selectedClipIDs where candidates.contains(where: { $0.id == clipID }) {
+                            appState.removeClip(clipID, fromFolder: folder.id)
+                        }
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(selectedClipIDs.isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func toggleSelection(for clip: SegmentedClip) {
+        if let index = selectedClipIDs.firstIndex(of: clip.id) {
+            selectedClipIDs.remove(at: index)
+        } else {
+            selectedClipIDs.append(clip.id)
+        }
+    }
+}
+
+private struct FolderCandidateCell: View {
+    let clip: SegmentedClip
+    let isSelected: Bool
+    let onSelect: () -> Void
+    @State private var isPlaying = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            AnimatedClipPreview(
+                clip: clip,
+                maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
+                isPlaying: $isPlaying
+            )
+            .frame(height: 90)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(alignment: .bottomLeading) {
+                ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(LF.gold)
+                        .background(.black.opacity(0.38), in: Circle())
+                        .padding(5)
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? LF.gold : .clear, lineWidth: 2)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onSelect)
+
+            Text(clip.name)
+                .font(.caption2)
+                .foregroundStyle(LF.textPrimary)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(clip.name)
+        .accessibilityValue(isSelected ? "已选择" : "未选择")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onSelect() }
     }
 }

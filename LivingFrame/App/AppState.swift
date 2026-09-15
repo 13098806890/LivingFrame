@@ -718,6 +718,14 @@ final class AppState: ObservableObject {
         if changed { folderStore.save(folders) }
     }
 
+    /// 从指定文件夹移除素材，不影响它在其他文件夹中的归属或素材库原件。
+    func removeClip(_ clipID: String, fromFolder folderID: String) {
+        guard let index = folders.firstIndex(where: { $0.id == folderID }),
+              folders[index].clipIDs.contains(clipID) else { return }
+        folders[index].clipIDs.removeAll { $0 == clipID }
+        folderStore.save(folders)
+    }
+
     /// 设置素材边缘效果（持久化到 clip.json）
     func setClipEdgeStyle(_ clipID: String, _ style: ClipEdgeStyle) {
         updateClip(clipID) { $0.edgeStyle = style }

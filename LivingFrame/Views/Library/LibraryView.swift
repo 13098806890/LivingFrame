@@ -7,6 +7,7 @@ import SwiftUI
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
     @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var isShowingExtractionPicker = false
     @State private var loadError: String?
     /// iCloud 素材下载进度（nil 表示进度未知）
     @State private var isDownloading = false
@@ -17,6 +18,7 @@ struct LibraryView: View {
     @State private var dragOverFolderID: String?
     /// 单击素材打开的详情页（nil = 不显示）
     @State private var menuClip: SegmentedClip?
+    @State private var clipDeletionAlert: ClipDeletionAlert?
     /// 普通路径默认提取动态素材；静态首帧作为高级选项。
     @State private var defaultExtractKind: ExtractKind = .live
     /// 超过 1 分钟的视频，在动态提取前选择源视频范围。
@@ -174,11 +176,9 @@ struct LibraryView: View {
 
     private var pickerSection: some View {
         VStack(spacing: 8) {
-            PhotosPicker(
-                selection: $pickerItems,
-                maxSelectionCount: 5,
-                matching: .any(of: [.videos, .livePhotos, .images])
-            ) {
+            Button {
+                isShowingExtractionPicker = true
+            } label: {
                 SectionCard(title: nil) {
                     VStack(spacing: 10) {
                         Image(systemName: "film.stack")
@@ -200,6 +200,14 @@ struct LibraryView: View {
                 }
             }
             .buttonStyle(.plain)
+            .photosPicker(
+                isPresented: $isShowingExtractionPicker,
+                selection: $pickerItems,
+                maxSelectionCount: 5,
+                selectionBehavior: .ordered,
+                matching: .any(of: [.videos, .livePhotos, .images])
+            )
+            .disabled(isDownloading || isExtractionActive)
             .accessibilityIdentifier("library-extraction-entry")
             .accessibilityFocused($extractionEntryFocused)
 
@@ -244,58 +252,70 @@ struct LibraryView: View {
             .accessibilityLabel("人物素材设置")
             .accessibilityIdentifier("library-extraction-settings")
         }
-        .onChange(of: pickerItems) { _, items in
-            guard !items.isEmpty else { return }
-            pickerItems.removeAll()
-            // A new selection starts a new retry batch. Never let an older
-            // failed URL remain eligible for a later retry action.
-            lastImportedSources.removeAll()
-            lastImportedKinds.removeAll()
-            clearExtractionError()
-            importTask = Task { @MainActor in
-                // 1. 并行下载所有选中素材（iCloud 下载可多线程加速）
-                var downloadedSources: [(index: Int, source: ImportSource)] = []
-                var importFailures: [String] = []
-                isDownloading = true
-                downloadProgress = nil
-                await withTaskGroup(of: (Int, ImportLoadResult).self) { group in
-                    for (index, item) in items.enumerated() {
-                        group.addTask { (index, await load(item)) }
-                    }
-                    for await result in group {
-                        switch result.1 {
-                        case .success(let source):
-                            downloadedSources.append((result.0, source))
-                        case .failure(let message):
-                            importFailures.append(message)
-                        }
-                    }
-                }
-                // 下载完成即隐藏下载进度条（抠图阶段由「正在抠图」卡片展示）
-                isDownloading = false
-                let sources = downloadedSources
-                    .sorted { $0.index < $1.index }
-                    .map(\.source)
-                guard !Task.isCancelled else { return }
-                guard !sources.isEmpty else {
-                    batchFailureTitle = "导入失败"
-                    batchFailureMessageText = batchFailureMessage(
-                        successCount: 0,
-                        importFailureCount: importFailures.count,
-                        extractionFailureCount: 0
-                    )
-                    return
-                }
-
-                // 2. 视频默认直接按动态素材提取；需要静态首帧时再从高级选项进入。
-                let kinds = sources.map { isVideoSource($0) ? defaultExtractKind : .static }
-                startExtraction(
-                    sources: sources,
-                    kinds: kinds,
-                    importFailures: importFailures,
-                    importFailureCount: importFailures.count
-                )
+        .onChange(of: isShowingExtractionPicker) { wasPresented, isPresented in
+            guard wasPresented, !isPresented else { return }
+            Task { @MainActor in
+                // PhotosPicker updates its selection as it dismisses. Read it on
+                // the next main-actor turn so all selected assets are included.
+                await Task.yield()
+                handleExtractionSelection(pickerItems)
             }
+        }
+    }
+
+    private func handleExtractionSelection(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        // Clear only after the picker has closed; clearing its live selection
+        // while it is open dismisses it after the first tap.
+        pickerItems.removeAll()
+        // A new selection starts a new retry batch. Never let an older
+        // failed URL remain eligible for a later retry action.
+        lastImportedSources.removeAll()
+        lastImportedKinds.removeAll()
+        clearExtractionError()
+        isDownloading = true
+        downloadProgress = nil
+        importTask = Task { @MainActor in
+            // 1. 并行下载所有选中素材（iCloud 下载可多线程加速）
+            var downloadedSources: [(index: Int, source: ImportSource)] = []
+            var importFailures: [String] = []
+            await withTaskGroup(of: (Int, ImportLoadResult).self) { group in
+                for (index, item) in items.enumerated() {
+                    group.addTask { (index, await load(item)) }
+                }
+                for await result in group {
+                    switch result.1 {
+                    case .success(let source):
+                        downloadedSources.append((result.0, source))
+                    case .failure(let message):
+                        importFailures.append(message)
+                    }
+                }
+            }
+            // 下载完成即隐藏下载进度条（抠图阶段由「正在抠图」卡片展示）
+            isDownloading = false
+            let sources = downloadedSources
+                .sorted { $0.index < $1.index }
+                .map(\.source)
+            guard !Task.isCancelled else { return }
+            guard !sources.isEmpty else {
+                batchFailureTitle = "导入失败"
+                batchFailureMessageText = batchFailureMessage(
+                    successCount: 0,
+                    importFailureCount: importFailures.count,
+                    extractionFailureCount: 0
+                )
+                return
+            }
+
+            // 2. 视频默认直接按动态素材提取；需要静态首帧时再从高级选项进入。
+            let kinds = sources.map { isVideoSource($0) ? defaultExtractKind : .static }
+            startExtraction(
+                sources: sources,
+                kinds: kinds,
+                importFailures: importFailures,
+                importFailureCount: importFailures.count
+            )
         }
     }
 
@@ -848,31 +868,66 @@ struct LibraryView: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(appState.clips) { clip in
-                        // 单击 = 打开素材详情；拖拽从右上角把手开始。
-                        ZStack(alignment: .topTrailing) {
-                            ClipCell(clip: clip) {
-                                menuClip = clip
-                            }
-
-                            // 拖入文件夹改为从明确的拖拽把手开始，避免播放按钮
-                            // 在素材缩略图尚未完成解码时被系统拖拽手势抢走。
-                            Image(systemName: "line.3.horizontal")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(LF.textSecondary)
-                                .frame(width: 30, height: 30)
-                                .background(.ultraThinMaterial, in: Circle())
-                                .contentShape(Circle())
-                                .draggable(clip.id) {
-                                    ClipDragPreview(clip: clip)
-                                }
-                                .accessibilityLabel("拖动到文件夹")
-                        }
+                        // 四个角标统一由 ClipCell 锚定在预览缩略图内。
+                        ClipCell(
+                            clip: clip,
+                            onOpen: { menuClip = clip },
+                            onDelete: { requestClipDeletion(clip) },
+                            deleteAccessibilityLabel: "删除素材",
+                            deleteAccessibilityIdentifier: "library-delete-clip-\(clip.id)"
+                        )
                     }
                 }
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("library-extraction-clips-section")
+        .alert(item: $clipDeletionAlert) { request in
+            switch request.kind {
+            case .confirm:
+                return Alert(
+                    title: Text("删除素材？"),
+                    message: Text("删除后无法恢复。"),
+                    primaryButton: .destructive(Text("删除")) {
+                        appState.deleteClip(request.clip.id)
+                    },
+                    secondaryButton: .cancel(Text("取消"))
+                )
+            case .referenced:
+                return Alert(
+                    title: Text("素材正在使用中"),
+                    message: Text("请先从以下作品中移除它，再删除素材：\n\(request.referencedWorkNames.joined(separator: "、"))"),
+                    dismissButton: .cancel(Text("知道了"))
+                )
+            }
+        }
+    }
+
+    private func requestClipDeletion(_ clip: SegmentedClip) {
+        let workNames = appState.worksReferencingClip(clip.id).map(\.name)
+        clipDeletionAlert = ClipDeletionAlert(
+            clip: clip,
+            kind: workNames.isEmpty ? .confirm : .referenced,
+            referencedWorkNames: workNames
+        )
+    }
+}
+
+private struct ClipDeletionAlert: Identifiable {
+    enum Kind {
+        case confirm
+        case referenced
+    }
+
+    let clip: SegmentedClip
+    let kind: Kind
+    let referencedWorkNames: [String]
+
+    var id: String {
+        switch kind {
+        case .confirm: "\(clip.id)-confirm-delete"
+        case .referenced: "\(clip.id)-delete-blocked"
+        }
     }
 }
 
@@ -1386,11 +1441,23 @@ private struct VideoRangeTimeline: View {
 struct ClipCell: View {
     let clip: SegmentedClip
     let onOpen: (() -> Void)?
+    let onDelete: (() -> Void)?
+    let deleteAccessibilityLabel: String
+    let deleteAccessibilityIdentifier: String
     @State private var isPlaying = false
 
-    init(clip: SegmentedClip, onOpen: (() -> Void)? = nil) {
+    init(
+        clip: SegmentedClip,
+        onOpen: (() -> Void)? = nil,
+        onDelete: (() -> Void)? = nil,
+        deleteAccessibilityLabel: String = "删除素材",
+        deleteAccessibilityIdentifier: String? = nil
+    ) {
         self.clip = clip
         self.onOpen = onOpen
+        self.onDelete = onDelete
+        self.deleteAccessibilityLabel = deleteAccessibilityLabel
+        self.deleteAccessibilityIdentifier = deleteAccessibilityIdentifier ?? "clip-cell-delete-\(clip.id)"
     }
 
     var body: some View {
@@ -1420,18 +1487,35 @@ struct ClipCell: View {
                         systemName: "waveform",
                         foregroundStyle: LF.gold
                     )
-                        .padding(4)
+                    .frame(width: 44, height: 44)
                 }
             }
-            // 播放按钮固定在左下角，边缘样式徽标移到左上角，避免遮挡动态素材播放入口。
             .overlay(alignment: .topLeading) {
-                if clip.edgeStyle != .none {
-                    Image(systemName: "square.dashed")
-                        .font(.caption)
-                        .foregroundStyle(LF.gold)
-                        .padding(6)
-                        .background(.black.opacity(0.55), in: Circle())
-                        .padding(4)
+                if let onDelete {
+                    Button(action: onDelete) {
+                        ClipPreviewBadgeIcon(systemName: "trash")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(deleteAccessibilityLabel)
+                    .accessibilityIdentifier(deleteAccessibilityIdentifier)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if !clip.excludedFrames.isEmpty {
+                    ClipPreviewBadgeIcon(
+                        systemName: "square.grid.3x3",
+                        foregroundStyle: LF.gold
+                    )
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("已修改帧")
+                } else if clip.edgeStyle != .none {
+                    ClipPreviewBadgeIcon(
+                        systemName: "square.dashed",
+                        foregroundStyle: LF.gold
+                    )
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("已设置边缘效果")
                 }
             }
             .overlay {
@@ -1473,6 +1557,8 @@ private struct ClipDetailPreview: View {
     let clip: SegmentedClip
     @Binding var isPlaying: Bool
     let onCrop: () -> Void
+    let onRotateCounterclockwise: () -> Void
+    let onRotateClockwise: () -> Void
 
     /// 详情页只负责检查原始素材，不在这里模拟编辑器/导出的边缘效果。
     private var unstyledClip: SegmentedClip {
@@ -1499,22 +1585,54 @@ private struct ClipDetailPreview: View {
                 ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
                     .padding(4)
             }
-            Button(action: onCrop) {
-                Image(systemName: "crop")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(.black.opacity(0.55), in: Circle())
+
+            HStack(spacing: 6) {
+                ClipPreviewActionButton(
+                    systemName: "rotate.left",
+                    accessibilityLabel: "逆时针旋转90度",
+                    action: onRotateCounterclockwise
+                )
+                ClipPreviewActionButton(
+                    systemName: "rotate.right",
+                    accessibilityLabel: "顺时针旋转90度",
+                    action: onRotateClockwise
+                )
             }
-            .buttonStyle(.plain)
+            .padding(8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            ClipPreviewActionButton(
+                systemName: "crop",
+                accessibilityLabel: "裁剪素材",
+                action: onCrop
+            )
             .padding(8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .accessibilityLabel("裁剪素材")
         }
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(LF.surface2, lineWidth: 1)
         }
+    }
+}
+
+/// 贴在素材预览画布上的轻量图标操作，与裁剪入口保持同一视觉样式。
+private struct ClipPreviewActionButton: View {
+    let systemName: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(.black.opacity(0.55), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 
@@ -1773,10 +1891,11 @@ struct ClipMenuView: View {
                 ClipDetailPreview(
                     clip: currentClip,
                     isPlaying: $isPlayingPreview,
-                    onCrop: beginClipCrop
+                    onCrop: beginClipCrop,
+                    onRotateCounterclockwise: { rotateClip(clockwise: false) },
+                    onRotateClockwise: { rotateClip(clockwise: true) }
                 )
                 gifExportSection
-                rotateClipButton
                 frameEditorButton
                 foldersSection
             }
@@ -1986,42 +2105,6 @@ struct ClipMenuView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("编辑素材名称")
         }
-    }
-
-    private var rotateClipButton: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("素材方向")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text("当前：\(currentClip.normalizedRotationQuarterTurns * 90)°")
-                    .font(.caption)
-                    .foregroundStyle(LF.textSecondary)
-            }
-
-            HStack(spacing: 10) {
-                rotationActionButton(clockwise: false)
-                rotationActionButton(clockwise: true)
-            }
-        }
-        .padding(14)
-        .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    private func rotationActionButton(clockwise: Bool) -> some View {
-        Button {
-            rotateClip(clockwise: clockwise)
-        } label: {
-            Label(
-                clockwise ? "顺时针 90°" : "逆时针 90°",
-                systemImage: clockwise ? "rotate.right" : "rotate.left"
-            )
-            .font(.subheadline.weight(.semibold))
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(LF.surface2, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(clockwise ? "顺时针旋转90度" : "逆时针旋转90度")
     }
 
     private func rotateClip(clockwise: Bool) {
