@@ -190,17 +190,29 @@ final class AppState: ObservableObject {
     // MARK: - 设置
 
     @Published var defaultFormat: ExportFormat = .gif {
-        didSet { UserDefaults.standard.set(defaultFormat.rawValue, forKey: settingDefaultFormatKey) }
+        didSet {
+            guard !isUIAuditFixtureLaunch else { return }
+            UserDefaults.standard.set(defaultFormat.rawValue, forKey: settingDefaultFormatKey)
+        }
     }
     @Published var exportFPS: Double = 15 {
-        didSet { UserDefaults.standard.set(exportFPS, forKey: settingExportFPSKey) }
+        didSet {
+            guard !isUIAuditFixtureLaunch else { return }
+            UserDefaults.standard.set(exportFPS, forKey: settingExportFPSKey)
+        }
     }
     @Published var maxDimension: Double = 1280 {
-        didSet { UserDefaults.standard.set(maxDimension, forKey: settingMaxDimensionKey) }
+        didSet {
+            guard !isUIAuditFixtureLaunch else { return }
+            UserDefaults.standard.set(maxDimension, forKey: settingMaxDimensionKey)
+        }
     }
     /// 剪影处理帧率（低于源帧率时抽帧处理，帧数减少处理更快）
     @Published var processingFPS: Double = 30 {
-        didSet { UserDefaults.standard.set(processingFPS, forKey: settingProcessingFPSKey) }
+        didSet {
+            guard !isUIAuditFixtureLaunch else { return }
+            UserDefaults.standard.set(processingFPS, forKey: settingProcessingFPSKey)
+        }
     }
     /// 是否在剪影生成时保留源素材的实际帧率和分辨率。
     /// 开启后会覆盖处理帧率与处理分辨率预设，但仍受视频起止时间限制。
@@ -210,10 +222,8 @@ final class AppState: ObservableObject {
         // synchronizing every preference here can delay SwiftUI's control
         // update and leave XCTest's accessibility snapshot stale.
         didSet {
-            UserDefaults.standard.set(
-                preserveOriginalMediaQuality,
-                forKey: settingPreserveOriginalMediaQualityKey
-            )
+            guard !isUIAuditFixtureLaunch else { return }
+            UserDefaults.standard.set(preserveOriginalMediaQuality, forKey: settingPreserveOriginalMediaQualityKey)
         }
     }
 
@@ -255,7 +265,9 @@ final class AppState: ObservableObject {
         didSet {
             let clamped = Self.clampedExtractionDuration(maxExtractionDuration)
             guard abs(maxExtractionDuration - clamped) > 0.0001 else {
-                UserDefaults.standard.set(clamped, forKey: settingMaxExtractionDurationKey)
+                if !isUIAuditFixtureLaunch {
+                    UserDefaults.standard.set(clamped, forKey: settingMaxExtractionDurationKey)
+                }
                 return
             }
             maxExtractionDuration = clamped
@@ -264,7 +276,9 @@ final class AppState: ObservableObject {
     /// 全局视觉皮肤；切换后所有使用 LF 语义色的页面会立即刷新。
     @Published var appTheme: AppTheme = .skyPetal {
         didSet {
-            UserDefaults.standard.set(appTheme.rawValue, forKey: settingAppThemeKey)
+            if !isUIAuditFixtureLaunch {
+                UserDefaults.standard.set(appTheme.rawValue, forKey: settingAppThemeKey)
+            }
             LF.apply(appTheme)
         }
     }
@@ -279,11 +293,27 @@ final class AppState: ObservableObject {
     private let canvasPreferenceAspectKey = "canvasPreference.aspect"
     private let canvasPreferenceBackgroundKey = "canvasPreference.background"
 
+    /// Seeded UI audits may read existing preferences but must not mutate them,
+    /// including when AppState hydrates values into `@Published` properties.
+    private var isUIAuditFixtureLaunch: Bool {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("-UIAuditSeedProject") || arguments.contains("-UIAuditSeedAnimatedCollage")
+        #else
+        return false
+        #endif
+    }
+
     /// 将当前设置集中落盘。
     ///
     /// 设置可能在应用即将进入后台时被系统终止；统一从这里写入可以避免
     /// 各个设置属性分别依赖 SwiftUI Binding 的最后一次回调。
     func persistUserSettings() {
+        if isUIAuditFixtureLaunch {
+            LogStore.log("ui.audit.settings skipped persistence")
+            return
+        }
+
         let defaults = UserDefaults.standard
         defaults.set(defaultFormat.rawValue, forKey: settingDefaultFormatKey)
         defaults.set(exportFPS, forKey: settingExportFPSKey)
@@ -295,6 +325,39 @@ final class AppState: ObservableObject {
         defaults.synchronize()
         CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication)
     }
+
+    #if DEBUG
+    /// Assert the concrete stores AppState constructed before the UI audit
+    /// fixture writes. Use their actual public root URLs; do not inspect Documents.
+    func validateUIAuditStorageIsolation(namespace: String) {
+        guard let namespaceID = UUID(uuidString: namespace),
+              let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            fatalError("UI audit storage isolation has an invalid namespace or no Caches directory")
+        }
+        let auditRoot = caches
+            .appendingPathComponent("GIFBloom-UIAudit", isDirectory: true)
+            .appendingPathComponent(namespaceID.uuidString, isDirectory: true)
+        let expectedWorks = auditRoot.appendingPathComponent("Works", isDirectory: true)
+        let expectedBackgrounds = auditRoot.appendingPathComponent("Backgrounds", isDirectory: true)
+        let expectedFolders = auditRoot.appendingPathComponent("Folders", isDirectory: true)
+        let expectedClips = auditRoot.appendingPathComponent("Clips", isDirectory: true)
+        guard worksStore.rootURL.standardizedFileURL.path == expectedWorks.standardizedFileURL.path else {
+            fatalError("UI audit WorksStore is not rooted inside the current Caches namespace")
+        }
+        guard BackgroundStore.shared.rootURL.standardizedFileURL.path == expectedBackgrounds.standardizedFileURL.path else {
+            fatalError("UI audit BackgroundStore is not rooted inside the current Caches namespace")
+        }
+        guard folderStore.rootURL.standardizedFileURL.path == expectedFolders.standardizedFileURL.path else {
+            fatalError("UI audit LibraryFolderStore is not rooted inside the current Caches namespace")
+        }
+        // FrameCache's rootURL is intentionally private. Use its existing public
+        // folder-creation API to prove the concrete root chosen by its initializer.
+        guard let frameCacheProbe = try? FrameCache.shared.makeClipFolder(id: "ui-audit-root-validation"),
+              frameCacheProbe.deletingLastPathComponent().standardizedFileURL.path == expectedClips.standardizedFileURL.path else {
+            fatalError("UI audit FrameCache is not rooted inside the current Caches namespace")
+        }
+    }
+    #endif
 
     /// 设置页使用显式入口更新该开关，确保 SwiftUI 控件的 Binding 写入后立即落盘。
     func setPreserveOriginalMediaQuality(_ value: Bool) {
@@ -1858,10 +1921,12 @@ final class AppState: ObservableObject {
     }
 
     private func rememberCanvasAspect(_ aspect: CanvasAspect) {
+        guard !isUIAuditFixtureLaunch else { return }
         UserDefaults.standard.set(aspect.rawValue, forKey: canvasPreferenceAspectKey)
     }
 
     private func rememberCanvasBackground(_ background: BackgroundPreset) {
+        guard !isUIAuditFixtureLaunch else { return }
         guard let data = try? JSONEncoder().encode(background) else { return }
         UserDefaults.standard.set(data, forKey: canvasPreferenceBackgroundKey)
     }

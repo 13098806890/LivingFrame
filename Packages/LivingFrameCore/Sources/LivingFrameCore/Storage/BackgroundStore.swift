@@ -131,6 +131,12 @@ public struct BackgroundStore {
     ]
 
     private init() {
+        if let auditRoot = UIAuditStorageIsolation.rootURL(for: "Backgrounds") {
+            rootURL = auditRoot
+            try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+            generatePresetsIfNeeded()
+            return
+        }
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         rootURL = documents.appendingPathComponent("Library/Backgrounds", isDirectory: true)
         try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)

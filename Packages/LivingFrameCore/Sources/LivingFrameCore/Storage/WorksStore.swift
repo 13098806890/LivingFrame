@@ -1,5 +1,37 @@
 import Foundation
 
+/// Storage routing used only by explicit DEBUG UI-audit launches. The launch
+/// argument is the fail-closed switch; a valid per-launch UUID is required
+/// before either audit store can resolve a location.
+enum UIAuditStorageIsolation {
+    static let namespaceEnvironmentKey = "GIFBLOOM_UI_AUDIT_NAMESPACE"
+    private static let auditFolderName = "GIFBloom-UIAudit"
+    private static let fixtureArguments: Set<String> = [
+        "-UIAuditSeedProject",
+        "-UIAuditSeedAnimatedCollage"
+    ]
+
+    static func rootURL(for component: String, fileManager: FileManager = .default) -> URL? {
+        #if DEBUG
+        let process = ProcessInfo.processInfo
+        guard process.arguments.contains(where: fixtureArguments.contains) else { return nil }
+        guard let rawNamespace = process.environment[namespaceEnvironmentKey],
+              let namespace = UUID(uuidString: rawNamespace) else {
+            fatalError("UI audit fixture requested without a valid \(namespaceEnvironmentKey); refusing production storage")
+        }
+        guard let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            fatalError("UI audit fixture requested but the app Caches directory is unavailable")
+        }
+        return caches
+            .appendingPathComponent(auditFolderName, isDirectory: true)
+            .appendingPathComponent(namespace.uuidString, isDirectory: true)
+            .appendingPathComponent(component, isDirectory: true)
+        #else
+        return nil
+        #endif
+    }
+}
+
 /// 作品持久化：Documents/Works/{id}/（work.json + poster.png）
 public struct WorksStore {
     public let rootURL: URL
@@ -8,6 +40,10 @@ public struct WorksStore {
     private let ioQueue = DispatchQueue(label: "livingframe.works-store", qos: .utility)
 
     public init(fileManager: FileManager = .default) {
+        if let auditRoot = UIAuditStorageIsolation.rootURL(for: "Works", fileManager: fileManager) {
+            self.init(rootURL: auditRoot, fileManager: fileManager)
+            return
+        }
         let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         self.init(rootURL: documents.appendingPathComponent("Works", isDirectory: true), fileManager: fileManager)
     }

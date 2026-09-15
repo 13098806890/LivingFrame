@@ -9,10 +9,18 @@ import UniformTypeIdentifiers
 @MainActor
 enum UIAuditFixtureSeeder {
     private static var didSeed = false
+    private static let namespaceEnvironmentKey = "GIFBLOOM_UI_AUDIT_NAMESPACE"
 
     static func seedIfRequested(into appState: AppState) async {
-        guard !didSeed,
-              ProcessInfo.processInfo.arguments.contains("-UIAuditSeedProject") else { return }
+        let arguments = ProcessInfo.processInfo.arguments
+        let seedRequested = arguments.contains("-UIAuditSeedProject")
+            || arguments.contains("-UIAuditSeedAnimatedCollage")
+        guard !didSeed, seedRequested else { return }
+        guard let namespace = ProcessInfo.processInfo.environment[namespaceEnvironmentKey],
+              UUID(uuidString: namespace) != nil else {
+            fatalError("UI audit fixture requested without a valid \(namespaceEnvironmentKey); refusing to seed into production storage")
+        }
+        appState.validateUIAuditStorageIsolation(namespace: namespace)
         didSeed = true
 
         appState.createComposition(aspect: .square1x1)
@@ -102,7 +110,7 @@ enum UIAuditFixtureSeeder {
                 UIBezierPath(ovalIn: CGRect(x: x, y: 210, width: 110, height: 110)).fill()
             }
 
-            let title = "LIVING\nFRAME" as NSString
+            let title = "GIF\nBLOOM" as NSString
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             paragraph.lineSpacing = -6

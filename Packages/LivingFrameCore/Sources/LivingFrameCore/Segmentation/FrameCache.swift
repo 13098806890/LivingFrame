@@ -29,8 +29,12 @@ public final class FrameCache {
     private let manifestQueue = DispatchQueue(label: "livingframe.frame-cache.manifest", qos: .utility)
 
     private init() {
-        rootURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Library/Clips", isDirectory: true)
+        if let auditRoot = UIAuditStorageIsolation.rootURL(for: "Clips") {
+            rootURL = auditRoot
+        } else {
+            rootURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Library/Clips", isDirectory: true)
+        }
         try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
     }
 

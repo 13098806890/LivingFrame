@@ -6,8 +6,12 @@ public struct LibraryFolderStore {
     public let foldersURL: URL
 
     public init(fileManager: FileManager = .default) {
-        let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        rootURL = documents.appendingPathComponent("Library", isDirectory: true)
+        if let auditRoot = UIAuditStorageIsolation.rootURL(for: "Folders", fileManager: fileManager) {
+            rootURL = auditRoot
+        } else {
+            let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            rootURL = documents.appendingPathComponent("Library", isDirectory: true)
+        }
         foldersURL = rootURL.appendingPathComponent("folders.json")
         try? fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
     }

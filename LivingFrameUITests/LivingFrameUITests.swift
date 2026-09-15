@@ -419,6 +419,191 @@ final class LivingFrameUITests: XCTestCase {
         app.terminate()
     }
 
+    /// Capture the editor's sheet/menu/confirmation entry points with the
+    /// deterministic in-app fixture. This complements the end-to-end workflow
+    /// audit without relying on Photos, imported user media, or saved user work.
+    @MainActor
+    func testEditorPopoverSurfaceAudit() throws {
+        let profile = Self.functionalEnglish
+        launch(profile, extraArguments: ["-UIAuditSeedProject"])
+
+        let projectTitle = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "UI Audit Project")
+        ).firstMatch
+        XCTAssertTrue(projectTitle.waitForExistence(timeout: 30), "Seeded editor did not appear")
+        waitForUIToSettle()
+        attachEditorSurfaceEvidence(named: "editor-popover--00-editor")
+
+        // Top-bar menu and its non-destructive confirmation path.
+        tapButton(["More work actions", "更多作品操作"])
+        let clearAction = matchingButton(["Clear editor contents", "清空编辑内容"])
+        XCTAssertTrue(clearAction.waitForExistence(timeout: 5), "Clear-content menu action is missing")
+        waitForUIToSettle()
+        attachEditorSurfaceEvidence(named: "editor-popover--01-more-menu")
+        clearAction.tap()
+        let clearAlert = app.alerts.firstMatch
+        XCTAssertTrue(clearAlert.waitForExistence(timeout: 5), "Clear-content confirmation did not appear")
+        attachEditorSurfaceEvidence(named: "editor-popover--02-clear-confirmation")
+        let cancelClear = clearAlert.buttons.matching(
+            NSPredicate(format: "label IN %@", ["Cancel", "取消"])
+        ).firstMatch
+        XCTAssertTrue(cancelClear.exists, "Clear-content confirmation has no cancel action")
+        cancelClear.tap()
+
+        // Rename is opened and dismissed without persisting a new title.
+        let rename = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "UI Audit Project")
+        ).firstMatch
+        XCTAssertTrue(rename.waitForExistence(timeout: 5), "Work title control is missing")
+        rename.tap()
+        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5), "Rename sheet did not appear")
+        attachEditorSurfaceEvidence(named: "editor-popover--03-rename")
+        tapNavigationButton(["Cancel", "取消"])
+
+        // Asset picker is inspected without opening the system Photos library.
+        tapButton(["Cutouts", "剪影"])
+        XCTAssertTrue(
+            matchingNavigationButton(["Cancel", "取消"]).waitForExistence(timeout: 5),
+            "Asset picker did not appear"
+        )
+        attachEditorSurfaceEvidence(named: "editor-popover--04-asset-picker")
+        tapNavigationButton(["Cancel", "取消"])
+
+        // The seeded background makes the collage editor available. Exercise
+        // its layer menu and nested asset-picker sheet, but do not import media.
+        tapButton(["Collage", "拼接"])
+        let collageCanvas = app.descendants(matching: .any)
+            .matching(identifier: "collage-canvas-preview").firstMatch
+        XCTAssertTrue(collageCanvas.waitForExistence(timeout: 10), "Collage editor did not appear")
+        attachEditorSurfaceEvidence(named: "editor-popover--05-collage-editor")
+
+        let layerMenu = app.buttons["选择图层"]
+        XCTAssertTrue(layerMenu.waitForExistence(timeout: 5), "Collage layer menu is missing")
+        for _ in 0..<5 where !layerMenu.isHittable {
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(layerMenu.isHittable, "Collage layer menu is not reachable")
+        layerMenu.tap()
+        let firstLayer = app.buttons.matching(
+            NSPredicate(format: "label IN %@", ["Layer 1", "图层 1"])
+        ).firstMatch
+        XCTAssertTrue(firstLayer.waitForExistence(timeout: 5), "Layer menu did not expose its current layer")
+        waitForUIToSettle()
+        attachEditorSurfaceEvidence(named: "editor-popover--06-collage-layer-menu")
+        firstLayer.tap()
+
+        let addCollageAsset = app.buttons["添加素材"]
+        XCTAssertTrue(addCollageAsset.waitForExistence(timeout: 5), "Collage add-media action is missing")
+        addCollageAsset.tap()
+        XCTAssertTrue(
+            matchingNavigationButton(["Cancel", "取消"]).waitForExistence(timeout: 5),
+            "Nested collage asset picker did not appear"
+        )
+        attachEditorSurfaceEvidence(named: "editor-popover--07-collage-asset-picker")
+        tapNavigationButton(["Cancel", "取消"])
+        tapNavigationButton(["Cancel", "取消"])
+
+        // Canvas appearance sheet and its transparent-background option.
+        tapButton(["Canvas", "画布"])
+        let transparent = matchingButton(["Transparent background", "透明背景"])
+        XCTAssertTrue(transparent.waitForExistence(timeout: 5), "Canvas appearance sheet did not appear")
+        attachEditorSurfaceEvidence(named: "editor-popover--08-canvas")
+        transparent.tap()
+        waitForUIToSettle()
+        attachEditorSurfaceEvidence(named: "editor-popover--09-canvas-option")
+        tapNavigationButton(["Done", "完成"])
+
+        // Export is captured as a sheet, but this pass deliberately stops
+        // before rendering or sharing anything.
+        tapButton(["Export", "导出"])
+        XCTAssertTrue(
+            matchingNavigationButton(["Cancel", "取消"]).waitForExistence(timeout: 5),
+            "Export sheet did not appear"
+        )
+        attachEditorSurfaceEvidence(named: "editor-popover--09a-export")
+        tapNavigationButton(["Cancel", "取消"])
+
+        // The fixture has no person/cutout clip. Capture the frame-editor route
+        // and explicitly leave frame-cell operations as a data-availability gap.
+        tapButton(["Frame", "帧"])
+        let frameNavigationBar = app.navigationBars.matching(
+            NSPredicate(format: "identifier IN %@ OR label IN %@", ["Edit Frames", "编辑帧"], ["Edit Frames", "编辑帧"])
+        ).firstMatch
+        XCTAssertTrue(frameNavigationBar.waitForExistence(timeout: 5), "Frame editor did not appear")
+        XCTAssertTrue(
+            frameNavigationBar.buttons.matching(NSPredicate(format: "label IN %@", ["Done", "完成"]))
+                .firstMatch.exists,
+            "Frame editor has no completion action"
+        )
+        attachEditorSurfaceEvidence(named: "editor-popover--10-frame-editor")
+        tapNavigationButton(["Done", "完成"])
+
+        // Crop is an inline mode, not a popover. Verify its controls and cancel
+        // so the fixture's canvas geometry remains unchanged.
+        tapButton(["Crop", "裁剪"])
+        XCTAssertTrue(matchingButton(["Reset", "重置"]).waitForExistence(timeout: 5), "Crop mode did not appear")
+        XCTAssertTrue(matchingButton(["Done", "完成"]).exists, "Crop mode has no completion action")
+        attachEditorSurfaceEvidence(named: "editor-popover--11-crop-mode")
+        tapButton(["Cancel", "取消"])
+
+        // Text sheet, followed by its selection inspector. The fixture only
+        // edits generated content; it does not save over an existing work.
+        tapButton(["Text", "文字"])
+        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5), "Text panel did not appear")
+        attachEditorSurfaceEvidence(named: "editor-popover--12-text")
+        if matchingButton(["Dismiss Keyboard", "收起键盘"]).exists {
+            tapButton(["Dismiss Keyboard", "收起键盘"])
+        }
+        tapNavigationButton(["Done", "完成"])
+        tapButton(["Adjust", "调整"])
+        XCTAssertTrue(
+            matchingNavigationButton(["Done", "完成"]).waitForExistence(timeout: 5),
+            "Selected-element inspector did not appear"
+        )
+        attachEditorSurfaceEvidence(named: "editor-popover--13-inspector")
+        tapNavigationButton(["Done", "完成"])
+
+        let deleteSelected = app.buttons.matching(
+            NSPredicate(format: "label IN %@", ["Delete selected asset", "删除当前选中素材"])
+        ).firstMatch
+        XCTAssertTrue(deleteSelected.waitForExistence(timeout: 5), "Timeline delete action is missing for the seeded selection")
+        XCTAssertTrue(deleteSelected.isHittable, "Timeline delete action is not reachable")
+        deleteSelected.tap()
+        let deleteAlert = app.alerts.firstMatch
+        XCTAssertTrue(deleteAlert.waitForExistence(timeout: 5), "Timeline delete confirmation did not appear")
+        attachEditorSurfaceEvidence(named: "editor-popover--13a-timeline-delete-confirmation")
+        let cancelDelete = deleteAlert.buttons.matching(
+            NSPredicate(format: "label IN %@", ["Cancel", "取消"])
+        ).firstMatch
+        XCTAssertTrue(cancelDelete.exists, "Timeline delete confirmation has no cancel action")
+        cancelDelete.tap()
+
+        // Long press exposes the secondary sticker preview sheet; close it,
+        // then close the picker without adding a sticker in this audit.
+        tapButton(["Sticker", "贴纸"])
+        let firework = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "烟花")
+        ).firstMatch
+        XCTAssertTrue(firework.waitForExistence(timeout: 10), "Sticker picker did not appear")
+        attachEditorSurfaceEvidence(named: "editor-popover--14-sticker-picker")
+        firework.press(forDuration: 0.8)
+        XCTAssertTrue(
+            matchingButton(["Add Sticker", "添加贴纸"]).waitForExistence(timeout: 5),
+            "Sticker preview sheet did not appear after long press"
+        )
+        attachEditorSurfaceEvidence(named: "editor-popover--15-sticker-preview")
+        tapNavigationButton(["Close", "关闭"])
+        tapNavigationButton(["Done", "完成"])
+
+        attachAccessibilityHierarchy(named: "editor-popover--final-hierarchy")
+        app.terminate()
+    }
+
+    private func attachEditorSurfaceEvidence(named name: String) {
+        attachScreenshot(named: name)
+        attachAccessibilityHierarchy(named: name)
+    }
+
     @MainActor
     private func runAudit(_ profiles: [AuditProfile]) throws {
         for profile in profiles {
@@ -484,6 +669,7 @@ final class LivingFrameUITests: XCTestCase {
             "-AppleLocale", profile.locale,
             "-AppleInterfaceStyle", profile.appearance
         ] + extraArguments
+        configureAuditStorageNamespace(for: extraArguments)
         if let category = profile.contentSizeCategory {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", category]
         }
@@ -493,6 +679,16 @@ final class LivingFrameUITests: XCTestCase {
             app.wait(for: .runningForeground, timeout: 15),
             "App did not reach the foreground for \(profile.name)"
         )
+    }
+
+    private func configureAuditStorageNamespace(for arguments: [String]) {
+        let namespaceKey = "GIFBLOOM_UI_AUDIT_NAMESPACE"
+        var environment = app.launchEnvironment
+        environment.removeValue(forKey: namespaceKey)
+        if arguments.contains("-UIAuditSeedProject") || arguments.contains("-UIAuditSeedAnimatedCollage") {
+            environment[namespaceKey] = UUID().uuidString
+        }
+        app.launchEnvironment = environment
     }
 
     private func captureMainTabs(profileName: String) throws {

@@ -248,6 +248,44 @@ final class CollageAuditUITests: XCTestCase {
             "Animated collage material is missing its source range editor"
         )
         attachScreenshot(named: "collage--static-and-animated-playback-controls")
+
+        let playbackControls = element(identifier: "element-playback-controls")
+        let repeatMenuLabel = NSPredicate(format: "label IN %@", ["仅播放一次", "Play once"])
+        let repeatMenu = playbackControls.buttons.matching(repeatMenuLabel).firstMatch
+        XCTAssertTrue(repeatMenu.waitForExistence(timeout: 5), "Playback-count menu is missing")
+        repeatMenu.tap()
+        let playTwice = app.buttons.matching(
+            NSPredicate(format: "label IN %@", ["播放 2 次", "Play 2 times"])
+        ).firstMatch
+        XCTAssertTrue(playTwice.waitForExistence(timeout: 5), "Playback-count menu has no two-play option")
+        waitForUIToSettle()
+        attachEditorSurfaceEvidence(named: "collage--playback-count-menu")
+        playTwice.tap()
+        let updatedRepeatMenu = playbackControls.buttons.matching(
+            NSPredicate(format: "label IN %@", ["播放 2 次", "Play 2 times"])
+        ).firstMatch
+        XCTAssertTrue(
+            updatedRepeatMenu.waitForExistence(timeout: 5),
+            "Playback count did not update after selecting the menu option"
+        )
+        waitForUIToSettle()
+        attachEditorSurfaceEvidence(named: "collage--playback-count-selected")
+
+        let editRange = app.buttons.matching(
+            NSPredicate(format: "label IN %@", ["编辑起始帧和结束帧", "Edit start and end frames"])
+        ).firstMatch
+        XCTAssertTrue(editRange.waitForExistence(timeout: 5), "Source-range action disappeared")
+        editRange.tap()
+        let sourceStart = app.sliders["源片段起始位置"]
+        let sourceEnd = app.sliders["源片段结束位置"]
+        XCTAssertTrue(sourceStart.waitForExistence(timeout: 5), "Source-range start control is missing")
+        XCTAssertTrue(sourceEnd.waitForExistence(timeout: 5), "Source-range end control is missing")
+        attachEditorSurfaceEvidence(named: "collage--source-range-editor")
+        let cancelRange = app.navigationBars.buttons.matching(
+            NSPredicate(format: "label IN %@", ["Cancel", "取消"])
+        ).firstMatch
+        XCTAssertTrue(cancelRange.waitForExistence(timeout: 5), "Source-range sheet has no cancel action")
+        cancelRange.tap()
         app.terminate()
     }
 
@@ -270,6 +308,9 @@ final class CollageAuditUITests: XCTestCase {
             "-AppleInterfaceStyle", "Light",
             "-UIAuditSeedProject"
         ] + extraArguments
+        var environment = app.launchEnvironment
+        environment["GIFBLOOM_UI_AUDIT_NAMESPACE"] = UUID().uuidString
+        app.launchEnvironment = environment
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15))
         XCTAssertTrue(
@@ -283,6 +324,14 @@ final class CollageAuditUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func attachEditorSurfaceEvidence(named name: String) {
+        attachScreenshot(named: name)
+        let hierarchy = XCTAttachment(string: app.debugDescription)
+        hierarchy.name = "\(name)--accessibility-hierarchy"
+        hierarchy.lifetime = .keepAlways
+        add(hierarchy)
     }
 
     private func waitForUIToSettle() {
