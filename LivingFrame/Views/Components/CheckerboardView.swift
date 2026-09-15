@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 棋盘格背景：衬托透明区域（专业抠图工具的惯例）
+/// 棋盘格背景：衬托透明区域（常见的剪影编辑器惯例）
 struct CheckerboardView: View {
     var body: some View {
         Canvas { context, size in

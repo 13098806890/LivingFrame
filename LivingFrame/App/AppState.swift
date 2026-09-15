@@ -22,7 +22,7 @@ final class AppState: ObservableObject {
     @Published var isSegmenting = false
     @Published var segmentationProgress: Double = 0
     @Published var segmentingName = ""
-    /// 抠图失败原因（nil 表示无错误）
+    /// 剪影生成失败原因（nil 表示无错误）
     @Published var segmentationError: String?
     /// 导出完成后的非错误提示（例如微信收藏模式为满足体积而均匀抽帧）。
     @Published private(set) var exportNotice: String?
@@ -198,11 +198,11 @@ final class AppState: ObservableObject {
     @Published var maxDimension: Double = 1280 {
         didSet { UserDefaults.standard.set(maxDimension, forKey: settingMaxDimensionKey) }
     }
-    /// 抠图处理帧率（低于源帧率时抽帧处理，帧数减少处理更快）
+    /// 剪影处理帧率（低于源帧率时抽帧处理，帧数减少处理更快）
     @Published var processingFPS: Double = 30 {
         didSet { UserDefaults.standard.set(processingFPS, forKey: settingProcessingFPSKey) }
     }
-    /// 是否在人物提取时保留源素材的实际帧率和分辨率。
+    /// 是否在剪影生成时保留源素材的实际帧率和分辨率。
     /// 开启后会覆盖处理帧率与处理分辨率预设，但仍受视频起止时间限制。
     @Published var preserveOriginalMediaQuality = false {
         // Keep the Toggle's state transition lightweight. Full settings
@@ -2672,7 +2672,7 @@ final class AppState: ObservableObject {
         }.value
     }
 
-    /// 从素材详情页直接导出单个抠图素材，不借用或修改当前作品工程。
+    /// 从素材详情页直接导出单个剪影素材，不借用或修改当前作品工程。
     func exportClipAsTransparentGIF(
         _ clipID: String,
         resolution: ExportResolution = .p720,

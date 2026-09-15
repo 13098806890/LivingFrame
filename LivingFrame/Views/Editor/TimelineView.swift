@@ -816,7 +816,7 @@ struct TimelineView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(color(for: element).opacity(0.22))
                 .frame(width: barWidth, height: barHeight)
-            // 帧缩略图拼贴：人物素材和贴纸都在时间轴上显示实际帧。
+            // 帧缩略图拼贴：剪影素材和贴纸都在时间轴上显示实际帧。
             if case .clip(let clipID) = element.kind,
                let clip = timelineClip(id: clipID) {
                 let fullStrip = thumbnails(

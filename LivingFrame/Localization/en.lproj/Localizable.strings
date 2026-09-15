@@ -218,7 +218,16 @@
 "极光" = "Aurora";
 "柔和手撕" = "Soft torn edge";
 "横向浏览时间轴" = "Browse timeline horizontally";
-"横线" = "Horizontal lines";
+"平行线" = "Parallel lines";
+"为背景添加线条或马赛克纹理；选择“无”可随时关闭。" = "Add line or mosaic texture. Select “None” to turn it off at any time.";
+"线条粗细" = "Line thickness";
+"线条间距" = "Line spacing";
+"方块大小" = "Tile size";
+"图案颜色" = "Pattern color";
+"稀疏" = "Sparse";
+"密集" = "Dense";
+"小" = "Small";
+"大" = "Large";
 "正在下载原始动态照片" = "Downloading original Live Photo…";
 "比例" = "Aspect ratio";
 "涂鸦" = "Doodle";
@@ -271,29 +280,35 @@
 "漫画" = "Cartoon";
 "粗" = "Thick";
 
-/* Person cutout terminology */
+/* Cutout terminology */
+"生成剪影" = "Create Cutout";
+"剪影" = "Cutouts";
+"剪影素材" = "Cutout Assets";
+"选择剪影素材" = "Choose Cutout Assets";
+"先在「素材库」生成剪影素材，\n再回到这里添加到画布" = "Go to Library to create cutouts,\nthen add them to the canvas here.";
+"选中画布上的剪影素材后可设置边框/描边风格" = "Select a cutout on the canvas to set its border or outline style.";
 "人物素材" = "Person Cutout";
-"自动提取人物，生成透明人物素材，全程在设备端处理" = "Automatically extract people to create transparent person cutouts. Everything is processed on your device.";
-"动态人物（默认）" = "Animated person (Default)";
-"静态人物（只取首帧）" = "Still person (First frame only)";
-"动态人物" = "Animated person";
-"静态人物" = "Still person";
-"人物素材 · %@ · %@ fps" = "Person Cutout · %@ · %@ fps";
-"人物素材设置" = "Person cutout settings";
-"人物素材生成失败" = "Person cutout failed";
-"整理人物素材" = "Organize person cutouts";
-"正在生成素材" = "Creating person cutout";
-"正在准备人物素材" = "Preparing person cutout";
+"自动识别人物，生成透明剪影素材，全程在设备端处理" = "Automatically detect people and create transparent cutouts. Everything is processed on your device.";
+"动态剪影（默认）" = "Animated Cutout (Default)";
+"静态剪影（只取首帧）" = "Still Cutout (First Frame Only)";
+"动态剪影" = "Animated Cutout";
+"静态剪影" = "Still Cutout";
+"剪影素材 · %@ · %@ fps" = "Cutout Asset · %@ · %@ fps";
+"剪影生成设置" = "Cutout Generation Settings";
+"剪影生成失败" = "Cutout Creation Failed";
+"整理剪影素材" = "Organize Cutout Assets";
+"正在生成剪影" = "Creating cutouts";
+"正在准备剪影素材" = "Preparing cutout assets";
 "取消生成" = "Cancel";
-"选择视频、Live Photo 或照片，\n人物会被自动提取为透明素材" = "Select a video, Live Photo, or photo,\nand the person will be extracted as a transparent cutout";
+"选择视频、Live Photo 或照片，\n自动生成透明剪影素材" = "Select a video, Live Photo, or photo,\nto create transparent cutouts automatically";
 "去「素材库」页面提取人物素材，\n或在素材上长按移动到文件夹" = "Go to Library to create person cutouts,\nor long-press an asset to move it to a folder";
 "保留原始帧率和分辨率" = "Preserve original frame rate and resolution";
 "开启后按源素材实际帧率处理，并保留原始像素尺寸；处理帧率和处理分辨率预设将暂时不生效，处理时间和占用空间可能明显增加。" = "When enabled, the source frame rate and pixel dimensions are preserved. Processing presets are temporarily ignored; processing may take longer and use more storage.";
 "当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。" = "The source frame rate and original dimensions are used. Frames are not added and assets are not enlarged.";
-"仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，人物素材越精细，处理时间越长。" = "More frames are kept only when the source frame rate is higher; frames are never added. Higher resolution and frame rate create finer cutouts but take longer.";
-"清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。" = "Cleaning temporary files will not delete any assets, including person cutouts inside or outside folders.";
-"人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Person cutout creation, rendering, and export all happen on your device. No photos or videos are uploaded; no network or account is required.";
-"日志摘要" = "%d lines · %@\nLoading and person cutout activity is recorded after you select assets; export logs can be analyzed directly.";
+"仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，剪影边缘越精细，处理时间越长。" = "More frames are kept only when the source frame rate is higher; frames are never added. Higher resolution and frame rate produce cleaner cutout edges but take longer.";
+"清理临时文件不会删除任何素材（含文件夹内外的所有剪影素材）。" = "Cleaning temporary files won't delete any assets, including cutout assets in or outside folders.";
+"剪影生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Cutout generation, rendering, and export all happen on your device. No photos or videos are uploaded; no network or account is required.";
+"日志摘要" = "%d lines · %@\nLoading and cutout generation are recorded after you select assets; export logs can be analyzed directly.";
 
 /* Extraction recovery */
 "当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。" = "This device can't identify people right now. Try again later, or choose another photo or video.";

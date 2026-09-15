@@ -5,7 +5,7 @@ import UIKit
 /// 编辑器工具类型（参考 ImgPlay 底部工具栏）
 enum EditorTool: String, CaseIterable, Identifiable {
     case timeline   // 时间轴（展开/收起）
-    case asset       // 人物（从素材库添加）
+    case asset       // 剪影素材（从素材库添加）
     case collage     // 拼接（照片、动态照片和视频）
     case canvas      // 画布（比例 + 背景）
     case text        // 文本（添加/编辑文字）
@@ -21,7 +21,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
     var title: LocalizedStringKey {
         switch self {
         case .timeline: "时间轴"
-        case .asset: "人物"
+        case .asset: "剪影"
         case .collage: "拼接"
         case .canvas: "画布"
         // 使用本地化 key：中文显示“文字”，英文等语言显示为“Text”。
@@ -745,8 +745,10 @@ struct EditorView: View {
                                 CanvasColorSwatch(label: "透明", isSelected: appState.composition?.background.kind == .clear) {
                                     CheckerboardView()
                                 }
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .contentShape(Rectangle())
                             .accessibilityLabel("透明背景")
 
                             ForEach(bgColors, id: \.hex) { color in
@@ -754,8 +756,10 @@ struct EditorView: View {
                                     CanvasColorSwatch(label: color.name, isSelected: isBgColor(color.hex)) {
                                         Color(hex: color.hex)
                                     }
+                                    .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
+                                .contentShape(Rectangle())
                             }
 
                             VStack(spacing: 5) {
@@ -810,90 +814,8 @@ struct EditorView: View {
                     }
                 }
 
-                EditorPanelSection(title: "背景图案", subtitle: "为纯色背景叠加简单纹理") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 8) {
-                            EditorChoiceChip(title: "无", isSelected: bgOverlay == nil) {
-                                appState.setBackgroundPattern(nil)
-                            }
-                            ForEach(bgLinePatterns) { pattern in
-                                EditorChoiceChip(title: pattern.title, isSelected: bgOverlay?.pattern == pattern) {
-                                    var style = bgOverlay ?? BackgroundPatternStyle()
-                                    style.pattern = pattern
-                                    if pattern == .mosaic {
-                                        style.lineWidth = 48; style.spacing = 48; style.angle = 0
-                                    } else {
-                                        style.lineWidth = 4; style.spacing = 36; style.angle = 0
-                                    }
-                                    appState.setBackgroundPattern(style)
-                                }
-                            }
-                        }
-                        if let bgOverlay {
-                            HStack(spacing: 8) {
-                                ForEach(bgPatternOptions(bgOverlay.pattern).widths, id: \.0) { opt in
-                                    EditorChoiceChip(title: "粗细 \(opt.0)", isSelected: abs(bgOverlay.lineWidth - opt.1) < 0.1) {
-                                        var style = bgOverlay
-                                        style.lineWidth = opt.1
-                                        appState.setBackgroundPattern(style)
-                                    }
-                                }
-                                if bgOverlay.pattern != .mosaic {
-                                    ForEach(bgPatternOptions(bgOverlay.pattern).spacing, id: \.0) { opt in
-                                        EditorChoiceChip(title: "间距 \(opt.0)", isSelected: abs(bgOverlay.spacing - opt.1) < 1) {
-                                            var style = bgOverlay
-                                            style.spacing = opt.1
-                                            appState.setBackgroundPattern(style)
-                                        }
-                                    }
-                                }
-                            }
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 10) {
-                                    ForEach(bgPatternColors, id: \.hex) { color in
-                                        Button {
-                                            var style = bgOverlay
-                                            style.colorHex = color.hex
-                                            appState.setBackgroundPattern(style)
-                                        } label: {
-                                            Circle()
-                                                .fill(Color(hex: color.hex))
-                                                .frame(width: 26, height: 26)
-                                                .overlay {
-                                                    Circle().stroke(
-                                                        bgOverlay.colorHex == color.hex ? LF.selectionStroke : LF.surface2,
-                                                        lineWidth: bgOverlay.colorHex == color.hex ? 2.5 : 1
-                                                    )
-                                                }
-                                        }
-                                        .buttonStyle(.plain)
-                                        .accessibilityLabel("图案颜色\(color.name)")
-                                    }
-                                }
-                                .padding(.vertical, 2)
-                            }
-                            if bgOverlay.pattern != .mosaic {
-                                HStack(spacing: 10) {
-                                    Text("角度")
-                                        .font(.caption)
-                                        .foregroundStyle(LF.textSecondary)
-                                        .frame(width: 34, alignment: .leading)
-                                    Slider(
-                                        value: Binding(
-                                            get: { bgOverlay.angle },
-                                            set: { var style = bgOverlay; style.angle = $0; appState.setBackgroundPattern(style) }
-                                        ),
-                                        in: 0...180
-                                    )
-                                    .tint(LF.actionPrimary)
-                                    Text("\(Int(bgOverlay.angle))°")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(LF.textSecondary)
-                                        .frame(width: 34, alignment: .trailing)
-                                }
-                            }
-                        }
-                    }
+                BackgroundPatternEditor(style: bgOverlay) { style in
+                    appState.setBackgroundPattern(style)
                 }
             }
             .padding(.horizontal, 16)
@@ -907,13 +829,6 @@ struct EditorView: View {
     private let bgColors: [(name: String, hex: String)] = [
         ("白色", "FFFFFF"), ("微信背景色", "EDEDED"), ("黑色", "000000")
     ]
-    private let bgPatternColors: [(name: String, hex: String)] = [
-        ("白", "FFFFFF"), ("黑", "000000"), ("灰", "B8BDC9"), ("金", "E8C05C"),
-        ("红", "E74C3C"), ("粉", "FF9FF3"), ("蓝", "54A0FF"),
-        ("绿", "1DD1A1"), ("紫", "8B7CF6")
-    ]
-    private let bgLinePatterns: [BackgroundPattern] = [.horizontal, .mosaic]
-
     private var bgOverlay: BackgroundPatternStyle? {
         appState.composition?.background.patternOverlay
     }
@@ -928,15 +843,6 @@ struct EditorView: View {
             return LF.brandTint.opacity(0.32)
         }
         return Color(hex: background.topColor)
-    }
-
-    private func bgPatternOptions(_ pattern: BackgroundPattern?) -> (
-        widths: [(String, CGFloat)], spacing: [(String, CGFloat)]
-    ) {
-        if pattern == .mosaic {
-            return ([("小", 32), ("中", 48), ("大", 64)], [])
-        }
-        return ([("细", 2), ("中", 4), ("粗", 8)], [("疏", 48), ("中", 36), ("密", 24)])
     }
 
     private func isBgColor(_ hex: String) -> Bool {
@@ -1093,7 +999,7 @@ struct EditorView: View {
                     }
                 }
             } else {
-                Text("选中画布上的人物素材后可设置边框/描边风格")
+                Text("选中画布上的剪影素材后可设置边框/描边风格")
                     .font(.caption)
                     .foregroundStyle(LF.textSecondary)
             }
@@ -1346,7 +1252,10 @@ private struct CanvasColorSwatch<Content: View>: View {
                 .font(.caption2)
                 .foregroundStyle(LF.textPrimary)
         }
-        .frame(width: 56)
+        // 留出完整且连续的按钮命中区域。特别是透明色块的棋盘格自身禁用了 hit-testing，
+        // 因此不能依赖图案视图的可见面积来推断按钮的可点击范围。
+        .frame(width: 64, height: 72)
+        .contentShape(Rectangle())
     }
 }
 

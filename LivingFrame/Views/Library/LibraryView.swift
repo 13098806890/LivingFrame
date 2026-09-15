@@ -86,11 +86,11 @@ struct LibraryView: View {
                     newFolderName = ""
                 }
             } message: {
-                Text("整理人物素材")
+                Text("整理剪影素材")
             }
             .alert(
                 NSLocalizedString(
-                    batchFailureTitle ?? (loadError != nil ? "导入失败" : "人物素材生成失败"),
+                    batchFailureTitle ?? (loadError != nil ? "导入失败" : "剪影生成失败"),
                     comment: "Import alert title"
                 ),
                 isPresented: Binding(
@@ -154,14 +154,14 @@ struct LibraryView: View {
                     )
                 }
                 if ProcessInfo.processInfo.arguments.contains("-UIAuditInjectSegmentationFailure") {
-                    batchFailureTitle = "人物素材生成失败"
+                    batchFailureTitle = "剪影生成失败"
                     batchFailureMessageText = NSLocalizedString(
                         "当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。",
                         comment: "Person segmentation failure fixture"
                     )
                 }
                 if isMixedBatchRetryFixture {
-                    batchFailureTitle = "人物素材生成失败"
+                    batchFailureTitle = "剪影生成失败"
                     batchFailureMessageText = "部分素材未完成：成功 1 项，1 项失败。请重试或选择其他素材。"
                 }
 #endif
@@ -188,7 +188,7 @@ struct LibraryView: View {
                             .font(.headline)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text("自动提取人物，生成透明人物素材，全程在设备端处理")
+                        Text("自动识别人物，生成透明剪影素材，全程在设备端处理")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                             .multilineTextAlignment(.center)
@@ -216,13 +216,13 @@ struct LibraryView: View {
                     Button {
                         defaultExtractKind = .live
                     } label: {
-                        Label("动态人物（默认）", systemImage: defaultExtractKind == .live ? "checkmark" : "sparkles")
+                        Label("动态剪影（默认）", systemImage: defaultExtractKind == .live ? "checkmark" : "sparkles")
                     }
                     .accessibilityIdentifier("library-extraction-kind-live")
                     Button {
                         defaultExtractKind = .static
                     } label: {
-                        Label("静态人物（只取首帧）", systemImage: defaultExtractKind == .static ? "checkmark" : "photo")
+                        Label("静态剪影（只取首帧）", systemImage: defaultExtractKind == .static ? "checkmark" : "photo")
                     }
                     .accessibilityIdentifier("library-extraction-kind-static")
                 }
@@ -249,7 +249,7 @@ struct LibraryView: View {
                 .foregroundStyle(LF.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .accessibilityLabel("人物素材设置")
+            .accessibilityLabel("剪影生成设置")
             .accessibilityIdentifier("library-extraction-settings")
         }
         .onChange(of: isShowingExtractionPicker) { wasPresented, isPresented in
@@ -292,7 +292,7 @@ struct LibraryView: View {
                     }
                 }
             }
-            // 下载完成即隐藏下载进度条（抠图阶段由「正在抠图」卡片展示）
+            // 下载完成即隐藏下载进度条（剪影生成阶段由进度卡片展示）
             isDownloading = false
             let sources = downloadedSources
                 .sorted { $0.index < $1.index }
@@ -326,10 +326,10 @@ struct LibraryView: View {
 
     private var extractionSettingsLabel: String {
         let kind = defaultExtractKind == .live
-            ? NSLocalizedString("动态人物", comment: "Animated person asset")
-            : NSLocalizedString("静态人物", comment: "Still person asset")
+            ? NSLocalizedString("动态剪影", comment: "Animated cutout asset")
+            : NSLocalizedString("静态剪影", comment: "Still cutout asset")
         return String(
-            format: NSLocalizedString("人物素材 · %@ · %@ fps", comment: "Person asset extraction summary"),
+            format: NSLocalizedString("剪影素材 · %@ · %@ fps", comment: "Cutout asset extraction summary"),
             kind,
             fpsTitle(appState.processingFPS)
         )
@@ -456,7 +456,7 @@ struct LibraryView: View {
             }
             if !Task.isCancelled, !extractionFailures.isEmpty {
                 let extractionFailureCount = max(extractionFailures.count - importFailureCount, 0)
-                batchFailureTitle = extractionFailureCount > 0 ? "人物素材生成失败" : "导入失败"
+                batchFailureTitle = extractionFailureCount > 0 ? "剪影生成失败" : "导入失败"
                 batchFailureMessageText = batchFailureMessage(
                     successCount: extractedCount,
                     importFailureCount: importFailureCount,
@@ -550,7 +550,7 @@ struct LibraryView: View {
 #if DEBUG
         if isMixedBatchRetryFixture {
             clearExtractionError()
-            batchFailureTitle = "人物素材生成失败"
+            batchFailureTitle = "剪影生成失败"
             batchFailureMessageText = "重试完成：成功素材仍为 1 项；没有重复添加。"
             return
         }
@@ -584,7 +584,7 @@ struct LibraryView: View {
 #endif
     }
 
-    /// 下载完成的待抠图素材（下载与抠图分离：下载并行，抠图串行）
+    /// 下载完成的待生成剪影素材（下载与处理分离：下载并行，剪影生成串行）
     /// stillURL：Live Photo 的配套静态图（可选，非 Live 为 nil）
     private enum ImportSource {
         case video(url: URL, name: String, stillOrientation: CGImagePropertyOrientation, stillURL: URL?)
@@ -605,7 +605,7 @@ struct LibraryView: View {
         // 2. 视频
         if types.contains(where: { $0.conforms(to: .movie) }),
            let source = await loadMovie(item: item) { return .success(source) }
-        // 3. 普通照片：单帧抠图
+        // 3. 普通照片：生成单帧剪影
         if types.contains(where: { $0.conforms(to: .image) }),
            let source = await loadPhoto(item: item) { return .success(source) }
         let message = NSLocalizedString("无法读取所选素材", comment: "Load failure detail")
@@ -804,14 +804,14 @@ struct LibraryView: View {
         }
     }
 
-    // MARK: - 抠图进度
+    // MARK: - 剪影生成进度
 
     private var isExtractionActive: Bool {
         appState.isSegmenting || extractionQueuePosition != nil
     }
 
     private var segmentationCard: some View {
-        SectionCard(title: "正在生成素材") {
+        SectionCard(title: "正在生成剪影") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     if appState.isSegmenting {
@@ -833,7 +833,7 @@ struct LibraryView: View {
                         .foregroundStyle(LF.header)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text(appState.segmentingName.isEmpty ? "正在准备人物素材" : appState.segmentingName)
+                Text(appState.segmentingName.isEmpty ? "正在准备剪影素材" : appState.segmentingName)
                     .font(.caption)
                     .foregroundStyle(LF.textSecondary)
                     .lineLimit(2)
@@ -861,7 +861,7 @@ struct LibraryView: View {
                 EmptyStateView(
                     icon: "folder",
                     title: "还没有素材",
-                    message: "选择视频、Live Photo 或照片，\n人物会被自动提取为透明素材"
+                    message: "选择视频、Live Photo 或照片，\n自动生成透明剪影素材"
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
@@ -1049,7 +1049,7 @@ private struct VideoRangePickerView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("提取人物") {
+                    Button("生成剪影") {
                         onConfirm(startTime...endTime)
                         dismiss()
                     }
@@ -1471,6 +1471,21 @@ struct ClipCell: View {
             }
             .frame(height: 120)
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .highPriorityGesture(
+                SpatialTapGesture().onEnded { value in
+                    let deleteArea = CGRect(x: 0, y: 0, width: 44, height: 44)
+                    if onDelete != nil, deleteArea.contains(value.location) {
+                        return
+                    }
+                    let playArea = CGRect(x: 0, y: 56, width: 72, height: 64)
+                    if clip.frameCount > 1, playArea.contains(value.location) {
+                        isPlaying.toggle()
+                    } else {
+                        onOpen?()
+                    }
+                }
+            )
             .overlay(alignment: .bottomLeading) {
                 if clip.frameCount > 1 {
                     // 这里只负责显示，真正的点击分流由预览区的 SpatialTapGesture 处理，
@@ -1522,17 +1537,6 @@ struct ClipCell: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(LF.surface2, lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
-            .highPriorityGesture(
-                SpatialTapGesture().onEnded { value in
-                    let playArea = CGRect(x: 0, y: 56, width: 72, height: 64)
-                    if clip.frameCount > 1, playArea.contains(value.location) {
-                        isPlaying.toggle()
-                    } else {
-                        onOpen?()
-                    }
-                }
-            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(clip.name)

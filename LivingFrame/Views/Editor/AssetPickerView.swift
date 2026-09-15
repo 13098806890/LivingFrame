@@ -22,7 +22,7 @@ struct AssetPickerView: View {
     @State private var backgroundImportTask: Task<Void, Never>?
     /// 当前浏览的文件夹（nil = 全部素材），按钮直接切换，不依赖 NavigationLink
     @State private var folderID: String?
-    /// 拼接素材选完后交给独立拼接编辑器；普通人物素材选择不需要这个回调。
+    /// 拼接素材选完后交给独立拼接编辑器；普通剪影素材选择不需要这个回调。
     private let onCollageSelection: (([String]) -> Void)?
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 10)]
@@ -44,7 +44,7 @@ struct AssetPickerView: View {
 
         var title: LocalizedStringKey {
             switch self {
-            case .person: "人物素材"
+            case .person: "剪影素材"
             case .background: "拼接素材"
             }
         }
@@ -95,7 +95,7 @@ struct AssetPickerView: View {
                 }
                 .padding()
             }
-            .lfNavigationTitle(collageOnly ? "拼接素材" : (currentFolder?.name ?? "选择人物素材"))
+            .lfNavigationTitle(collageOnly ? "拼接素材" : (currentFolder?.name ?? "选择剪影素材"))
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {
@@ -237,16 +237,15 @@ struct AssetPickerView: View {
             .padding(.vertical, 12)
             .frame(minHeight: 48)
             .contentShape(Capsule())
-            .background(isSelected ? LF.selectionFill : LF.surface, in: Capsule())
+            .background(isSelected ? LF.selectionFill : LF.surface2.opacity(0.58), in: Capsule())
             .overlay {
                 Capsule()
-                    .stroke(
-                        isSelected ? LF.brandTint : LF.textSecondary.opacity(0.16),
-                        lineWidth: isSelected ? 2 : 1
+                    .strokeBorder(
+                        isSelected ? LF.selectionStroke : LF.brandTint.opacity(0.18),
+                        lineWidth: isSelected ? 1.5 : 1
                     )
             }
-            .shadow(color: isSelected ? LF.brandTint.opacity(0.16) : .clear, radius: 4, y: 2)
-            .foregroundStyle(LF.textPrimary)
+            .foregroundStyle(isSelected ? LF.selectionText : LF.textPrimary)
         }
         .buttonStyle(.plain)
     }
@@ -263,7 +262,7 @@ struct AssetPickerView: View {
                 EmptyStateView(
                     icon: "photo.on.rectangle.angled",
                     title: "暂无素材",
-                    message: "去「素材库」页面提取人物素材，\n或在素材上长按移动到文件夹"
+                    message: "先在「素材库」生成剪影素材，\n再回到这里添加到画布"
                 )
             } else {
                 LazyVGrid(columns: columns, spacing: 10) {

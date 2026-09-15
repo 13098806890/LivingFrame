@@ -66,7 +66,7 @@ struct SettingsView: View {
                         .tint(LF.header)
                     }
 
-                    SectionCard(title: "人物素材") {
+                    SectionCard(title: "剪影") {
                         Picker("单个素材最长时长", selection: $appState.maxExtractionDuration) {
                             Text("3 秒").tag(3.0)
                             Text("5 秒（推荐）").tag(5.0)
@@ -130,7 +130,7 @@ struct SettingsView: View {
                         .disabled(preserveOriginalMediaQuality)
                         Text(preserveOriginalMediaQuality
                              ? "当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。"
-                             : "仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，人物素材越精细，处理时间越长。")
+                             : "仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，剪影边缘越精细，处理时间越长。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                     }
@@ -142,7 +142,7 @@ struct SettingsView: View {
                             Text(appState.cacheSizeText)
                                 .foregroundStyle(LF.textSecondary)
                         }
-                        Text("清理临时文件不会删除任何素材（含文件夹内外的所有人物素材）。")
+                        Text("清理临时文件不会删除任何素材（含文件夹内外的所有剪影素材）。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                         Button(role: .destructive) {
@@ -193,7 +193,7 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Label("全部在设备端处理", systemImage: "lock.shield")
                                 .font(.subheadline.weight(.medium))
-                            Text("人物素材生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。")
+                            Text("剪影生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。")
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
                         }

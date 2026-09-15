@@ -19,7 +19,7 @@ extension AppState {
 
     // MARK: - 缓存
 
-    /// 清理临时文件：素材（含文件夹内外的所有抠图结果）一律保留，只删导入/导出产生的临时文件。
+    /// 清理临时文件：素材（含文件夹内外的所有剪影结果）一律保留，只删导入/导出产生的临时文件。
     func clearCache() {
         let tmp = FileManager.default.temporaryDirectory
         Task.detached(priority: .utility) {

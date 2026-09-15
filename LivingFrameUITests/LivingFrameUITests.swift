@@ -178,7 +178,7 @@ final class LivingFrameUITests: XCTestCase {
         launch(Self.simplifiedChinese, extraArguments: ["-UIAuditInjectSegmentationFailure"])
         var alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 10), "Person-segmentation failure alert did not appear in Chinese")
-        XCTAssertTrue(alert.staticTexts["人物素材生成失败"].exists, "Chinese title must describe person generation")
+        XCTAssertTrue(alert.staticTexts["剪影生成失败"].exists, "Chinese title must describe cutout generation")
         XCTAssertTrue(
             alert.staticTexts["当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。"].exists,
             "Chinese body must describe person recognition, not media import"
@@ -189,7 +189,7 @@ final class LivingFrameUITests: XCTestCase {
         launch(Self.english, extraArguments: ["-UIAuditInjectSegmentationFailure"])
         alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 10), "Person-segmentation failure alert did not appear in English")
-        XCTAssertTrue(alert.staticTexts["Person cutout failed"].exists, "English title must describe person generation")
+        XCTAssertTrue(alert.staticTexts["Cutout Creation Failed"].exists, "English title must describe cutout generation")
         XCTAssertTrue(
             alert.staticTexts["This device can't identify people right now. Try again later, or choose another photo or video."].exists,
             "English body must describe person recognition, not media import"

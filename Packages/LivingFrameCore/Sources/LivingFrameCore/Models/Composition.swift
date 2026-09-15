@@ -557,7 +557,7 @@ public enum BackgroundPattern: String, Codable, CaseIterable, Identifiable {
 
     public var title: String {
         switch self {
-        case .horizontal: NSLocalizedString("横线", comment: "Background pattern")
+        case .horizontal: NSLocalizedString("平行线", comment: "Background pattern")
         case .mosaic: NSLocalizedString("马赛克", comment: "Background pattern")
         }
     }

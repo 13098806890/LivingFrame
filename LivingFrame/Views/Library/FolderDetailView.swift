@@ -15,6 +15,7 @@ struct FolderDetailView: View {
     @State private var newFolderName = ""
     /// 单击素材打开的详情页
     @State private var menuClip: SegmentedClip?
+    @State private var clipDeletionAlert: FolderClipDeletionAlert?
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
@@ -173,13 +174,59 @@ struct FolderDetailView: View {
                         ClipCell(
                             clip: clip,
                             onOpen: { menuClip = clip },
-                            onDelete: { appState.removeClip(clip.id, fromFolder: folder.id) },
-                            deleteAccessibilityLabel: "从文件夹移除素材",
-                            deleteAccessibilityIdentifier: "folder-remove-clip-\(clip.id)"
+                            onDelete: { requestClipDeletion(clip) },
+                            deleteAccessibilityLabel: "删除素材",
+                            deleteAccessibilityIdentifier: "folder-delete-clip-\(clip.id)"
                         )
                     }
                 }
             }
+        }
+        .alert(item: $clipDeletionAlert) { request in
+            switch request.kind {
+            case .confirm:
+                return Alert(
+                    title: Text("删除素材？"),
+                    message: Text("删除后无法恢复。"),
+                    primaryButton: .destructive(Text("删除")) {
+                        appState.deleteClip(request.clip.id)
+                    },
+                    secondaryButton: .cancel(Text("取消"))
+                )
+            case .referenced:
+                return Alert(
+                    title: Text("素材正在使用中"),
+                    message: Text("请先从以下作品中移除它，再删除素材：\n\(request.referencedWorkNames.joined(separator: "、"))"),
+                    dismissButton: .cancel(Text("知道了"))
+                )
+            }
+        }
+    }
+
+    private func requestClipDeletion(_ clip: SegmentedClip) {
+        let workNames = appState.worksReferencingClip(clip.id).map(\.name)
+        clipDeletionAlert = FolderClipDeletionAlert(
+            clip: clip,
+            kind: workNames.isEmpty ? .confirm : .referenced,
+            referencedWorkNames: workNames
+        )
+    }
+}
+
+private struct FolderClipDeletionAlert: Identifiable {
+    enum Kind {
+        case confirm
+        case referenced
+    }
+
+    let clip: SegmentedClip
+    let kind: Kind
+    let referencedWorkNames: [String]
+
+    var id: String {
+        switch kind {
+        case .confirm: "\(clip.id)-confirm-delete"
+        case .referenced: "\(clip.id)-delete-blocked"
         }
     }
 }
