@@ -35,97 +35,29 @@ struct ElementInspectorView: View {
 
     // MARK: - 背景检查器
 
-    /// 纯色背景
-    private let bgColors: [(name: String, hex: String)] = [
-        ("白色", "FFFFFF"), ("微信背景色", "EDEDED"), ("黑色", "000000")
-    ]
-
     private var backgroundInspector: some View {
         VStack(alignment: .leading, spacing: 10) {
             backgroundInspectorHeader
-            // 画幅比例
-            HStack(spacing: 8) {
-                Text("比例")
-                    .font(.caption2)
-                    .foregroundStyle(LF.textSecondary)
-                ForEach(CanvasAspect.allCases) { aspect in
-                    Button {
-                        appState.setCanvasAspect(aspect)
-                    } label: {
-                        Text(aspect.title)
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(
-                                appState.composition?.canvasRect.size == aspect.canvasSize ? LF.selectionFill : LF.surface2,
-                                in: Capsule()
-                            )
-                            .overlay {
-                                Capsule()
-                                    .stroke(
-                                        appState.composition?.canvasRect.size == aspect.canvasSize ? LF.selectionStroke : .clear,
-                                        lineWidth: 1.5
-                                    )
-                            }
-                            .foregroundStyle(appState.composition?.canvasRect.size == aspect.canvasSize ? LF.selectionText : LF.textPrimary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            // 纯色
-            HStack(spacing: 10) {
-                Button {
-                    appState.setTransparentBackground()
-                } label: {
-                    CheckerboardView()
-                        .frame(width: 44, height: 44)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(
-                                    appState.composition?.background.kind == .clear ? LF.selectionStroke : LF.surface2,
-                                    lineWidth: appState.composition?.background.kind == .clear ? 2.5 : 1
-                                )
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("透明背景")
-                ForEach(bgColors, id: \.hex) { color in
-                    Button {
-                        appState.setBackground(color: color.hex)
-                    } label: {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(hex: color.hex))
-                            .frame(width: 44, height: 44)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(
-                                        isBgColor(color.hex) ? LF.selectionStroke : LF.surface2,
-                                        lineWidth: isBgColor(color.hex) ? 2.5 : 1
-                                    )
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            inspectorChoiceRow(
-                title: "画布外缘",
-                items: CanvasEdgeStyle.allCases,
-                selected: appState.composition?.canvasEdgeStyle ?? .none
-            ) { style in
-                appState.setCanvasEdgeStyle(style)
-            }
-            BackgroundPatternEditor(
-                style: appState.composition?.background.patternOverlay
-            ) { style in
-                appState.setBackgroundPattern(style)
-            }
+            canvasAppearanceEditor
         }
     }
 
-    private func isBgColor(_ hex: String) -> Bool {
-        guard let bg = appState.composition?.background, case .solid = bg.kind else { return false }
-        return bg.topColor == hex
+    private var canvasAppearanceEditor: some View {
+        let composition = appState.composition
+        let background = composition?.background
+        return CanvasAppearanceEditor(
+            aspect: CanvasAspect.aspect(for: composition?.canvasRect.size ?? CanvasAspect.portrait9x16.canvasSize),
+            backgroundIsTransparent: background?.kind == .clear,
+            backgroundIsSolid: background?.kind == .solid,
+            backgroundHex: background?.topColor ?? "FFFFFF",
+            edgeStyle: composition?.canvasEdgeStyle ?? .none,
+            pattern: background?.patternOverlay,
+            onSelectAspect: appState.setCanvasAspect,
+            onSelectTransparent: appState.setTransparentBackground,
+            onSelectColor: { appState.setBackground(color: $0) },
+            onSelectEdgeStyle: appState.setCanvasEdgeStyle,
+            onSelectPattern: appState.setBackgroundPattern
+        )
     }
 
     /// 多选时：数量 + 批量操作
@@ -202,7 +134,7 @@ struct ElementInspectorView: View {
             } else {
                 if case .clip(let clipID) = element.kind,
                    let clip = appState.clips.first(where: { $0.id == clipID }) {
-                    stickerStylePicker(clip)
+                    stickerStylePicker(clip, element: element)
                     if appState.playbackSource(for: element) != nil {
                         speedPicker(clip)
                     }
@@ -424,19 +356,9 @@ struct ElementInspectorView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(items) { item in
-                        Button { action(item) } label: {
-                            Text(itemTitle(item))
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(item == selected ? LF.selectionFill : LF.surface2, in: Capsule())
-                                .overlay {
-                                    Capsule()
-                                        .stroke(item == selected ? LF.selectionStroke : .clear, lineWidth: 1.5)
-                                }
-                                .foregroundStyle(item == selected ? LF.selectionText : LF.textPrimary)
+                        EditorOptionChip(title: itemTitle(item), isSelected: item == selected) {
+                            action(item)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -456,19 +378,9 @@ struct ElementInspectorView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(0..<count, id: \.self) { partition in
-                        Button { action(partition) } label: {
-                            Text("区域 \(partition + 1)")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(partition == selected ? LF.selectionFill : LF.surface2, in: Capsule())
-                                .overlay {
-                                    Capsule()
-                                        .stroke(partition == selected ? LF.selectionStroke : .clear, lineWidth: 1.5)
-                                }
-                                .foregroundStyle(partition == selected ? LF.selectionText : LF.textPrimary)
+                        EditorOptionChip(title: "区域 \(partition + 1)", isSelected: partition == selected) {
+                            action(partition)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -486,29 +398,19 @@ struct ElementInspectorView: View {
     // MARK: - 滤镜
 
     private func filterPicker(_ element: CompositionElement) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("滤镜")
-                .font(.caption2)
-                .foregroundStyle(LF.textSecondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(ElementFilter.allCases) { filter in
-                        Button {
-                            appState.setElementFilter(element.id, filter == .none ? nil : filter)
-                        } label: {
-                            Text(filter.title)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(
-                                    (element.filter ?? .none) == filter ? LF.gold : LF.surface2,
-                                    in: Capsule()
-                                )
-                                .foregroundStyle((element.filter ?? .none) == filter ? .black : LF.textPrimary)
-                        }
-                        .buttonStyle(.plain)
-                    }
+        Group {
+            if let composition = appState.composition {
+                ElementFilterOptionPicker(
+                    element: element,
+                    composition: composition,
+                    currentTime: appState.currentTime,
+                    previewRevision: appState.clipStyleVersion,
+                    selectedFilter: element.filter ?? .none
+                ) { filter in
+                    appState.setElementFilter(element.id, filter == .none ? nil : filter)
                 }
+            } else {
+                EmptyView()
             }
         }
     }
@@ -535,69 +437,54 @@ struct ElementInspectorView: View {
 
     // MARK: - 贴纸风格
 
-    private func stickerStylePicker(_ clip: SegmentedClip) -> some View {
+    private func stickerStylePicker(_ clip: SegmentedClip, element: CompositionElement) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("风格")
-                .font(.caption2)
-                .foregroundStyle(LF.textSecondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(StickerStyle.allCases) { style in
-                        Button {
-                            appState.setClipStickerStyle(clip.id, style)
-                        } label: {
-                            Text(style.title)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(
-                                    clip.stickerStyle == style ? LF.gold : LF.surface2,
-                                    in: Capsule()
-                                )
-                                .foregroundStyle(clip.stickerStyle == style ? .black : LF.textPrimary)
-                        }
-                        .buttonStyle(.plain)
-                    }
+            if let composition = appState.composition {
+                StickerStyleOptionPicker(
+                    clip: clip,
+                    element: element,
+                    composition: composition,
+                    currentTime: appState.currentTime,
+                    selectedStyle: clip.stickerStyle
+                ) { style in
+                    appState.setClipStickerStyle(clip.id, style)
                 }
             }
             // 自定义描边和漫画风格都支持三档粗细；颜色仅对自定义描边生效。
             if clip.stickerStyle == .customOutline || clip.stickerStyle == .comic {
                 HStack(spacing: 8) {
                     ForEach(EdgeThickness.allCases) { thickness in
-                        Button {
+                        EditorOptionChip(
+                            title: thickness.title,
+                            isSelected: clip.edgeThickness == thickness
+                        ) {
                             appState.setClipEdgeThickness(clip.id, thickness)
-                        } label: {
-                            Text(thickness.title)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(
-                                    clip.edgeThickness == thickness ? LF.gold : LF.surface2,
-                                    in: Capsule()
-                                )
-                                .foregroundStyle(clip.edgeThickness == thickness ? .black : LF.textPrimary)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 if clip.stickerStyle == .customOutline {
-                    HStack(spacing: 10) {
-                    ForEach(edgeColors, id: \.hex) { color in
-                        Button {
-                            appState.setClipEdgeColor(clip.id, color.hex)
-                        } label: {
-                            Circle()
-                                .fill(Color(hex: color.hex))
-                                .frame(width: 22, height: 22)
-                                .overlay {
-                                    Circle().stroke(
-                                        clip.edgeColorHex.uppercased() == color.hex ? LF.gold : LF.surface2,
-                                        lineWidth: clip.edgeColorHex.uppercased() == color.hex ? 2.5 : 1
-                                    )
-                                }
+                    HStack(spacing: 4) {
+                        ForEach(edgeColors, id: \.hex) { color in
+                            let isSelected = clip.edgeColorHex.uppercased() == color.hex
+                            Button {
+                                appState.setClipEdgeColor(clip.id, color.hex)
+                            } label: {
+                                Circle()
+                                    .fill(Color(hex: color.hex))
+                                    .frame(width: 24, height: 24)
+                                    .overlay {
+                                        Circle().strokeBorder(
+                                            isSelected ? LF.selectionStroke : LF.surface2,
+                                            lineWidth: isSelected ? 2.5 : 1
+                                        )
+                                    }
+                                    .frame(width: 40, height: 40)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(color.name)
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
                         }
-                        .buttonStyle(.plain)
-                    }
                     }
                 }
             }
@@ -630,17 +517,12 @@ struct ElementInspectorView: View {
             HStack(spacing: 8) {
                 ForEach(speedOptions, id: \.self) { speed in
                     let isCurrent = abs(clip.playbackSpeed - speed) < 0.001
-                    Button {
+                    EditorOptionChip(
+                        title: "\(speed == speed.rounded() ? String(Int(speed)) : String(format: "%.1f", speed))x",
+                        isSelected: isCurrent
+                    ) {
                         appState.setClipPlaybackSpeed(clip.id, speed)
-                    } label: {
-                        Text("\(speed == speed.rounded() ? String(Int(speed)) : String(format: "%.1f", speed))x")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(isCurrent ? LF.gold : LF.surface2, in: Capsule())
-                            .foregroundStyle(isCurrent ? .black : LF.textPrimary)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }

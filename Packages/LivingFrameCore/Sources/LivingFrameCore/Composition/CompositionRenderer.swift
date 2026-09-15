@@ -101,6 +101,323 @@ public struct CompositionRenderer {
         return true
     }
 
+    /// Renders a small style-option sample using the same clip-effect pipeline as
+    /// composition preview and export. The source frame is decoded at thumbnail size.
+    public func stickerStyleThumbnail(
+        for clip: SegmentedClip,
+        frameIndex: Int,
+        style: StickerStyle,
+        maxPixelSize: CGFloat = 144
+    ) -> CGImage? {
+        guard clip.frameCount > 0, maxPixelSize.isFinite, maxPixelSize > 0 else { return nil }
+        let boundedIndex = min(max(frameIndex, 0), clip.frameCount - 1)
+        guard let preview = normalizedClipOptionPreviewFrame(
+            for: clip,
+            frameIndex: boundedIndex,
+            maxPixelSize: maxPixelSize
+        ) else {
+            return nil
+        }
+
+        let fixScale = optionPreviewFixScale(clip: clip, preview: preview)
+        let styled = applyClipStyle(style, clip: clip, fixScale: fixScale, to: preview.image)
+        let outputRect = preview.image.extent.integral
+        guard let rendered = context.createCGImage(styled.cropped(to: outputRect), from: outputRect) else {
+            return nil
+        }
+        return rendered
+    }
+
+    /// Resolves the source frame displayed by both style and filter option previews.
+    /// Keeping this mapping shared prevents preview rows from showing different poses
+    /// (and therefore appearing to use different zoom) while the playhead moves.
+    public static func optionPreviewFrameIndex(
+        for element: CompositionElement,
+        in composition: Composition,
+        at time: TimeInterval,
+        reversed: Bool = false
+    ) -> Int? {
+        guard case .clip(let clipID) = element.kind,
+              let clip = FrameCache.shared.clip(id: clipID) else {
+            return nil
+        }
+
+        let playbackFrames = clip.playbackFrameIndices(reversed: reversed)
+        guard !playbackFrames.isEmpty else { return nil }
+        let clipFPS = clip.fps
+        guard clipFPS.isFinite, clipFPS > 0 else { return playbackFrames.first }
+
+        let compositionFPS = composition.fps.isFinite && composition.fps > 0 ? composition.fps : 30
+        let frameDuration = 1 / compositionFPS
+        let rawDuration = element.endTime - element.startTime
+        let duration = rawDuration.isFinite ? max(rawDuration, frameDuration) : frameDuration
+        let elapsed = time.isFinite ? max(time - element.startTime, 0) : 0
+        let sampleTime = min(elapsed, max(duration - frameDuration, 0))
+
+        let sourceRange = SourcePlaybackRange(
+            duration: clip.playbackSourceDuration,
+            start: element.sourceStartTime,
+            end: element.sourceEndTime
+        )
+        let cycleDuration = sourceRange.span / max(clip.playbackSpeed, 0.01)
+        let sourceTime = sourceRange.sourceTime(
+            at: sampleTime,
+            playbackRate: clip.playbackSpeed,
+            phase: element.sourcePlaybackOffset ?? 0,
+            looping: element.shouldLoop(cycleDuration: cycleDuration)
+        )
+
+        let startIndex = min(
+            max(Int((sourceRange.start * clipFPS).rounded(.down)), 0),
+            playbackFrames.count - 1
+        )
+        let endIndex = min(
+            max(Int((sourceRange.end * clipFPS).rounded(.up)), startIndex + 1),
+            playbackFrames.count
+        )
+        let cycleFrameCount = max(endIndex - startIndex, 1)
+        let relativeFrame = max(Int(((sourceTime - sourceRange.start) * clipFPS).rounded(.down)), 0)
+        return playbackFrames[startIndex + (relativeFrame % cycleFrameCount)]
+    }
+
+    /// Renders one isolated element with a candidate filter, then normalizes its
+    /// unfiltered content into the same option-tile framing for every filter.
+    public func elementFilterThumbnail(
+        for element: CompositionElement,
+        in composition: Composition,
+        at time: TimeInterval,
+        filter: ElementFilter,
+        maxPixelSize: CGFloat = 144
+    ) -> CGImage? {
+        guard maxPixelSize.isFinite, maxPixelSize > 0,
+              composition.elements.contains(where: { $0.id == element.id }) else {
+            return nil
+        }
+
+        if case .clip(let clipID) = element.kind,
+           let clip = FrameCache.shared.clip(id: clipID),
+           let frameIndex = Self.optionPreviewFrameIndex(
+                for: element,
+                in: composition,
+                at: time,
+                reversed: isPlaybackReversed
+           ),
+           let preview = normalizedClipOptionPreviewFrame(
+                for: clip,
+                frameIndex: frameIndex,
+                maxPixelSize: maxPixelSize
+           ) {
+            // Normalize the raw cutout first, exactly as the style picker does.
+            // Then composite the element's current effects and apply the candidate
+            // filter, so existing outlines/patterns cannot change the zoom estimate.
+            let fixScale = optionPreviewFixScale(clip: clip, preview: preview)
+            var source = applyClipStyle(
+                clip.stickerStyle,
+                clip: clip,
+                fixScale: fixScale,
+                to: preview.image
+            )
+            if let pattern = element.backgroundPattern,
+               let patternImage = LinePattern.image(
+                    width: Int(preview.image.extent.width),
+                    height: Int(preview.image.extent.height),
+                    style: pattern,
+                    transparentBackground: true
+               ) {
+                source = source.composited(over: CIImage(cgImage: patternImage).cropped(to: preview.image.extent))
+            }
+            let filtered = applyingElementFilter(filter, to: source)
+            let outputRect = preview.image.extent.integral
+            return context.createCGImage(filtered.cropped(to: outputRect), from: outputRect)
+        }
+
+        let fps = composition.fps.isFinite && composition.fps > 0 ? composition.fps : 30
+        let frameDuration = 1 / fps
+        let elementDuration = element.endTime - element.startTime
+        let duration = elementDuration.isFinite ? max(elementDuration, frameDuration) : frameDuration
+        let elapsed = time.isFinite ? max(time - element.startTime, 0) : 0
+        let sampleTime = min(elapsed, max(duration - frameDuration, 0))
+
+        var previewElement = element
+        previewElement.startTime = 0
+        previewElement.endTime = duration
+        previewElement.transform = ElementTransform(
+            position: CGPoint(x: composition.canvas.width / 2, y: composition.canvas.height / 2)
+        )
+        previewElement.filter = nil
+
+        var previewComposition = composition
+        previewComposition.duration = duration
+        previewComposition.elements = [previewElement]
+        previewComposition.audioClips = []
+        previewComposition.background = .clear
+        previewComposition.canvasEdgeStyle = .none
+        previewComposition.cropRect = nil
+        previewComposition.excludedCompositionFrames = []
+
+        let previewRenderer = CompositionRenderer(
+            context: context,
+            frameMaxPixelSize: maxPixelSize,
+            isPlaybackReversed: false,
+            appliesClipEffects: false,
+            backgroundMediaProvider: backgroundMediaProvider
+        )
+        guard let source = previewRenderer.render(previewComposition, at: sampleTime),
+              let normalized = normalizedOptionPreviewFrame(
+                from: source,
+                maxPixelSize: Int(maxPixelSize.rounded())
+              ) else {
+            return nil
+        }
+
+        let filtered = applyingElementFilter(filter, to: normalized.image)
+        let outputRect = normalized.image.extent.integral
+        return context.createCGImage(filtered.cropped(to: outputRect), from: outputRect)
+    }
+
+    private func normalizedClipOptionPreviewFrame(
+        for clip: SegmentedClip,
+        frameIndex: Int,
+        maxPixelSize: CGFloat
+    ) -> (sourceImage: CGImage, image: CIImage, sourceScale: CGFloat)? {
+        guard let thumbnail = FrameCache.shared.cachedThumbnail(
+            for: clip,
+            index: frameIndex,
+            maxPixelSize: maxPixelSize
+        ) else {
+            return nil
+        }
+
+        // cachedThumbnail already applies the crop; rotate before measuring the
+        // subject, then use the same normalized canvas and zoom for both pickers.
+        let frame = rotatedClipImage(
+            CIImage(cgImage: thumbnail),
+            quarterTurns: clip.normalizedRotationQuarterTurns
+        )
+        let sourceRect = frame.extent.integral
+        guard let sourceImage = context.createCGImage(frame.cropped(to: sourceRect), from: sourceRect),
+              let normalized = normalizedOptionPreviewFrame(
+                from: sourceImage,
+                maxPixelSize: Int(maxPixelSize.rounded())
+              ) else {
+            return nil
+        }
+        return (sourceImage, normalized.image, normalized.sourceScale)
+    }
+
+    private func optionPreviewFixScale(
+        clip: SegmentedClip,
+        preview: (sourceImage: CGImage, image: CIImage, sourceScale: CGFloat)
+    ) -> CGFloat {
+        let outputWidth = CGFloat(max(clip.renderedWidth, 1))
+        return max(
+            outputWidth / max(CGFloat(preview.sourceImage.width) * preview.sourceScale, 1),
+            4
+        )
+    }
+
+    /// Fits the source subject into a shared thumbnail canvas before effects are
+    /// rendered. Unlike trimming each styled result independently, this makes the
+    /// cutout's scale and center identical for every style option.
+    private func normalizedOptionPreviewFrame(
+        from image: CGImage,
+        maxPixelSize: Int
+    ) -> (image: CIImage, sourceScale: CGFloat)? {
+        guard maxPixelSize > 0 else { return nil }
+        let width = maxPixelSize
+        // Matches both style and filter wells' usable aspect ratio (58×46 after padding).
+        let height = max(Int((CGFloat(width) * 46 / 58).rounded()), 1)
+        let bounds = visiblePixelBounds(in: image)
+            ?? CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        let sourceBounds = bounds.integral.intersection(
+            CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        )
+        guard sourceBounds.width > 0, sourceBounds.height > 0,
+              let subject = image.cropping(to: sourceBounds) else {
+            return nil
+        }
+
+        // Zoom the subject substantially while preserving room for outlines/glows.
+        let fillRatio: CGFloat = 0.88
+        let scale = min(
+            CGFloat(width) * fillRatio / CGFloat(subject.width),
+            CGFloat(height) * fillRatio / CGFloat(subject.height)
+        )
+        let drawSize = CGSize(
+            width: CGFloat(subject.width) * scale,
+            height: CGFloat(subject.height) * scale
+        )
+        let destination = CGRect(
+            x: (CGFloat(width) - drawSize.width) / 2,
+            y: (CGFloat(height) - drawSize.height) / 2,
+            width: drawSize.width,
+            height: drawSize.height
+        )
+        guard let bitmap = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue
+                | CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+        bitmap.clear(CGRect(x: 0, y: 0, width: width, height: height))
+        bitmap.interpolationQuality = .high
+        bitmap.draw(subject, in: destination)
+        guard let normalized = bitmap.makeImage() else { return nil }
+        return (CIImage(cgImage: normalized), scale)
+    }
+
+    private func visiblePixelBounds(in image: CGImage) -> CGRect? {
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return nil }
+
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
+        let didRender = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue
+                    | CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else {
+                return false
+            }
+            context.clear(CGRect(x: 0, y: 0, width: width, height: height))
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard didRender else { return nil }
+
+        var minX = width
+        var minY = height
+        var maxX = -1
+        var maxY = -1
+        // Ignore faint segmentation residue at the outer edge; it otherwise makes
+        // one stray translucent pixel dictate the zoom for every style preview.
+        let alphaThreshold: UInt8 = 24
+        for y in 0..<height {
+            let rowStart = y * bytesPerRow
+            for x in 0..<width where pixels[rowStart + x * 4 + 3] > alphaThreshold {
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return nil }
+        return CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
+    }
+
     /// Returns the complete untransformed rectangle of the content rendered for
     /// an element at the given time. The element transform is intentionally
     /// neutralized so the editor can apply one shared transform/viewport mapping
@@ -371,35 +688,9 @@ public struct CompositionRenderer {
                     ? targetWidth / frame.extent.width
                     : 1
                 // 元素级背景图案垫在底层（先画背景，再叠加人物及其边缘/风格）
-                var content: CIImage
-                if !appliesClipEffects {
-                    content = frame
-                } else if clip.stickerStyle == .customOutline {
-                    // 自定义描边：线型×粗细×颜色参数直接渲染，不叠加旧边缘层
-                    content = outlined(
-                        frame,
-                        radius: clip.edgeThickness.radius / fixScale,
-                        color: CIColor(hex: clip.edgeColorHex),
-                        lineStyle: clip.edgeLineStyle,
-                        fixScale: fixScale,
-                        clipID: clip.id
-                    )
-                } else {
-                    content = applyStickerStyle(
-                        clip.stickerStyle,
-                        thickness: clip.edgeThickness,
-                        fixScale: fixScale,
-                        to: applyEdgeStyle(
-                            clip.edgeStyle,
-                            lineStyle: clip.edgeLineStyle,
-                            thickness: clip.edgeThickness,
-                            colorHex: clip.edgeColorHex,
-                            fixScale: fixScale,
-                            clipID: clip.id,
-                            to: frame
-                        )
-                    )
-                }
+                var content = appliesClipEffects
+                    ? applyClipStyle(clip.stickerStyle, clip: clip, fixScale: fixScale, to: frame)
+                    : frame
                 if let pattern = element.backgroundPattern,
                    let patternCG = LinePattern.image(
                        width: Int(frame.extent.width),
@@ -448,12 +739,7 @@ public struct CompositionRenderer {
 
         guard let raw = source else { return nil }
         // 滤镜（作用于元素内容，保持 extent 不变）
-        let ci: CIImage
-        if let filter = element.filter, let name = filter.filterName {
-            ci = raw.applyingFilter(name, parameters: [:]).cropped(to: raw.extent)
-        } else {
-            ci = raw
-        }
+        let ci = applyingElementFilter(element.filter, to: raw)
         // 背景元素的 transform 由编辑器手势作为“图片在遮罩内的取景”处理，
         // 不能再对已经生成的遮罩整体做一次元素变换，否则会把遮罩区域一起移动。
         if case .background = element.kind {
@@ -472,6 +758,11 @@ public struct CompositionRenderer {
         transform = transform.scaledBy(x: effectiveScale, y: effectiveScale)
         transform = transform.translatedBy(x: -ci.extent.midX, y: -ci.extent.midY)
         return ci.transformed(by: transform)
+    }
+
+    private func applyingElementFilter(_ filter: ElementFilter?, to image: CIImage) -> CIImage {
+        guard let name = filter?.filterName else { return image }
+        return image.applyingFilter(name, parameters: [:]).cropped(to: image.extent)
     }
 
     /// 背景媒体元素：先把图片 aspect-fill 到区域，再应用区域遮罩，最后交给通用元素变换。
@@ -698,6 +989,41 @@ public struct CompositionRenderer {
     }
 
     // MARK: - 贴纸风格（参照 iOS 贴纸 STKStickerEffect）
+
+    /// Single source of truth for candidate style samples and normal clip rendering.
+    private func applyClipStyle(
+        _ style: StickerStyle,
+        clip: SegmentedClip,
+        fixScale: CGFloat,
+        to frame: CIImage
+    ) -> CIImage {
+        if style == .customOutline {
+            // 自定义描边：线型×粗细×颜色参数直接渲染，不叠加旧边缘层。
+            return outlined(
+                frame,
+                radius: clip.edgeThickness.radius / max(fixScale, 0.001),
+                color: CIColor(hex: clip.edgeColorHex),
+                lineStyle: clip.edgeLineStyle,
+                fixScale: fixScale,
+                clipID: clip.id
+            )
+        }
+
+        return applyStickerStyle(
+            style,
+            thickness: clip.edgeThickness,
+            fixScale: fixScale,
+            to: applyEdgeStyle(
+                clip.edgeStyle,
+                lineStyle: clip.edgeLineStyle,
+                thickness: clip.edgeThickness,
+                colorHex: clip.edgeColorHex,
+                fixScale: fixScale,
+                clipID: clip.id,
+                to: frame
+            )
+        )
+    }
 
     private func applyStickerStyle(
         _ style: StickerStyle,

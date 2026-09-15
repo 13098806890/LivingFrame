@@ -394,21 +394,29 @@ struct TimelineView: View {
 
     private var timelineHeader: some View {
         HStack(spacing: 8) {
-            Label("时间轴", systemImage: "film.stack")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(LF.textPrimary)
+            if hasSelection {
+                Image(systemName: "film.stack")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+                    .accessibilityLabel("时间轴")
+            } else {
+                Label("时间轴", systemImage: "film.stack")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+            }
 
             if hasSelection {
                 HStack(spacing: 6) {
                     Button(action: onRequestInspector) {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.caption.weight(.bold))
+                        Label("调整", systemImage: "slider.horizontal.3")
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 28, height: 28)
-                            .background(LF.accentGradient, in: Circle())
+                            .padding(.horizontal, 9)
+                            .frame(height: 30)
+                            .background(LF.accentGradient, in: Capsule())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("调整当前选中素材")
+                    .accessibilityLabel("调整当前选中内容")
 
                     Button {
                         isShowingDeleteConfirmation = true

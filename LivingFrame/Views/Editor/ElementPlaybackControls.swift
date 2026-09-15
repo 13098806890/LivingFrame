@@ -241,9 +241,17 @@ struct ElementPlaybackControls: View {
                 } label: {
                     Text(count == 1 ? "仅播放一次" : "播放 \(count) 次")
                         .foregroundStyle(LF.selectionText)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(LF.selectionFill, in: Capsule())
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 40)
+                        .background(
+                            LF.selectionFill,
+                            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .strokeBorder(LF.selectionStroke, lineWidth: 1.5)
+                        }
                 }
             }
             if count > 3 {
@@ -266,10 +274,31 @@ struct ElementPlaybackControls: View {
                 appState.pause()
                 isEditingSourceRange = true
             } label: {
-                Label("编辑起始帧和结束帧", systemImage: "scissors")
-                    .font(.subheadline)
-                    .foregroundStyle(LF.actionPrimary)
+                HStack(spacing: 9) {
+                    Image(systemName: "scissors")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(LF.selectionText)
+                    Text("编辑起始帧和结束帧")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(LF.textPrimary)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LF.textSecondary)
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background(
+                    LF.surface2.opacity(0.42),
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(LF.brandTint.opacity(0.16), lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             }
+            .buttonStyle(.plain)
             Text(count > 1
                 ? "每次重复当前选中的源片段；修改后保持时间轴起点不变。"
                 : "动态素材可调整源片段的起始帧和结束帧；时间轴左右手柄用于单次播放。")
