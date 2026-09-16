@@ -2180,6 +2180,11 @@ final class AppState: ObservableObject {
     func recomputeDuration(autoFillOverlayElements: Bool = true) {
         guard var comp = composition else { return }
         let previousDuration = comp.duration
+
+        if autoFillOverlayElements {
+            alignAutoSizedOverlaysToLongestMaterial(in: &comp)
+        }
+
         var maxEnd: TimeInterval = 0
         var autoFillStickerIndices: [Int] = []
         var autoFillBackgroundIndices: [Int] = []
@@ -2265,9 +2270,76 @@ final class AppState: ObservableObject {
             composition = comp
         } else if autoFillOverlayElements, maxEnd > previousDuration + 0.001 {
             composition = comp
+        } else if composition != comp {
+            // 工程总时长没有变化时，也可能只改变了文字/贴纸的时间轴。
+            // 例如素材已经是 5 秒，新增贴纸先是 0.9 秒，自动对齐到 5 秒后
+            // maxEnd 仍然是 5；不能因为 duration 没变而丢掉这次元素更新。
+            composition = comp
         }
         if currentTime > maxEnd {
             currentTime = maxEnd
+        }
+    }
+
+    /// 返回素材元素在时间轴上的最晚结束位置。
+    /// 文字和贴纸不是“素材”，不能反过来参与决定自己的自动时长。
+    private func longestMaterialTimelineEnd(in comp: Composition) -> TimeInterval? {
+        let materialEnds = comp.elements.compactMap { element -> TimeInterval? in
+            switch element.kind {
+            case .clip, .background:
+                guard element.endTime.isFinite else { return nil }
+                return max(element.startTime, element.endTime)
+            case .canvasEdge, .decoration, .effect, .text:
+                return nil
+            }
+        }
+        guard let longest = materialEnds.max(), longest.isFinite, longest > 0 else {
+            return nil
+        }
+        return longest
+    }
+
+    /// 自动创建的文字/贴纸跟随最长素材；用户手动拖过时间轴后会退出自动模式。
+    private func alignAutoSizedOverlaysToLongestMaterial(in comp: inout Composition) {
+        guard let materialEnd = longestMaterialTimelineEnd(in: comp) else { return }
+        let targetEnd = max(materialEnd, 0.1)
+
+        for index in comp.elements.indices {
+            guard shouldAutoAlignOverlay(comp.elements[index]) else { continue }
+
+            switch comp.elements[index].kind {
+            case .text:
+                comp.elements[index].startTime = 0
+                comp.elements[index].endTime = targetEnd
+            case .decoration(let decorationID):
+                comp.elements[index].startTime = 0
+                comp.elements[index].endTime = targetEnd
+
+                // 动态贴纸需要同步增加播放次数，否则时间轴虽然变长，动画会在
+                // 第一轮结束后停在最后一帧。静态贴纸保持一次播放即可。
+                if let definition = DecorationRenderer.stickerDefinition(for: decorationID),
+                   definition.frameCount > 1 {
+                    let cycleDuration = max(definition.defaultDuration, 0.1)
+                    let count = min(max(Int(ceil(targetEnd / cycleDuration - 0.000001)), 1), 99)
+                    comp.elements[index].playbackCount = count
+                }
+            case .canvasEdge, .clip, .background, .effect:
+                continue
+            }
+        }
+    }
+
+    /// 旧工程没有保存这个字段。旧文字/贴纸视为仍处于默认自动模式，
+    /// 直到用户在时间轴上主动调整后由 TimelineView 写入 false。
+    private func shouldAutoAlignOverlay(_ element: CompositionElement) -> Bool {
+        if let follows = element.followsLongestMaterialDuration {
+            return follows
+        }
+        switch element.kind {
+        case .text, .decoration:
+            return true
+        case .canvasEdge, .clip, .background, .effect:
+            return false
         }
     }
 
@@ -2447,7 +2519,8 @@ final class AppState: ObservableObject {
             startTime: 0,
             endTime: max(comp.duration, 1),
             sourceStartTime: 0,
-            sourceEndTime: max(comp.duration, 1)
+            sourceEndTime: max(comp.duration, 1),
+            followsLongestMaterialDuration: true
         )
         comp.elements.append(element)
         composition = comp
@@ -2728,7 +2801,8 @@ final class AppState: ObservableObject {
             startTime: 0,
             endTime: stickerDuration,
             sourceStartTime: 0,
-            sourceEndTime: stickerDuration
+            sourceEndTime: stickerDuration,
+            followsLongestMaterialDuration: true
         )
         comp.elements.append(element)
         composition = comp

@@ -29,7 +29,7 @@ struct TextFormattingControls: View {
         VStack(alignment: .leading, spacing: 14) {
             TextControlSection(title: "内容", subtitle: "文字会即时显示在画布上") {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "textformat")
+                    Image(systemName: EditorTool.textIcon)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(LF.actionPrimary)
                         .frame(width: 26, height: 26)

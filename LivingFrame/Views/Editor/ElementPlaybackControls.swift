@@ -23,39 +23,104 @@ private struct ElementSourceRangeEditor: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text(element.name).font(.headline)
-                    SourceRangeFilmstrip(
-                        element: element,
-                        source: source,
-                        start: start,
-                        end: end,
-                        clip: clip
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "film.stack")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(LF.selectionText)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("编辑播放范围")
+                                    .font(.headline)
+                                Text(element.name)
+                                    .font(.caption)
+                                    .foregroundStyle(LF.textSecondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Text(String(format: "%.2f s", source.duration))
+                                .font(.caption.monospacedDigit().weight(.medium))
+                                .foregroundStyle(LF.textSecondary)
+                        }
+
+                        SourceRangeFilmstrip(
+                            element: element,
+                            source: source,
+                            start: start,
+                            end: end,
+                            clip: clip
+                        )
+                        .frame(height: 104)
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "play.fill")
+                                .font(.caption2.weight(.bold))
+                            Text(String(format: "%.2f–%.2f s", start, end))
+                                .font(.subheadline.monospacedDigit().weight(.semibold))
+                            Spacer()
+                            Text(String(format: "每轮 %.2f s", (end - start) / source.playbackRate))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(LF.textSecondary)
+                        }
+                        .foregroundStyle(LF.selectionText)
+                        .padding(.horizontal, 11)
+                        .frame(minHeight: 36)
+                        .background(
+                            LF.selectionFill,
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        )
+                    }
+                    .padding(14)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(LF.brandTint.opacity(0.16), lineWidth: 1)
+                    }
+
+                    endpointSliderCard(
+                        title: "入点",
+                        subtitle: "播放从这个位置开始",
+                        icon: "arrow.right.to.line",
+                        value: Binding(
+                            get: { start },
+                            set: { start = min($0, max(end - minimumSpan, 0)) }
+                        ),
+                        accessibilityLabel: "源片段起始位置"
                     )
-                    .frame(height: 76)
-                    endpointLabel("起始位置", time: start)
-                    Slider(value: Binding(
-                        get: { start },
-                        set: { start = min($0, max(end - minimumSpan, 0)) }
-                    ), in: 0...source.duration)
-                    .accessibilityLabel("源片段起始位置")
-                    endpointLabel("结束位置", time: end)
-                    Slider(value: Binding(
-                        get: { end },
-                        set: { end = max($0, min(start + minimumSpan, source.duration)) }
-                    ), in: 0...source.duration)
-                    .accessibilityLabel("源片段结束位置")
-                    Text(String(format: "每次播放 %.2f 秒", (end - start) / source.playbackRate))
-                        .font(.subheadline.monospacedDigit())
-                    Text("暗区不会播放。修改片段会应用到每一次重复，时间轴上的开始位置保持不变。")
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
-                    Button("恢复完整素材") {
+
+                    endpointSliderCard(
+                        title: "出点",
+                        subtitle: "播放在这个位置结束",
+                        icon: "arrow.left.to.line",
+                        value: Binding(
+                            get: { end },
+                            set: { end = max($0, min(start + minimumSpan, source.duration)) }
+                        ),
+                        accessibilityLabel: "源片段结束位置"
+                    )
+
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                        Text("两侧变暗区域不会播放。调整后的范围会应用到每一次重复，时间轴上的开始位置保持不变。")
+                            .font(.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .foregroundStyle(LF.textSecondary)
+                    .padding(.horizontal, 4)
+
+                    Button {
                         start = 0
                         end = source.duration
+                    } label: {
+                        Label("恢复完整素材", systemImage: "arrow.counterclockwise")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
+                    .buttonStyle(.bordered)
+                    .tint(LF.actionPrimary)
                 }
-                .padding(20)
+                .padding(16)
             }
             .magicBackground()
             .tint(LF.actionPrimary)
@@ -75,6 +140,49 @@ private struct ElementSourceRangeEditor: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+    }
+
+    private func endpointSliderCard(
+        title: String,
+        subtitle: String,
+        icon: String,
+        value: Binding<Double>,
+        accessibilityLabel: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LF.selectionText)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                }
+                Spacer()
+                Text(String(format: "%.2f s", value.wrappedValue))
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(LF.selectionText)
+            }
+            Slider(value: value, in: 0...source.duration)
+                .accessibilityLabel(accessibilityLabel)
+            HStack {
+                Text("0.00 s")
+                Spacer()
+                Text(String(format: "%.2f s", source.duration))
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(LF.textSecondary)
+        }
+        .padding(14)
+        .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .strokeBorder(LF.brandTint.opacity(0.12), lineWidth: 1)
+        }
     }
 
     private var clip: SegmentedClip? {
@@ -132,10 +240,24 @@ private struct SourceRangeFilmstrip: View {
             }
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .strokeBorder(LF.selectionStroke, lineWidth: 3)
+                    .fill(LF.selectionFill.opacity(0.18))
                     .frame(width: max(right - left, 1))
                     .offset(x: left)
                     .allowsHitTesting(false)
+            }
+            .overlay(alignment: .leading) {
+                HStack(spacing: 0) {
+                    Capsule()
+                        .fill(LF.selectionStroke)
+                        .frame(width: 4, height: geometry.size.height)
+                    Spacer()
+                    Capsule()
+                        .fill(LF.selectionStroke)
+                        .frame(width: 4, height: geometry.size.height)
+                }
+                .frame(width: max(right - left, 1))
+                .offset(x: left)
+                .allowsHitTesting(false)
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
@@ -223,11 +345,61 @@ struct ElementPlaybackControls: View {
         source.range(for: element)
     }
 
+    private var cycleDuration: TimeInterval {
+        max(range.span / source.playbackRate, 0.001)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("重复播放", systemImage: "repeat")
+            HStack(spacing: 9) {
+                Image(systemName: "film.stack")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LF.selectionText)
+                    .frame(width: 28, height: 28)
+                    .background(LF.selectionFill.opacity(0.7), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("播放范围")
+                        .font(.subheadline.weight(.semibold))
+                    Text(String(format: "%.2f–%.2f s · 每轮 %.2f s", range.start, range.end, cycleDuration))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(LF.textSecondary)
+                }
+                Spacer(minLength: 8)
+            }
+
+            Button {
+                appState.pause()
+                isEditingSourceRange = true
+            } label: {
+                HStack(spacing: 9) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("调整起始帧和结束帧")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(LF.textPrimary)
+                        Text("选择每轮播放的素材范围")
+                            .font(.caption2)
+                            .foregroundStyle(LF.textSecondary)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LF.textSecondary)
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 56)
+                .background(LF.surface2.opacity(0.66), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(LF.brandTint.opacity(0.14), lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 8) {
+                Label("循环次数", systemImage: "repeat")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(LF.textSecondary)
                 Spacer()
                 Menu {
                     ForEach([1, 2, 3], id: \.self) { value in
@@ -239,19 +411,19 @@ struct ElementPlaybackControls: View {
                         appState.setElementPlaybackCount(element.id, count: max(count, 4))
                     }
                 } label: {
-                    Text(count == 1 ? "仅播放一次" : "播放 \(count) 次")
-                        .foregroundStyle(LF.selectionText)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 40)
-                        .background(
-                            LF.selectionFill,
-                            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        )
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                .strokeBorder(LF.selectionStroke, lineWidth: 1.5)
-                        }
+                    HStack(spacing: 5) {
+                        Text(count == 1 ? "仅播放一次" : "播放 \(count) 次")
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .foregroundStyle(LF.textPrimary)
+                    .font(.caption.weight(.medium))
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 34)
+                    .background(LF.surface2.opacity(0.7), in: Capsule())
+                    .overlay {
+                        Capsule().strokeBorder(LF.brandTint.opacity(0.14), lineWidth: 1)
+                    }
                 }
             }
             if count > 3 {
@@ -261,52 +433,16 @@ struct ElementPlaybackControls: View {
                 ), in: 1...99)
                 .font(.caption)
             }
-            HStack(spacing: 8) {
-                Label("源片段", systemImage: "film")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(LF.textSecondary)
-                Spacer(minLength: 8)
-                Text(String(format: "%.2f–%.2f / %.2f s", range.start, range.end, source.duration))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(LF.textPrimary)
-            }
-            Button {
-                appState.pause()
-                isEditingSourceRange = true
-            } label: {
-                HStack(spacing: 9) {
-                    Image(systemName: "scissors")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(LF.selectionText)
-                    Text("编辑起始帧和结束帧")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(LF.textPrimary)
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(LF.textSecondary)
-                }
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-                .background(
-                    LF.surface2.opacity(0.42),
-                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(LF.brandTint.opacity(0.16), lineWidth: 1)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            Text(count > 1
-                ? "每次重复当前选中的源片段；修改后保持时间轴起点不变。"
-                : "动态素材可调整源片段的起始帧和结束帧；时间轴左右手柄用于单次播放。")
+            Text("时间轴左右手柄用于调整这段素材在工程中的播放长度。")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
         }
-        .padding(10)
-        .background(LF.surface2, in: RoundedRectangle(cornerRadius: 12))
+        .padding(12)
+        .background(LF.surface2.opacity(0.42), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(LF.brandTint.opacity(0.12), lineWidth: 1)
+        }
         .accessibilityIdentifier("element-playback-controls")
         .sheet(isPresented: $isEditingSourceRange) {
             ElementSourceRangeEditor(element: element, source: source)

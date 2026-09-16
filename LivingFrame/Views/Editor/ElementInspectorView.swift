@@ -7,30 +7,32 @@ struct ElementInspectorView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        // 底部属性面板：高度受限（外部 frame），内容多时内部滚动
-        // sheet 导航栏已经提供了上下文标题，这里不再重复嵌套“检查器”标题。
-        SectionCard(title: nil) {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 10) {
-                    if appState.selectedBackground {
-                        backgroundInspector
-                    } else if let id = appState.primarySelectedID,
-                              let element = appState.composition?.elements.first(where: { $0.id == id }) {
-                        elementInspector(element)
-                    } else if appState.selectedElementIDs.count > 1 {
-                        multiSelectionSummary
-                    } else if let id = appState.selectedAudioID,
-                              let clip = appState.composition?.audioClips.first(where: { $0.id == id }) {
-                        audioInspector(clip)
-                    } else {
-                        Text("点击画布或时间轴上的元素进行编辑")
-                            .font(.caption)
-                            .foregroundStyle(LF.textSecondary)
-                    }
+        // 直接使用 popover 的主题背景，不再套一层大卡片，避免与 NavigationBar
+        // 和内部控制卡片叠出多重白色/渐变层。
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 10) {
+                if appState.selectedBackground {
+                    backgroundInspector
+                } else if let id = appState.primarySelectedID,
+                          let element = appState.composition?.elements.first(where: { $0.id == id }) {
+                    elementInspector(element)
+                } else if appState.selectedElementIDs.count > 1 {
+                    multiSelectionSummary
+                } else if let id = appState.selectedAudioID,
+                          let clip = appState.composition?.audioClips.first(where: { $0.id == id }) {
+                    audioInspector(clip)
+                } else {
+                    Text("点击画布或时间轴上的元素进行编辑")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
                 }
             }
-            .scrollDismissesKeyboard(.interactively)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
+        .scrollContentBackground(.hidden)
+        .background(LF.background)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: - 背景检查器
@@ -89,39 +91,53 @@ struct ElementInspectorView: View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
                 Image(systemName: elementInspectorIcon(for: element))
-                    .font(.headline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(LF.selectionText)
-                    .frame(width: 32, height: 32)
-                    .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .frame(width: 36, height: 36)
+                    .background(LF.surface2.opacity(0.72), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .strokeBorder(LF.brandTint.opacity(0.14), lineWidth: 1)
+                    }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(inspectorElementName(for: element))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(LF.textPrimary)
                         .lineLimit(1)
-                    Text("图层属性")
+                    Text("当前元素")
                         .font(.caption2)
                         .foregroundStyle(LF.textSecondary)
                 }
 
                 Spacer()
-                HStack(spacing: 5) {
-                    Button { appState.moveElementZ(element.id, up: false) } label: {
-                        Image(systemName: "square.3.layers.3d.down.right")
+                HStack(spacing: 4) {
+                    inspectorActionButton(
+                        systemName: "square.3.layers.3d.down.right",
+                        accessibilityLabel: "下移图层"
+                    ) {
+                        appState.moveElementZ(element.id, up: false)
                     }
-                    .buttonStyle(.plain)
-                    Button { appState.moveElementZ(element.id, up: true) } label: {
-                        Image(systemName: "square.3.layers.3d.up.right")
+                    inspectorActionButton(
+                        systemName: "square.3.layers.3d.up.right",
+                        accessibilityLabel: "上移图层"
+                    ) {
+                        appState.moveElementZ(element.id, up: true)
                     }
-                    .buttonStyle(.plain)
                     Button(role: .destructive) { appState.deleteElement(element.id) } label: {
                         Image(systemName: "trash")
+                            .frame(width: 34, height: 34)
                     }
                     .buttonStyle(.plain)
+                    .foregroundStyle(.red)
                 }
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
+            .padding(12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(LF.brandTint.opacity(0.14), lineWidth: 1)
+            }
 
             if let source = appState.playbackSource(for: element) {
                 ElementPlaybackControls(element: element, source: source)
@@ -150,6 +166,26 @@ struct ElementInspectorView: View {
         }
     }
 
+    private func inspectorActionButton(
+        systemName: String,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.caption.weight(.semibold))
+                .frame(width: 34, height: 34)
+                .background(LF.surface2.opacity(0.68), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(LF.brandTint.opacity(0.12), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(LF.textSecondary)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
     private func inspectorElementName(for element: CompositionElement) -> String {
         guard case .background = element.kind,
               element.collageGroupID == nil else {
@@ -171,7 +207,7 @@ struct ElementInspectorView: View {
         case .background: return "photo.on.rectangle"
         case .decoration: return "face.smiling"
         case .effect: return "sparkles"
-        case .text: return "textformat"
+        case .text: return EditorTool.textIcon
         case .canvasEdge: return "square"
         @unknown default: return "square"
         }

@@ -1424,6 +1424,11 @@ struct TimelineView: View {
                     appState.updateElement(element.id, { element in
                         let before = ElementTiming(element)
                         guard let mode = completedSession?.mode else { return }
+                        if case .text = element.kind {
+                            element.followsLongestMaterialDuration = false
+                        } else if case .decoration = element.kind {
+                            element.followsLongestMaterialDuration = false
+                        }
                         switch mode {
                         case .trimStart:
                             element.startTime = timing.start
@@ -1775,7 +1780,7 @@ struct TimelineView: View {
         case .background: "photo.on.rectangle"
         case .decoration: EditorTool.sticker.icon
         case .effect: "sparkles"
-        case .text: "textformat"
+        case .text: EditorTool.textIcon
         case .canvasEdge: "rectangle.inset.filled"
         }
     }

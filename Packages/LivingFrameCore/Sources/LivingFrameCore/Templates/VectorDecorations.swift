@@ -5,12 +5,12 @@ import ImageIO
 
 public enum StickerCategory: String, CaseIterable, Equatable, Sendable {
     case doodle
-    case crayon
+    case logo
 
     public var title: String {
         switch self {
         case .doodle: "涂鸦"
-        case .crayon: "蜡笔绘本"
+        case .logo: "logo"
         }
     }
 }
@@ -191,24 +191,29 @@ public struct DecorationRenderer {
             isFrameSequence: false, frameCount: 108
         ),
         StickerDefinition(
-            id: "sticker-crayon-cloud", name: "蜡笔云朵", category: .crayon,
-            resourceName: "crayon-cloud", resourceExtension: "gif",
-            isFrameSequence: false, frameCount: 5, frameDuration: 0.2
+            id: "sticker-logo-bubble", name: "logo", category: .logo,
+            resourceName: "gifbloom-bubble", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 6, frameDuration: 0.08
         ),
         StickerDefinition(
-            id: "sticker-crayon-sparkle", name: "蜡笔星光", category: .crayon,
-            resourceName: "crayon-sparkle", resourceExtension: "gif",
-            isFrameSequence: false, frameCount: 3, frameDuration: 0.22
+            id: "sticker-logo-hand-lettered", name: "logo", category: .logo,
+            resourceName: "gifbloom-hand-lettered", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 6, frameDuration: 0.08
         ),
         StickerDefinition(
-            id: "sticker-crayon-heart-pink", name: "蜡笔粉色爱心", category: .crayon,
-            resourceName: "crayon-heart-pink", resourceExtension: "gif",
-            isFrameSequence: false, frameCount: 3, frameDuration: 0.3
+            id: "sticker-logo-gradient", name: "logo", category: .logo,
+            resourceName: "gifbloom-gradient", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 6, frameDuration: 0.08
         ),
         StickerDefinition(
-            id: "sticker-crayon-heart-blue", name: "蜡笔蓝色爱心", category: .crayon,
-            resourceName: "crayon-heart-blue", resourceExtension: "gif",
-            isFrameSequence: false, frameCount: 3, frameDuration: 0.3
+            id: "sticker-logo-doodle", name: "logo", category: .logo,
+            resourceName: "gifbloom-doodle", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 6, frameDuration: 0.08
+        ),
+        StickerDefinition(
+            id: "sticker-logo-crayon", name: "logo", category: .logo,
+            resourceName: "gifbloom-crayon", resourceExtension: "gif",
+            isFrameSequence: false, frameCount: 6, frameDuration: 0.08
         )
     ]
 
@@ -237,10 +242,7 @@ public struct DecorationRenderer {
                                         maxPixelSize: Int = 160) -> CGImage? {
         guard time.isFinite, let definition = stickerDefinition(for: id) else { return nil }
         let index = min(max(Int(max(time, 0) / definition.frameDuration), 0), max(definition.frameCount - 1, 0))
-        let name = definition.isFrameSequence
-            ? String(format: definition.resourceName, index)
-            : definition.resourceName
-        guard let url = Bundle.module.url(forResource: name, withExtension: definition.resourceExtension),
+        guard let url = stickerResourceURL(for: definition, frameIndex: index),
               let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               CGImageSourceGetCount(source) > 0 else { return nil }
         let frame = definition.isFrameSequence ? 0 : min(index, CGImageSourceGetCount(source) - 1)
@@ -306,10 +308,8 @@ public struct DecorationRenderer {
 
         if definition.isFrameSequence {
             for i in 0..<definition.frameCount {
-                guard let url = Bundle.module.url(
-                    forResource: String(format: definition.resourceName, i),
-                    withExtension: definition.resourceExtension
-                ), let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                guard let url = Self.stickerResourceURL(for: definition, frameIndex: i),
+                   let source = CGImageSourceCreateWithURL(url as CFURL, nil),
                    let img = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
                     Self.lock.lock()
                     Self.stickerFrameCache.setObject([] as NSArray, forKey: cacheKey)
@@ -319,10 +319,8 @@ public struct DecorationRenderer {
                 loaded.append(img)
             }
         } else {
-            guard let url = Bundle.module.url(
-                forResource: definition.resourceName,
-                withExtension: definition.resourceExtension
-            ), let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            guard let url = Self.stickerResourceURL(for: definition),
+                  let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
                 Self.lock.lock()
                 Self.stickerFrameCache.setObject([] as NSArray, forKey: cacheKey)
                 Self.lock.unlock()
@@ -343,6 +341,35 @@ public struct DecorationRenderer {
         Self.stickerFrameCache.setObject(loaded as NSArray, forKey: cacheKey, cost: cost)
         Self.lock.unlock()
         return loaded
+    }
+
+    /// 贴纸资源可能来自 Swift Package 的资源包，也可能来自 App target 的 Watermarks
+    /// 目录。两套入口统一解析，避免预览、画布和导出各自使用不同路径。
+    private static func stickerResourceURL(
+        for definition: StickerDefinition,
+        frameIndex: Int? = nil
+    ) -> URL? {
+        let name: String
+        if definition.isFrameSequence, let frameIndex {
+            name = String(format: definition.resourceName, frameIndex)
+        } else {
+            name = definition.resourceName
+        }
+
+        let bundles = [Bundle.module, Bundle.main]
+        for bundle in bundles {
+            if let url = bundle.url(forResource: name, withExtension: definition.resourceExtension) {
+                return url
+            }
+            if let url = bundle.url(
+                forResource: name,
+                withExtension: definition.resourceExtension,
+                subdirectory: "Watermarks"
+            ) {
+                return url
+            }
+        }
+        return nil
     }
 
     /// 按素材声明的单帧时长播放；由显式次数决定是否重复选定片段。

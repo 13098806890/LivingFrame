@@ -17,6 +17,9 @@ enum EditorTool: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// 文字工具统一使用无语言字符的系统图标，避免显示中文/英文文字本身。
+    static let textIcon = "character.textbox"
+
     var title: LocalizedStringKey {
         switch self {
         case .timeline: "时间轴"
@@ -38,8 +41,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .timeline: "timeline.selection"
         case .collage: "square.stack.3d.down.right"
         case .canvas: "rectangle.on.rectangle"
-        // A textbox icon is language-neutral and clearly communicates text editing.
-        case .text: "textformat"
+        case .text: Self.textIcon
         case .sticker: "face.smiling"
         case .border: "square"
         case .draw: "paintbrush.pointed"
@@ -209,6 +211,9 @@ struct EditorView: View {
             // 检查器覆盖时间轴下半部分，画布和播放控制仍可见；需要更多参数时可继续上拉。
             .presentationDetents([.fraction(0.46), .large])
             .presentationDragIndicator(.visible)
+            .presentationBackground(LF.background)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(LF.background, for: .navigationBar)
             // 检查器是精细编辑状态：暂停可冻结当前帧，避免播放时间持续变化
             // 让滑块、样式和源片段编辑看起来无法生效。
             .onAppear { appState.pause() }
@@ -361,11 +366,19 @@ struct EditorView: View {
                     appState.showExportView = true
                 } label: {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 38, height: 36)
-                        .background(LF.accentGradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .shadow(color: LF.selectionStroke.opacity(0.18), radius: 6, y: 3)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(LF.actionPrimary)
+                        .frame(width: 42, height: 40)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .fill(LF.selectionFill.opacity(0.42))
+                                .allowsHitTesting(false)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .strokeBorder(LF.actionPrimary.opacity(0.32), lineWidth: 1)
+                        }
                 }
                 .buttonStyle(TopBarActionButtonStyle())
                 .accessibilityLabel("导出")
@@ -746,7 +759,7 @@ private var saveStatusView: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
                 EditorPanelHeader(
-                    icon: "textformat",
+                    icon: EditorTool.textIcon,
                     title: "文字",
                     subtitle: "输入内容并调整文字的视觉样式"
                 )
@@ -757,7 +770,7 @@ private var saveStatusView: some View {
                         .environmentObject(appState)
                 } else {
                     VStack(spacing: 10) {
-                    Image(systemName: "textformat")
+                        Image(systemName: EditorTool.textIcon)
                             .font(.title2)
                             .foregroundStyle(LF.actionPrimary)
                         Text("画布上还没有选中的文字")

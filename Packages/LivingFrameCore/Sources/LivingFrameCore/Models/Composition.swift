@@ -503,6 +503,9 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     /// 仅对拼接创建的 background 元素生效；同一拼接组中的元素共享此标识。
     /// nil 表示这是从素材页独立添加的普通背景。
     public var collageGroupID: UUID?
+    /// 是否自动跟随当前工程中最长的素材时长。
+    /// nil 用于兼容旧工程；只有新创建且未被手动调整过的文字/贴纸会显式设为 true。
+    public var followsLongestMaterialDuration: Bool?
 
     public init(
         id: UUID = UUID(),
@@ -519,7 +522,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         backgroundPattern: BackgroundPatternStyle? = nil,
         filter: ElementFilter? = nil,
         backgroundSettings: BackgroundElementSettings? = nil,
-        collageGroupID: UUID? = nil
+        collageGroupID: UUID? = nil,
+        followsLongestMaterialDuration: Bool? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -536,6 +540,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         self.filter = filter
         self.backgroundSettings = backgroundSettings
         self.collageGroupID = collageGroupID
+        self.followsLongestMaterialDuration = followsLongestMaterialDuration
     }
 
     public func isVisible(at time: TimeInterval) -> Bool {
