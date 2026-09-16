@@ -54,6 +54,7 @@ public protocol BackgroundMediaProviding {
 /// 背景图片存储：用户相册图片与 App 预置图片统一存于 Documents/Library/Backgrounds/
 public struct BackgroundStore {
     public static let shared = BackgroundStore()
+    public static let userMediaRetentionLimit = 20
 
     private final class VideoFrameSource: NSObject {
         let generator: AVAssetImageGenerator
@@ -209,6 +210,61 @@ public struct BackgroundStore {
             }
         }
         return media.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// Removes older imported files unless they are still referenced by a work or the active edit.
+    /// This keeps the reusable album-media library small without breaking existing compositions.
+    @discardableResult
+    public func pruneUserMedia(
+        keepingMostRecent limit: Int = BackgroundStore.userMediaRetentionLimit,
+        preserving protectedIDs: Set<String> = []
+    ) async -> Int {
+        let media = await allUserMedia()
+        let idsToDelete = Self.userMediaIDsToPrune(
+            from: media,
+            keepingMostRecent: limit,
+            preserving: protectedIDs
+        )
+        guard !idsToDelete.isEmpty else { return 0 }
+
+        let candidates = (try? FileManager.default.contentsOfDirectory(
+            at: rootURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        let supportedExtensions: Set<String> = ["mov", "mp4", "m4v", "gif", "png", "heic", "heif", "jpeg", "jpg"]
+        var deletedCount = 0
+        for id in idsToDelete {
+            // Never let a malformed ID become a path outside the user-media namespace.
+            guard id.hasPrefix("user-") else { continue }
+            for url in candidates where url.deletingPathExtension().lastPathComponent == id
+                && supportedExtensions.contains(url.pathExtension.lowercased()) {
+                guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+                    continue
+                }
+                do {
+                    try FileManager.default.removeItem(at: url)
+                    deletedCount += 1
+                } catch {
+                    continue
+                }
+            }
+            Self.imageCache.removeObject(forKey: id as NSString)
+            Self.videoSourceCache.removeObject(forKey: id as NSString)
+            Self.removeCachedMetadata(for: id)
+        }
+        return deletedCount
+    }
+
+    static func userMediaIDsToPrune(
+        from media: [BackgroundMediaItem],
+        keepingMostRecent limit: Int,
+        preserving protectedIDs: Set<String>
+    ) -> Set<String> {
+        let newestIDs = Set(media.sorted { $0.createdAt > $1.createdAt }
+            .prefix(max(limit, 0))
+            .map(\.id))
+        return Set(media.map(\.id)).subtracting(newestIDs.union(protectedIDs))
     }
 
     /// 加载背景图（图片不存在时返回 nil）；带内存缓存（NSCache 线程安全）

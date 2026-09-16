@@ -60,8 +60,6 @@ struct TimelineView: View {
     @State private var timelineElementPreviews: [UUID: ElementTiming] = [:]
     /// 放大时间轴后的横向浏览位置；与底部导航窗和原生横向滚动容器双向同步。
     @State private var timelineHorizontalOffset: CGFloat = 0
-    /// 删除素材是不可直接恢复的破坏性操作，先经系统确认框确认。
-    @State private var isShowingDeleteConfirmation = false
 
     private struct ElementDragAnchor {
         let start: TimeInterval
@@ -157,12 +155,6 @@ struct TimelineView: View {
     /// 时间轴从上到下直接对应画布从上层到下层；同层级按插入顺序稳定显示。
     private func timelineElements(_ comp: Composition) -> [CompositionElement] {
         comp.elements
-            .filter { element in
-                guard case .background = element.kind else { return true }
-                // 未分配区域的拼接素材没有实际画面输出，不占用编辑页时间轴轨道。
-                // 缺少设置的数据保留显示，避免旧工程素材被误隐藏。
-                return element.backgroundSettings?.resolvedAssignedPartitions.isEmpty != true
-            }
             .enumerated()
             .sorted { lhs, rhs in
                 if lhs.element.zIndex != rhs.element.zIndex {
@@ -368,14 +360,6 @@ struct TimelineView: View {
         .onChange(of: appState.composition?.id) { _, _ in
             settleTimelineScaleDuration()
         }
-        .alert(deleteConfirmationTitle, isPresented: $isShowingDeleteConfirmation) {
-            Button("删除", role: .destructive) {
-                deleteSelectedTimelineItems()
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text(deleteConfirmationMessage)
-        }
     }
 
     private func growTimelineScaleDurationIfNeeded() {
@@ -417,18 +401,6 @@ struct TimelineView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("调整当前选中内容")
-
-                    Button {
-                        isShowingDeleteConfirmation = true
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 28, height: 28)
-                            .background(LF.destructive.opacity(0.9), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("删除当前选中素材")
                 }
             }
 
@@ -490,32 +462,9 @@ struct TimelineView: View {
     }
 
     private var hasSelection: Bool {
-        !appState.selectedElementIDs.isEmpty || appState.selectedAudioID != nil
-    }
-
-    private var deleteConfirmationTitle: String {
-        if appState.selectedElementIDs.count > 1 {
-            return "删除这 \(appState.selectedElementIDs.count) 个素材？"
-        }
-        if appState.selectedAudioID != nil {
-            return "删除这段音频？"
-        }
-        return "删除这个素材？"
-    }
-
-    private var deleteConfirmationMessage: String {
-        "删除后，素材将从画布和时间轴中移除。"
-    }
-
-    private func deleteSelectedTimelineItems() {
-        // 先取快照；deleteElement 会同步更新选中集合，遍历原集合会漏删其余多选项。
-        let selectedElementIDs = Array(appState.selectedElementIDs)
-        let selectedAudioID = appState.selectedAudioID
-
-        selectedElementIDs.forEach(appState.deleteElement)
-        if let selectedAudioID {
-            appState.deleteAudio(selectedAudioID)
-        }
+        appState.selectedBackground ||
+            !appState.selectedElementIDs.isEmpty ||
+            appState.selectedAudioID != nil
     }
 
     // MARK: - 缩放（双指捏合）
@@ -530,27 +479,15 @@ struct TimelineView: View {
             }
     }
 
-    /// 空时间轴使用轻量的虚线引导框，避免提示文字孤零零地贴在左侧。
+    /// 空时间轴显示轻量状态提示；素材统一从画布下方操作栏添加。
     private var timelineEmptyState: some View {
-        VStack {
-            Spacer(minLength: 0)
-
+        VStack(spacing: 8) {
+            Image(systemName: "film.stack")
+                .font(.title2)
+                .foregroundStyle(LF.textSecondary.opacity(0.72))
             Text("添加素材后显示时间轴")
-                .font(.subheadline.weight(.medium))
+                .font(.caption)
                 .foregroundStyle(LF.textSecondary)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 30)
-                .background {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(
-                            LF.brandTint.opacity(0.28),
-                            style: StrokeStyle(lineWidth: 1, dash: [6, 5])
-                        )
-                }
-                .padding(.horizontal, 18)
-
-            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

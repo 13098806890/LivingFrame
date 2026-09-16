@@ -55,17 +55,10 @@
 "取消" = "İptal";
 "作品列表" = "Çalışma Listesi";
 "说明" = "Bilgi";
-"当前 Widget 画面" = "Geçerli Widget Görüntüsü";
 "未设置" = "Ayarlanmadı";
-"长按桌面 → 添加小组件 → 活影" = "Ana ekrana uzun basın → Widget ekle → GIFBloom";
-"Widget 无法播放视频或动图（WidgetKit 限制）" = "Widget'lar video veya animasyon oynatamaz (WidgetKit sınırı)";
-"我们展示作品的第一帧静态画面；点按 Widget 会打开 App 查看动态效果。" = "Çalışmanızın ilk karesini sabit görüntü olarak gösteriyoruz; widget'a dokunun, hareketi görmek için uygulama açılır.";
 "暂无作品，先导出一次吧" = "Henüz çalışma yok — önce bir tane dışa aktarın";
 "重新编辑" = "Yeniden Düzenle";
-"设为 Widget 画面" = "Widget Görüntüsü Yap";
 "删除" = "Sil";
-"Widget" = "Widget";
-"Widget 设置" = "Widget Ayarları";
 "分辨率越高越精细，处理时间越长。素材越多，磁盘占用越大。" = "Çözünürlük arttıkça detay artar ama işlem süresi uzar. Öğeler arttıkça depolama kullanımı artar.";
 "素材缓存" = "Öğe Önbelleği";
 "清空缓存" = "Önbelleği Temizle";
@@ -265,7 +258,11 @@
 "还没有文件夹" = "Henüz klasör yok";
 "选中画布上的人物素材后可设置边框/描边风格" = "Tuvaldeki kişi öğesini seçerek kenarlık/anahat stili ayarlayın";
 "选择分区后可设置分割边缘；画布外缘在“画布外缘”中统一设置。" = "Bölge seçtikten sonra bölme kenarını ayarlayabilirsiniz; dış kenar 'Dış kenar' bölümünde ayarlanır.";
+"添加素材" = "Medya ekle";
+"正在导入素材" = "Medya içe aktarılıyor";
 "选择视频 / Live Photo / 照片" = "Video / Live Photo / fotoğraf seç";
+"搜索照片：猫、狗或地点" = "Fotoğraf ara: kediler, köpekler veya yerler";
+"清除搜索" = "Aramayı temizle";
 "重做" = "Yinele";
 "重置" = "Sıfırla";
 "锯齿" = "Tırtıklı";
@@ -283,6 +280,7 @@
 "生成剪影" = "Kesit oluştur";
 "剪影" = "Kesitler";
 "剪影素材" = "Kesilmiş öğeler";
+"相册" = "Fotoğraflar";
 "选择剪影素材" = "Kesilmiş öğeleri seç";
 "先在「素材库」生成剪影素材，\n再回到这里添加到画布" = "Kitaplık'ta kesitleri oluşturun,\nardından buradan tuvale ekleyin.";
 "选中画布上的剪影素材后可设置边框/描边风格" = "Kenarlık veya anahat stilini ayarlamak için tuvaldeki kesiti seçin.";

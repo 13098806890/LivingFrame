@@ -55,17 +55,10 @@
 "取消" = "Hủy";
 "作品列表" = "Danh sách tác phẩm";
 "说明" = "Thông tin";
-"当前 Widget 画面" = "Hình widget hiện tại";
 "未设置" = "Chưa đặt";
-"长按桌面 → 添加小组件 → 活影" = "Giữ màn hình chính → Thêm widget → GIFBloom";
-"Widget 无法播放视频或动图（WidgetKit 限制）" = "Widget không phát được video hoặc ảnh động (giới hạn của WidgetKit)";
-"我们展示作品的第一帧静态画面；点按 Widget 会打开 App 查看动态效果。" = "Chúng tôi hiển thị khung hình đầu tiên của tác phẩm dưới dạng ảnh tĩnh; chạm vào widget để mở app xem chuyển động.";
 "暂无作品，先导出一次吧" = "Chưa có tác phẩm — hãy xuất một cái trước";
 "重新编辑" = "Chỉnh sửa lại";
-"设为 Widget 画面" = "Đặt làm hình widget";
 "删除" = "Xóa";
-"Widget" = "Widget";
-"Widget 设置" = "Cài đặt widget";
 "分辨率越高越精细，处理时间越长。素材越多，磁盘占用越大。" = "Độ phân giải càng cao càng nét nhưng xử lý lâu hơn. Nhiều tài nguyên hơn sẽ tốn dung lượng hơn.";
 "素材缓存" = "Bộ nhớ đệm tài nguyên";
 "清空缓存" = "Xóa bộ nhớ đệm";
@@ -265,7 +258,11 @@
 "还没有文件夹" = "Chưa có thư mục nào";
 "选中画布上的人物素材后可设置边框/描边风格" = "Chọn người trên canvas để đặt kiểu viền";
 "选择分区后可设置分割边缘；画布外缘在“画布外缘”中统一设置。" = "Chọn vùng để chỉnh mép chia; mép ngoài canvas đặt trong «Viền ngoài».";
+"添加素材" = "Thêm nội dung";
+"正在导入素材" = "Đang nhập nội dung";
 "选择视频 / Live Photo / 照片" = "Chọn video / Live Photo / ảnh";
+"搜索照片：猫、狗或地点" = "Tìm ảnh: mèo, chó hoặc địa điểm";
+"清除搜索" = "Xóa tìm kiếm";
 "重做" = "Làm lại";
 "重置" = "Đặt lại";
 "锯齿" = "Răng cưa";
@@ -283,6 +280,7 @@
 "生成剪影" = "Tạo ảnh cắt";
 "剪影" = "Ảnh tách nền";
 "剪影素材" = "Tài nguyên tách nền";
+"相册" = "Ảnh";
 "选择剪影素材" = "Chọn tài nguyên tách nền";
 "先在「素材库」生成剪影素材，\n再回到这里添加到画布" = "Tạo ảnh tách nền trong Thư viện,\nsau đó thêm vào canvas tại đây.";
 "选中画布上的剪影素材后可设置边框/描边风格" = "Chọn ảnh tách nền trên canvas để đặt kiểu viền hoặc đường bao.";

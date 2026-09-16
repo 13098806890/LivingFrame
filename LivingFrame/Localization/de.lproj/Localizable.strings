@@ -55,17 +55,10 @@
 "取消" = "Abbrechen";
 "作品列表" = "Werksliste";
 "说明" = "Info";
-"当前 Widget 画面" = "Aktuelles Widget-Bild";
 "未设置" = "Nicht festgelegt";
-"长按桌面 → 添加小组件 → 活影" = "Startbildschirm lange drücken → Widget hinzufügen → GIFBloom";
-"Widget 无法播放视频或动图（WidgetKit 限制）" = "Widgets können keine Videos oder Animationen abspielen (WidgetKit-Einschränkung)";
-"我们展示作品的第一帧静态画面；点按 Widget 会打开 App 查看动态效果。" = "Wir zeigen das erste Bild deines Werks als Standbild; tippe auf das Widget, um die App zu öffnen und die Bewegung zu sehen.";
 "暂无作品，先导出一次吧" = "Noch keine Werke – exportiere zuerst eines";
 "重新编辑" = "Erneut bearbeiten";
-"设为 Widget 画面" = "Als Widget-Bild festlegen";
 "删除" = "Löschen";
-"Widget" = "Widget";
-"Widget 设置" = "Widget-Einstellungen";
 "分辨率越高越精细，处理时间越长。素材越多，磁盘占用越大。" = "Höhere Auflösung bedeutet mehr Details, aber längere Verarbeitung. Mehr Assets belegen mehr Speicher.";
 "素材缓存" = "Asset-Cache";
 "清空缓存" = "Cache leeren";
@@ -265,7 +258,11 @@
 "还没有文件夹" = "Noch keine Ordner";
 "选中画布上的人物素材后可设置边框/描边风格" = "Wähle ein Personen-Asset auf der Leinwand, um Rand/Kontur zu wählen";
 "选择分区后可设置分割边缘；画布外缘在“画布外缘”中统一设置。" = "Nach Auswahl eines Bereichs kannst du die Trennlinie anpassen; die Außenkante wird unter „Außenkante“ gesetzt.";
+"添加素材" = "Medien hinzufügen";
+"正在导入素材" = "Medien werden importiert";
 "选择视频 / Live Photo / 照片" = "Video / Live Photo / Foto wählen";
+"搜索照片：猫、狗或地点" = "Fotos suchen: Katzen, Hunde oder Orte";
+"清除搜索" = "Suche löschen";
 "重做" = "Wiederholen";
 "重置" = "Zurücksetzen";
 "锯齿" = "Gezackt";
@@ -283,6 +280,7 @@
 "生成剪影" = "Freistellung erstellen";
 "剪影" = "Freisteller";
 "剪影素材" = "Freigestellte Motive";
+"相册" = "Album";
 "选择剪影素材" = "Freigestellte Motive auswählen";
 "先在「素材库」生成剪影素材，\n再回到这里添加到画布" = "Erstelle freigestellte Motive in der Mediathek,\nund füge sie hier zur Leinwand hinzu.";
 "选中画布上的剪影素材后可设置边框/描边风格" = "Wähle ein freigestelltes Motiv auf der Leinwand, um Rahmen- oder Konturstile einzustellen.";

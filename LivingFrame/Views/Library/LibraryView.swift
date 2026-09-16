@@ -8,6 +8,7 @@ struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var isShowingExtractionPicker = false
+    @State private var extractionPhotoSearchText = ""
     @State private var loadError: String?
     /// iCloud 素材下载进度（nil 表示进度未知）
     @State private var isDownloading = false
@@ -34,6 +35,7 @@ struct LibraryView: View {
     @State private var batchFailureTitle: String?
     @State private var importTask: Task<Void, Never>?
     @AccessibilityFocusState private var extractionEntryFocused: Bool
+    @FocusState private var isExtractionSearchFocused: Bool
 
     private struct PendingVideoRange: Identifiable {
         let id = UUID()
@@ -176,40 +178,10 @@ struct LibraryView: View {
 
     private var pickerSection: some View {
         VStack(spacing: 8) {
-            Button {
-                isShowingExtractionPicker = true
-            } label: {
-                SectionCard(title: nil) {
-                    VStack(spacing: 10) {
-                        Image(systemName: "film.stack")
-                            .font(.system(size: 34))
-                            .foregroundStyle(LF.gold)
-                        Text("选择视频 / Live Photo / 照片")
-                            .font(.headline)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text("自动识别人物，生成透明剪影素材，全程在设备端处理")
-                            .font(.caption)
-                            .foregroundStyle(LF.textSecondary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                }
+            if #available(iOS 27.0, *) {
+                extractionPhotoSearchField
             }
-            .buttonStyle(.plain)
-            .photosPicker(
-                isPresented: $isShowingExtractionPicker,
-                selection: $pickerItems,
-                maxSelectionCount: 5,
-                selectionBehavior: .ordered,
-                matching: .any(of: [.videos, .livePhotos, .images])
-            )
-            .disabled(isDownloading || isExtractionActive)
-            .accessibilityIdentifier("library-extraction-entry")
-            .accessibilityFocused($extractionEntryFocused)
+            extractionPickerControl
 
             Menu {
                 Section("提取方式") {
@@ -261,6 +233,115 @@ struct LibraryView: View {
                 handleExtractionSelection(pickerItems)
             }
         }
+    }
+
+    @ViewBuilder
+    private var extractionPickerControl: some View {
+        let button = Button {
+            isExtractionSearchFocused = false
+            isShowingExtractionPicker = true
+        } label: {
+            SectionCard(title: nil) {
+                VStack(spacing: 10) {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "film.stack")
+                            .font(.system(size: 34))
+                            .foregroundStyle(LF.gold)
+
+                        Image(systemName: "plus")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .frame(width: 18, height: 18)
+                            .background(LF.gold, in: Circle())
+                            .overlay {
+                                Circle().stroke(LF.surface, lineWidth: 1.5)
+                            }
+                            .offset(x: 5, y: -4)
+                    }
+                    .frame(width: 40, height: 40)
+
+                    Text("选择视频 / Live Photo / 照片")
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("自动识别人物，生成透明剪影素材，全程在设备端处理")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+        }
+        .buttonStyle(.plain)
+        .photosPicker(
+            isPresented: $isShowingExtractionPicker,
+            selection: $pickerItems,
+            maxSelectionCount: 5,
+            selectionBehavior: .ordered,
+            matching: .any(of: [.videos, .livePhotos, .images])
+        )
+        .disabled(isDownloading || isExtractionActive)
+        .accessibilityIdentifier("library-extraction-entry")
+        .accessibilityLabel("添加素材")
+        .accessibilityHint("选择视频 / Live Photo / 照片")
+        .accessibilityFocused($extractionEntryFocused)
+
+        if #available(iOS 27.0, *) {
+            button.photosPickerSearchText(normalizedExtractionPhotoSearchText)
+        } else {
+            button
+        }
+    }
+
+    @available(iOS 27.0, *)
+    private var extractionPhotoSearchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(LF.textSecondary)
+
+            TextField("搜索照片：猫、狗或地点", text: $extractionPhotoSearchText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($isExtractionSearchFocused)
+                .onSubmit {
+                    isExtractionSearchFocused = false
+                    guard !isDownloading, !isExtractionActive else { return }
+                    isShowingExtractionPicker = true
+                }
+                .accessibilityIdentifier("library-extraction-photo-search")
+
+            if !extractionPhotoSearchText.isEmpty {
+                Button {
+                    extractionPhotoSearchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(LF.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("清除搜索")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(minHeight: 46)
+        .background(
+            LF.surface2.opacity(0.45),
+            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(LF.brandTint.opacity(0.18), lineWidth: 1)
+        }
+    }
+
+    @available(iOS 27.0, *)
+    private var normalizedExtractionPhotoSearchText: String? {
+        let text = extractionPhotoSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
     }
 
     private func handleExtractionSelection(_ items: [PhotosPickerItem]) {
@@ -1900,7 +1981,8 @@ struct ClipMenuView: View {
                     onRotateClockwise: { rotateClip(clockwise: true) }
                 )
                 gifExportSection
-                frameEditorButton
+                // 帧选择入口暂时隐藏；保留 frameEditorButton、sheet 状态和 FrameGridView，后续可恢复。
+                // frameEditorButton
                 foldersSection
             }
             .padding(20)

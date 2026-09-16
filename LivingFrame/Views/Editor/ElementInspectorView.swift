@@ -95,7 +95,7 @@ struct ElementInspectorView: View {
                     .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(element.name)
+                    Text(inspectorElementName(for: element))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(LF.textPrimary)
                         .lineLimit(1)
@@ -150,6 +150,21 @@ struct ElementInspectorView: View {
         }
     }
 
+    private func inspectorElementName(for element: CompositionElement) -> String {
+        guard case .background = element.kind,
+              element.collageGroupID == nil else {
+            return element.name
+        }
+
+        // 兼容早期普通入口误用“拼接素材”默认名称的工程；不改写工程数据，
+        // 仅在检查器展示时按当前独立相册元素的语义显示。
+        let legacyCollageName = NSLocalizedString("拼接素材", comment: "Collage element")
+        if element.name == "拼接素材" || element.name == legacyCollageName {
+            return NSLocalizedString("照片", comment: "Standalone album element")
+        }
+        return element.name
+    }
+
     private func elementInspectorIcon(for element: CompositionElement) -> String {
         switch element.kind {
         case .clip: return "film"
@@ -179,6 +194,7 @@ struct ElementInspectorView: View {
 
     private func backgroundElementInspector(_ element: CompositionElement) -> some View {
         let settings = element.backgroundSettings ?? BackgroundElementSettings()
+        let isCollageElement = element.collageGroupID != nil
         return VStack(alignment: .leading, spacing: 10) {
             if let comp = appState.composition,
                case .background(let backgroundID) = element.kind,
@@ -226,28 +242,30 @@ struct ElementInspectorView: View {
                 )
             }
 
-            BackgroundDividerControls(
-                settings: settings,
-                canvasRect: appState.composition?.canvasRect
-                    ?? CGRect(x: 0, y: 0, width: 1, height: 1),
-                isDividerLayoutLocked: backgroundDividerLayoutLockBinding(for: element.id),
-                onAddDivider: {
-                    appState.addBackgroundDividerLine(element.id)
-                },
-                onRemoveDivider: { dividerIndex in
-                    appState.removeBackgroundDividerLine(element.id, dividerIndex: dividerIndex)
-                },
-                onAngleChange: { dividerIndex, angle in
-                    appState.setBackgroundDividerAngle(
-                        element.id,
-                        dividerIndex: dividerIndex,
-                        angle
-                    )
-                },
-                onPartitionSelect: { partition in
-                    appState.toggleBackgroundPartition(element.id, partition)
-                }
-            )
+            if isCollageElement {
+                BackgroundDividerControls(
+                    settings: settings,
+                    canvasRect: appState.composition?.canvasRect
+                        ?? CGRect(x: 0, y: 0, width: 1, height: 1),
+                    isDividerLayoutLocked: backgroundDividerLayoutLockBinding(for: element.id),
+                    onAddDivider: {
+                        appState.addBackgroundDividerLine(element.id)
+                    },
+                    onRemoveDivider: { dividerIndex in
+                        appState.removeBackgroundDividerLine(element.id, dividerIndex: dividerIndex)
+                    },
+                    onAngleChange: { dividerIndex, angle in
+                        appState.setBackgroundDividerAngle(
+                            element.id,
+                            dividerIndex: dividerIndex,
+                            angle
+                        )
+                    },
+                    onPartitionSelect: { partition in
+                        appState.toggleBackgroundPartition(element.id, partition)
+                    }
+                )
+            }
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
@@ -463,6 +481,10 @@ struct ElementInspectorView: View {
                     }
                 }
                 if clip.stickerStyle == .customOutline {
+                    let customColorBinding = Binding<Color>(
+                        get: { Color(hex: clip.edgeColorHex) },
+                        set: { appState.setClipEdgeColor(clip.id, $0.hexRGB) }
+                    )
                     HStack(spacing: 4) {
                         ForEach(edgeColors, id: \.hex) { color in
                             let isSelected = clip.edgeColorHex.uppercased() == color.hex
@@ -485,6 +507,10 @@ struct ElementInspectorView: View {
                             .accessibilityLabel(color.name)
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
                         }
+                        CompactCustomColorPicker(
+                            selection: customColorBinding,
+                            accessibilityLabel: "更多描边颜色"
+                        )
                     }
                 }
             }
@@ -915,11 +941,12 @@ struct BackgroundPartitionShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        guard !settings.resolvedAssignedPartitions.isEmpty else {
+        guard !settings.dividerLines.isEmpty else {
+            // 未分区的素材覆盖整幅画布；有分割线时，空分区才表示尚未分配。
+            path.addRect(rect)
             return path
         }
-        guard !settings.dividerLines.isEmpty else {
-            path.addRect(rect)
+        guard !settings.resolvedAssignedPartitions.isEmpty else {
             return path
         }
         let polygons = BackgroundPartitionGeometry.assignedPolygons(

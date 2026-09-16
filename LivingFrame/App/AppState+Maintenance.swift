@@ -3,20 +3,6 @@ import LivingFrameCore
 import SwiftUI
 
 extension AppState {
-    // MARK: - Widget
-
-    func savePosterForWidget() {
-        guard let comp = composition,
-              let poster = CompositionRenderer().render(comp, at: 0) else { return }
-        FrameStore.savePoster(poster, title: comp.name)
-    }
-
-    /// 从作品快照生成 Widget 封面，不改变当前编辑页中的工程。
-    func savePosterForWidget(_ work: WorkItem) {
-        guard let poster = UIImage(data: work.posterData)?.cgImage else { return }
-        FrameStore.savePoster(poster, title: work.name)
-    }
-
     // MARK: - 缓存
 
     /// 清理临时文件：素材（含文件夹内外的所有剪影结果）一律保留，只删导入/导出产生的临时文件。

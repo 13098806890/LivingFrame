@@ -134,6 +134,38 @@ final class BackgroundPartitionRenderingTests: XCTestCase {
         XCTAssertLessThanOrEqual(colorDistance(rgb(in: result, x: 40, y: 120), RGB(red: 255, green: 0, blue: 0)), 70)
     }
 
+    func testUnpartitionedElementWithNoAssignmentsRendersAcrossCanvas() throws {
+        let store = BackgroundStore.shared
+        let imageID = try XCTUnwrap(
+            store.saveUserImage(
+                try pngData(fill: CGColor(red: 0, green: 0, blue: 1, alpha: 1)),
+                preferredFileExtension: "png"
+            )
+        )
+        defer { try? FileManager.default.removeItem(at: store.mediaURL(named: imageID)) }
+
+        let element = CompositionElement(
+            kind: .background(backgroundID: imageID),
+            name: "unpartitioned",
+            transform: ElementTransform(position: CGPoint(x: 80, y: 80)),
+            startTime: 0,
+            endTime: 1,
+            backgroundSettings: BackgroundElementSettings(assignedPartitions: [])
+        )
+        let composition = Composition(
+            name: "Unpartitioned background",
+            canvas: CanvasSpec(width: 160, height: 160),
+            duration: 1,
+            elements: [element]
+        )
+
+        let result = try XCTUnwrap(CompositionRenderer().render(composition, at: 0))
+        XCTAssertLessThanOrEqual(
+            colorDistance(rgb(in: result, x: 80, y: 80), RGB(red: 0, green: 0, blue: 255)),
+            70
+        )
+    }
+
     func testTwoParallelDividersProduceThreeRegions() {
         let settings = BackgroundElementSettings(
             splitCount: .four,

@@ -5,7 +5,6 @@ import UIKit
 /// 编辑器工具类型（参考 ImgPlay 底部工具栏）
 enum EditorTool: String, CaseIterable, Identifiable {
     case timeline   // 时间轴（展开/收起）
-    case asset       // 剪影素材（从素材库添加）
     case collage     // 拼接（照片、动态照片和视频）
     case canvas      // 画布（比例 + 背景）
     case text        // 文本（添加/编辑文字）
@@ -21,7 +20,6 @@ enum EditorTool: String, CaseIterable, Identifiable {
     var title: LocalizedStringKey {
         switch self {
         case .timeline: "时间轴"
-        case .asset: "剪影"
         case .collage: "拼接"
         case .canvas: "画布"
         // 使用本地化 key：中文显示“文字”，英文等语言显示为“Text”。
@@ -38,9 +36,9 @@ enum EditorTool: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .timeline: "timeline.selection"
-        case .asset: "photo.badge.plus"
         case .collage: "square.stack.3d.down.right"
         case .canvas: "rectangle.on.rectangle"
+        // A textbox icon is language-neutral and clearly communicates text editing.
         case .text: "textformat"
         case .sticker: "face.smiling"
         case .border: "square"
@@ -52,7 +50,8 @@ enum EditorTool: String, CaseIterable, Identifiable {
     }
 
     /// 当前版本只把已完成且属于核心编辑流程的工具放进主工具栏。
-    static let visibleCases: [EditorTool] = [.timeline, .asset, .collage, .canvas, .text, .sticker, .frame, .crop]
+    /// 帧选择入口暂时隐藏；保留 EditorTool.frame、点击处理和 FrameGridView，后续可恢复。
+    static let visibleCases: [EditorTool] = [.timeline, .collage, .canvas, .text, .sticker, .crop]
 }
 
 private struct CollageEditorRequest: Identifiable {
@@ -78,6 +77,8 @@ struct EditorView: View {
     @State private var showInspectorSheet = false
     /// 清空编辑页前的二次确认
     @State private var showClearConfirmation = false
+    /// 删除画布选中素材前的二次确认
+    @State private var showDeleteSelectionConfirmation = false
     /// 放弃当前作品草稿前的二次确认
     @State private var showDiscardDraftConfirmation = false
     /// 全屏预览（播放控制行最右侧按钮）
@@ -110,30 +111,34 @@ struct EditorView: View {
                     }
                         .frame(width: canvasSize.width, height: canvasSize.height)
                         .overlay(alignment: .topTrailing) {
-                            if showsCanvasInspectorShortcut {
-                                Button(action: requestInspectorForSelection) {
-                                    Label(canvasInspectorShortcutTitle, systemImage: "slider.horizontal.3")
-                                        .font(.caption.weight(.semibold))
+                            // 添加素材是编辑流程的高频入口，固定在画布右上角，避免用户
+                            // 需要先寻找底部工具栏才能开始编辑。圆形按钮只保留图标，
+                            // 半透明背景减少对画布内容的遮挡。
+                            if !appState.isCropping {
+                                Button {
+                                    showAssetPicker = true
+                                } label: {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 18, weight: .bold))
                                         .foregroundStyle(.white)
-                                        .padding(.horizontal, 12)
-                                        .frame(minHeight: 44)
-                                        .background(LF.accentGradient, in: Capsule())
+                                        .frame(width: 44, height: 44)
+                                        .background(LF.accentGradient.opacity(0.78), in: Circle())
                                         .shadow(color: LF.header.opacity(0.22), radius: 8, y: 3)
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityHint("打开当前选中内容的调整选项")
+                                .accessibilityLabel("添加素材")
                                 .padding(8)
                                 .transition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
                             }
                         }
-                        .animation(.snappy(duration: 0.22), value: showsCanvasInspectorShortcut)
+                        .animation(.snappy(duration: 0.22), value: appState.isCropping)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
 
                     // 播放控制贴着画布，不随时间轴内容滚动。
                     transportBar
                         .padding(.horizontal, 14)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, 4)
 
                     // 时间轴位于画布下方；轨道上下浏览只发生在时间轴内部。
                     if showTimeline {
@@ -304,7 +309,8 @@ struct EditorView: View {
         }
     }
 
-    /// 自定义顶部栏：名称区弹性伸缩，右侧操作始终保持固定尺寸。
+    /// 自定义顶部栏：左侧展示作品信息，右侧只保留导出。
+    /// 导出时会自动生成正式作品；编辑过程中的变更仍由草稿自动保存承接。
     private var topBar: some View {
         HStack(spacing: 8) {
             if let comp = appState.composition {
@@ -336,40 +342,7 @@ struct EditorView: View {
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel("编辑作品名称，当前名称：\(comp.name)")
-
-                Button {
-                    Task { _ = await appState.saveCurrentToWorks() }
-                } label: {
-                    Group {
-                        if appState.isSavingWork {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "square.and.arrow.down")
-                                .font(.system(size: 15, weight: .bold))
-                        }
-                    }
-                        .foregroundStyle(LF.selectionText)
-                        .frame(width: 34, height: 34)
-                        .background(LF.selectionFill, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(appState.isSavingWork)
-                .accessibilityLabel("保存作品")
-
-                Button {
-                    appState.showExportView = true
-                } label: {
-                    Label("导出", systemImage: "arrow.up")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 11)
-                        .frame(height: 34)
-                        .background(LF.gold, in: Capsule())
-                }
-                .buttonStyle(.plain)
-
-                Menu {
+                .contextMenu {
                     if appState.currentWorkHasDraft {
                         Button {
                             showDiscardDraftConfirmation = true
@@ -382,21 +355,27 @@ struct EditorView: View {
                     } label: {
                         Label("清空编辑内容", systemImage: "trash")
                     }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(LF.textPrimary)
-                        .frame(width: 30, height: 34)
-                        .contentShape(Rectangle())
                 }
-                .accessibilityLabel("更多作品操作")
+
+                Button {
+                    appState.showExportView = true
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 36)
+                        .background(LF.accentGradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(color: LF.selectionStroke.opacity(0.18), radius: 6, y: 3)
+                }
+                .buttonStyle(TopBarActionButtonStyle())
+                .accessibilityLabel("导出")
             }
         }
         .padding(.horizontal, 4)
-    }
+}
 
-    @ViewBuilder
-    private var saveStatusView: some View {
+@ViewBuilder
+private var saveStatusView: some View {
         if appState.isSavingWork {
             Text("保存中…")
                 .foregroundStyle(LF.header)
@@ -486,6 +465,19 @@ struct EditorView: View {
                     .foregroundStyle(appState.canRedo ? LF.textPrimary : LF.textSecondary.opacity(0.35))
                     .disabled(!appState.canRedo)
                     .accessibilityLabel("重做")
+
+                    if hasSelectedItems {
+                        Button {
+                            showDeleteSelectionConfirmation = true
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(LF.destructive)
+                                .frame(width: 34, height: 34)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("删除当前选中素材")
+                    }
                 }
 
                 Spacer()
@@ -507,20 +499,22 @@ struct EditorView: View {
             } label: {
                 Image(systemName: appState.isPlaying ? "pause.fill" : "play.fill")
                     .font(.subheadline.weight(.semibold))
-                    .frame(width: 42, height: 42)
-                    .background(.regularMaterial, in: Circle())
-                    .overlay {
-                        Circle()
-                            .stroke(Color.white.opacity(0.68), lineWidth: 0.8)
-                    }
-                    .shadow(color: LF.header.opacity(0.12), radius: 7, y: 3)
+                    .frame(width: 36, height: 36)
             }
             .buttonStyle(.plain)
             .foregroundStyle(LF.textPrimary)
             .accessibilityLabel(appState.isPlaying ? "暂停" : "播放")
         }
         .padding(.horizontal, 16)
-        .frame(height: 46)
+        .frame(height: 38)
+        .alert(deleteSelectionConfirmationTitle, isPresented: $showDeleteSelectionConfirmation) {
+            Button("删除", role: .destructive) {
+                deleteSelectedItems()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("删除后，素材将从画布和时间轴中移除。")
+        }
     }
 
     private func togglePlayback() {
@@ -530,6 +524,30 @@ struct EditorView: View {
         }
 
         appState.play()
+    }
+
+    private var hasSelectedItems: Bool {
+        !appState.selectedElementIDs.isEmpty || appState.selectedAudioID != nil
+    }
+
+    private var deleteSelectionConfirmationTitle: String {
+        if appState.selectedElementIDs.count > 1 {
+            return "删除这 \(appState.selectedElementIDs.count) 个素材？"
+        }
+        if appState.selectedAudioID != nil {
+            return "删除这段音频？"
+        }
+        return "删除这个素材？"
+    }
+
+    private func deleteSelectedItems() {
+        // 删除会同步改变选中集合，先复制快照，避免多选时漏删。
+        let elementIDs = Array(appState.selectedElementIDs)
+        let audioID = appState.selectedAudioID
+        elementIDs.forEach(appState.deleteElement)
+        if let audioID {
+            appState.deleteAudio(audioID)
+        }
     }
 
     // MARK: - 底部区域
@@ -580,8 +598,6 @@ struct EditorView: View {
             withAnimation(.snappy(duration: 0.28)) {
                 showTimeline.toggle()
             }
-        case .asset:
-            showAssetPicker = true
         case .collage:
             openCollageEditor()
         case .text:
@@ -641,41 +657,13 @@ struct EditorView: View {
         return collageElementIDs(for: first, in: composition)
     }
 
-    /// 根据元素来源决定进入普通检查器还是拼接编辑器。
-    /// 三个入口（画布双击、时间轴检查器按钮、时间轴双击）都经过这里，避免行为分叉。
+    /// 打开当前选中元素的单素材检查器。
+    ///
+    /// 背景图片和剪影素材一样，时间轴上的调整入口只负责编辑当前实例；
+    /// 分割线的整体布局仍通过底部“拼接”工具进入 CollageEditorView。
     private func requestInspectorForSelection() {
         appState.pause()
-        guard let selected = appState.primarySelectedElement,
-              case .background = selected.kind,
-              let composition = appState.composition else {
-            showInspectorSheet = true
-            return
-        }
-
-        // 单张背景和多张拼接都进入同一个编辑器。旧工程里的单张背景没有组标识，
-        // 先作为只有一个元素的拼接会话打开；用户追加素材后会在会话中补齐组标识。
-        let elementIDs = collageElementIDs(for: selected, in: composition)
-        if elementIDs.isEmpty {
-            showInspectorSheet = true
-        } else {
-            collageEditorRequest = CollageEditorRequest(elementIDs: elementIDs)
-        }
-    }
-
-    /// 单击画布后的明确下一步；双击仍可直接打开检查器。
-    private var showsCanvasInspectorShortcut: Bool {
-        !appState.isCropping && (appState.selectedBackground || !appState.selectedElementIDs.isEmpty)
-    }
-
-    private var canvasInspectorShortcutTitle: LocalizedStringKey {
-        if appState.selectedBackground {
-            return "画布设置"
-        }
-        if let selected = appState.primarySelectedElement,
-           case .background = selected.kind {
-            return "编辑拼接"
-        }
-        return "调整"
+        showInspectorSheet = true
     }
 
     /// 编辑帧优先作用于当前最后选中的素材元素；没有选中素材时保留原来的主素材回退行为。
@@ -696,7 +684,7 @@ struct EditorView: View {
     private func toolPanel(_ tool: EditorTool) -> some View {
         Group {
             switch tool {
-            case .timeline, .asset, .collage, .crop, .frame:
+            case .timeline, .collage, .crop, .frame:
                 EmptyView() // frame 走全屏 FrameGridView
             case .canvas:
                 canvasPanel
@@ -769,7 +757,7 @@ struct EditorView: View {
                         .environmentObject(appState)
                 } else {
                     VStack(spacing: 10) {
-                        Image(systemName: "text.cursor")
+                    Image(systemName: "textformat")
                             .font(.title2)
                             .foregroundStyle(LF.actionPrimary)
                         Text("画布上还没有选中的文字")
@@ -935,6 +923,16 @@ struct EditorView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Compact feedback shared by the two high-frequency top-bar actions.
+    private struct TopBarActionButtonStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.84 : 1)
+                .scaleEffect(configuration.isPressed ? 0.97 : 1)
+                .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
         }
     }
 }

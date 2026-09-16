@@ -93,39 +93,11 @@ struct CanvasAppearanceEditor: View {
                             .buttonStyle(.plain)
                         }
 
-                        VStack(spacing: 5) {
-                            ColorPicker("自定义", selection: customColorBinding, supportsOpacity: false)
-                                .labelsHidden()
-                                .frame(width: 44, height: 44)
-                                .background(
-                                    AngularGradient(
-                                        colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
-                                        center: .center
-                                    ),
-                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                )
-                                .overlay {
-                                    Image(systemName: customColorSelected ? "checkmark" : "plus")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundStyle(.white)
-                                        .shadow(color: .black.opacity(0.35), radius: 1)
-                                        .allowsHitTesting(false)
-                                }
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .strokeBorder(
-                                            customColorSelected ? LF.selectionStroke : LF.brandTint.opacity(0.16),
-                                            lineWidth: customColorSelected ? 2 : 1
-                                        )
-                                        .allowsHitTesting(false)
-                                }
-                            Text("自定义")
-                                .font(.caption2)
-                                .foregroundStyle(LF.textPrimary)
-                        }
-                        .frame(width: 64, height: 72)
-                        .contentShape(Rectangle())
-                        .accessibilityLabel("更多背景颜色")
+                        CustomColorPickerTile(
+                            selection: customColorBinding,
+                            isSelected: customColorSelected,
+                            accessibilityLabel: "更多背景颜色"
+                        )
                     }
                     .padding(.horizontal, 2)
                     .padding(.vertical, 3)
@@ -243,6 +215,49 @@ struct CanvasAppearanceEditor: View {
             RoundedRectangle(cornerRadius: 17, style: .continuous)
                 .stroke(LF.brandTint.opacity(0.22), lineWidth: 1)
         }
+    }
+}
+
+/// Shared rainbow custom-color control used by canvas and element inspectors.
+struct CustomColorPickerTile: View {
+    let selection: Binding<Color>
+    let isSelected: Bool
+    let accessibilityLabel: LocalizedStringKey
+
+    var body: some View {
+        VStack(spacing: 5) {
+            ColorPicker("自定义", selection: selection, supportsOpacity: false)
+                .labelsHidden()
+                .frame(width: 44, height: 44)
+                .background(
+                    AngularGradient(
+                        colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
+                        center: .center
+                    ),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+                .overlay {
+                    Image(systemName: isSelected ? "checkmark" : "plus")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.35), radius: 1)
+                        .allowsHitTesting(false)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            isSelected ? LF.selectionStroke : LF.brandTint.opacity(0.16),
+                            lineWidth: isSelected ? 2 : 1
+                        )
+                        .allowsHitTesting(false)
+                }
+            Text("自定义")
+                .font(.caption2)
+                .foregroundStyle(LF.textPrimary)
+        }
+        .frame(width: 64, height: 72)
+        .contentShape(Rectangle())
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 

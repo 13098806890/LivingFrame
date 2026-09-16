@@ -55,17 +55,10 @@
 "取消" = "Cancel";
 "作品列表" = "Works";
 "说明" = "Info";
-"当前 Widget 画面" = "Current Widget Frame";
 "未设置" = "Not Set";
-"长按桌面 → 添加小组件 → 活影" = "Long-press Home Screen → Add Widget → GIFBloom";
-"Widget 无法播放视频或动图（WidgetKit 限制）" = "Widgets cannot play video or animation (WidgetKit limitation)";
-"我们展示作品的第一帧静态画面；点按 Widget 会打开 App 查看动态效果。" = "We show the first frame of your work as a still image; tap the widget to open the app and see it animate.";
 "暂无作品，先导出一次吧" = "No works yet — export one first";
 "重新编辑" = "Edit Again";
-"设为 Widget 画面" = "Set as Widget Frame";
 "删除" = "Delete";
-"Widget" = "Widget";
-"Widget 设置" = "Widget Settings";
 "分辨率越高越精细，处理时间越长。素材越多，磁盘占用越大。" = "Higher resolution means finer detail but longer processing. More assets take more storage.";
 "素材缓存" = "Asset Cache";
 "清空缓存" = "Clear Cache";
@@ -266,7 +259,11 @@
 "还没有文件夹" = "No folders yet";
 "选中画布上的人物素材后可设置边框/描边风格" = "Select a person asset on the canvas to set border/outline style";
 "选择分区后可设置分割边缘；画布外缘在“画布外缘”中统一设置。" = "After picking a zone you can adjust the split edge; the canvas outer edge is set in “Outer edge”.";
+"添加素材" = "Add media";
+"正在导入素材" = "Importing media";
 "选择视频 / Live Photo / 照片" = "Select a Video / Live Photo / Photo";
+"搜索照片：猫、狗或地点" = "Search photos: cats, dogs, or places";
+"清除搜索" = "Clear search";
 "重做" = "Redo";
 "重置" = "Reset";
 "锯齿" = "Jagged";
@@ -284,6 +281,7 @@
 "生成剪影" = "Create Cutout";
 "剪影" = "Cutouts";
 "剪影素材" = "Cutout Assets";
+"相册" = "Photos";
 "选择剪影素材" = "Choose Cutout Assets";
 "先在「素材库」生成剪影素材，\n再回到这里添加到画布" = "Go to Library to create cutouts,\nthen add them to the canvas here.";
 "选中画布上的剪影素材后可设置边框/描边风格" = "Select a cutout on the canvas to set its border or outline style.";

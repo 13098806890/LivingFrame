@@ -37,6 +37,8 @@ struct ExportView: View {
     @State private var savedToLibrary = false
     @State private var isSavingToLibrary = false
     @State private var exportTask: Task<Void, Never>?
+    /// 导出前先生成正式作品；此阶段与导出进度分开，避免用户误以为只保存了草稿。
+    @State private var isPreparingExport = false
     /// 打开导出页时冻结预览时刻，避免编辑器仍在播放时反复触发高成本渲染。
     @State private var previewTime: TimeInterval = 0
 
@@ -44,7 +46,7 @@ struct ExportView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    if appState.isExporting || isSavingToLibrary {
+                    if appState.isExporting || isSavingToLibrary || isPreparingExport {
                         exportProgressBanner
                     } else if let exportedURL {
                         exportResultBanner(url: exportedURL)
@@ -127,21 +129,21 @@ struct ExportView: View {
             .magicBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(appState.isExporting || isSavingToLibrary ? "处理中…" : "取消") {
+                    Button(appState.isExporting || isSavingToLibrary || isPreparingExport ? "处理中…" : "取消") {
                         if appState.isExporting {
                             exportTask?.cancel()
-                        } else if !isSavingToLibrary {
+                        } else if !isSavingToLibrary && !isPreparingExport {
                             dismiss()
                         }
                     }
-                    .disabled(isSavingToLibrary)
+                    .disabled(isSavingToLibrary || isPreparingExport)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("导出") {
                         export()
                     }
                     .tint(LF.actionPrimary)
-                    .disabled(appState.isExporting || isSavingToLibrary)
+                    .disabled(appState.isExporting || isSavingToLibrary || isPreparingExport || appState.isSavingWork)
                 }
             }
         }
@@ -162,7 +164,9 @@ struct ExportView: View {
     }
 
     private var exportProgressBanner: some View {
-        SectionCard(title: isSavingToLibrary && !appState.isExporting ? "保存到相册" : "导出中") {
+        SectionCard(
+            title: isPreparingExport ? "保存作品" : (isSavingToLibrary && !appState.isExporting ? "保存到相册" : "导出中")
+        ) {
             HStack(spacing: 10) {
                 if appState.isExporting {
                     ProgressView(value: appState.exportProgress)
@@ -170,10 +174,16 @@ struct ExportView: View {
                     Text(String(format: "%d%%", Int(appState.exportProgress * 100)))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(LF.textSecondary)
-                } else {
+                } else if isSavingToLibrary {
                     ProgressView()
                         .tint(LF.gold)
                     Text("正在写入系统相册…")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                } else {
+                    ProgressView()
+                        .tint(LF.gold)
+                    Text("正在保存正式作品…")
                         .font(.caption)
                         .foregroundStyle(LF.textSecondary)
                 }
@@ -344,8 +354,16 @@ struct ExportView: View {
         let selectedResolution = resolution
         let isChatSticker = format == .gif && chatSticker
         let chatGIFPixelSize = weChatGIFPreset.pixelSize
+        isPreparingExport = true
         exportTask = Task { @MainActor in
+            defer { isPreparingExport = false }
             do {
+                // 导出代表用户确认当前版本，先把它固化为正式作品；
+                // 编辑期间的自动保存仍只会写入草稿。
+                guard await appState.saveCurrentToWorks() else {
+                    exportError = appState.saveError ?? "作品保存失败，请稍后重试。"
+                    return
+                }
                 let url = try await appState.export(
                     format: selectedFormat,
                     fps: selectedFPS,

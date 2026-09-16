@@ -55,17 +55,10 @@
 "取消" = "Batal";
 "作品列表" = "Daftar Karya";
 "说明" = "Info";
-"当前 Widget 画面" = "Gambar Widget Saat Ini";
 "未设置" = "Belum diatur";
-"长按桌面 → 添加小组件 → 活影" = "Tekan lama layar utama → Tambah widget → GIFBloom";
-"Widget 无法播放视频或动图（WidgetKit 限制）" = "Widget tidak dapat memutar video atau animasi (batasan WidgetKit)";
-"我们展示作品的第一帧静态画面；点按 Widget 会打开 App 查看动态效果。" = "Kami menampilkan bingkai pertama karya Anda sebagai gambar diam; ketuk widget untuk membuka app dan melihat geraknya.";
 "暂无作品，先导出一次吧" = "Belum ada karya — ekspor satu dulu";
 "重新编辑" = "Edit Lagi";
-"设为 Widget 画面" = "Jadikan Gambar Widget";
 "删除" = "Hapus";
-"Widget" = "Widget";
-"Widget 设置" = "Pengaturan Widget";
 "分辨率越高越精细，处理时间越长。素材越多，磁盘占用越大。" = "Resolusi lebih tinggi berarti lebih tajam tapi lebih lama. Lebih banyak aset berarti lebih banyak ruang.";
 "素材缓存" = "Cache Aset";
 "清空缓存" = "Bersihkan Cache";
@@ -265,7 +258,11 @@
 "还没有文件夹" = "Belum ada folder";
 "选中画布上的人物素材后可设置边框/描边风格" = "Pilih aset orang di canvas untuk mengatur gaya tepi";
 "选择分区后可设置分割边缘；画布外缘在“画布外缘”中统一设置。" = "Setelah memilih zona, sesuaikan garis pemisah; tepi luar set di “Tepi luar”.";
+"添加素材" = "Tambah media";
+"正在导入素材" = "Mengimpor media";
 "选择视频 / Live Photo / 照片" = "Pilih video / Live Photo / foto";
+"搜索照片：猫、狗或地点" = "Cari foto: kucing, anjing, atau tempat";
+"清除搜索" = "Hapus pencarian";
 "重做" = "Ulangi";
 "重置" = "Atur ulang";
 "锯齿" = "Bergerigi";
@@ -283,6 +280,7 @@
 "生成剪影" = "Buat potongan";
 "剪影" = "Potongan";
 "剪影素材" = "Aset potongan";
+"相册" = "Album";
 "选择剪影素材" = "Pilih aset potongan";
 "先在「素材库」生成剪影素材，\n再回到这里添加到画布" = "Buat aset potongan di Perpustakaan,\nlalu tambahkan ke kanvas di sini.";
 "选中画布上的剪影素材后可设置边框/描边风格" = "Pilih potongan di kanvas untuk mengatur gaya batas atau garis tepinya.";

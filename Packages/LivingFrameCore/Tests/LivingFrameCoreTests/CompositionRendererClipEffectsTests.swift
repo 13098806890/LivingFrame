@@ -4,6 +4,23 @@ import XCTest
 @testable import LivingFrameCore
 
 final class CompositionRendererClipEffectsTests: XCTestCase {
+    func testSharedSubjectBoundsIgnoreTransparentMarginsAndFaintResidue() throws {
+        let frame = try XCTUnwrap(makeSubjectFrame())
+
+        let bounds = try XCTUnwrap(AlphaSubjectBounds.visiblePixelBounds(in: frame))
+        // Core Graphics renders the CGImage into the y-up test context, so the
+        // source rectangle's y coordinate is mirrored here.
+        XCTAssertEqual(bounds, CGRect(x: 20, y: 35, width: 40, height: 30))
+        XCTAssertEqual(
+            AlphaSubjectBounds.subjectBase(
+                in: CGRect(x: 0, y: 0, width: frame.width, height: frame.height),
+                bounds: bounds
+            ),
+            30,
+            accuracy: 0.001
+        )
+    }
+
     func testRendererCanDisableClipVisualEffects() throws {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("clip-effects-\(UUID().uuidString)", isDirectory: true)
@@ -276,6 +293,29 @@ final class CompositionRendererClipEffectsTests: XCTestCase {
         context.clear(CGRect(x: 0, y: 0, width: 16, height: 16))
         context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         context.fill(CGRect(x: 7, y: 7, width: 2, height: 2))
+        return context.makeImage()
+    }
+
+    private func makeSubjectFrame() -> CGImage? {
+        let size = CGSize(width: 100, height: 80)
+        guard let context = CGContext(
+            data: nil,
+            width: Int(size.width),
+            height: Int(size.height),
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.clear(CGRect(origin: .zero, size: size))
+
+        // This is below the shared threshold and represents faint segmentation
+        // residue that must not change the subject framing or effect scale.
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.05))
+        context.fill(CGRect(x: 0, y: 0, width: 100, height: 80))
+
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 20, y: 15, width: 40, height: 30))
         return context.makeImage()
     }
 

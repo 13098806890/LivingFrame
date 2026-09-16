@@ -181,7 +181,6 @@ enum BackgroundMaskRenderer {
         let key = cacheKey(prefix: "mask", size: size, settings: settings)
         if let cached = maskCache.object(forKey: key) { return cached }
         let image = ProceduralRasterRenderer.makeImage(size: size) { context, rect in
-            guard !settings.resolvedAssignedPartitions.isEmpty else { return }
             context.setFillColor(CGColor(gray: 1, alpha: 1))
             context.addPath(path(for: settings, in: rect))
             context.fillPath()
@@ -267,11 +266,13 @@ enum BackgroundMaskRenderer {
         for settings: BackgroundElementSettings,
         in rect: CGRect
     ) -> CGPath {
+        guard !settings.dividerLines.isEmpty else {
+            // 没有分割线时，空 assignedPartitions 表示“未分区”，应显示整幅
+            // 画布；只有进入分区布局后，空数组才表示素材尚未分配到任何区域。
+            return path(for: settings.region, in: rect, edgeStyle: settings.edgeStyle)
+        }
         guard !settings.resolvedAssignedPartitions.isEmpty else {
             return CGMutablePath()
-        }
-        guard !settings.dividerLines.isEmpty else {
-            return path(for: settings.region, in: rect, edgeStyle: settings.edgeStyle)
         }
         let polygons = BackgroundPartitionGeometry.assignedPolygons(
             for: settings,

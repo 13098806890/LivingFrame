@@ -120,7 +120,13 @@ public struct CompositionRenderer {
         }
 
         let fixScale = optionPreviewFixScale(clip: clip, preview: preview)
-        let styled = applyClipStyle(style, clip: clip, fixScale: fixScale, to: preview.image)
+        let styled = applyClipStyle(
+            style,
+            clip: clip,
+            fixScale: fixScale,
+            subjectBounds: preview.subjectBounds,
+            to: preview.image
+        )
         let outputRect = preview.image.extent.integral
         guard let rendered = context.createCGImage(styled.cropped(to: outputRect), from: outputRect) else {
             return nil
@@ -215,6 +221,7 @@ public struct CompositionRenderer {
                 clip.stickerStyle,
                 clip: clip,
                 fixScale: fixScale,
+                subjectBounds: preview.subjectBounds,
                 to: preview.image
             )
             if let pattern = element.backgroundPattern,
@@ -279,7 +286,7 @@ public struct CompositionRenderer {
         for clip: SegmentedClip,
         frameIndex: Int,
         maxPixelSize: CGFloat
-    ) -> (sourceImage: CGImage, image: CIImage, sourceScale: CGFloat)? {
+    ) -> (sourceImage: CGImage, image: CIImage, sourceScale: CGFloat, subjectBounds: CGRect)? {
         guard let thumbnail = FrameCache.shared.cachedThumbnail(
             for: clip,
             index: frameIndex,
@@ -302,12 +309,12 @@ public struct CompositionRenderer {
               ) else {
             return nil
         }
-        return (sourceImage, normalized.image, normalized.sourceScale)
+        return (sourceImage, normalized.image, normalized.sourceScale, normalized.subjectBounds)
     }
 
     private func optionPreviewFixScale(
         clip: SegmentedClip,
-        preview: (sourceImage: CGImage, image: CIImage, sourceScale: CGFloat)
+        preview: (sourceImage: CGImage, image: CIImage, sourceScale: CGFloat, subjectBounds: CGRect)
     ) -> CGFloat {
         let outputWidth = CGFloat(max(clip.renderedWidth, 1))
         return max(
@@ -322,12 +329,12 @@ public struct CompositionRenderer {
     private func normalizedOptionPreviewFrame(
         from image: CGImage,
         maxPixelSize: Int
-    ) -> (image: CIImage, sourceScale: CGFloat)? {
+    ) -> (image: CIImage, sourceScale: CGFloat, subjectBounds: CGRect)? {
         guard maxPixelSize > 0 else { return nil }
         let width = maxPixelSize
         // Matches both style and filter wells' usable aspect ratio (58×46 after padding).
         let height = max(Int((CGFloat(width) * 46 / 58).rounded()), 1)
-        let bounds = visiblePixelBounds(in: image)
+        let bounds = AlphaSubjectBounds.visiblePixelBounds(in: image)
             ?? CGRect(x: 0, y: 0, width: image.width, height: image.height)
         let sourceBounds = bounds.integral.intersection(
             CGRect(x: 0, y: 0, width: image.width, height: image.height)
@@ -369,53 +376,7 @@ public struct CompositionRenderer {
         bitmap.interpolationQuality = .high
         bitmap.draw(subject, in: destination)
         guard let normalized = bitmap.makeImage() else { return nil }
-        return (CIImage(cgImage: normalized), scale)
-    }
-
-    private func visiblePixelBounds(in image: CGImage) -> CGRect? {
-        let width = image.width
-        let height = image.height
-        guard width > 0, height > 0 else { return nil }
-
-        let bytesPerRow = width * 4
-        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
-        let didRender = pixels.withUnsafeMutableBytes { buffer -> Bool in
-            guard let context = CGContext(
-                data: buffer.baseAddress,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: bytesPerRow,
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue
-                    | CGImageAlphaInfo.premultipliedLast.rawValue
-            ) else {
-                return false
-            }
-            context.clear(CGRect(x: 0, y: 0, width: width, height: height))
-            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-            return true
-        }
-        guard didRender else { return nil }
-
-        var minX = width
-        var minY = height
-        var maxX = -1
-        var maxY = -1
-        // Ignore faint segmentation residue at the outer edge; it otherwise makes
-        // one stray translucent pixel dictate the zoom for every style preview.
-        let alphaThreshold: UInt8 = 24
-        for y in 0..<height {
-            let rowStart = y * bytesPerRow
-            for x in 0..<width where pixels[rowStart + x * 4 + 3] > alphaThreshold {
-                minX = min(minX, x)
-                minY = min(minY, y)
-                maxX = max(maxX, x)
-                maxY = max(maxY, y)
-            }
-        }
-        guard maxX >= minX, maxY >= minY else { return nil }
-        return CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
+        return (CIImage(cgImage: normalized), scale, destination)
     }
 
     /// Returns the complete untransformed rectangle of the content rendered for
@@ -674,12 +635,13 @@ public struct CompositionRenderer {
                     phase: element.sourcePlaybackOffset ?? 0,
                     looping: isLooping
                 )
-                if let frame = clipFrameImage(
+                if let renderedFrame = clipFrameImage(
                     clipID: clipID,
                     at: playTime,
                     sourceStart: sourceRange.start,
                     sourceEnd: sourceRange.end
                 ) {
+                let frame = renderedFrame.image
                 // 预览用缩略图（尺寸 < 素材实际像素）。不把源图放大回全尺寸——
                 // 放大插值会在人物边缘产生半透明残留像素（贴边时形成"阴影线"）。
                 // 改为把归一化因子并入元素缩放，源图始终一次缩放到位。
@@ -689,7 +651,13 @@ public struct CompositionRenderer {
                     : 1
                 // 元素级背景图案垫在底层（先画背景，再叠加人物及其边缘/风格）
                 var content = appliesClipEffects
-                    ? applyClipStyle(clip.stickerStyle, clip: clip, fixScale: fixScale, to: frame)
+                    ? applyClipStyle(
+                        clip.stickerStyle,
+                        clip: clip,
+                        fixScale: fixScale,
+                        subjectBounds: renderedFrame.subjectBounds,
+                        to: frame
+                    )
                     : frame
                 if let pattern = element.backgroundPattern,
                    let patternCG = LinePattern.image(
@@ -869,12 +837,17 @@ public struct CompositionRenderer {
         guard let cg = ctx.makeImage() else { return nil }
         return CIImage(cgImage: cg)
     }
+    private struct RenderedClipFrame {
+        let image: CIImage
+        let subjectBounds: CGRect?
+    }
+
     private func clipFrameImage(
         clipID: String,
         at time: TimeInterval,
         sourceStart: TimeInterval = 0,
         sourceEnd: TimeInterval? = nil
-    ) -> CIImage? {
+    ) -> RenderedClipFrame? {
         guard let clip = FrameCache.shared.clip(id: clipID) else { return nil }
         let playbackFrames = clip.playbackFrameIndices(reversed: isPlaybackReversed)
         guard !playbackFrames.isEmpty else { return nil }
@@ -924,7 +897,11 @@ public struct CompositionRenderer {
         return clipFrameImage(frame, clip: clip)
     }
 
-    private func clipFrameImage(_ frame: CGImage, clip: SegmentedClip) -> CIImage {
+    private func clipFrameImage(_ frame: CGImage, clip: SegmentedClip) -> RenderedClipFrame {
+        // Keep the complete source canvas for positioning, but carry the visible
+        // subject bounds separately so clip effects can size themselves from the
+        // same alpha boundary used by option previews.
+        var subjectBounds = AlphaSubjectBounds.visiblePixelBounds(in: frame)
         var image = CIImage(cgImage: frame)
         // Thumbnail decoding already applies the crop in FrameCache. Full-resolution
         // frames are cropped here before the stored clockwise rotation is applied.
@@ -937,10 +914,28 @@ public struct CompositionRenderer {
                 height: raw.height * image.extent.height
             ).intersection(image.extent)
             if crop.width > 0, crop.height > 0 {
+                subjectBounds = subjectBounds?.intersection(crop)
                 image = image.cropped(to: crop)
             }
         }
-        return rotatedClipImage(image, quarterTurns: clip.normalizedRotationQuarterTurns)
+        let turns = clip.normalizedRotationQuarterTurns
+        guard turns != 0 else {
+            return RenderedClipFrame(image: image, subjectBounds: subjectBounds)
+        }
+
+        let rotation = CGAffineTransform(rotationAngle: CGFloat(turns) * .pi / 2)
+        let rotated = image.transformed(by: rotation)
+        let translation = CGAffineTransform(
+            translationX: -rotated.extent.minX,
+            y: -rotated.extent.minY
+        )
+        let normalizedBounds = subjectBounds?
+            .applying(rotation)
+            .applying(translation)
+        return RenderedClipFrame(
+            image: rotated.transformed(by: translation),
+            subjectBounds: normalizedBounds
+        )
     }
 
     /// 素材详情页的旋转属于素材本身，因此在进入元素变换和描边处理前统一应用。
@@ -995,6 +990,7 @@ public struct CompositionRenderer {
         _ style: StickerStyle,
         clip: SegmentedClip,
         fixScale: CGFloat,
+        subjectBounds: CGRect? = nil,
         to frame: CIImage
     ) -> CIImage {
         if style == .customOutline {
@@ -1013,6 +1009,7 @@ public struct CompositionRenderer {
             style,
             thickness: clip.edgeThickness,
             fixScale: fixScale,
+            subjectBounds: subjectBounds,
             to: applyEdgeStyle(
                 clip.edgeStyle,
                 lineStyle: clip.edgeLineStyle,
@@ -1029,16 +1026,22 @@ public struct CompositionRenderer {
         _ style: StickerStyle,
         thickness: EdgeThickness,
         fixScale: CGFloat,
+        subjectBounds: CGRect? = nil,
         to image: CIImage
     ) -> CIImage {
-        // 苹果描边/漫画宽度与主体尺寸成比例（约短边 3%/7%），预览与导出表现一致
-        let base = min(image.extent.width, image.extent.height)
+        // 预览和实际渲染都基于可见主体，而不是包含透明边距的完整素材画布。
+        // 这样主体很小或透明边距很大的抠图不会得到视觉上过粗的描边。
+        let base = AlphaSubjectBounds.subjectBase(in: image.extent, bounds: subjectBounds)
+        let renderScale = max(fixScale, 0.001)
         switch style {
         case .none:
             return image
         case .outline:
             // 描边贴纸：白色描边（宽度≈短边 3%），边缘柔和渐变
-            let radius = max(6, min(base * 0.03, 24))
+            // `base` 在当前 CIImage 坐标系中，先换算到素材实际像素，再
+            // 换回当前渲染坐标；这样预览缩略图与全分辨率输出保持同一比例。
+            let targetRadius = max(6, min(base * renderScale * 0.03, 24))
+            let radius = max(1, targetRadius / renderScale)
             let layer = outlineLayer(image, radius: radius, color: CIColor(hex: "FFFFFF"), lineStyle: .solid)
             let soft = layer
                 .clampedToExtent()
@@ -1050,15 +1053,19 @@ public struct CompositionRenderer {
             // 现在跟自定义描边共用三档粗细，且按预览缩略图比例换算，
             // 这样用户在两种风格之间切换时，粗细控制不会失效。
             let scale = max(fixScale, 0.001)
-            let blackRadius = max(1, thickness.radius / scale)
-            let whiteRadius = max(1, thickness.radius * 0.5 / scale)
+            // 白色留白带加倍，同时保留原来的黑色外轮廓宽度：
+            // 旧值为白色 0.5R + 黑色 0.5R；现在为白色 R + 黑色 0.5R。
+            let blackBand = max(1, thickness.radius * 0.5 / scale)
+            let whiteRadius = max(1, thickness.radius / scale)
+            let blackRadius = whiteRadius + blackBand
             let black = outlineLayer(image, radius: blackRadius, color: CIColor(hex: "000000"), lineStyle: .solid)
             let white = outlineLayer(image, radius: whiteRadius, color: CIColor(hex: "FFFFFF"), lineStyle: .solid)
             return image.composited(over: white.composited(over: black))
         case .smooth:
             // 平滑贴纸：仅羽化边缘（边缘带变半透明过渡，内部保持清晰不模糊）。
             // 用模糊后的 alpha 作掩码：内部 alpha≈1 → 原图；边缘 0<alpha<1 → 半透明；外部 → 透明
-            let radius = max(1, min(base * 0.012, 6))
+            let targetRadius = min(base * renderScale * 0.012, 6)
+            let radius = max(1, targetRadius / renderScale)
             let blurred = image
                 .clampedToExtent()
                 .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: radius])

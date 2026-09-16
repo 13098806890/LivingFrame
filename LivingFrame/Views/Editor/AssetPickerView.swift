@@ -20,6 +20,7 @@ struct AssetPickerView: View {
     @State private var backgroundImportCompletedCount = 0
     @State private var backgroundImportTotalCount = 0
     @State private var backgroundImportTask: Task<Void, Never>?
+    @State private var isAddingSelectedAssets = false
     /// 当前浏览的文件夹（nil = 全部素材），按钮直接切换，不依赖 NavigationLink
     @State private var folderID: String?
     /// 拼接素材选完后交给独立拼接编辑器；普通剪影素材选择不需要这个回调。
@@ -36,7 +37,7 @@ struct AssetPickerView: View {
         _pickerMode = State(initialValue: collageOnly ? .background : .person)
     }
 
-    private enum PickerMode: String, CaseIterable, Identifiable {
+    private enum PickerMode: String, CaseIterable, Identifiable, Hashable {
         case person
         case background
 
@@ -45,7 +46,7 @@ struct AssetPickerView: View {
         var title: LocalizedStringKey {
             switch self {
             case .person: "剪影素材"
-            case .background: "拼接素材"
+            case .background: "相册"
             }
         }
     }
@@ -70,13 +71,22 @@ struct AssetPickerView: View {
         appState.folders.first { $0.id == folderID }
     }
 
+    /// 相册素材入口只展示最近导入的 20 项；作品引用的旧文件仍留在磁盘供工程使用。
+    private var recentBackgroundMedia: [BackgroundMediaItem] {
+        Array(appState.backgroundMedia.prefix(BackgroundStore.userMediaRetentionLimit))
+    }
+
     /// Set 只负责去重；实际排版使用素材库顺序，保证同一批素材每次分区稳定。
     private var orderedSelectedBackgroundIDs: [String] {
-        let ordered = appState.backgroundMedia
+        let ordered = recentBackgroundMedia
             .filter { selectedBackgroundIDs.contains($0.id) }
             .map(\.id)
         let known = Set(ordered)
         return ordered + selectedBackgroundIDs.filter { !known.contains($0) }
+    }
+
+    private var selectedAssetCount: Int {
+        selectedIDs.count + selectedBackgroundIDs.count
     }
 
     var body: some View {
@@ -84,18 +94,23 @@ struct AssetPickerView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     if !collageOnly {
-                        folderBar
-                        if let folder = currentFolder, !appState.childFolders(of: folder.id).isEmpty {
-                            childFolderBar(folder)
+                        sourceTabs
+                        if pickerMode == .person {
+                            folderBar
+                            if let folder = currentFolder, !appState.childFolders(of: folder.id).isEmpty {
+                                childFolderBar(folder)
+                            }
+                            clipsGrid
+                        } else {
+                            backgroundGrid
                         }
-                        clipsGrid
                     } else {
                         backgroundGrid
                     }
                 }
                 .padding()
             }
-            .lfNavigationTitle(collageOnly ? "拼接素材" : (currentFolder?.name ?? "选择剪影素材"))
+            .lfNavigationTitle(collageOnly ? "拼接素材" : "添加素材")
             .navigationBarTitleDisplayMode(.inline)
             .magicBackground()
             .toolbar {
@@ -104,27 +119,23 @@ struct AssetPickerView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        if pickerMode == .person {
-                            for clipID in selectedIDs {
-                                appState.addElementFromClipID(clipID)
-                            }
-                        } else if let onCollageSelection {
-                            onCollageSelection(orderedSelectedBackgroundIDs)
-                        } else {
-                            for mediaID in orderedSelectedBackgroundIDs {
-                                appState.addBackgroundElement(mediaID: mediaID)
-                            }
+                        Task { @MainActor in
+                            await addSelectedAssets()
                         }
-                        dismiss()
                     } label: {
-                        let count = pickerMode == .person ? selectedIDs.count : selectedBackgroundIDs.count
-                        Text(count == 0 ? "添加" : "添加(\(count))")
-                            .fontWeight(.semibold)
+                        if isAddingSelectedAssets {
+                            ProgressView()
+                                .controlSize(.mini)
+                        } else {
+                            let count = selectedAssetCount
+                            Text(count == 0 ? "添加" : "添加(\(count))")
+                                .fontWeight(.semibold)
+                        }
                     }
                     .disabled(
-                        pickerMode == .person
-                            ? selectedIDs.isEmpty
-                            : selectedBackgroundIDs.isEmpty || isImportingBackground
+                        selectedAssetCount == 0 ||
+                            isImportingBackground ||
+                            isAddingSelectedAssets
                     )
                 }
             }
@@ -132,10 +143,6 @@ struct AssetPickerView: View {
         .presentationDetents([.medium, .large])
         .onDisappear {
             backgroundImportTask?.cancel()
-        }
-        .onChange(of: pickerMode) { _, _ in
-            selectedIDs.removeAll()
-            selectedBackgroundIDs.removeAll()
         }
         .onChange(of: isShowingBackgroundPicker) { wasPresented, isPresented in
             guard wasPresented, !isPresented else { return }
@@ -146,6 +153,16 @@ struct AssetPickerView: View {
                 handleBackgroundSelection(photoItems)
             }
         }
+    }
+
+    private var sourceTabs: some View {
+        Picker("素材来源", selection: $pickerMode) {
+            ForEach(PickerMode.allCases) { mode in
+                Text(mode.title).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("asset-picker-source-tabs")
     }
 
     private func handleBackgroundSelection(_ items: [PhotosPickerItem]) {
@@ -177,10 +194,39 @@ struct AssetPickerView: View {
                 backgroundImportCompletedCount = index + 1
                 backgroundImportProgress = Double(index + 1) / Double(max(items.count, 1))
             }
-            await appState.reloadBackgroundMediaAndWait()
+            await appState.retainRecentBackgroundMedia(preserving: selectedBackgroundIDs)
             isImportingBackground = false
             backgroundImportTask = nil
         }
+    }
+
+    /// 将选择器中的素材真正创建为画布元素。
+    /// 相册导入是异步的，先刷新一次媒体元数据，避免新导入的照片已经有 ID，
+    /// 但 AppState 的 backgroundMedia 列表还没来得及更新，导致点击“添加”后画布没有元素。
+    @MainActor
+    private func addSelectedAssets() async {
+        guard selectedAssetCount > 0,
+              !isImportingBackground,
+              !isAddingSelectedAssets else { return }
+
+        isAddingSelectedAssets = true
+        defer { isAddingSelectedAssets = false }
+
+        if !orderedSelectedBackgroundIDs.isEmpty {
+            await appState.reloadBackgroundMediaAndWait()
+        }
+
+        if let onCollageSelection {
+            onCollageSelection(orderedSelectedBackgroundIDs)
+        } else {
+            for clip in appState.clips where selectedIDs.contains(clip.id) {
+                appState.addElementFromClipID(clip.id)
+            }
+            for mediaID in orderedSelectedBackgroundIDs {
+                appState.addBackgroundElement(mediaID: mediaID)
+            }
+        }
+        dismiss()
     }
 
     /// 顶层：全部素材 + 根文件夹
@@ -348,7 +394,7 @@ struct AssetPickerView: View {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
-                        Text("正在准备拼接素材")
+                        Text("正在导入素材")
                             .font(.caption.weight(.semibold))
                         Spacer()
                         Text("\(backgroundImportCompletedCount)/\(backgroundImportTotalCount)")
@@ -389,7 +435,7 @@ struct AssetPickerView: View {
                 }
             }
 
-            let media = appState.backgroundMedia.filter { item in
+            let media = recentBackgroundMedia.filter { item in
                 switch backgroundFilter {
                 case .all: true
                 case .still: !item.isAnimated

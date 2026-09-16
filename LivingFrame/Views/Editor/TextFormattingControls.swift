@@ -29,7 +29,7 @@ struct TextFormattingControls: View {
         VStack(alignment: .leading, spacing: 14) {
             TextControlSection(title: "内容", subtitle: "文字会即时显示在画布上") {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "text.cursor")
+                    Image(systemName: "textformat")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(LF.actionPrimary)
                         .frame(width: 26, height: 26)
@@ -169,30 +169,13 @@ struct TextFormattingControls: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("文字颜色\(color.name)")
                         }
-                        ColorPicker(
-                            "更多",
+                        CompactCustomColorPicker(
                             selection: Binding(
                                 get: { Color(hex: text.colorHex) },
                                 set: { color in appState.updateText(text.id) { $0.colorHex = color.hexRGB } }
                             ),
-                            supportsOpacity: false
+                            accessibilityLabel: "更多文字颜色"
                         )
-                        .labelsHidden()
-                        .frame(width: 30, height: 30)
-                        .background(
-                            AngularGradient(
-                                colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
-                                center: .center
-                            ),
-                            in: Circle()
-                        )
-                        .overlay {
-                            Image(systemName: "plus")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .allowsHitTesting(false)
-                        }
-                        .accessibilityLabel("更多文字颜色")
                     }
                     .padding(.vertical, 3)
                 }
@@ -229,6 +212,34 @@ struct TextFormattingControls: View {
             return .custom(fontName, size: size)
         }
         return .system(size: size, weight: .semibold)
+    }
+}
+
+/// 文字和自定义描边共用的紧凑颜色选择器。
+/// 使用圆形彩虹色块和加号，不显示依赖语言的“自定义”文字。
+struct CompactCustomColorPicker: View {
+    let selection: Binding<Color>
+    let accessibilityLabel: LocalizedStringKey
+
+    var body: some View {
+        ColorPicker("自定义", selection: selection, supportsOpacity: false)
+            .labelsHidden()
+            .frame(width: 30, height: 30)
+            .background(
+                AngularGradient(
+                    colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
+                    center: .center
+                ),
+                in: Circle()
+            )
+            .overlay {
+                Image(systemName: "plus")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+                    .allowsHitTesting(false)
+            }
+            .contentShape(Circle())
+            .accessibilityLabel(accessibilityLabel)
     }
 }
 

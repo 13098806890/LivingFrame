@@ -55,17 +55,10 @@
 "取消" = "Cancelar";
 "作品列表" = "Lista de obras";
 "说明" = "Informações";
-"当前 Widget 画面" = "Imagem atual do widget";
 "未设置" = "Não definido";
-"长按桌面 → 添加小组件 → 活影" = "Pressione e segure a tela inicial → Adicionar widget → GIFBloom";
-"Widget 无法播放视频或动图（WidgetKit 限制）" = "Widgets não reproduzem vídeos nem animações (limitação do WidgetKit)";
-"我们展示作品的第一帧静态画面；点按 Widget 会打开 App 查看动态效果。" = "Mostramos o primeiro quadro da obra como imagem estática; toque no widget para abrir o app e ver em movimento.";
 "暂无作品，先导出一次吧" = "Nenhuma obra ainda — exporte uma primeiro";
 "重新编辑" = "Editar novamente";
-"设为 Widget 画面" = "Definir como imagem do widget";
 "删除" = "Excluir";
-"Widget" = "Widget";
-"Widget 设置" = "Ajustes do widget";
 "分辨率越高越精细，处理时间越长。素材越多，磁盘占用越大。" = "Quanto maior a resolução, mais nítido, porém mais demorado. Mais elementos, mais espaço ocupado.";
 "素材缓存" = "Cache de elementos";
 "清空缓存" = "Limpar cache";
@@ -265,7 +258,11 @@
 "还没有文件夹" = "Ainda não há pastas";
 "选中画布上的人物素材后可设置边框/描边风格" = "Selecione uma pessoa no canvas para definir borda/contorno";
 "选择分区后可设置分割边缘；画布外缘在“画布外缘”中统一设置。" = "Depois de escolher uma zona, ajuste a divisória; a borda externa é definida em “Borda externa”.";
+"添加素材" = "Adicionar mídia";
+"正在导入素材" = "Importando mídia";
 "选择视频 / Live Photo / 照片" = "Selecionar vídeo / Live Photo / foto";
+"搜索照片：猫、狗或地点" = "Buscar fotos: gatos, cães ou lugares";
+"清除搜索" = "Limpar busca";
 "重做" = "Refazer";
 "重置" = "Redefinir";
 "锯齿" = "Dentado";
@@ -283,6 +280,7 @@
 "生成剪影" = "Criar recorte";
 "剪影" = "Recortes";
 "剪影素材" = "Elementos recortados";
+"相册" = "Álbum";
 "选择剪影素材" = "Escolher elementos recortados";
 "先在「素材库」生成剪影素材，\n再回到这里添加到画布" = "Crie recortes na Biblioteca,\ne depois adicione-os à tela aqui.";
 "选中画布上的剪影素材后可设置边框/描边风格" = "Selecione um recorte na tela para ajustar a borda ou o contorno.";

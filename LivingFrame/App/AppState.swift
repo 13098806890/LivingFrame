@@ -399,13 +399,9 @@ final class AppState: ObservableObject {
         // 恢复持久化的素材与文件夹
         FrameCache.shared.reload()
         clips = FrameCache.shared.allClips()
-        // 背景目录扫描会读取视频轨道和动图帧信息，放到后台避免启动时阻塞主线程。
+        // 启动时也整理一次相册素材库；保留最近导入的素材和所有作品仍引用的文件。
         Task { [weak self] in
-            let media = await Task.detached(priority: .utility) {
-                await BackgroundStore.shared.allUserMedia()
-            }.value
-            guard !Task.isCancelled else { return }
-            self?.backgroundMedia = media
+            await self?.retainRecentBackgroundMedia()
         }
         folders = folderStore.load()
         let defaults = UserDefaults.standard
@@ -913,6 +909,36 @@ final class AppState: ObservableObject {
         backgroundMedia = media
     }
 
+    /// 相册素材库仅保留最近 20 项；仍被当前工程、作品或草稿引用的旧素材不会删除。
+    func retainRecentBackgroundMedia(
+        preserving additionalIDs: Set<String> = []
+    ) async {
+        let persistedWorks = await workPersistence.load()
+        var protectedIDs = additionalIDs
+
+        func includeBackgrounds(in composition: Composition?) {
+            guard let composition else { return }
+            for element in composition.elements {
+                if case .background(let id) = element.kind {
+                    protectedIDs.insert(id)
+                }
+            }
+        }
+
+        includeBackgrounds(in: composition)
+        for work in works + persistedWorks {
+            includeBackgrounds(in: work.composition)
+            includeBackgrounds(in: work.draft?.composition)
+        }
+
+        let media = await Task.detached(priority: .utility) {
+            let store = BackgroundStore.shared
+            _ = await store.pruneUserMedia(preserving: protectedIDs)
+            return await store.allUserMedia()
+        }.value
+        backgroundMedia = media
+    }
+
     /// 保存一张相册图片/动态图片，返回可用于创建元素的媒体 ID。
     @discardableResult
     func importBackgroundMedia(
@@ -929,16 +955,21 @@ final class AppState: ObservableObject {
         return id
     }
 
-    /// 添加一个背景媒体元素。单张素材也使用拼接组标识，保证重新进入时走统一编辑器。
+    /// 从普通编辑器添加一个独立的相册元素。
+    ///
+    /// 普通添加不创建拼接组，让照片像剪影素材一样直接成为画布和时间轴上的
+    /// 独立元素。只有用户主动进入拼接编辑器后，才通过
+    /// `addBackgroundElementsToCollage` 加入共享分割布局的拼接组。
     func addBackgroundElement(mediaID: String) {
-        _ = createBackgroundElements(mediaIDs: [mediaID], collageGroupID: UUID())
+        _ = createBackgroundElements(mediaIDs: [mediaID], collageGroupID: nil)
     }
 
-    /// 一次添加多个拼接素材。拼接布局由拼接器先行确定，新增元素初始不带分割线。
-    /// 这里仍复用背景元素模型，但对用户表现为独立的照片/动态素材拼接流程。
+    /// 从普通编辑器批量添加独立的相册元素。
+    /// 每个元素都不加入拼接组；需要共享分割布局时应使用
+    /// `addBackgroundElementsToCollage`。
     @discardableResult
     func addBackgroundElements(mediaIDs: [String]) -> [UUID] {
-        createBackgroundElements(mediaIDs: mediaIDs, collageGroupID: UUID())
+        createBackgroundElements(mediaIDs: mediaIDs, collageGroupID: nil)
     }
 
     /// 向已有拼接组追加素材；追加素材必须复用原组标识，才能保持统一的拼接入口。
@@ -983,7 +1014,10 @@ final class AppState: ObservableObject {
             return CompositionElement(
                 kind: .background(backgroundID: media.id),
                 name: media.name == media.id
-                    ? NSLocalizedString("拼接素材", comment: "Collage element")
+                    ? NSLocalizedString(
+                        collageGroupID == nil ? "照片" : "拼接素材",
+                        comment: collageGroupID == nil ? "Standalone album element" : "Collage element"
+                    )
                     : media.name,
                 transform: ElementTransform(
                     position: CGPoint(x: regionRect.midX, y: regionRect.midY),
@@ -2923,7 +2957,6 @@ final class AppState: ObservableObject {
         exportedURL = url
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         LogStore.log("\(exportLogPrefix) done elapsed=\(Int(Date().timeIntervalSince(start)))s size=\(size) bytes")
-        savePosterForWidget()
         return url
     }
 

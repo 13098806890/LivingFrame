@@ -203,6 +203,15 @@ private struct WorkCell: View {
                 }
                 .buttonStyle(.bordered)
                 .accessibilityLabel("删除")
+                // 将确认框附着到实际删除按钮，避免在 iPad/大屏上以整张作品卡片为锚点。
+                .confirmationDialog("删除这个作品？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+                    Button("删除", role: .destructive) {
+                        appState.deleteWork(work)
+                    }
+                    Button("取消", role: .cancel) {}
+                } message: {
+                    Text("删除后无法恢复，素材库中的素材不会被删除。")
+                }
             }
             .font(.caption.weight(.semibold))
         }
@@ -239,14 +248,6 @@ private struct WorkCell: View {
             } label: {
                 Label("删除", systemImage: "trash")
             }
-        }
-        .confirmationDialog("删除这个作品？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-            Button("删除", role: .destructive) {
-                appState.deleteWork(work)
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("删除后无法恢复，素材库中的素材不会被删除。")
         }
         .confirmationDialog("切换作品？", isPresented: $showDiscardConfirmation, titleVisibility: .visible) {
             Button("切换并保留草稿") {
