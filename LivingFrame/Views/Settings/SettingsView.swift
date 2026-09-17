@@ -74,7 +74,7 @@ struct SettingsView: View {
                             Text("8 秒").tag(8.0)
                             Text("10 秒").tag(10.0)
                         }
-                        Text("短视频默认从开头提取；超过 1 分钟的视频会先让你选择开始和结束位置。")
+                        Text("超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
 
@@ -160,7 +160,7 @@ struct SettingsView: View {
                                     .font(.subheadline.weight(.medium))
                                     .foregroundStyle(LF.actionPrimary)
                             } else {
-                                Text("使用周订阅或一次性买断解锁 GIFBloom Pro。")
+                                Text("选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。")
                                     .font(.caption)
                                     .foregroundStyle(LF.textSecondary)
                             }
@@ -174,7 +174,7 @@ struct SettingsView: View {
                             .buttonStyle(.borderedProminent)
                             .tint(LF.actionPrimary)
 
-                            if purchaseManager.hasActiveWeeklySubscription {
+                            if purchaseManager.hasActiveSubscription {
                                 Button {
                                     showManageSubscription = true
                                 } label: {
@@ -314,6 +314,9 @@ struct SettingsView: View {
         let info = Bundle.main.infoDictionary ?? [:]
         let version = info["CFBundleShortVersionString"] as? String ?? "未设置"
         let build = info["CFBundleVersion"] as? String ?? "未设置"
-        return "版本 \(version) (Build \(build))"
+        return String.localizedStringWithFormat(
+            NSLocalizedString("版本 %1$@ (Build %2$@)", comment: "App version and build number"),
+            version as NSString, build as NSString
+        )
     }
 }

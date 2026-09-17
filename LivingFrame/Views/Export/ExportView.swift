@@ -11,13 +11,15 @@ struct ExportView: View {
 
         var id: String { rawValue }
         var pixelSize: CGFloat { self == .sticker ? 240 : 720 }
-        var title: String { self == .sticker ? "表情 240" : "高清 720" }
+        var title: String {
+            NSLocalizedString(self == .sticker ? "表情 240" : "高清 720", comment: "WeChat GIF preset")
+        }
         var detail: String {
             switch self {
             case .sticker:
-                return "240×240、15 fps。适合尝试添加到微信自定义表情。"
+                return NSLocalizedString("240×240、15 fps。适合尝试添加到微信自定义表情。", comment: "WeChat sticker preset description")
             case .highResolution:
-                return "720×720、15 fps。保留更多细节，适合以 GIF 图片发送或在微信中实测；不保证可添加到自定义表情面板。"
+                return NSLocalizedString("720×720、15 fps。保留更多细节，适合以 GIF 图片发送或在微信中实测；不保证可添加到自定义表情面板。", comment: "High resolution WeChat GIF preset description")
             }
         }
     }
@@ -34,6 +36,7 @@ struct ExportView: View {
     @State private var exportedChatSticker = false
     @State private var exportedURL: URL?
     @State private var exportError: String?
+    @State private var librarySaveError: String?
     @State private var savedToLibrary = false
     @State private var isSavingToLibrary = false
     @State private var exportTask: Task<Void, Never>?
@@ -41,6 +44,8 @@ struct ExportView: View {
     @State private var isPreparingExport = false
     /// 打开导出页时冻结预览时刻，避免编辑器仍在播放时反复触发高成本渲染。
     @State private var previewTime: TimeInterval = 0
+    @State private var estimatedSizeBytes: Int64?
+    @State private var isEstimatingSize = false
 
     var body: some View {
         NavigationStack {
@@ -75,7 +80,10 @@ struct ExportView: View {
                                 }
                             }
                             .pickerStyle(.segmented)
-                            Text(weChatGIFPreset.detail + " 超过 10 MB 时会均匀抽帧，最低 6 fps；不会缩小画面。建议使用 1:1 画布让主体显示更大。半透明阴影会转为硬边。")
+                            Text(verbatim: weChatGIFPreset.detail + NSLocalizedString(
+                                " 超过 10 MB 时会均匀抽帧，最低 6 fps；不会缩小画面。建议使用 1:1 画布让主体显示更大。半透明阴影会转为硬边。",
+                                comment: "WeChat GIF export note"
+                            ))
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
                         }
@@ -94,7 +102,10 @@ struct ExportView: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        Text("当前工程动态素材最高：\(fpsTitle(appState.maximumSourceFPS)) fps")
+                        Text(String.localizedStringWithFormat(
+                            NSLocalizedString("当前工程动态素材最高：%1$@ fps", comment: "Highest source frame rate in project"),
+                            fpsTitle(appState.maximumSourceFPS) as NSString
+                        ))
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                         } else if format == .livePhoto {
@@ -115,11 +126,36 @@ struct ExportView: View {
                         )
                     }
 
-                    Text("文件体积会随画面细节、透明区域和编码器变化；导出完成后会显示准确结果。")
-                        .font(.caption2)
-                        .foregroundStyle(LF.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 2)
+                    VStack(spacing: 6) {
+                        HStack(spacing: 8) {
+                            Label("预计文件大小", systemImage: "internaldrive")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(LF.textSecondary)
+                            Spacer()
+                            if isEstimatingSize {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else if let estimatedSizeBytes {
+                                Text(String.localizedStringWithFormat(
+                                    NSLocalizedString("约 %1$@", comment: "Estimated export size"),
+                                    FileSizeText.string(fromByteCount: estimatedSizeBytes) as NSString
+                                ))
+                                .font(.caption.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(LF.textPrimary)
+                            } else {
+                                Text("—")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(LF.textSecondary)
+                            }
+                        }
+                        Text(format == .gif && chatSticker
+                            ? NSLocalizedString("微信 GIF 预估值按 15 fps 计算；超过 10 MB 会自动降低帧率。", comment: "WeChat GIF estimate FPS note")
+                            : NSLocalizedString("文件体积会随画面细节、透明区域和编码器变化；导出完成后会显示准确结果。", comment: "Estimated file size note"))
+                            .font(.caption2)
+                            .foregroundStyle(LF.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.top, 2)
                 }
                 .padding()
             }
@@ -143,7 +179,7 @@ struct ExportView: View {
                         export()
                     }
                     .tint(LF.actionPrimary)
-                    .disabled(appState.isExporting || isSavingToLibrary || isPreparingExport || appState.isSavingWork)
+                    .disabled(appState.isExporting || isSavingToLibrary || isPreparingExport || isEstimatingSize || appState.isSavingWork)
                 }
             }
         }
@@ -161,6 +197,46 @@ struct ExportView: View {
         .onDisappear {
             exportTask?.cancel()
         }
+        .task(id: exportEstimateKey) {
+            let requestKey = exportEstimateKey
+            guard appState.composition != nil else {
+                estimatedSizeBytes = nil
+                isEstimatingSize = false
+                return
+            }
+            estimatedSizeBytes = nil
+            isEstimatingSize = true
+            do {
+                let bytes = try await appState.estimateExportSize(
+                    format: format,
+                    fps: fps,
+                    chatSticker: format == .gif && chatSticker,
+                    chatGIFPixelSize: weChatGIFPreset.pixelSize,
+                    resolution: resolution
+                )
+                guard !Task.isCancelled, requestKey == exportEstimateKey else { return }
+                estimatedSizeBytes = bytes
+            } catch {
+                guard !Task.isCancelled, requestKey == exportEstimateKey else { return }
+                estimatedSizeBytes = nil
+            }
+            if requestKey == exportEstimateKey {
+                isEstimatingSize = false
+            }
+        }
+    }
+
+    private var exportEstimateKey: String {
+        let composition = appState.composition
+        return [
+            composition?.id.uuidString ?? "none",
+            String(composition?.duration ?? 0),
+            format.rawValue,
+            String(fps),
+            resolution.rawValue,
+            String(chatSticker),
+            weChatGIFPreset.rawValue
+        ].joined(separator: "|")
     }
 
     private var exportProgressBanner: some View {
@@ -203,6 +279,11 @@ struct ExportView: View {
                     Label(notice, systemImage: "info.circle.fill")
                         .font(.caption)
                         .foregroundStyle(LF.textSecondary)
+                }
+                if let librarySaveError {
+                    Label(librarySaveError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
                 if format == .livePhoto {
                     Text("已存入系统相册，打开「照片」长按即可看到动态效果")
@@ -335,7 +416,10 @@ struct ExportView: View {
                 Text(comp.name)
                     .font(.headline)
                     .lineLimit(1)
-                Text("时长 \(String(format: "%.1f", max(comp.duration, 0))) 秒 · 导出预览")
+                Text(String.localizedStringWithFormat(
+                    NSLocalizedString("时长 %.1f 秒 · 导出预览", comment: "Export preview duration"),
+                    max(comp.duration, 0)
+                ))
                     .font(.caption)
                     .foregroundStyle(LF.textSecondary)
             }
@@ -349,6 +433,7 @@ struct ExportView: View {
         exportedChatSticker = false
         savedToLibrary = false
         exportError = nil
+        librarySaveError = nil
         let selectedFormat = format
         let selectedFPS = fps
         let selectedResolution = resolution
@@ -375,6 +460,8 @@ struct ExportView: View {
                 exportedChatSticker = isChatSticker
                 if selectedFormat == .livePhoto {
                     savedToLibrary = true
+                } else {
+                    saveToLibrary(url: url)
                 }
             } catch is CancellationError {
                 // 用户主动停止，不显示错误。
@@ -454,11 +541,12 @@ struct ExportView: View {
               let bytes = try? exportedURL.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
             return nil
         }
-        return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+        return FileSizeText.string(fromByteCount: Int64(bytes))
     }
 
     private func saveToLibrary(url: URL) {
         guard !isSavingToLibrary else { return }
+        librarySaveError = nil
         isSavingToLibrary = true
         Task { @MainActor in
             defer { isSavingToLibrary = false }
@@ -481,7 +569,7 @@ struct ExportView: View {
                 }
                 savedToLibrary = true
             } catch {
-                exportError = error.localizedDescription
+                librarySaveError = error.localizedDescription
             }
         }
     }
@@ -546,7 +634,10 @@ private struct ExportFramePreview: View {
                         Text("帧率 / 总帧数")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
-                        Text("\(Int(fps)) fps · \(frameCount) 帧")
+                        Text(String.localizedStringWithFormat(
+                            NSLocalizedString("%1$lld fps · %2$lld 帧", comment: "Output frame rate and frame count"),
+                            Int64(fps), Int64(frameCount)
+                        ))
                             .font(.subheadline.weight(.semibold).monospacedDigit())
                             .foregroundStyle(LF.textPrimary)
                     }

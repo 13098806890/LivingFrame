@@ -228,7 +228,10 @@ struct FrameGridView: View {
                     VStack(spacing: 1) {
                         Text(editsComposition ? "编辑合成帧" : "编辑素材帧")
                             .font(.subheadline.weight(.semibold))
-                        Text("\(selectedCount) / \(totalFrames) 张帧")
+                        Text(String.localizedStringWithFormat(
+                            NSLocalizedString("%1$lld / %2$lld 张帧", comment: "Selected frame count"),
+                            Int64(selectedCount), Int64(totalFrames)
+                        ))
                             .font(.caption2)
                             .foregroundStyle(LF.textSecondary)
                     }
@@ -380,7 +383,10 @@ struct FrameDetailView: View {
                     }
                     .buttonStyle(.plain)
                     Spacer()
-                    Text("第 \(frameIndex + 1) 帧 / 共 \(frameCount) 帧")
+                    Text(String.localizedStringWithFormat(
+                        NSLocalizedString("第 %1$lld 帧 / 共 %2$lld 帧", comment: "Frame preview position"),
+                        Int64(frameIndex + 1), Int64(frameCount)
+                    ))
                         .font(.subheadline)
                         .foregroundStyle(LF.textPrimary)
                     Spacer()

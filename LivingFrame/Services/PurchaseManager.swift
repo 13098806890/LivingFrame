@@ -5,13 +5,20 @@ import SwiftUI
 @MainActor
 final class PurchaseManager: ObservableObject {
     static let weeklyProductID = "com.livingframe.app.pro.weekly"
+    static let monthlyProductID = "com.livingframe.app.pro.monthly"
+    static let annualProductID = "com.livingframe.app.pro.annual"
     static let lifetimeProductID = "com.livingframe.app.pro.lifetime"
     static let subscriptionGroupID = "22389365"
 
-    private static let productIDs: Set<String> = [weeklyProductID, lifetimeProductID]
+    private static let subscriptionProductIDs: Set<String> = [
+        weeklyProductID,
+        monthlyProductID,
+        annualProductID
+    ]
+    private static let productIDs = subscriptionProductIDs.union([lifetimeProductID])
 
     @Published private(set) var hasPro = false
-    @Published private(set) var hasActiveWeeklySubscription = false
+    @Published private(set) var hasActiveSubscription = false
 
     private var transactionUpdatesTask: Task<Void, Never>?
 
@@ -36,15 +43,16 @@ final class PurchaseManager: ObservableObject {
             switch transaction.productID {
             case Self.lifetimeProductID:
                 ownsLifetimePurchase = true
-            case Self.weeklyProductID:
-                hasActiveSubscription = transaction.expirationDate.map { $0 > .now } ?? false
+            case Self.weeklyProductID, Self.monthlyProductID, Self.annualProductID:
+                hasActiveSubscription = hasActiveSubscription ||
+                    (transaction.expirationDate.map { $0 > .now } ?? false)
             default:
                 break
             }
         }
 
         hasPro = ownsLifetimePurchase || hasActiveSubscription
-        hasActiveWeeklySubscription = hasActiveSubscription
+        self.hasActiveSubscription = hasActiveSubscription
     }
 
     func handlePurchaseCompletion(_ result: Result<Product.PurchaseResult, any Error>) async {

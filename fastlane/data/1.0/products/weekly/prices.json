@@ -1,6 +1,7 @@
 {
   "as_of": "2026-09-17",
   "territory_count": 175,
+  "price_record_count": 175,
   "prices": [
     {
       "territory": "AFG",
@@ -8,6 +9,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBRkciLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -17,6 +19,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBR08iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -26,6 +29,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBSUEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -35,6 +39,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBTEIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -44,6 +49,7 @@
       "customer_price": "7.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBUkUiLCJwIjoiMTAwMjUifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -53,6 +59,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBUkciLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -62,6 +69,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBUk0iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -71,6 +79,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBVEciLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -80,6 +89,7 @@
       "customer_price": "2.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBVVMiLCJwIjoiMTAwMzUifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -89,6 +99,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBVVQiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -98,6 +109,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJBWkUiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -107,6 +119,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCRUwiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -116,6 +129,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCRU4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -125,6 +139,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCRkEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -134,6 +149,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCR1IiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -143,6 +159,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCSFIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -152,6 +169,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCSFMiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -161,6 +179,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCSUgiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -170,6 +189,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCTFIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -179,6 +199,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCTFoiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -188,6 +209,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCTVUiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -197,6 +219,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCT0wiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -206,6 +229,7 @@
       "customer_price": "12.9",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCUkEiLCJwIjoiMTAwNDkifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -215,6 +239,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCUkIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -224,6 +249,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCUk4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -233,6 +259,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCVE4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -242,6 +269,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJCV0EiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -251,6 +279,7 @@
       "customer_price": "2.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDQU4iLCJwIjoiMTAwMzYifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -260,6 +289,7 @@
       "customer_price": "2.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDSEUiLCJwIjoiMTAwMjAifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -269,6 +299,7 @@
       "customer_price": "1990",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDSEwiLCJwIjoiMTAwMzcifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -278,6 +309,7 @@
       "customer_price": "6.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDSE4iLCJwIjoiMTAwMTYifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -287,6 +319,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDSVYiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -296,6 +329,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDTVIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -305,6 +339,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDT0QiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -314,6 +349,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDT0ciLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -323,6 +359,7 @@
       "customer_price": "9900.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDT0wiLCJwIjoiMTAwMjgifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -332,6 +369,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDUFYiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -341,6 +379,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDUkkiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -350,6 +389,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDWU0iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -359,6 +399,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDWVAiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -368,6 +409,7 @@
       "customer_price": "49.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJDWkUiLCJwIjoiMTAwNDkifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -377,6 +419,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJERVUiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -386,6 +429,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJETUEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -395,6 +439,7 @@
       "customer_price": "19.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJETksiLCJwIjoiMTAwMTcifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -404,6 +449,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJET00iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -413,6 +459,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJEWkEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -422,6 +469,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJFQ1UiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -431,6 +479,7 @@
       "customer_price": "99.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJFR1kiLCJwIjoiMTAxNDcifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -440,6 +489,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJFU1AiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -449,6 +499,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJFU1QiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -458,6 +509,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJGSU4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -467,6 +519,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJGSkkiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -476,6 +529,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJGUkEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -485,6 +539,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJGU00iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -494,6 +549,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJHQUIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -503,6 +559,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJHQlIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -512,6 +569,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJHRU8iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -521,6 +579,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJHSEEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -530,6 +589,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJHTUIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -539,6 +599,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJHTkIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -548,6 +609,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJHUkMiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -557,6 +619,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJHUkQiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -566,6 +629,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJHVE0iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -575,6 +639,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJHVVkiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -584,6 +649,7 @@
       "customer_price": "18.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJIS0ciLCJwIjoiMTAwMTcifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -593,6 +659,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJITkQiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -602,6 +669,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJIUlYiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -611,6 +679,7 @@
       "customer_price": "999",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJIVU4iLCJwIjoiMTAwMjkifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -620,6 +689,7 @@
       "customer_price": "39000",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJJRE4iLCJwIjoiMTAwNzQifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -629,6 +699,7 @@
       "customer_price": "199.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJJTkQiLCJwIjoiMTAwNTgifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -638,6 +709,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJJUkwiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -647,6 +719,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJJUlEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -656,6 +729,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJJU0wiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -665,6 +739,7 @@
       "customer_price": "4.9",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJJU1IiLCJwIjoiMTAwMTMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -674,6 +749,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJJVEEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -683,6 +759,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJKQU0iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -692,6 +769,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJKT1IiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -701,6 +779,7 @@
       "customer_price": "300",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJKUE4iLCJwIjoiMTAwMjYifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -710,6 +789,7 @@
       "customer_price": "999.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJLQVoiLCJwIjoiMTAxMTIifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -719,6 +799,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJLRU4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -728,6 +809,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJLR1oiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -737,6 +819,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJLSE0iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -746,6 +829,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJLTkEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -755,6 +839,7 @@
       "customer_price": "3300",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJLT1IiLCJwIjoiMTAwMzcifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -764,6 +849,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJLV1QiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -773,6 +859,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJMQU8iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -782,6 +869,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJMQk4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -791,6 +879,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJMQlIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -800,6 +889,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJMQlkiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -809,6 +899,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJMQ0EiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -818,6 +909,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJMS0EiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -827,6 +919,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJMVFUiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -836,6 +929,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJMVVgiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -845,6 +939,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJMVkEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -854,6 +949,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNQUMiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -863,6 +959,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNQVIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -872,6 +969,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNREEiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -881,6 +979,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNREciLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -890,6 +989,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNRFYiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -899,6 +999,7 @@
       "customer_price": "39.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNRVgiLCJwIjoiMTAwMzUifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -908,6 +1009,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNS0QiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -917,6 +1019,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNTEkiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -926,6 +1029,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNTFQiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -935,6 +1039,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNTVIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -944,6 +1049,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNTkUiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -953,6 +1059,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNTkciLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -962,6 +1069,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNT1oiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -971,6 +1079,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNUlQiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -980,6 +1089,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNU1IiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -989,6 +1099,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNVVMiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -998,6 +1109,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNV0kiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1007,6 +1119,7 @@
       "customer_price": "9.9",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJNWVMiLCJwIjoiMTAwMzgifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1016,6 +1129,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJOQU0iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1025,6 +1139,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJORVIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1034,6 +1149,7 @@
       "customer_price": "3200.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJOR0EiLCJwIjoiMTAxMDkifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1043,6 +1159,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJOSUMiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1052,6 +1169,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJOTEQiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1061,6 +1179,7 @@
       "customer_price": "29.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJOT1IiLCJwIjoiMTAwMjcifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1070,6 +1189,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJOUEwiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1079,6 +1199,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJOUlUiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1088,6 +1209,7 @@
       "customer_price": "3.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJOWkwiLCJwIjoiMTAwNDgifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1097,6 +1219,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJPTU4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1106,6 +1229,7 @@
       "customer_price": "500.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJQQUsiLCJwIjoiMTAwOTUifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1115,6 +1239,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJQQU4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1124,6 +1249,7 @@
       "customer_price": "9.9",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJQRVIiLCJwIjoiMTAwMzcifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1133,6 +1259,7 @@
       "customer_price": "129.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJQSEwiLCJwIjoiMTAwMzgifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1142,6 +1269,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJQTFciLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1151,6 +1279,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJQTkciLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1160,6 +1289,7 @@
       "customer_price": "9.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJQT0wiLCJwIjoiMTAwMjkifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1169,6 +1299,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJQUlQiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1178,6 +1309,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJQUlkiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1187,6 +1319,7 @@
       "customer_price": "7.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJRQVQiLCJwIjoiMTAwMjUifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1196,6 +1329,7 @@
       "customer_price": "9.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJST1UiLCJwIjoiMTAwMjkifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1205,6 +1339,7 @@
       "customer_price": "199.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJSVVMiLCJwIjoiMTAwNTYifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1214,6 +1349,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJSV0EiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1223,6 +1359,7 @@
       "customer_price": "9.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTQVUiLCJwIjoiMTAwMzIifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1232,6 +1369,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTRU4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1241,6 +1379,7 @@
       "customer_price": "2.98",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTR1AiLCJwIjoiMTAwMzYifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1250,6 +1389,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTTEIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1259,6 +1399,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTTEUiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1268,6 +1409,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTTFYiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1277,6 +1419,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTUkIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1286,6 +1429,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTVFAiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1295,6 +1439,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTVVIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1304,6 +1449,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTVksiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1313,6 +1459,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTVk4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1322,6 +1469,7 @@
       "customer_price": "29.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTV0UiLCJwIjoiMTAwMjcifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1331,6 +1479,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTV1oiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1340,6 +1489,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJTWUMiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1349,6 +1499,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUQ0EiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1358,6 +1509,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUQ0QiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1367,6 +1519,7 @@
       "customer_price": "79.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUSEEiLCJwIjoiMTAwMjIifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1376,6 +1529,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUSksiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1385,6 +1539,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUS00iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1394,6 +1549,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUT04iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1403,6 +1559,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUVE8iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1412,6 +1569,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUVU4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1421,6 +1579,7 @@
       "customer_price": "99.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUVVIiLCJwIjoiMTAxNDcifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1430,6 +1589,7 @@
       "customer_price": "60",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUV04iLCJwIjoiMTAwMTcifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1439,6 +1599,7 @@
       "customer_price": "5900.0",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJUWkEiLCJwIjoiMTAwNTUifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1448,6 +1609,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJVR0EiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1457,6 +1619,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJVS1IiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1466,6 +1629,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJVUlkiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1475,6 +1639,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJVU0EiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1484,6 +1649,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJVWkIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1493,6 +1659,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJWQ1QiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1502,6 +1669,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJWRU4iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1511,6 +1679,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJWR0IiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1520,6 +1689,7 @@
       "customer_price": "59000",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJWTk0iLCJwIjoiMTAwNTUifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1529,6 +1699,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJWVVQiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1538,6 +1709,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJYS1MiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1547,6 +1719,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJZRU0iLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1556,6 +1729,7 @@
       "customer_price": "39.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJaQUYiLCJwIjoiMTAwNDgifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1565,6 +1739,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJaTUIiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     },
@@ -1574,6 +1749,7 @@
       "customer_price": "1.99",
       "price_point_id": "eyJzIjoiNjgxMjcwMjE1NyIsInQiOiJaV0UiLCJwIjoiMTAwMjMifQ",
       "start_date": null,
+      "end_date": null,
       "plan_type": "UPFRONT",
       "preserved": false
     }

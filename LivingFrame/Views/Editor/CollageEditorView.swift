@@ -386,7 +386,9 @@ struct CollageEditorView: View {
         collageLayerOrder.enumerated().map { index, element in
             CollageLayerOption(
                 id: element.id,
-                title: "图层 \(index + 1)",
+                title: String.localizedStringWithFormat(
+                    NSLocalizedString("图层 %1$lld", comment: "Collage layer number"), Int64(index + 1)
+                ),
                 index: index + 1,
                 isSelected: element.id == activeElementID
             )
@@ -477,7 +479,9 @@ struct CollageEditorView: View {
                 Image(systemName: isAssigned ? "checkmark.circle.fill" : "arrow.down.circle")
                     .foregroundStyle(isAssigned ? LF.selectionStroke : LF.actionPrimary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("区域 \(partition + 1)")
+                    Text(String.localizedStringWithFormat(
+                        NSLocalizedString("区域 %1$lld", comment: "Collage region number"), Int64(partition + 1)
+                    ))
                         .font(.caption.weight(.semibold))
                     Text(isAssigned ? "当前素材已在此区域" : "点击按钮添加到这里")
                         .font(.caption2)
@@ -495,7 +499,10 @@ struct CollageEditorView: View {
             .padding(.vertical, 8)
             .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         } else {
-            Text("先选择一个拼接素材，再添加到区域 \(partition + 1)。")
+            Text(String.localizedStringWithFormat(
+                NSLocalizedString("先选择一个拼接素材，再添加到区域 %1$lld。", comment: "Add collage media to region prompt"),
+                Int64(partition + 1)
+            ))
                 .font(.caption)
                 .foregroundStyle(LF.textSecondary)
                 .padding(.horizontal, 4)
@@ -714,7 +721,9 @@ struct BackgroundEditingPreview: View {
                             let isFilled = items.contains {
                                 $0.settings.resolvedAssignedPartitions.contains(partition)
                             }
-                            Text("区域 \(partition + 1)")
+                            Text(String.localizedStringWithFormat(
+                                NSLocalizedString("区域 %1$lld", comment: "Collage region number"), Int64(partition + 1)
+                            ))
                                 .font(.caption2.weight(.semibold).monospacedDigit())
                                 .foregroundStyle(isActive ? LF.selectionText : LF.textPrimary)
                                 .padding(.horizontal, 7)
@@ -781,7 +790,10 @@ struct BackgroundEditingPreview: View {
         return sharedSettings.dividerLines.indices.map { index in
             let angle = BackgroundPartitionGeometry.angle(for: index, settings: sharedSettings)
             let offset = BackgroundDividerGeometry.offset(for: index, settings: sharedSettings)
-            return "分割线 \(index + 1)，角度 \(String(format: "%.0f", angle)) 度，偏移 \(String(format: "%.2f", offset))"
+            return String.localizedStringWithFormat(
+                NSLocalizedString("分割线 %1$lld，角度 %2$.0f 度，偏移 %3$.2f", comment: "Collage divider accessibility value"),
+                Int64(index + 1), Double(angle), Double(offset)
+            )
         }.joined(separator: "；")
     }
 
@@ -1141,7 +1153,10 @@ struct BackgroundDividerControls: View {
                 ForEach(Array(settings.dividerLines.enumerated()), id: \.element.id) { index, divider in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 5) {
-                            Text("分割线 \(index + 1) 角度")
+                            Text(String.localizedStringWithFormat(
+                                NSLocalizedString("分割线 %1$lld 角度", comment: "Collage divider angle control"),
+                                Int64(index + 1)
+                            ))
                                 .font(.caption2)
                                 .foregroundStyle(LF.textSecondary)
                             Spacer()
@@ -1191,7 +1206,9 @@ struct BackgroundDividerControls: View {
                             Button {
                                 onPartitionSelect(partition)
                             } label: {
-                                Text("区域 \(partition + 1)")
+                                Text(String.localizedStringWithFormat(
+                                    NSLocalizedString("区域 %1$lld", comment: "Collage region number"), Int64(partition + 1)
+                                ))
                                     .font(.caption2.weight(.medium))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 5)
@@ -1221,7 +1238,9 @@ struct BackgroundDividerControls: View {
             }
 
             if !settings.dividerLines.isEmpty {
-                Text("当前分区：\(regionCount)")
+                Text(String.localizedStringWithFormat(
+                    NSLocalizedString("当前分区：%1$lld", comment: "Collage region count"), Int64(regionCount)
+                ))
                     .font(.caption2)
                     .foregroundStyle(LF.textSecondary)
             }
@@ -1286,7 +1305,11 @@ private struct CollageSourceChip: View {
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(LF.textSecondary)
                     } else {
-                        Text(assignedPartitions.map { "区\($0 + 1)" }.joined(separator: " · "))
+                        Text(assignedPartitions.map {
+                            String.localizedStringWithFormat(
+                                NSLocalizedString("区%1$lld", comment: "Assigned collage region number"), Int64($0 + 1)
+                            )
+                        }.joined(separator: " · "))
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(LF.selectionText)
                             .lineLimit(1)
@@ -1298,11 +1321,14 @@ private struct CollageSourceChip: View {
             .buttonStyle(.plain)
             .foregroundStyle(LF.textPrimary)
             .accessibilityIdentifier("collage-source-\(item.id)")
-            .accessibilityValue(
-                "\(item.isAnimated ? "动态素材" : "静态素材")，缩放 \(String(format: "%.2f", settings.cropScale)) 倍，"
-                    + "偏移 \(String(format: "%.1f", settings.cropOffset.x)),\(String(format: "%.1f", settings.cropOffset.y))，"
-                    + "旋转 \(settings.rotationQuarterTurns * 90) 度"
-            )
+            .accessibilityValue(String.localizedStringWithFormat(
+                NSLocalizedString("%1$@，缩放 %2$.2f 倍，偏移 %3$.1f,%4$.1f，旋转 %5$lld 度", comment: "Collage source accessibility value"),
+                NSLocalizedString(item.isAnimated ? "动态素材" : "静态素材", comment: "Media type") as NSString,
+                Double(settings.cropScale),
+                Double(settings.cropOffset.x),
+                Double(settings.cropOffset.y),
+                Int64(settings.rotationQuarterTurns * 90)
+            ))
 
             HStack(spacing: 1) {
                 Menu {

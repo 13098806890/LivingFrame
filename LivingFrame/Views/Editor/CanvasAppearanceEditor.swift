@@ -74,7 +74,7 @@ struct CanvasAppearanceEditor: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         Button(action: onSelectTransparent) {
-                            colorSwatch(title: "透明", isSelected: backgroundIsTransparent) {
+                            colorSwatch(title: Text("透明"), isSelected: backgroundIsTransparent) {
                                 CheckerboardView()
                             }
                         }
@@ -84,7 +84,7 @@ struct CanvasAppearanceEditor: View {
                         ForEach(colors, id: \.hex) { color in
                             Button { onSelectColor(color.hex) } label: {
                                 colorSwatch(
-                                    title: color.name,
+                                    title: Text(verbatim: NSLocalizedString(color.name, comment: "Background color name")),
                                     isSelected: backgroundIsSolid && backgroundHex.uppercased() == color.hex
                                 ) {
                                     Color(hex: color.hex)
@@ -159,7 +159,7 @@ struct CanvasAppearanceEditor: View {
     }
 
     private func colorSwatch<Content: View>(
-        title: String,
+        title: Text,
         isSelected: Bool,
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -174,7 +174,7 @@ struct CanvasAppearanceEditor: View {
                             lineWidth: isSelected ? 2.5 : 1
                         )
                 }
-            Text(title)
+            title
                 .font(.caption2)
                 .foregroundStyle(LF.textPrimary)
                 .lineLimit(1)
@@ -193,8 +193,8 @@ struct CanvasAppearanceEditor: View {
     }
 
     private func settingGroup<Content: View>(
-        _ title: String,
-        subtitle: String,
+        _ title: LocalizedStringKey,
+        subtitle: LocalizedStringKey,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -257,7 +257,7 @@ struct CustomColorPickerTile: View {
         }
         .frame(width: 64, height: 72)
         .contentShape(Rectangle())
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel(Text(accessibilityLabel))
     }
 }
 

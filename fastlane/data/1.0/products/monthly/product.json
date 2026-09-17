@@ -1,0 +1,35 @@
+{
+  "product_id": "com.livingframe.app.pro.monthly",
+  "app_store_connect_resource_id": "6813032653",
+  "subscription_version_resource_id": "409e829b-d6f2-4215-a2cd-33e0526f8b19",
+  "reference_name": "GIFBloom Pro Monthly",
+  "display_name_rule": "Keep the product display name identical in all supported locales.",
+  "type": "AUTO_RENEWABLE_SUBSCRIPTION",
+  "subscription_period": "ONE_MONTH",
+  "subscription_group": {
+    "id": "22389365",
+    "reference_name": "GIFBloom订阅"
+  },
+  "app_store_connect_state": "MISSING_METADATA",
+  "localization_state": "PREPARE_FOR_SUBMISSION",
+  "review_information": {
+    "app_review_screenshot": null,
+    "review_notes": null,
+    "status": "NEEDS_REVIEW_ASSETS_AND_OWNER_INPUT"
+  },
+  "pricing": {
+    "status": "SYNCED_FROM_APP_STORE_CONNECT",
+    "price_snapshot": "prices.json",
+    "availability_snapshot": "availability.json",
+    "priced_territory_count": 175,
+    "available_territory_count": 175,
+    "note": "Read from App Store Connect on 2026-09-17."
+  },
+  "localizations_path": "localizations/<App Store locale>/",
+  "pricing_summary_as_of_2026_09_17": {
+    "territory": "USA",
+    "currency": "USD",
+    "customer_price": "3.99",
+    "billing_period": "month"
+  }
+}

@@ -24,6 +24,12 @@ public struct LivePhotoExporter {
 
     public init() {}
 
+    /// Mirrors the export's fixed H.264 target bitrate and three-second limit.
+    public func estimateSize(_ composition: Composition) -> Int64 {
+        let duration = min(max(composition.duration, 0), 3)
+        return max(Int64((6_000_000 * duration / 8).rounded()), 1)
+    }
+
     public func export(
         _ composition: Composition,
         to url: URL,

@@ -13,11 +13,19 @@
     "review_notes": null,
     "status": "NEEDS_REVIEW_ASSETS_AND_OWNER_INPUT"
   },
+  "localizations_path": "localizations/<App Store locale>/",
   "pricing_summary_as_of_2026_09_17": {
     "territory": "USA",
     "currency": "USD",
-    "customer_price": "24.99",
+    "customer_price": "49.99",
     "billing_period": "one_time"
   },
-  "localizations_path": "localizations/<App Store locale>/"
+  "pricing": {
+    "status": "SYNCED_FROM_APP_STORE_CONNECT",
+    "price_snapshot": "prices.json",
+    "availability_snapshot": "availability.json",
+    "priced_territory_count": 175,
+    "available_territory_count": 175,
+    "note": "Read from App Store Connect on 2026-09-17."
+  }
 }

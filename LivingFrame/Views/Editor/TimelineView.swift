@@ -591,7 +591,10 @@ struct TimelineView: View {
             appState.selectElement(element.id)
         }
         .highPriorityGesture(layerReorderGesture(element))
-        .accessibilityLabel("\(element.name)，上下拖动调整图层")
+        .accessibilityLabel(String.localizedStringWithFormat(
+            NSLocalizedString("%1$@，上下拖动调整图层", comment: "Reorder timeline layer accessibility label"),
+            displayName(for: element) as NSString
+        ))
     }
 
     private func trackBadge(symbol: String) -> some View {
@@ -986,7 +989,10 @@ struct TimelineView: View {
                 .buttonStyle(.plain)
                 .offset(x: metrics.activeOffset + 6)
                 .zIndex(21)
-                .accessibilityLabel("播放 \(repeatCount) 次，编辑播放片段")
+                .accessibilityLabel(String.localizedStringWithFormat(
+                    NSLocalizedString("播放 %1$lld 次，编辑播放片段", comment: "Edit playback repetition accessibility label"),
+                    Int64(repeatCount)
+                ))
             }
         }
         .frame(width: barWidth, height: barHeight)
@@ -1789,8 +1795,10 @@ struct TimelineView: View {
         guard case .decoration(let decorationID) = element.kind else {
             return element.name
         }
-        let catalogName = DecorationRenderer.stickerName(for: decorationID)
-        return catalogName == decorationID ? element.name : catalogName
+        guard let sticker = DecorationRenderer.stickerDefinition(for: decorationID) else {
+            return element.name
+        }
+        return sticker.localizedName
     }
 
     /// 素材保留类型图标；贴纸只显示帧条；二者都不显示名称。
@@ -2036,7 +2044,10 @@ private struct TimelineHorizontalNavigator: View {
                     }
             )
             .accessibilityLabel("横向浏览时间轴")
-            .accessibilityValue("当前位置 \(Int(progress * 100))%")
+            .accessibilityValue(String.localizedStringWithFormat(
+                NSLocalizedString("当前位置 %1$lld%%", comment: "Timeline scroll position accessibility value"),
+                Int64(progress * 100)
+            ))
         }
     }
 }

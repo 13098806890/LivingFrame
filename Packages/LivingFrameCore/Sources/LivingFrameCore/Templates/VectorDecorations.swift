@@ -9,8 +9,8 @@ public enum StickerCategory: String, CaseIterable, Equatable, Sendable {
 
     public var title: String {
         switch self {
-        case .doodle: "涂鸦"
-        case .logo: "logo"
+        case .doodle: NSLocalizedString("涂鸦", comment: "Sticker category")
+        case .logo: NSLocalizedString("logo", comment: "Sticker category")
         }
     }
 }
@@ -24,6 +24,10 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
     public let isFrameSequence: Bool
     public let frameCount: Int
     public let frameDuration: TimeInterval
+
+    public var localizedName: String {
+        NSLocalizedString(name, comment: "Sticker name")
+    }
 
     public var defaultDuration: TimeInterval {
         Double(frameCount) * frameDuration

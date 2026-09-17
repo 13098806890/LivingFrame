@@ -745,7 +745,7 @@ struct CanvasView: View {
                     VStack {
                         HStack(spacing: 7) {
                             Image(systemName: backgroundGestureKind == .scaling ? "arrow.up.left.and.arrow.down.right" : "hand.draw")
-                            Text(backgroundGestureKind?.title ?? "背景取景")
+                            Text(verbatim: backgroundGestureKind?.title ?? NSLocalizedString("背景取景", comment: "Canvas background framing"))
                             Text("· 拖动移动 · 双指缩放")
                                 .foregroundStyle(.white.opacity(0.78))
                             Text(String(format: "%.1f×", settings.cropScale))
@@ -1096,8 +1096,8 @@ private enum BackgroundGestureKind: Equatable {
 
     var title: String {
         switch self {
-        case .moving: "正在移动背景"
-        case .scaling: "正在缩放背景"
+        case .moving: NSLocalizedString("正在移动背景", comment: "Background gesture")
+        case .scaling: NSLocalizedString("正在缩放背景", comment: "Background gesture")
         }
     }
 }

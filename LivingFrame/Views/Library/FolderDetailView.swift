@@ -27,7 +27,7 @@ struct FolderDetailView: View {
             }
             .padding()
         }
-        .lfNavigationTitle(folder.name)
+        .lfNavigationTitle(verbatim: folder.name)
         .navigationBarTitleDisplayMode(.inline)
         .magicBackground()
         .toolbar {
@@ -82,7 +82,10 @@ struct FolderDetailView: View {
                 newFolderName = ""
             }
         } message: {
-            Text("将创建在「\(folder.name)」里面")
+            Text(String.localizedStringWithFormat(
+                NSLocalizedString("将创建在「%1$@」里面", comment: "New subfolder parent context"),
+                folder.name as NSString
+            ))
         }
         .sheet(isPresented: $showAddClips) {
             FolderAddClipsView(folder: folder)
@@ -196,7 +199,10 @@ struct FolderDetailView: View {
             case .referenced:
                 return Alert(
                     title: Text("素材正在使用中"),
-                    message: Text("请先从以下作品中移除它，再删除素材：\n\(request.referencedWorkNames.joined(separator: "、"))"),
+                    message: Text(String.localizedStringWithFormat(
+                        NSLocalizedString("请先从以下作品中移除它，再删除素材：\n%1$@", comment: "Asset is used by these works"),
+                        request.referencedWorkNames.joined(separator: "、") as NSString
+                    )),
                     dismissButton: .cancel(Text("知道了"))
                 )
             }

@@ -167,7 +167,9 @@ public struct GIFExporter {
         fps: Double,
         maxPixelSize: CGFloat?,
         sampleFrameCount: Int = 8,
-        appliesClipEffects: Bool = true
+        appliesClipEffects: Bool = true,
+        outputSize: CGSize? = nil,
+        isCancelled: () -> Bool = { Task.isCancelled }
     ) throws -> Int64 {
         let totalFrames = max(1, Int((composition.duration * fps).rounded(.up)))
         let sampleCount = min(max(sampleFrameCount, 1), totalFrames)
@@ -182,12 +184,14 @@ public struct GIFExporter {
         var sampledImages: [CGImage] = []
         sampledImages.reserveCapacity(sampleCount)
         for sampleIndex in 0..<sampleCount {
+            if isCancelled() || Task.isCancelled { throw ExportError.cancelled }
             let frameIndex = sampleCount == 1
                 ? 0
                 : Int((Double(sampleIndex) * Double(totalFrames - 1) / Double(sampleCount - 1)).rounded())
             guard let image = renderer.render(composition, at: Double(frameIndex) / fps) else { continue }
-            sampledImages.append(image)
+            sampledImages.append(outputSize.flatMap { gifCanvasFrame(image, outputSize: $0) } ?? image)
         }
+        if isCancelled() || Task.isCancelled { throw ExportError.cancelled }
         guard !sampledImages.isEmpty else { throw ExportError.renderFailed }
 
         let sampleBytes = try encodedGIFSize(for: sampledImages, fps: fps, at: url)

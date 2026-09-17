@@ -2812,6 +2812,58 @@ final class AppState: ObservableObject {
 
     // MARK: - 导出
 
+    /// Estimates the currently selected export configuration without writing a full output file.
+    func estimateExportSize(
+        format: ExportFormat,
+        fps: Double,
+        chatSticker: Bool,
+        chatGIFPixelSize: CGFloat,
+        resolution: ExportResolution
+    ) async throws -> Int64 {
+        guard let composition else { throw AppStateError.noComposition }
+
+        switch format {
+        case .gif:
+            let referencedClipIDs = Set(composition.elements.compactMap { element -> String? in
+                guard case let .clip(clipID) = element.kind else { return nil }
+                return clipID
+            })
+            for clip in clips where referencedClipIDs.contains(clip.id) {
+                FrameCache.shared.registerInMemory(clip)
+            }
+
+            let outputFPS = chatSticker ? 15 : fps
+            let maxPixelSize = chatSticker ? chatGIFPixelSize : resolution.maxPixelSize
+            let outputSize = chatSticker
+                ? CGSize(width: chatGIFPixelSize, height: chatGIFPixelSize)
+                : nil
+            let estimateTask = Task.detached(priority: .utility) {
+                try GIFExporter().estimateSize(
+                    composition,
+                    fps: outputFPS,
+                    maxPixelSize: maxPixelSize,
+                    sampleFrameCount: 6,
+                    outputSize: outputSize,
+                    isCancelled: { Task.isCancelled }
+                )
+            }
+            return try await withTaskCancellationHandler {
+                try await estimateTask.value
+            } onCancel: {
+                estimateTask.cancel()
+            }
+        case .hevcAlpha, .h264:
+            return VideoExporter().estimateSize(
+                composition,
+                format: format,
+                fps: fps,
+                maxPixelSize: resolution.maxPixelSize
+            )
+        case .livePhoto:
+            return LivePhotoExporter().estimateSize(composition)
+        }
+    }
+
     /// 返回素材详情页 GIF 导出的候选规格及其预估大小。
     func estimateClipGIFPresets(
         _ clipID: String,
@@ -2870,7 +2922,7 @@ final class AppState: ObservableObject {
         }
 
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "\(exportFileBaseName(clip.name))-透明-\(resolution.gifTitle(for: CGFloat(max(clip.renderedWidth, clip.renderedHeight, 1))))-\(Int(fps))fps-\(UUID().uuidString).gif"
+            "\(exportFileBaseName(clip.name))-transparent-\(resolution.gifTitle(for: CGFloat(max(clip.renderedWidth, clip.renderedHeight, 1))))-\(Int(fps))fps-\(UUID().uuidString).gif"
         )
         do {
             try await GIFExporter().export(
@@ -2971,7 +3023,10 @@ final class AppState: ObservableObject {
                     }
                 )
                 if result.usedFrameSampling {
-                    exportNotice = "为控制在 10 MB 内，已均匀抽帧至 \(Int(result.fps)) fps；画面尺寸仍为 \(result.pixelSize)×\(result.pixelSize)。"
+                    exportNotice = String.localizedStringWithFormat(
+                        NSLocalizedString("为控制在 10 MB 内，已均匀抽帧至 %1$lld fps；画面尺寸仍为 %2$lld×%3$lld。", comment: "Export frame rate adjustment notice"),
+                        Int64(result.fps), Int64(result.pixelSize), Int64(result.pixelSize)
+                    )
                 }
             } else {
                 try await GIFExporter().export(
@@ -3316,7 +3371,9 @@ final class AppState: ObservableObject {
         var copy = work
         let now = Date()
         copy.id = UUID()
-        copy.name = "\(work.name) 副本"
+        copy.name = String.localizedStringWithFormat(
+            NSLocalizedString("%1$@ 副本", comment: "Duplicate work name"), work.name as NSString
+        )
         copy.createdAt = now
         copy.updatedAt = now
         copy.composition.id = UUID()

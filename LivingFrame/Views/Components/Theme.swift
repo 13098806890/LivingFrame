@@ -1,6 +1,12 @@
 import SwiftUI
 import UIKit
 
+enum FileSizeText {
+    static func string(fromByteCount bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
 // MARK: - 主题色
 
 extension Color {
@@ -62,31 +68,34 @@ struct ThemePalette {
     let timelineText: Color
 }
 
-/// 四套可切换的马卡龙皮肤。首五个颜色分别对应用户给出的主色、深色、强调色、文字色和中性色，
+/// 五套可切换的马卡龙皮肤。首五个颜色分别对应主色、深色、强调色、文字色和中性色，
 /// 其余颜色是为背景、选中态和可读性补充的语义色。
 enum AppTheme: String, CaseIterable, Identifiable {
     case skyPetal
     case coralNavy
     case limeClover
     case gardenSun
+    case appIcon
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .skyPetal: "天空花瓣"
-        case .coralNavy: "珊瑚海"
-        case .limeClover: "青柠麦田"
-        case .gardenSun: "花园向日葵"
+        case .skyPetal: NSLocalizedString("天空花瓣", comment: "Theme name")
+        case .coralNavy: NSLocalizedString("珊瑚海", comment: "Theme name")
+        case .limeClover: NSLocalizedString("青柠麦田", comment: "Theme name")
+        case .gardenSun: NSLocalizedString("花园向日葵", comment: "Theme name")
+        case .appIcon: NSLocalizedString("图标配色", comment: "Theme name")
         }
     }
 
     var subtitle: String {
         switch self {
-        case .skyPetal: "清透、轻盈、最接近 Liquid Glass"
-        case .coralNavy: "热情、时尚、对比鲜明"
-        case .limeClover: "自然、明亮、带一点复古感"
-        case .gardenSun: "清新、活泼、适合创作场景"
+        case .skyPetal: NSLocalizedString("清透、轻盈、最接近 Liquid Glass", comment: "Theme description")
+        case .coralNavy: NSLocalizedString("热情、时尚、对比鲜明", comment: "Theme description")
+        case .limeClover: NSLocalizedString("自然、明亮、带一点复古感", comment: "Theme description")
+        case .gardenSun: NSLocalizedString("清新、活泼、适合创作场景", comment: "Theme description")
+        case .appIcon: NSLocalizedString("晴空蓝、奶油白与珊瑚橙，取自 App 图标", comment: "Theme description")
         }
     }
 
@@ -176,6 +185,27 @@ enum AppTheme: String, CaseIterable, Identifiable {
                 timelineAudio: Color(hex: "4E8F38"),
                 timelineText: Color(hex: "A86D16")
             )
+        case .appIcon:
+            return ThemePalette(
+                background: Color(hex: "F0F8FF"),
+                surface: Color(hex: "FFFAF0"),
+                surface2: Color(hex: "FCE6CB"),
+                actionPrimary: Color(hex: "146BD4"),
+                actionDeep: Color(hex: "1357AC"),
+                brandTint: Color(hex: "84C3ED"),
+                selectionSurface: Color(hex: "DDF0FC"),
+                folderIcon: Color(hex: "FE6534"),
+                accent: Color(hex: "C7472B"),
+                destructive: Color(hex: "D84444"),
+                textPrimary: Color(hex: "18354E"),
+                textSecondary: Color(hex: "5D7282"),
+                timelineClip: Color(hex: "146BD4"),
+                timelineBackground: Color(hex: "84C3ED"),
+                timelineSticker: Color(hex: "FE6534"),
+                timelineEffect: Color(hex: "D89130"),
+                timelineAudio: Color(hex: "446D91"),
+                timelineText: Color(hex: "B94A2C")
+            )
         }
     }
 }
@@ -248,13 +278,23 @@ struct MagicButtonStyle: ButtonStyle {
 }
 
 struct SectionCard<Content: View>: View {
-    let title: String?
+    let title: Text?
     @ViewBuilder let content: Content
+
+    init(title: LocalizedStringKey?, @ViewBuilder content: () -> Content) {
+        self.title = title.map { Text($0) }
+        self.content = content()
+    }
+
+    init(verbatimTitle: String, @ViewBuilder content: () -> Content) {
+        self.title = Text(verbatim: verbatimTitle)
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let title {
-                Text(title)
+                title
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(LF.header)
                     .textCase(.uppercase)
@@ -284,8 +324,8 @@ struct SectionCard<Content: View>: View {
 
 struct EmptyStateView: View {
     let icon: String
-    let title: String
-    let message: String
+    let title: LocalizedStringKey
+    let message: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 12) {
@@ -413,9 +453,9 @@ extension View {
     }
 
     /// 使用统一的高对比度主文字色渲染导航栏标题，同时保留系统的返回按钮和导航行为。
-    func lfNavigationTitle(_ title: String) -> some View {
-        navigationTitle(title)
-            .lfNavigationTitleToolbar(Text(title))
+    func lfNavigationTitle(verbatim title: String) -> some View {
+        navigationTitle(Text(verbatim: title))
+            .lfNavigationTitleToolbar(Text(verbatim: title))
     }
 
     /// 本地化标题重载，支持 EditorTool.title 等 LocalizedStringKey。

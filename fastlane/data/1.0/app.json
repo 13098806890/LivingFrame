@@ -34,12 +34,68 @@
       {
         "product_id": "com.livingframe.app.pro.weekly",
         "type": "AUTO_RENEWABLE_SUBSCRIPTION",
-        "price_snapshot": "products/weekly/prices.json"
+        "price_snapshot": "products/weekly/prices.json",
+        "availability_snapshot": "products/weekly/availability.json",
+        "pricing_status": "SYNCED_FROM_APP_STORE_CONNECT",
+        "priced_territory_count": 175,
+        "available_territory_count": 175,
+        "pricing_summary": {
+          "territory": "USA",
+          "currency": "USD",
+          "customer_price": "1.99",
+          "billing_period": "week"
+        },
+        "status": "SYNCED_FROM_APP_STORE_CONNECT"
+      },
+      {
+        "product_id": "com.livingframe.app.pro.monthly",
+        "type": "AUTO_RENEWABLE_SUBSCRIPTION",
+        "subscription_period": "ONE_MONTH",
+        "price_snapshot": "products/monthly/prices.json",
+        "status": "SYNCED_FROM_APP_STORE_CONNECT",
+        "availability_snapshot": "products/monthly/availability.json",
+        "pricing_status": "SYNCED_FROM_APP_STORE_CONNECT",
+        "priced_territory_count": 175,
+        "available_territory_count": 175,
+        "pricing_summary": {
+          "territory": "USA",
+          "currency": "USD",
+          "customer_price": "3.99",
+          "billing_period": "month"
+        }
+      },
+      {
+        "product_id": "com.livingframe.app.pro.annual",
+        "type": "AUTO_RENEWABLE_SUBSCRIPTION",
+        "subscription_period": "ONE_YEAR",
+        "price_snapshot": "products/annual/prices.json",
+        "status": "SYNCED_FROM_APP_STORE_CONNECT",
+        "availability_snapshot": "products/annual/availability.json",
+        "pricing_status": "SYNCED_FROM_APP_STORE_CONNECT",
+        "priced_territory_count": 175,
+        "available_territory_count": 175,
+        "pricing_summary": {
+          "territory": "USA",
+          "currency": "USD",
+          "customer_price": "29.99",
+          "billing_period": "year"
+        }
       },
       {
         "product_id": "com.livingframe.app.pro.lifetime",
         "type": "NON_CONSUMABLE",
-        "price_snapshot": "products/lifetime/prices.json"
+        "price_snapshot": "products/lifetime/prices.json",
+        "availability_snapshot": "products/lifetime/availability.json",
+        "pricing_status": "SYNCED_FROM_APP_STORE_CONNECT",
+        "priced_territory_count": 175,
+        "available_territory_count": 175,
+        "pricing_summary": {
+          "territory": "USA",
+          "currency": "USD",
+          "customer_price": "49.99",
+          "billing_period": "one_time"
+        },
+        "status": "SYNCED_FROM_APP_STORE_CONNECT"
       }
     ]
   },

@@ -58,7 +58,10 @@ private struct ElementSourceRangeEditor: View {
                             Text(String(format: "%.2f–%.2f s", start, end))
                                 .font(.subheadline.monospacedDigit().weight(.semibold))
                             Spacer()
-                            Text(String(format: "每轮 %.2f s", (end - start) / source.playbackRate))
+                            Text(String.localizedStringWithFormat(
+                                NSLocalizedString("每轮 %.2f s", comment: "Playback cycle duration"),
+                                (end - start) / source.playbackRate
+                            ))
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(LF.textSecondary)
                         }
@@ -143,11 +146,11 @@ private struct ElementSourceRangeEditor: View {
     }
 
     private func endpointSliderCard(
-        title: String,
-        subtitle: String,
+        title: LocalizedStringKey,
+        subtitle: LocalizedStringKey,
         icon: String,
         value: Binding<Double>,
-        accessibilityLabel: String
+        accessibilityLabel: LocalizedStringKey
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 10) {
@@ -168,7 +171,7 @@ private struct ElementSourceRangeEditor: View {
                     .foregroundStyle(LF.selectionText)
             }
             Slider(value: value, in: 0...source.duration)
-                .accessibilityLabel(accessibilityLabel)
+                .accessibilityLabel(Text(accessibilityLabel))
             HStack {
                 Text("0.00 s")
                 Spacer()
@@ -190,7 +193,7 @@ private struct ElementSourceRangeEditor: View {
         return FrameCache.shared.clip(id: id) ?? appState.clips.first(where: { $0.id == id })
     }
 
-    private func endpointLabel(_ title: String, time: Double) -> some View {
+    private func endpointLabel(_ title: LocalizedStringKey, time: Double) -> some View {
         HStack {
             Text(title)
             Spacer()
@@ -360,7 +363,10 @@ struct ElementPlaybackControls: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("播放范围")
                         .font(.subheadline.weight(.semibold))
-                    Text(String(format: "%.2f–%.2f s · 每轮 %.2f s", range.start, range.end, cycleDuration))
+                    Text(String.localizedStringWithFormat(
+                        NSLocalizedString("%.2f–%.2f s · 每轮 %.2f s", comment: "Selected playback range and cycle duration"),
+                        range.start, range.end, cycleDuration
+                    ))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(LF.textSecondary)
                 }
@@ -403,7 +409,10 @@ struct ElementPlaybackControls: View {
                 Spacer()
                 Menu {
                     ForEach([1, 2, 3], id: \.self) { value in
-                        Button(value == 1 ? "仅播放一次" : "播放 \(value) 次") {
+                        Button(value == 1 ? NSLocalizedString("仅播放一次", comment: "Play once") : String.localizedStringWithFormat(
+                            NSLocalizedString("播放 %1$lld 次", comment: "Playback repeat count"),
+                            Int64(value)
+                        )) {
                             appState.setElementPlaybackCount(element.id, count: value)
                         }
                     }
@@ -412,7 +421,10 @@ struct ElementPlaybackControls: View {
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Text(count == 1 ? "仅播放一次" : "播放 \(count) 次")
+                        Text(count == 1 ? NSLocalizedString("仅播放一次", comment: "Play once") : String.localizedStringWithFormat(
+                            NSLocalizedString("播放 %1$lld 次", comment: "Playback repeat count"),
+                            Int64(count)
+                        ))
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.caption2.weight(.bold))
                     }
@@ -427,7 +439,9 @@ struct ElementPlaybackControls: View {
                 }
             }
             if count > 3 {
-                Stepper("总共播放 \(count) 次", value: Binding(
+                Stepper(String.localizedStringWithFormat(
+                    NSLocalizedString("总共播放 %1$lld 次", comment: "Total playback repetition count"), Int64(count)
+                ), value: Binding(
                     get: { min(count, 99) },
                     set: { appState.setElementPlaybackCount(element.id, count: $0) }
                 ), in: 1...99)

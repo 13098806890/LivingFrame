@@ -1,12 +1,14 @@
 {
   "as_of": "2026-09-17",
+  "base_territory": "USA",
   "territory_count": 175,
+  "price_record_count": 175,
   "prices": [
     {
       "territory": "AFG",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBRkciLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBRkciLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -14,8 +16,8 @@
     {
       "territory": "AGO",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBR08iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBR08iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -23,8 +25,8 @@
     {
       "territory": "AIA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBSUEiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBSUEiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -32,8 +34,8 @@
     {
       "territory": "ALB",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBTEIiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBTEIiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -41,8 +43,8 @@
     {
       "territory": "ARE",
       "currency": "AED",
-      "customer_price": "99.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBUkUiLCJwIjoiMTAyODgifQ",
+      "customer_price": "199.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBUkUiLCJwIjoiMTA0MDEifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -50,8 +52,8 @@
     {
       "territory": "ARG",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBUkciLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBUkciLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -59,8 +61,8 @@
     {
       "territory": "ARM",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBUk0iLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBUk0iLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -68,8 +70,8 @@
     {
       "territory": "ATG",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBVEciLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBVEciLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -77,8 +79,8 @@
     {
       "territory": "AUS",
       "currency": "AUD",
-      "customer_price": "39.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBVVMiLCJwIjoiMTAyNzYifQ",
+      "customer_price": "79.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBVVMiLCJwIjoiMTA0NDYifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -86,8 +88,8 @@
     {
       "territory": "AUT",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBVVQiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBVVQiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -95,8 +97,8 @@
     {
       "territory": "AZE",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBWkUiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJBWkUiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -104,8 +106,8 @@
     {
       "territory": "BEL",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCRUwiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCRUwiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -113,8 +115,8 @@
     {
       "territory": "BEN",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCRU4iLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCRU4iLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -122,8 +124,8 @@
     {
       "territory": "BFA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCRkEiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCRkEiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -131,8 +133,8 @@
     {
       "territory": "BGR",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCR1IiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCR1IiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -140,8 +142,8 @@
     {
       "territory": "BHR",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCSFIiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCSFIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -149,8 +151,8 @@
     {
       "territory": "BHS",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCSFMiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCSFMiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -158,8 +160,8 @@
     {
       "territory": "BIH",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCSUgiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCSUgiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -167,8 +169,8 @@
     {
       "territory": "BLR",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCTFIiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCTFIiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -176,8 +178,8 @@
     {
       "territory": "BLZ",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCTFoiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCTFoiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -185,8 +187,8 @@
     {
       "territory": "BMU",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCTVUiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCTVUiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -194,8 +196,8 @@
     {
       "territory": "BOL",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCT0wiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCT0wiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -203,8 +205,8 @@
     {
       "territory": "BRA",
       "currency": "BRL",
-      "customer_price": "149.9",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCUkEiLCJwIjoiMTAzMjkifQ",
+      "customer_price": "299.9",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCUkEiLCJwIjoiMTA0MTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -212,8 +214,8 @@
     {
       "territory": "BRB",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCUkIiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCUkIiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -221,8 +223,8 @@
     {
       "territory": "BRN",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCUk4iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCUk4iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -230,8 +232,8 @@
     {
       "territory": "BTN",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCVE4iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCVE4iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -239,8 +241,8 @@
     {
       "territory": "BWA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCV0EiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJCV0EiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -248,8 +250,8 @@
     {
       "territory": "CAN",
       "currency": "CAD",
-      "customer_price": "34.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDQU4iLCJwIjoiMTAyNTIifQ",
+      "customer_price": "69.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDQU4iLCJwIjoiMTAzODcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -257,8 +259,8 @@
     {
       "territory": "CHE",
       "currency": "CHF",
-      "customer_price": "20.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDSEUiLCJwIjoiMTAxNDgifQ",
+      "customer_price": "40.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDSEUiLCJwIjoiMTAyMjgifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -266,8 +268,8 @@
     {
       "territory": "CHL",
       "currency": "CLP",
-      "customer_price": "29990",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDSEwiLCJwIjoiMTAzMjcifQ",
+      "customer_price": "59990",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDSEwiLCJwIjoiMTA0MjEifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -275,8 +277,8 @@
     {
       "territory": "CHN",
       "currency": "CNY",
-      "customer_price": "68.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDSE4iLCJwIjoiMTAxNTAifQ",
+      "customer_price": "98.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDSE4iLCJwIjoiMTAyMTMifQ",
       "manual": true,
       "start_date": null,
       "end_date": null
@@ -284,8 +286,8 @@
     {
       "territory": "CIV",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDSVYiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDSVYiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -293,8 +295,8 @@
     {
       "territory": "CMR",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDTVIiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDTVIiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -302,8 +304,8 @@
     {
       "territory": "COD",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDT0QiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDT0QiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -311,8 +313,8 @@
     {
       "territory": "COG",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDT0ciLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDT0ciLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -320,8 +322,8 @@
     {
       "territory": "COL",
       "currency": "COP",
-      "customer_price": "119900.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDT0wiLCJwIjoiMTAyODYifQ",
+      "customer_price": "229900.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDT0wiLCJwIjoiMTAzODYifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -329,8 +331,8 @@
     {
       "territory": "CPV",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDUFYiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDUFYiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -338,8 +340,8 @@
     {
       "territory": "CRI",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDUkkiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDUkkiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -347,8 +349,8 @@
     {
       "territory": "CYM",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDWU0iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDWU0iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -356,8 +358,8 @@
     {
       "territory": "CYP",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDWVAiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDWVAiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -365,8 +367,8 @@
     {
       "territory": "CZE",
       "currency": "CZK",
-      "customer_price": "699.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDWkUiLCJwIjoiMTAyMjQifQ",
+      "customer_price": "1290.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJDWkUiLCJwIjoiMTAzMjYifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -374,8 +376,8 @@
     {
       "territory": "DEU",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJERVUiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJERVUiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -383,8 +385,8 @@
     {
       "territory": "DMA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJETUEiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJETUEiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -392,8 +394,8 @@
     {
       "territory": "DNK",
       "currency": "DKK",
-      "customer_price": "199.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJETksiLCJwIjoiMTAxMjcifQ",
+      "customer_price": "399.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJETksiLCJwIjoiMTAxODcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -401,8 +403,8 @@
     {
       "territory": "DOM",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJET00iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJET00iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -410,8 +412,8 @@
     {
       "territory": "DZA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJEWkEiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJEWkEiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -419,8 +421,8 @@
     {
       "territory": "ECU",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJFQ1UiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJFQ1UiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -428,8 +430,8 @@
     {
       "territory": "EGY",
       "currency": "EGP",
-      "customer_price": "1299.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJFR1kiLCJwIjoiMTA0NjgifQ",
+      "customer_price": "2499.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJFR1kiLCJwIjoiMTA1NjIifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -437,8 +439,8 @@
     {
       "territory": "ESP",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJFU1AiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJFU1AiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -446,8 +448,8 @@
     {
       "territory": "EST",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJFU1QiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJFU1QiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -455,8 +457,8 @@
     {
       "territory": "FIN",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJGSU4iLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJGSU4iLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -464,8 +466,8 @@
     {
       "territory": "FJI",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJGSkkiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJGSkkiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -473,8 +475,8 @@
     {
       "territory": "FRA",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJGUkEiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJGUkEiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -482,8 +484,8 @@
     {
       "territory": "FSM",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJGU00iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJGU00iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -491,8 +493,8 @@
     {
       "territory": "GAB",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHQUIiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHQUIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -500,8 +502,8 @@
     {
       "territory": "GBR",
       "currency": "GBP",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHQlIiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHQlIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -509,8 +511,8 @@
     {
       "territory": "GEO",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHRU8iLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHRU8iLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -518,8 +520,8 @@
     {
       "territory": "GHA",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHSEEiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHSEEiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -527,8 +529,8 @@
     {
       "territory": "GMB",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHTUIiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHTUIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -536,8 +538,8 @@
     {
       "territory": "GNB",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHTkIiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHTkIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -545,8 +547,8 @@
     {
       "territory": "GRC",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHUkMiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHUkMiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -554,8 +556,8 @@
     {
       "territory": "GRD",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHUkQiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHUkQiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -563,8 +565,8 @@
     {
       "territory": "GTM",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHVE0iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHVE0iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -572,8 +574,8 @@
     {
       "territory": "GUY",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHVVkiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJHVVkiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -581,8 +583,8 @@
     {
       "territory": "HKG",
       "currency": "HKD",
-      "customer_price": "188.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJIS0ciLCJwIjoiMTAxMzMifQ",
+      "customer_price": "388.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJIS0ciLCJwIjoiMTAyMTMifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -590,8 +592,8 @@
     {
       "territory": "HND",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJITkQiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJITkQiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -599,8 +601,8 @@
     {
       "territory": "HRV",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJIUlYiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJIUlYiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -608,8 +610,8 @@
     {
       "territory": "HUN",
       "currency": "HUF",
-      "customer_price": "9990",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJIVU4iLCJwIjoiMTAyMjIifQ",
+      "customer_price": "22990",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJIVU4iLCJwIjoiMTAzOTEifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -617,8 +619,8 @@
     {
       "territory": "IDN",
       "currency": "IDR",
-      "customer_price": "499000",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJRE4iLCJwIjoiMTAzMjYifQ",
+      "customer_price": "999000",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJRE4iLCJwIjoiMTA0NzYifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -626,8 +628,8 @@
     {
       "territory": "IND",
       "currency": "INR",
-      "customer_price": "2499.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJTkQiLCJwIjoiMTAzMTMifQ",
+      "customer_price": "4999.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJTkQiLCJwIjoiMTAzODgifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -635,8 +637,8 @@
     {
       "territory": "IRL",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJUkwiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJUkwiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -644,8 +646,8 @@
     {
       "territory": "IRQ",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJUlEiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJUlEiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -653,8 +655,8 @@
     {
       "territory": "ISL",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJU0wiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJU0wiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -662,8 +664,8 @@
     {
       "territory": "ISR",
       "currency": "ILS",
-      "customer_price": "79.9",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJU1IiLCJwIjoiMTAyMzgifQ",
+      "customer_price": "149.9",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJU1IiLCJwIjoiMTAzNTQifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -671,8 +673,8 @@
     {
       "territory": "ITA",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJVEEiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJJVEEiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -680,8 +682,8 @@
     {
       "territory": "JAM",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJKQU0iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJKQU0iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -689,8 +691,8 @@
     {
       "territory": "JOR",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJKT1IiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJKT1IiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -698,8 +700,8 @@
     {
       "territory": "JPN",
       "currency": "JPY",
-      "customer_price": "4000",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJKUE4iLCJwIjoiMTAyNTYifQ",
+      "customer_price": "8000",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJKUE4iLCJwIjoiMTAzNzYifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -707,8 +709,8 @@
     {
       "territory": "KAZ",
       "currency": "KZT",
-      "customer_price": "14990.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLQVoiLCJwIjoiMTAzNTgifQ",
+      "customer_price": "29990.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLQVoiLCJwIjoiMTA0NTgifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -716,8 +718,8 @@
     {
       "territory": "KEN",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLRU4iLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLRU4iLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -725,8 +727,8 @@
     {
       "territory": "KGZ",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLR1oiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLR1oiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -734,8 +736,8 @@
     {
       "territory": "KHM",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLSE0iLCJwIjoiMTAyMjcifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLSE0iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -743,8 +745,8 @@
     {
       "territory": "KNA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLTkEiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLTkEiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -752,8 +754,8 @@
     {
       "territory": "KOR",
       "currency": "KRW",
-      "customer_price": "44000",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLT1IiLCJwIjoiMTAyODAifQ",
+      "customer_price": "77000",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLT1IiLCJwIjoiMTAzNzkifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -761,8 +763,8 @@
     {
       "territory": "KWT",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLV1QiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJLV1QiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -770,8 +772,8 @@
     {
       "territory": "LAO",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMQU8iLCJwIjoiMTAyMjcifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMQU8iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -779,8 +781,8 @@
     {
       "territory": "LBN",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMQk4iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMQk4iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -788,8 +790,8 @@
     {
       "territory": "LBR",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMQlIiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMQlIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -797,8 +799,8 @@
     {
       "territory": "LBY",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMQlkiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMQlkiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -806,8 +808,8 @@
     {
       "territory": "LCA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMQ0EiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMQ0EiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -815,8 +817,8 @@
     {
       "territory": "LKA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMS0EiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMS0EiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -824,8 +826,8 @@
     {
       "territory": "LTU",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMVFUiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMVFUiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -833,8 +835,8 @@
     {
       "territory": "LUX",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMVVgiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMVVgiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -842,8 +844,8 @@
     {
       "territory": "LVA",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMVkEiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJMVkEiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -851,8 +853,8 @@
     {
       "territory": "MAC",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNQUMiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNQUMiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -860,8 +862,8 @@
     {
       "territory": "MAR",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNQVIiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNQVIiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -869,8 +871,8 @@
     {
       "territory": "MDA",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNREEiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNREEiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -878,8 +880,8 @@
     {
       "territory": "MDG",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNREciLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNREciLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -887,8 +889,8 @@
     {
       "territory": "MDV",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNRFYiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNRFYiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -896,8 +898,8 @@
     {
       "territory": "MEX",
       "currency": "MXN",
-      "customer_price": "499.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNRVgiLCJwIjoiMTAyODUifQ",
+      "customer_price": "999.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNRVgiLCJwIjoiMTAzOTAifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -905,8 +907,8 @@
     {
       "territory": "MKD",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNS0QiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNS0QiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -914,8 +916,8 @@
     {
       "territory": "MLI",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNTEkiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNTEkiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -923,8 +925,8 @@
     {
       "territory": "MLT",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNTFQiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNTFQiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -932,8 +934,8 @@
     {
       "territory": "MMR",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNTVIiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNTVIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -941,8 +943,8 @@
     {
       "territory": "MNE",
       "currency": "EUR",
-      "customer_price": "22.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNTkUiLCJwIjoiMTAxOTIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNTkUiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -950,8 +952,8 @@
     {
       "territory": "MNG",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNTkciLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNTkciLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -959,8 +961,8 @@
     {
       "territory": "MOZ",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNT1oiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNT1oiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -968,8 +970,8 @@
     {
       "territory": "MRT",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNUlQiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNUlQiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -977,8 +979,8 @@
     {
       "territory": "MSR",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNU1IiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNU1IiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -986,8 +988,8 @@
     {
       "territory": "MUS",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNVVMiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNVVMiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -995,8 +997,8 @@
     {
       "territory": "MWI",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNV0kiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNV0kiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1004,8 +1006,8 @@
     {
       "territory": "MYS",
       "currency": "MYR",
-      "customer_price": "119.9",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNWVMiLCJwIjoiMTAyNzUifQ",
+      "customer_price": "229.9",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJNWVMiLCJwIjoiMTAzODUifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1013,8 +1015,8 @@
     {
       "territory": "NAM",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOQU0iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOQU0iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1022,8 +1024,8 @@
     {
       "territory": "NER",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJORVIiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJORVIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1031,8 +1033,8 @@
     {
       "territory": "NGA",
       "currency": "NGN",
-      "customer_price": "39900.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOR0EiLCJwIjoiMTA0MjUifQ",
+      "customer_price": "79900.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOR0EiLCJwIjoiMTA1MjQifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1040,8 +1042,8 @@
     {
       "territory": "NIC",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOSUMiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOSUMiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1049,8 +1051,8 @@
     {
       "territory": "NLD",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOTEQiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOTEQiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1058,8 +1060,8 @@
     {
       "territory": "NOR",
       "currency": "NOK",
-      "customer_price": "299.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOT1IiLCJwIjoiMTAxNTcifQ",
+      "customer_price": "599.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOT1IiLCJwIjoiMTAyMzgifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1067,8 +1069,8 @@
     {
       "territory": "NPL",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOUEwiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOUEwiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1076,8 +1078,8 @@
     {
       "territory": "NRU",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOUlUiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOUlUiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1085,8 +1087,8 @@
     {
       "territory": "NZL",
       "currency": "NZD",
-      "customer_price": "49.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOWkwiLCJwIjoiMTAzMjYifQ",
+      "customer_price": "99.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJOWkwiLCJwIjoiMTA1MjYifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1094,8 +1096,8 @@
     {
       "territory": "OMN",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJPTU4iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJPTU4iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1103,8 +1105,8 @@
     {
       "territory": "PAK",
       "currency": "PKR",
-      "customer_price": "6900.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQQUsiLCJwIjoiMTAzNTMifQ",
+      "customer_price": "12900.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQQUsiLCJwIjoiMTA0NDYifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1112,8 +1114,8 @@
     {
       "territory": "PAN",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQQU4iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQQU4iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1121,8 +1123,8 @@
     {
       "territory": "PER",
       "currency": "PEN",
-      "customer_price": "99.9",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQRVIiLCJwIjoiMTAzMDcifQ",
+      "customer_price": "229.9",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQRVIiLCJwIjoiMTA0MzAifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1130,8 +1132,8 @@
     {
       "territory": "PHL",
       "currency": "PHP",
-      "customer_price": "1490.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQSEwiLCJwIjoiMTAzMDAifQ",
+      "customer_price": "2990.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQSEwiLCJwIjoiMTAzODEifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1139,8 +1141,8 @@
     {
       "territory": "PLW",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQTFciLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQTFciLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1148,8 +1150,8 @@
     {
       "territory": "PNG",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQTkciLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQTkciLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1157,8 +1159,8 @@
     {
       "territory": "POL",
       "currency": "PLN",
-      "customer_price": "99.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQT0wiLCJwIjoiMTAyNTgifQ",
+      "customer_price": "229.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQT0wiLCJwIjoiMTA0MDEifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1166,8 +1168,8 @@
     {
       "territory": "PRT",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQUlQiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQUlQiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1175,8 +1177,8 @@
     {
       "territory": "PRY",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQUlkiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJQUlkiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1184,8 +1186,8 @@
     {
       "territory": "QAT",
       "currency": "QAR",
-      "customer_price": "99.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJRQVQiLCJwIjoiMTAyODgifQ",
+      "customer_price": "199.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJRQVQiLCJwIjoiMTA0MDEifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1193,8 +1195,8 @@
     {
       "territory": "ROU",
       "currency": "RON",
-      "customer_price": "129.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJST1UiLCJwIjoiMTAyOTcifQ",
+      "customer_price": "299.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJST1UiLCJwIjoiMTA0MzEifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1202,8 +1204,8 @@
     {
       "territory": "RUS",
       "currency": "RUB",
-      "customer_price": "2290.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJSVVMiLCJwIjoiMTAzNzAifQ",
+      "customer_price": "4490.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJSVVMiLCJwIjoiMTA0MzYifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1211,8 +1213,8 @@
     {
       "territory": "RWA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJSV0EiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJSV0EiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1220,8 +1222,8 @@
     {
       "territory": "SAU",
       "currency": "SAR",
-      "customer_price": "99.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTQVUiLCJwIjoiMTAyODgifQ",
+      "customer_price": "199.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTQVUiLCJwIjoiMTA0MDEifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1229,8 +1231,8 @@
     {
       "territory": "SEN",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTRU4iLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTRU4iLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1238,8 +1240,8 @@
     {
       "territory": "SGP",
       "currency": "SGD",
-      "customer_price": "34.98",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTR1AiLCJwIjoiMTAyNjIifQ",
+      "customer_price": "69.98",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTR1AiLCJwIjoiMTA0MDAifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1247,8 +1249,8 @@
     {
       "territory": "SLB",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTTEIiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTTEIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1256,8 +1258,8 @@
     {
       "territory": "SLE",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTTEUiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTTEUiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1265,8 +1267,8 @@
     {
       "territory": "SLV",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTTFYiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTTFYiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1274,8 +1276,8 @@
     {
       "territory": "SRB",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTUkIiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTUkIiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1283,8 +1285,8 @@
     {
       "territory": "STP",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTVFAiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTVFAiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1292,8 +1294,8 @@
     {
       "territory": "SUR",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTVVIiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTVVIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1301,8 +1303,8 @@
     {
       "territory": "SVK",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTVksiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTVksiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1310,8 +1312,8 @@
     {
       "territory": "SVN",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTVk4iLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTVk4iLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1319,8 +1321,8 @@
     {
       "territory": "SWE",
       "currency": "SEK",
-      "customer_price": "299.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTV0UiLCJwIjoiMTAxNTcifQ",
+      "customer_price": "599.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTV0UiLCJwIjoiMTAyMzgifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1328,8 +1330,8 @@
     {
       "territory": "SWZ",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTV1oiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTV1oiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1337,8 +1339,8 @@
     {
       "territory": "SYC",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTWUMiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJTWUMiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1346,8 +1348,8 @@
     {
       "territory": "TCA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUQ0EiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUQ0EiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1355,8 +1357,8 @@
     {
       "territory": "TCD",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUQ0QiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUQ0QiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1364,8 +1366,8 @@
     {
       "territory": "THA",
       "currency": "THB",
-      "customer_price": "999.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUSEEiLCJwIjoiMTAyNTAifQ",
+      "customer_price": "1990.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUSEEiLCJwIjoiMTAzNTAifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1373,8 +1375,8 @@
     {
       "territory": "TJK",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUSksiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUSksiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1382,8 +1384,8 @@
     {
       "territory": "TKM",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUS00iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUS00iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1391,8 +1393,8 @@
     {
       "territory": "TON",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUT04iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUT04iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1400,8 +1402,8 @@
     {
       "territory": "TTO",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUVE8iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUVE8iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1409,8 +1411,8 @@
     {
       "territory": "TUN",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUVU4iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUVU4iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1418,8 +1420,8 @@
     {
       "territory": "TUR",
       "currency": "TRY",
-      "customer_price": "1299.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUVVIiLCJwIjoiMTA0NjgifQ",
+      "customer_price": "2499.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUVVIiLCJwIjoiMTA1NjIifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1427,8 +1429,8 @@
     {
       "territory": "TWN",
       "currency": "TWD",
-      "customer_price": "790",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUV04iLCJwIjoiMTAxNjEifQ",
+      "customer_price": "1490",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUV04iLCJwIjoiMTAyNTYifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1436,8 +1438,8 @@
     {
       "territory": "TZA",
       "currency": "TZS",
-      "customer_price": "69900.0",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUWkEiLCJwIjoiMTAyNzYifQ",
+      "customer_price": "149900.0",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJUWkEiLCJwIjoiMTAzODAifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1445,8 +1447,8 @@
     {
       "territory": "UGA",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJVR0EiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJVR0EiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1454,8 +1456,8 @@
     {
       "territory": "UKR",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJVS1IiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJVS1IiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1463,8 +1465,8 @@
     {
       "territory": "URY",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJVUlkiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJVUlkiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1472,8 +1474,8 @@
     {
       "territory": "USA",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJVU0EiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJVU0EiLCJwIjoiMTAzMjcifQ",
       "manual": true,
       "start_date": null,
       "end_date": null
@@ -1481,8 +1483,8 @@
     {
       "territory": "UZB",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJVWkIiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJVWkIiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1490,8 +1492,8 @@
     {
       "territory": "VCT",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJWQ1QiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJWQ1QiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1499,8 +1501,8 @@
     {
       "territory": "VEN",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJWRU4iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJWRU4iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1508,8 +1510,8 @@
     {
       "territory": "VGB",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJWR0IiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJWR0IiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1517,8 +1519,8 @@
     {
       "territory": "VNM",
       "currency": "VND",
-      "customer_price": "799000",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJWTk0iLCJwIjoiMTAzMTkifQ",
+      "customer_price": "1499000",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJWTk0iLCJwIjoiMTA0MzIifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1526,8 +1528,8 @@
     {
       "territory": "VUT",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJWVVQiLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJWVVQiLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1535,8 +1537,8 @@
     {
       "territory": "XKS",
       "currency": "EUR",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJYS1MiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJYS1MiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1544,8 +1546,8 @@
     {
       "territory": "YEM",
       "currency": "USD",
-      "customer_price": "24.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJZRU0iLCJwIjoiMTAyMDIifQ",
+      "customer_price": "49.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJZRU0iLCJwIjoiMTAzMjcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1553,8 +1555,8 @@
     {
       "territory": "ZAF",
       "currency": "ZAR",
-      "customer_price": "499.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJaQUYiLCJwIjoiMTAyNTQifQ",
+      "customer_price": "999.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJaQUYiLCJwIjoiMTAzNjQifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1562,8 +1564,8 @@
     {
       "territory": "ZMB",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJaTUIiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJaTUIiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null
@@ -1571,8 +1573,8 @@
     {
       "territory": "ZWE",
       "currency": "USD",
-      "customer_price": "29.99",
-      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJaV0UiLCJwIjoiMTAyMjcifQ",
+      "customer_price": "59.99",
+      "price_point_id": "eyJzIjoiNjgxMjcwMjUwMCIsInQiOiJaV0UiLCJwIjoiMTAzNTcifQ",
       "manual": false,
       "start_date": null,
       "end_date": null

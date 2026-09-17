@@ -346,7 +346,10 @@ struct EditorView: View {
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel("编辑作品名称，当前名称：\(comp.name)")
+                .accessibilityLabel(String.localizedStringWithFormat(
+                    NSLocalizedString("编辑作品名称，当前名称：%1$@", comment: "Edit work name accessibility label"),
+                    comp.name as NSString
+                ))
                 .contextMenu {
                     if appState.currentWorkHasDraft {
                         Button {
@@ -417,7 +420,10 @@ private var saveStatusView: some View {
         let totalFrames = comp.duration.isFinite && comp.fps > 0
             ? max(Int(comp.duration * comp.fps), 1) : 0
         let duration = comp.duration.isFinite ? comp.duration : 0
-        return "\(totalFrames)张 / \(String(format: "%.2f", duration))秒"
+        return String.localizedStringWithFormat(
+            NSLocalizedString("%1$lld 张 / %2$.2f 秒", comment: "Project frame and duration summary"),
+            Int64(totalFrames), duration
+        )
     }
 
     /// 根据时间轴状态计算画布尺寸：显示时为下方时间轴留出空间，隐藏时尽量放大画布。
@@ -545,12 +551,15 @@ private var saveStatusView: some View {
 
     private var deleteSelectionConfirmationTitle: String {
         if appState.selectedElementIDs.count > 1 {
-            return "删除这 \(appState.selectedElementIDs.count) 个素材？"
+            return String.localizedStringWithFormat(
+                NSLocalizedString("删除这 %1$lld 个素材？", comment: "Delete selected assets confirmation"),
+                Int64(appState.selectedElementIDs.count)
+            )
         }
         if appState.selectedAudioID != nil {
-            return "删除这段音频？"
+            return NSLocalizedString("删除这段音频？", comment: "Delete audio confirmation")
         }
-        return "删除这个素材？"
+        return NSLocalizedString("删除这个素材？", comment: "Delete asset confirmation")
     }
 
     private func deleteSelectedItems() {
@@ -1048,8 +1057,8 @@ private struct WorkNameEditorSheet: View {
 /// 工具面板的顶部说明：让用户先知道当前面板解决什么问题，再开始操作控件。
 private struct EditorPanelHeader: View {
     let icon: String
-    let title: String
-    let subtitle: String
+    let title: LocalizedStringKey
+    let subtitle: LocalizedStringKey
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1086,7 +1095,7 @@ private struct StickerPickerCell: View {
         VStack(spacing: 4) {
             StickerPreview(decorationID: sticker.id, frameDuration: sticker.frameDuration)
                 .frame(width: 58, height: 58)
-            Text(sticker.name)
+            Text(sticker.localizedName)
                 .font(.caption2)
                 .lineLimit(1)
         }
@@ -1188,9 +1197,12 @@ private struct StickerPreviewSheet: View {
                 .aspectRatio(1, contentMode: .fit)
 
                 VStack(spacing: 5) {
-                    Text(sticker.name)
+                    Text(sticker.localizedName)
                         .font(.headline)
-                    Text("长按预览 · \(sticker.frameCount) 帧 · 约 \(String(format: "%.1f", sticker.defaultDuration)) 秒")
+                    Text(String.localizedStringWithFormat(
+                        NSLocalizedString("长按预览 · %1$lld 帧 · 约 %2$.1f 秒", comment: "Sticker preview duration"),
+                        Int64(sticker.frameCount), sticker.defaultDuration
+                    ))
                         .font(.caption)
                         .foregroundStyle(LF.textSecondary)
                 }

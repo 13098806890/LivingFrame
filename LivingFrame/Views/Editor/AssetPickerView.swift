@@ -128,7 +128,9 @@ struct AssetPickerView: View {
                                 .controlSize(.mini)
                         } else {
                             let count = selectedAssetCount
-                            Text(count == 0 ? "添加" : "添加(\(count))")
+                            Text(count == 0 ? NSLocalizedString("添加", comment: "Add") : String.localizedStringWithFormat(
+                                NSLocalizedString("添加(%1$lld)", comment: "Add selected assets count"), Int64(count)
+                            ))
                                 .fontWeight(.semibold)
                         }
                     }

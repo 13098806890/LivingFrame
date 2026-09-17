@@ -35,6 +35,225 @@ def metadata_directory(version)
   path
 end
 
+def app_store_data_directory(version)
+  path = File.expand_path("data/#{version}", __dir__)
+  UI.user_error!("No App Store data snapshot found at #{path}") unless File.directory?(path)
+  path
+end
+
+def connect_api_response_data(response)
+  body = response.respond_to?(:body) ? response.body : response
+  body.fetch("data")
+end
+
+def connect_api_response_body(response)
+  response.respond_to?(:body) ? response.body : response
+end
+
+def connect_api_all_pages(client, path, params = nil)
+  data = []
+  included = []
+  response = client.get(path, params)
+
+  loop do
+    body = connect_api_response_body(response)
+    data.concat(Array(body["data"]))
+    included.concat(Array(body["included"]))
+    next_url = body.dig("links", "next")
+    break if next_url.to_s.empty?
+
+    response = client.get(next_url)
+  end
+
+  { "data" => data, "included" => included }
+end
+
+def connect_api_include_index(included)
+  included.each_with_object({}) do |resource, index|
+    index[[resource["type"], resource["id"]]] = resource
+  end
+end
+
+def connect_api_relationship_id(resource, relationship_name)
+  resource.dig("relationships", relationship_name, "data", "id")
+end
+
+def connect_api_territory_records(client, path)
+  connect_api_all_pages(client, path, { "limit" => 200 })["data"].map do |territory|
+    {
+      "id" => territory.fetch("id"),
+      "currency" => territory.dig("attributes", "currency")
+    }
+  end.sort_by { |territory| territory.fetch("id") }
+end
+
+def subscription_price_snapshot(client, subscription_id, as_of)
+  response = connect_api_all_pages(
+    client,
+    "/v1/subscriptions/#{subscription_id}/prices",
+    { "include" => "territory,subscriptionPricePoint", "limit" => 200 }
+  )
+  included = connect_api_include_index(response["included"])
+  prices = response["data"].map do |price|
+    territory_id = connect_api_relationship_id(price, "territory")
+    price_point_id = connect_api_relationship_id(price, "subscriptionPricePoint")
+    territory = included[["territories", territory_id]]
+    price_point = included[["subscriptionPricePoints", price_point_id]]
+    UI.user_error!("Missing territory or price point data for subscription #{subscription_id}, price #{price["id"]}") unless territory && price_point
+
+    {
+      "territory" => territory_id,
+      "currency" => territory.dig("attributes", "currency"),
+      "customer_price" => price_point.dig("attributes", "customerPrice"),
+      "price_point_id" => price_point_id,
+      "start_date" => price.dig("attributes", "startDate"),
+      "end_date" => price.dig("attributes", "endDate"),
+      "plan_type" => price.dig("attributes", "planType"),
+      "preserved" => price.dig("attributes", "preserved")
+    }
+  end.sort_by { |price| [price.fetch("territory"), price["start_date"].to_s, price["plan_type"].to_s] }
+
+  {
+    "as_of" => as_of,
+    "territory_count" => prices.map { |price| price.fetch("territory") }.uniq.length,
+    "price_record_count" => prices.length,
+    "prices" => prices
+  }
+end
+
+def subscription_availability_snapshot(client, subscription_id, as_of)
+  plan_resources = connect_api_all_pages(
+    client,
+    "/v1/subscriptions/#{subscription_id}/planAvailabilities",
+    { "limit" => 200 }
+  )["data"]
+  plans = plan_resources.map do |plan|
+    plan_id = plan.fetch("id")
+    territories = connect_api_territory_records(
+      client,
+      "/v1/subscriptionPlanAvailabilities/#{plan_id}/availableTerritories"
+    )
+    {
+      "plan_type" => plan.dig("attributes", "planType"),
+      "available_in_new_territories" => plan.dig("attributes", "availableInNewTerritories"),
+      "territory_count" => territories.length,
+      "territories" => territories
+    }
+  end
+
+  legacy_data = nil
+  legacy_territories = []
+  begin
+    legacy_response = client.get("/v1/subscriptions/#{subscription_id}/subscriptionAvailability")
+    legacy_data = connect_api_response_data(legacy_response)
+    availability_id = legacy_data.fetch("id")
+    legacy_territories = connect_api_territory_records(
+      client,
+      "/v1/subscriptionAvailabilities/#{availability_id}/availableTerritories"
+    )
+  rescue Spaceship::UnexpectedResponse => error
+    raise unless error.to_s.match?(/404|not found|does not exist/i)
+  end
+
+  plan_territories = plans.flat_map { |plan| plan.fetch("territories") }
+  territories = (legacy_territories + plan_territories).uniq { |territory| territory.fetch("id") }.sort_by { |territory| territory.fetch("id") }
+  {
+    "as_of" => as_of,
+    "territory_count" => territories.length,
+    "territories" => territories,
+    "subscription_availability" => legacy_data && {
+      "available_in_new_territories" => legacy_data.dig("attributes", "availableInNewTerritories")
+    },
+    "plan_availabilities" => plans
+  }
+end
+
+def in_app_purchase_price_snapshot(client, purchase_id, as_of)
+  schedule = connect_api_response_data(
+    client.get("/v2/inAppPurchases/#{purchase_id}/iapPriceSchedule")
+  )
+  schedule_id = schedule.fetch("id")
+  rows = []
+
+  { "manual" => true, "automatic" => false }.each do |kind, is_manual|
+    response = connect_api_all_pages(
+      client,
+      "/v1/inAppPurchasePriceSchedules/#{schedule_id}/#{kind}Prices",
+      { "include" => "inAppPurchasePricePoint,territory", "limit" => 200 }
+    )
+    included = connect_api_include_index(response["included"])
+    response["data"].each do |price|
+      territory_id = connect_api_relationship_id(price, "territory")
+      price_point_id = connect_api_relationship_id(price, "inAppPurchasePricePoint")
+      territory = included[["territories", territory_id]]
+      price_point = included[["inAppPurchasePricePoints", price_point_id]]
+      UI.user_error!("Missing territory or price point data for in-app purchase #{purchase_id}, price #{price["id"]}") unless territory && price_point
+
+      rows << {
+        "territory" => territory_id,
+        "currency" => territory.dig("attributes", "currency"),
+        "customer_price" => price_point.dig("attributes", "customerPrice"),
+        "price_point_id" => price_point_id,
+        "manual" => is_manual,
+        "start_date" => price.dig("attributes", "startDate"),
+        "end_date" => price.dig("attributes", "endDate")
+      }
+    end
+  end
+
+  base_territory = connect_api_response_data(
+    client.get("/v1/inAppPurchasePriceSchedules/#{schedule_id}/baseTerritory")
+  )
+  rows.sort_by! { |price| [price.fetch("territory"), price["start_date"].to_s, price.fetch("manual") ? 0 : 1] }
+  {
+    "as_of" => as_of,
+    "base_territory" => base_territory.fetch("id"),
+    "territory_count" => rows.map { |price| price.fetch("territory") }.uniq.length,
+    "price_record_count" => rows.length,
+    "prices" => rows
+  }
+end
+
+def in_app_purchase_availability_snapshot(client, purchase_id, as_of)
+  availability = connect_api_response_data(
+    client.get("/v2/inAppPurchases/#{purchase_id}/inAppPurchaseAvailability")
+  )
+  territories = connect_api_territory_records(
+    client,
+    "/v1/inAppPurchaseAvailabilities/#{availability.fetch("id")}/availableTerritories"
+  )
+  {
+    "as_of" => as_of,
+    "available_in_new_territories" => availability.dig("attributes", "availableInNewTerritories"),
+    "territory_count" => territories.length,
+    "territories" => territories
+  }
+end
+
+def purchase_pricing_summary(price_snapshot, billing_period, preferred_territory = "USA")
+  selected = price_snapshot.fetch("prices").find do |price|
+    price["territory"] == preferred_territory && price["start_date"].nil?
+  end
+  selected ||= price_snapshot.fetch("prices").find { |price| price["territory"] == preferred_territory }
+  selected ||= price_snapshot.fetch("prices").first
+  return nil unless selected
+
+  {
+    "territory" => selected.fetch("territory"),
+    "currency" => selected.fetch("currency"),
+    "customer_price" => selected.fetch("customer_price"),
+    "billing_period" => billing_period
+  }
+end
+
+def write_subscription_product_state(product_path, product, subscription_id:, version_id:)
+  product["app_store_connect_resource_id"] = subscription_id
+  product["subscription_version_resource_id"] = version_id
+  product["app_store_connect_state"] = "MISSING_METADATA"
+  product["localization_state"] = "PREPARE_FOR_SUBMISSION"
+  File.write(product_path, JSON.pretty_generate(product) + "\n")
+end
+
 platform :ios do
   desc "Upload localized App Store listing metadata for a store version (does not submit for review)"
   lane :upload_metadata do |options|
@@ -122,6 +341,211 @@ platform :ios do
       submit_for_review: false,
       automatic_release: false
     )
+  end
+
+  desc "Create or complete the monthly and annual subscriptions from the tracked Fastlane data"
+  lane :create_subscription_products do |options|
+    version = store_version(options)
+    data_path = app_store_data_directory(version)
+    group_id = options[:subscription_group_id] || "22389365"
+    app_store_api_key
+    token = Spaceship::ConnectAPI.token
+    UI.user_error!("Fastlane did not initialize an App Store Connect API token") unless token
+    client = Spaceship::ConnectAPI::APIClient.new(token: token)
+    group_subscriptions = connect_api_response_data(
+      client.get("/v1/subscriptionGroups/#{group_id}/subscriptions", { "limit" => 200 })
+    )
+
+    %w[monthly annual].each do |slug|
+      product_path = File.join(data_path, "products", slug, "product.json")
+      UI.user_error!("Missing subscription data: #{product_path}") unless File.file?(product_path)
+      product = JSON.parse(File.read(product_path))
+      product_id = product.fetch("product_id")
+      localizations_path = File.join(File.dirname(product_path), "localizations")
+      locale_directories = Dir.glob(File.join(localizations_path, "*"), File::FNM_DOTMATCH)
+        .select { |path| File.directory?(path) && ![".", ".."].include?(File.basename(path)) }
+      UI.user_error!("No localization data found under #{localizations_path}") if locale_directories.empty?
+
+      localized_values = locale_directories.map do |locale_path|
+        locale = File.basename(locale_path)
+        display_name_path = File.join(locale_path, "display_name.txt")
+        description_path = File.join(locale_path, "description.txt")
+        UI.user_error!("Missing display name or description for #{locale} in #{localizations_path}") unless File.file?(display_name_path) && File.file?(description_path)
+        {
+          "locale" => locale,
+          "name" => File.read(display_name_path).strip,
+          "description" => File.read(description_path).strip
+        }
+      end
+
+      subscription = group_subscriptions.find do |entry|
+        entry.dig("attributes", "productId") == product_id
+      end
+
+      unless subscription
+        response = client.post("/v1/subscriptions", {
+          "data" => {
+            "type" => "subscriptions",
+            "attributes" => {
+              "name" => product.fetch("reference_name"),
+              "productId" => product_id,
+              "subscriptionPeriod" => product.fetch("subscription_period"),
+              "familySharable" => false
+            },
+            "relationships" => {
+              "group" => {
+                "data" => { "type" => "subscriptionGroups", "id" => group_id }
+              }
+            }
+          }
+        })
+        subscription = connect_api_response_data(response)
+        group_subscriptions << subscription
+        UI.message("Created #{product_id} (#{subscription.fetch("id")})")
+      else
+        UI.message("Found existing #{product_id} (#{subscription.fetch("id")}); reusing it")
+      end
+
+      subscription_id = subscription.fetch("id")
+      write_subscription_product_state(
+        product_path,
+        product,
+        subscription_id: subscription_id,
+        version_id: nil
+      )
+
+      version_response = client.get("/v1/subscriptions/#{subscription_id}/versions", { "limit" => 200 })
+      subscription_versions = connect_api_response_data(version_response)
+      editable_version = subscription_versions.find do |entry|
+        entry.dig("attributes", "state") == "PREPARE_FOR_SUBMISSION"
+      end
+
+      unless editable_version
+        response = client.post("/v1/subscriptionVersions", {
+          "data" => {
+            "type" => "subscriptionVersions",
+            "relationships" => {
+              "subscription" => {
+                "data" => { "type" => "subscriptions", "id" => subscription_id }
+              }
+            }
+          }
+        })
+        editable_version = connect_api_response_data(response)
+      end
+
+      version_id = editable_version.fetch("id")
+      write_subscription_product_state(
+        product_path,
+        product,
+        subscription_id: subscription_id,
+        version_id: version_id
+      )
+
+      existing_localizations = connect_api_response_data(
+        client.get("/v1/subscriptionVersions/#{version_id}/localizations", { "limit" => 200 })
+      )
+      existing_locales = existing_localizations.map { |entry| entry.dig("attributes", "locale") }
+      localized_values.each do |localization|
+        next if existing_locales.include?(localization.fetch("locale"))
+
+        client.post("/v2/subscriptionLocalizations", {
+          "data" => {
+            "type" => "subscriptionLocalizations",
+            "attributes" => localization,
+            "relationships" => {
+              "version" => {
+                "data" => { "type" => "subscriptionVersions", "id" => version_id }
+              }
+            }
+          }
+        })
+        UI.message("Added #{localization.fetch("locale")} metadata for #{product_id}")
+      end
+
+      UI.success("#{product_id} is ready with #{localized_values.length} localized entries. Set its prices and territories in App Store Connect when ready.")
+    end
+  end
+
+  desc "Sync App Store Connect price schedules and territory availability into Fastlane data"
+  lane :sync_purchase_pricing do |options|
+    version = store_version(options)
+    data_path = app_store_data_directory(version)
+    app_store_api_key
+    token = Spaceship::ConnectAPI.token
+    UI.user_error!("Fastlane did not initialize an App Store Connect API token") unless token
+    client = Spaceship::ConnectAPI::APIClient.new(token: token)
+    as_of = Time.now.utc.strftime("%Y-%m-%d")
+    as_of_key = as_of.tr("-", "_")
+    subscriptions = %w[weekly monthly annual].to_h do |slug|
+      product_path = File.join(data_path, "products", slug, "product.json")
+      UI.user_error!("Missing purchase data: #{product_path}") unless File.file?(product_path)
+      product = JSON.parse(File.read(product_path))
+      subscription_id = product.fetch("app_store_connect_resource_id")
+      UI.message("Reading prices and territories for #{product.fetch("product_id")}")
+      [slug, {
+        "product" => product,
+        "prices" => subscription_price_snapshot(client, subscription_id, as_of),
+        "availability" => subscription_availability_snapshot(client, subscription_id, as_of),
+        "billing_period" => { "weekly" => "week", "monthly" => "month", "annual" => "year" }.fetch(slug)
+      }]
+    end
+
+    lifetime_path = File.join(data_path, "products", "lifetime", "product.json")
+    UI.user_error!("Missing purchase data: #{lifetime_path}") unless File.file?(lifetime_path)
+    lifetime_product = JSON.parse(File.read(lifetime_path))
+    lifetime_id = lifetime_product.fetch("app_store_connect_resource_id")
+    UI.message("Reading prices and territories for #{lifetime_product.fetch("product_id")}")
+    subscriptions["lifetime"] = {
+      "product" => lifetime_product,
+      "prices" => in_app_purchase_price_snapshot(client, lifetime_id, as_of),
+      "availability" => in_app_purchase_availability_snapshot(client, lifetime_id, as_of),
+      "billing_period" => "one_time"
+    }
+
+    app_snapshot_path = File.join(data_path, "app.json")
+    app_snapshot = JSON.parse(File.read(app_snapshot_path))
+    app_purchases = app_snapshot.dig("commercial", "in_app_purchases")
+    UI.user_error!("No in-app purchase list found in #{app_snapshot_path}") unless app_purchases.is_a?(Array)
+
+    subscriptions.each do |slug, snapshot|
+      product_path = File.join(data_path, "products", slug, "product.json")
+      product = snapshot.fetch("product")
+      prices = snapshot.fetch("prices")
+      availability = snapshot.fetch("availability")
+      summary = purchase_pricing_summary(prices, snapshot.fetch("billing_period"))
+      product.keys.grep(/\Apricing_summary_as_of_/).each { |key| product.delete(key) }
+      product["pricing_summary_as_of_#{as_of_key}"] = summary if summary
+      product["pricing"] = {
+        "status" => prices.fetch("price_record_count").positive? ? "SYNCED_FROM_APP_STORE_CONNECT" : "NO_CONFIGURED_PRICES",
+        "price_snapshot" => "prices.json",
+        "availability_snapshot" => "availability.json",
+        "priced_territory_count" => prices.fetch("territory_count"),
+        "available_territory_count" => availability.fetch("territory_count"),
+        "note" => "Read from App Store Connect on #{as_of}."
+      }
+
+      product_directory = File.dirname(product_path)
+      File.write(File.join(product_directory, "prices.json"), JSON.pretty_generate(prices) + "\n")
+      File.write(File.join(product_directory, "availability.json"), JSON.pretty_generate(availability) + "\n")
+      File.write(product_path, JSON.pretty_generate(product) + "\n")
+
+      app_product = app_purchases.find { |entry| entry["product_id"] == product.fetch("product_id") }
+      UI.user_error!("Missing #{product.fetch("product_id")} in #{app_snapshot_path}") unless app_product
+      app_product["price_snapshot"] = "products/#{slug}/prices.json"
+      app_product["availability_snapshot"] = "products/#{slug}/availability.json"
+      app_product["pricing_status"] = product.dig("pricing", "status")
+      app_product["status"] = product.dig("pricing", "status")
+      app_product.delete("territories")
+      app_product.delete("note") if app_product["note"].to_s.include?("not been synchronized")
+      app_product["priced_territory_count"] = prices.fetch("territory_count")
+      app_product["available_territory_count"] = availability.fetch("territory_count")
+      app_product["pricing_summary"] = summary if summary
+      UI.success("#{product.fetch("product_id")}: #{prices.fetch("price_record_count")} price rows, #{prices.fetch("territory_count")} priced territories, #{availability.fetch("territory_count")} available territories")
+    end
+
+    File.write(app_snapshot_path, JSON.pretty_generate(app_snapshot) + "\n")
+    UI.success("Purchase prices and territory availability synced to #{File.join(data_path, "products")}")
   end
 
   desc "Download App Store Connect metadata to the selected local version folder"

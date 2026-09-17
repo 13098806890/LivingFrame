@@ -1,0 +1,1757 @@
+{
+  "as_of": "2026-09-17",
+  "territory_count": 175,
+  "price_record_count": 175,
+  "prices": [
+    {
+      "territory": "AFG",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBRkciLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "AGO",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBR08iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "AIA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBSUEiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ALB",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBTEIiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ARE",
+      "currency": "AED",
+      "customer_price": "14.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBUkUiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ARG",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBUkciLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ARM",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBUk0iLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ATG",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBVEciLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "AUS",
+      "currency": "AUD",
+      "customer_price": "5.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBVVMiLCJwIjoiMTAwNzQifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "AUT",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBVVQiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "AZE",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJBWkUiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BEL",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCRUwiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BEN",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCRU4iLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BFA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCRkEiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BGR",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCR1IiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BHR",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCSFIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BHS",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCSFMiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BIH",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCSUgiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BLR",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCTFIiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BLZ",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCTFoiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BMU",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCTVUiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BOL",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCT0wiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BRA",
+      "currency": "BRL",
+      "customer_price": "24.9",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCUkEiLCJwIjoiMTAwOTcifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BRB",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCUkIiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BRN",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCUk4iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BTN",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCVE4iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "BWA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJCV0EiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CAN",
+      "currency": "CAD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDQU4iLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CHE",
+      "currency": "CHF",
+      "customer_price": "3.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDSEUiLCJwIjoiMTAwMzEifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CHL",
+      "currency": "CLP",
+      "customer_price": "4990",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDSEwiLCJwIjoiMTAwOTcifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CHN",
+      "currency": "CNY",
+      "customer_price": "12.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDSE4iLCJwIjoiMTAwMzMifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CIV",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDSVYiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CMR",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDTVIiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "COD",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDT0QiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "COG",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDT0ciLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "COL",
+      "currency": "COP",
+      "customer_price": "19900.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDT0wiLCJwIjoiMTAwNTgifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CPV",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDUFYiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CRI",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDUkkiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CYM",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDWU0iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CYP",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDWVAiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "CZE",
+      "currency": "CZK",
+      "customer_price": "99.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJDWkUiLCJwIjoiMTAwNzQifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "DEU",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJERVUiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "DMA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJETUEiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "DNK",
+      "currency": "DKK",
+      "customer_price": "39.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJETksiLCJwIjoiMTAwMzcifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "DOM",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJET00iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "DZA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJEWkEiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ECU",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJFQ1UiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "EGY",
+      "currency": "EGP",
+      "customer_price": "199.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJFR1kiLCJwIjoiMTAyMDAifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ESP",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJFU1AiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "EST",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJFU1QiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "FIN",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJGSU4iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "FJI",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJGSkkiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "FRA",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJGUkEiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "FSM",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJGU00iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "GAB",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJHQUIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "GBR",
+      "currency": "GBP",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJHQlIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "GEO",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJHRU8iLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "GHA",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJHSEEiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "GMB",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJHTUIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "GNB",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJHTkIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "GRC",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJHUkMiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "GRD",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJHUkQiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "GTM",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJHVE0iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "GUY",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJHVVkiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "HKG",
+      "currency": "HKD",
+      "customer_price": "32.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJIS0ciLCJwIjoiMTAwMzEifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "HND",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJITkQiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "HRV",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJIUlYiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "HUN",
+      "currency": "HUF",
+      "customer_price": "1790",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJIVU4iLCJwIjoiMTAwNTMifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "IDN",
+      "currency": "IDR",
+      "customer_price": "79000",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJJRE4iLCJwIjoiMTAxMTUifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "IND",
+      "currency": "INR",
+      "customer_price": "399.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJJTkQiLCJwIjoiMTAxMTgifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "IRL",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJJUkwiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "IRQ",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJJUlEiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ISL",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJJU0wiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ISR",
+      "currency": "ILS",
+      "customer_price": "12.9",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJJU1IiLCJwIjoiMTAwMzcifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ITA",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJJVEEiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "JAM",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJKQU0iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "JOR",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJKT1IiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "JPN",
+      "currency": "JPY",
+      "customer_price": "600",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJKUE4iLCJwIjoiMTAwNTYifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "KAZ",
+      "currency": "KZT",
+      "customer_price": "2490.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJLQVoiLCJwIjoiMTAxNTcifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "KEN",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJLRU4iLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "KGZ",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJLR1oiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "KHM",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJLSE0iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "KNA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJLTkEiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "KOR",
+      "currency": "KRW",
+      "customer_price": "6600",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJLT1IiLCJwIjoiMTAwNzEifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "KWT",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJLV1QiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "LAO",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJMQU8iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "LBN",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJMQk4iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "LBR",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJMQlIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "LBY",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJMQlkiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "LCA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJMQ0EiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "LKA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJMS0EiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "LTU",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJMVFUiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "LUX",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJMVVgiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "LVA",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJMVkEiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MAC",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNQUMiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MAR",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNQVIiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MDA",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNREEiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MDG",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNREciLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MDV",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNRFYiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MEX",
+      "currency": "MXN",
+      "customer_price": "89.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNRVgiLCJwIjoiMTAwODUifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MKD",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNS0QiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MLI",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNTEkiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MLT",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNTFQiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MMR",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNTVIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MNE",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNTkUiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MNG",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNTkciLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MOZ",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNT1oiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MRT",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNUlQiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MSR",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNU1IiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MUS",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNVVMiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MWI",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNV0kiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "MYS",
+      "currency": "MYR",
+      "customer_price": "19.9",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJNWVMiLCJwIjoiMTAwNzMifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "NAM",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJOQU0iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "NER",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJORVIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "NGA",
+      "currency": "NGN",
+      "customer_price": "6900.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJOR0EiLCJwIjoiMTAxNjQifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "NIC",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJOSUMiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "NLD",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJOTEQiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "NOR",
+      "currency": "NOK",
+      "customer_price": "49.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJOT1IiLCJwIjoiMTAwNDcifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "NPL",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJOUEwiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "NRU",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJOUlUiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "NZL",
+      "currency": "NZD",
+      "customer_price": "6.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJOWkwiLCJwIjoiMTAwODcifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "OMN",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJPTU4iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "PAK",
+      "currency": "PKR",
+      "customer_price": "1100.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJQQUsiLCJwIjoiMTAxNTkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "PAN",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJQQU4iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "PER",
+      "currency": "PEN",
+      "customer_price": "17.9",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJQRVIiLCJwIjoiMTAwNjkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "PHL",
+      "currency": "PHP",
+      "customer_price": "249.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJQSEwiLCJwIjoiMTAwNzQifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "PLW",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJQTFciLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "PNG",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJQTkciLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "POL",
+      "currency": "PLN",
+      "customer_price": "19.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJQT0wiLCJwIjoiMTAwNjAifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "PRT",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJQUlQiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "PRY",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJQUlkiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "QAT",
+      "currency": "QAR",
+      "customer_price": "14.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJRQVQiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ROU",
+      "currency": "RON",
+      "customer_price": "19.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJST1UiLCJwIjoiMTAwNjAifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "RUS",
+      "currency": "RUB",
+      "customer_price": "349.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJSVVMiLCJwIjoiMTAxMDEifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "RWA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJSV0EiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SAU",
+      "currency": "SAR",
+      "customer_price": "17.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTQVUiLCJwIjoiMTAwNTkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SEN",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTRU4iLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SGP",
+      "currency": "SGD",
+      "customer_price": "5.98",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTR1AiLCJwIjoiMTAwNzgifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SLB",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTTEIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SLE",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTTEUiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SLV",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTTFYiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SRB",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTUkIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "STP",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTVFAiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SUR",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTVVIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SVK",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTVksiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SVN",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTVk4iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SWE",
+      "currency": "SEK",
+      "customer_price": "49.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTV0UiLCJwIjoiMTAwNDcifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SWZ",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTV1oiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "SYC",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJTWUMiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "TCA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUQ0EiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "TCD",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUQ0QiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "THA",
+      "currency": "THB",
+      "customer_price": "149.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUSEEiLCJwIjoiMTAwNDQifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "TJK",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUSksiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "TKM",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUS00iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "TON",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUT04iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "TTO",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUVE8iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "TUN",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUVU4iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "TUR",
+      "currency": "TRY",
+      "customer_price": "199.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUVVIiLCJwIjoiMTAyMDAifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "TWN",
+      "currency": "TWD",
+      "customer_price": "120",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUV04iLCJwIjoiMTAwMzUifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "TZA",
+      "currency": "TZS",
+      "customer_price": "11900.0",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJUWkEiLCJwIjoiMTAxMTUifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "UGA",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJVR0EiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "UKR",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJVS1IiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "URY",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJVUlkiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "USA",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJVU0EiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "UZB",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJVWkIiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "VCT",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJWQ1QiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "VEN",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJWRU4iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "VGB",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJWR0IiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "VNM",
+      "currency": "VND",
+      "customer_price": "119000",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJWTk0iLCJwIjoiMTAxMTUifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "VUT",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJWVVQiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "XKS",
+      "currency": "EUR",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJYS1MiLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "YEM",
+      "currency": "USD",
+      "customer_price": "3.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJZRU0iLCJwIjoiMTAwNDkifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ZAF",
+      "currency": "ZAR",
+      "customer_price": "79.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJaQUYiLCJwIjoiMTAxMDAifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ZMB",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJaTUIiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    },
+    {
+      "territory": "ZWE",
+      "currency": "USD",
+      "customer_price": "4.99",
+      "price_point_id": "eyJzIjoiNjgxMzAzMjY1MyIsInQiOiJaV0UiLCJwIjoiMTAwNjIifQ",
+      "start_date": null,
+      "end_date": null,
+      "plan_type": "UPFRONT",
+      "preserved": false
+    }
+  ]
+}

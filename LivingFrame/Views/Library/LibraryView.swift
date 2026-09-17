@@ -22,7 +22,7 @@ struct LibraryView: View {
     @State private var clipDeletionAlert: ClipDeletionAlert?
     /// 普通路径默认提取动态素材；静态首帧作为高级选项。
     @State private var defaultExtractKind: ExtractKind = .live
-    /// 超过 1 分钟的视频，在动态提取前选择源视频范围。
+    /// 超过单个素材最长时长的视频，在动态提取前选择源视频范围。
     @State private var pendingVideoRange: PendingVideoRange?
     /// 当前批量提取的队列位置；提取仍串行执行以控制内存占用。
     @State private var extractionQueuePosition: Int?
@@ -452,7 +452,7 @@ struct LibraryView: View {
                     switch kind {
                     case .live:
                         let duration = await videoDuration(of: url)
-                        if duration > 60 {
+                        if duration > appState.maxExtractionDuration {
                             let range: ClosedRange<TimeInterval>? = await withCheckedContinuation { continuation in
                                 pendingVideoRange = PendingVideoRange(
                                     url: url,
@@ -904,12 +904,15 @@ struct LibraryView: View {
                     }
                     Text(appState.isSegmenting
                          ? String(format: "%d%%", Int(appState.segmentationProgress * 100))
-                         : "准备中…")
+                         : NSLocalizedString("准备中…", comment: "Preparing extraction"))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(LF.textSecondary)
                 }
                 if let extractionQueuePosition {
-                    Text("第 \(extractionQueuePosition)/\(extractionQueueTotal) 个素材")
+                    Text(String.localizedStringWithFormat(
+                        NSLocalizedString("第 %1$lld/%2$lld 个素材", comment: "Extraction queue position"),
+                        Int64(extractionQueuePosition), Int64(extractionQueueTotal)
+                    ))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(LF.header)
                         .fixedSize(horizontal: false, vertical: true)
@@ -919,7 +922,10 @@ struct LibraryView: View {
                     .foregroundStyle(LF.textSecondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("本次最多处理 \(Int(appState.maxExtractionDuration)) 秒，超出部分从开头截取")
+                Text(String.localizedStringWithFormat(
+                    NSLocalizedString("本次最多处理 %1$lld 秒，超出部分从开头截取", comment: "Maximum extraction duration"),
+                    Int64(appState.maxExtractionDuration)
+                ))
                     .font(.caption2)
                     .foregroundStyle(LF.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -937,7 +943,7 @@ struct LibraryView: View {
     // MARK: - 素材网格
 
     private var clipsSection: some View {
-        SectionCard(title: NSLocalizedString("全部素材", comment: "All clips")) {
+        SectionCard(verbatimTitle: NSLocalizedString("全部素材", comment: "All clips")) {
             if appState.clips.isEmpty {
                 EmptyStateView(
                     icon: "folder",
@@ -977,7 +983,10 @@ struct LibraryView: View {
             case .referenced:
                 return Alert(
                     title: Text("素材正在使用中"),
-                    message: Text("请先从以下作品中移除它，再删除素材：\n\(request.referencedWorkNames.joined(separator: "、"))"),
+                    message: Text(String.localizedStringWithFormat(
+                        NSLocalizedString("请先从以下作品中移除它，再删除素材：\n%1$@", comment: "Asset is used by these works"),
+                        request.referencedWorkNames.joined(separator: "、") as NSString
+                    )),
                     dismissButton: .cancel(Text("知道了"))
                 )
             }
@@ -1092,7 +1101,10 @@ private struct VideoRangePickerView: View {
 
                     HStack(spacing: 10) {
                         Label(
-                            "已选 \(formatTimestamp(endTime - startTime))",
+                            String.localizedStringWithFormat(
+                                NSLocalizedString("已选 %1$@", comment: "Selected video duration"),
+                                formatTimestamp(endTime - startTime) as NSString
+                            ),
                             systemImage: "scissors"
                         )
                         Spacer(minLength: 8)
@@ -1262,7 +1274,11 @@ private struct VideoRangeTimeline: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(LF.header)
                 Spacer()
-                Text("起点 \(formatTimestamp(startTime)) · 选中 \(formatTimestamp(endTime - startTime))")
+                Text(String.localizedStringWithFormat(
+                    NSLocalizedString("起点 %1$@ · 选中 %2$@", comment: "Selected video extraction range"),
+                    formatTimestamp(startTime) as NSString,
+                    formatTimestamp(endTime - startTime) as NSString
+                ))
                     .font(.caption)
                     .foregroundStyle(LF.textSecondary)
             }
@@ -1270,29 +1286,36 @@ private struct VideoRangeTimeline: View {
             GeometryReader { proxy in
                 let width = max(proxy.size.width, 1)
                 let maximumSelectionWidth = min(width * 0.5, max(width - 36, 1))
+                let timelinePadding: CGFloat = 12
+                let preferredTimelineScale = maximumSelectionWidth / CGFloat(maximumSelectionDuration)
+                let preferredContentWidth = CGFloat(duration) * preferredTimelineScale
+                let timelineFitsViewport = preferredContentWidth <= width
+                let fitTimelineScale = max(width - timelinePadding * 2, 1) / CGFloat(duration)
+                // 长片沿用原来的时间刻度；短片没有滚动空间时才铺满底片，
+                // 让选框能在完整展示的缩略图上移动。
+                let timelineScale = timelineFitsViewport
+                    ? fitTimelineScale
+                    : preferredTimelineScale
+                let timelineContentWidth = CGFloat(duration) * timelineScale
                 let selectedDuration = min(
                     max(endTime - startTime, minimumSelectionDuration),
                     maximumSelectionDuration
                 )
                 let selectionWidth = min(
-                    max(28, maximumSelectionWidth * CGFloat(selectedDuration / maximumSelectionDuration)),
+                    max(28, CGFloat(selectedDuration) * timelineScale),
                     max(width - 24, 28)
                 )
-                let timelinePadding: CGFloat = 12
-                let timelineScale = maximumSelectionWidth / CGFloat(maximumSelectionDuration)
                 let contentWidth = max(
                     width,
-                    CGFloat(duration) * timelineScale
+                    timelineContentWidth
                 )
-                // bar 拖动时，bar 相对固定的缩略图轨道移动；
-                // 拖动 bar 以外的区域时，时间窗口固定，缩略图在窗口下方移动。
                 let selectionX = timelinePadding + CGFloat(startTime) * timelineScale + timelineOffset
                 let handleWidth: CGFloat = 18
 
                 ZStack(alignment: .leading) {
                     // 内容层单独裁切，避免贴近左边界的起始 bar 被圆角裁掉。
-                    thumbnailStrip(contentWidth: contentWidth, height: 82)
-                        .offset(x: timelineOffset)
+                    thumbnailStrip(contentWidth: timelineContentWidth, height: 82)
+                        .offset(x: timelineOffset + (timelineFitsViewport ? timelinePadding : 0))
                         .frame(width: width, height: 86, alignment: .leading)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
@@ -1353,6 +1376,8 @@ private struct VideoRangeTimeline: View {
             .foregroundStyle(LF.textSecondary)
         }
         .task(id: url) {
+            timelineOffset = 0
+            activeHandle = nil
             await loadThumbnails()
         }
     }
@@ -1457,16 +1482,23 @@ private struct VideoRangeTimeline: View {
                 case .some(.range), nil:
                     let length = dragEndTime - dragStartTime
                     let maximumStart = max(duration - length, 0)
-                    // 时间轴平移方向与手势一致：手指向左，底部缩略图向左，
-                    // 选取窗口对应的时间向后移动。
+                    let minimumOffset = -max(contentWidth - viewportWidth, 0)
+                    if contentWidth - viewportWidth <= 0.5 {
+                        // 短片全部可见，底片无处可滚；只移动选中框。
+                        let newStart = min(max(dragStartTime + delta, 0), maximumStart)
+                        timelineOffset = dragTimelineOffset
+                        startTime = newStart
+                        endTime = newStart + length
+                        break
+                    }
+
+                    // 长片沿用原行为：拖动选区或底片时，底片跟手移动，选框留在原位。
                     let timelineDelta = -delta
                     let newStart = min(max(dragStartTime + timelineDelta, 0), maximumStart)
+                    let offset = dragTimelineOffset - CGFloat(newStart - dragStartTime) * timelineScale
+                    timelineOffset = min(max(offset, minimumOffset), 0)
                     startTime = newStart
                     endTime = newStart + length
-                    // 通过反向移动缩略图，保持选区两侧 bar 的屏幕位置不变。
-                    let offset = dragTimelineOffset - CGFloat(newStart - dragStartTime) * timelineScale
-                    let minimumOffset = -max(contentWidth - viewportWidth, 0)
-                    timelineOffset = min(max(offset, minimumOffset), 0)
                 }
             }
             .onEnded { _ in
@@ -1623,7 +1655,10 @@ struct ClipCell: View {
                 Text(clip.name)
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
-                Text("\(clip.width)×\(clip.height) · \(Int(clip.fps.rounded()))fps · \(clip.frameCount)帧")
+                Text(String.localizedStringWithFormat(
+                    NSLocalizedString("%1$lld×%2$lld · %3$lld fps · %4$lld 帧", comment: "Clip dimensions and frame rate"),
+                    Int64(clip.width), Int64(clip.height), Int64(clip.fps.rounded()), Int64(clip.frameCount)
+                ))
                     .font(.caption2)
                     .foregroundStyle(LF.textSecondary)
                     .lineLimit(1)
@@ -1929,7 +1964,10 @@ struct ClipMenuView: View {
             case .referenced:
                 return Alert(
                     title: Text("素材正在使用中"),
-                    message: Text("请先从以下作品中移除它，再删除素材：\n\(referencedWorkNames.joined(separator: "、"))"),
+                    message: Text(String.localizedStringWithFormat(
+                        NSLocalizedString("请先从以下作品中移除它，再删除素材：\n%1$@", comment: "Asset is used by these works"),
+                        referencedWorkNames.joined(separator: "、") as NSString
+                    )),
                     dismissButton: .cancel(Text("取消"))
                 )
             }
@@ -2042,7 +2080,10 @@ struct ClipMenuView: View {
                     ProgressView()
                         .controlSize(.small)
                 } else if let selectedPreset {
-                    Text("约 \(formattedFileSize(selectedPreset.estimatedBytes))")
+                    Text(String.localizedStringWithFormat(
+                        NSLocalizedString("约 %1$@", comment: "Estimated file size"),
+                        FileSizeText.string(fromByteCount: selectedPreset.estimatedBytes) as NSString
+                    ))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(selectedPreset.estimatedBytes <= 10 * 1024 * 1024 ? LF.textSecondary : LF.destructive)
                 }
@@ -2164,17 +2205,16 @@ struct ClipMenuView: View {
         }
     }
 
-    private func formattedFileSize(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
-
     private var clipIdentityHeader: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(currentClip.name)
                     .font(.headline)
                     .lineLimit(2)
-                Text("\(currentClip.renderedWidth)×\(currentClip.renderedHeight) · \(Int(currentClip.fps.rounded())) fps · \(currentClip.frameCount) 帧")
+                Text(String.localizedStringWithFormat(
+                    NSLocalizedString("%1$lld×%2$lld · %3$lld fps · %4$lld 帧", comment: "Clip dimensions and frame rate"),
+                    Int64(currentClip.renderedWidth), Int64(currentClip.renderedHeight), Int64(currentClip.fps.rounded()), Int64(currentClip.frameCount)
+                ))
                     .font(.caption)
                     .foregroundStyle(LF.textSecondary)
             }
@@ -2275,7 +2315,10 @@ struct ClipMenuView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(folder.name)
                         .lineLimit(1)
-                    Text("\(folder.clipIDs.count) 个素材")
+                    Text(String.localizedStringWithFormat(
+                        NSLocalizedString("%1$lld 个素材", comment: "Clip count in folder"),
+                        Int64(folder.clipIDs.count)
+                    ))
                         .font(.caption2)
                         .foregroundStyle(LF.textSecondary)
                 }

@@ -39,6 +39,26 @@ private enum RemuxWaitResult {
 public struct VideoExporter {
     public init() {}
 
+    /// Estimates a MOV's size from the target video bitrate plus a small audio allowance.
+    /// The encoder may produce a different size depending on image complexity.
+    public func estimateSize(
+        _ composition: Composition,
+        format: ExportFormat,
+        fps: Double,
+        maxPixelSize: CGFloat?
+    ) -> Int64 {
+        let renderSize = outputSize(for: composition.renderRect.size, maxPixelSize: maxPixelSize)
+        let bitrate = recommendedBitRate(
+            width: Int(renderSize.width),
+            height: Int(renderSize.height),
+            fps: fps,
+            format: format
+        )
+        let audioBitrate = composition.audioClips.isEmpty ? 0 : 128_000
+        let duration = max(composition.duration, 0)
+        return max(Int64((Double(bitrate + audioBitrate) * duration / 8).rounded()), 1)
+    }
+
     public func export(
         _ composition: Composition,
         format: ExportFormat,

@@ -69,23 +69,29 @@ struct TextFormattingControls: View {
             }
 
             TextControlSection(title: "预览", subtitle: "点击字体直接选择") {
-                Text(text.text.isEmpty ? "输入文字" : text.text)
-                    .font(previewFont)
-                    .foregroundStyle(.black)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.25)
-                    .allowsTightening(true)
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .padding(.horizontal, 12)
-                    .background(
-                        LinearGradient(
-                            colors: [LF.surface2.opacity(0.62), LF.brandTint.opacity(0.22)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    )
-                    .overlay {
+                Group {
+                    if text.text.isEmpty {
+                        Text("输入文字")
+                    } else {
+                        Text(verbatim: text.text)
+                    }
+                }
+                .font(previewFont)
+                .foregroundStyle(.black)
+                .lineLimit(1)
+                .minimumScaleFactor(0.25)
+                .allowsTightening(true)
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .padding(.horizontal, 12)
+                .background(
+                    LinearGradient(
+                        colors: [LF.surface2.opacity(0.62), LF.brandTint.opacity(0.22)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+                .overlay {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(LF.brandTint.opacity(0.24), lineWidth: 1)
                     }
@@ -97,12 +103,12 @@ struct TextFormattingControls: View {
                                 appState.updateText(text.id) { $0.fontName = font.value.isEmpty ? nil : font.value }
                             } label: {
                                 VStack(spacing: 3) {
-                                    Text("text")
+                                    Text("Aa")
                                         .font(fontPreview(for: font))
                                         .foregroundStyle(.black)
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.55)
-                                    Text(font.name)
+                                    Text(NSLocalizedString(font.name, comment: "Font name"))
                                         .font(.caption2.weight(.medium))
                                         .foregroundStyle(isSelected(font) ? LF.selectionText : LF.textSecondary)
                                         .lineLimit(1)
@@ -121,7 +127,10 @@ struct TextFormattingControls: View {
                                 }
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("选择字体\(font.name)")
+                            .accessibilityLabel(String.localizedStringWithFormat(
+                                NSLocalizedString("选择字体%1$@", comment: "Font accessibility label"),
+                                NSLocalizedString(font.name, comment: "Font name") as NSString
+                            ))
                             .accessibilityAddTraits(isSelected(font) ? .isSelected : [])
                         }
                     }
@@ -167,7 +176,10 @@ struct TextFormattingControls: View {
                                     }
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("文字颜色\(color.name)")
+                            .accessibilityLabel(String.localizedStringWithFormat(
+                                NSLocalizedString("文字颜色%1$@", comment: "Text color accessibility label"),
+                                NSLocalizedString(color.name, comment: "Color name") as NSString
+                            ))
                         }
                         CompactCustomColorPicker(
                             selection: Binding(
@@ -244,11 +256,11 @@ struct CompactCustomColorPicker: View {
 }
 
 private struct TextControlSection<Content: View>: View {
-    let title: String
-    let subtitle: String?
+    let title: LocalizedStringKey
+    let subtitle: LocalizedStringKey?
     @ViewBuilder let content: Content
 
-    init(title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
+    init(title: LocalizedStringKey, subtitle: LocalizedStringKey? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.subtitle = subtitle
         self.content = content()

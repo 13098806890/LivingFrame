@@ -66,7 +66,10 @@ struct ElementInspectorView: View {
     private var multiSelectionSummary: some View {
         VStack(spacing: 10) {
             HStack {
-                Text("已选中 \(appState.selectedElementIDs.count) 个素材")
+                Text(String.localizedStringWithFormat(
+                    NSLocalizedString("已选中 %1$lld 个素材", comment: "Selected asset count"),
+                    Int64(appState.selectedElementIDs.count)
+                ))
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Button(role: .destructive) {
@@ -187,6 +190,11 @@ struct ElementInspectorView: View {
     }
 
     private func inspectorElementName(for element: CompositionElement) -> String {
+        if case .decoration(let decorationID) = element.kind,
+           let sticker = DecorationRenderer.stickerDefinition(for: decorationID) {
+            return sticker.localizedName
+        }
+
         guard case .background = element.kind,
               element.collageGroupID == nil else {
             return element.name
@@ -381,7 +389,7 @@ struct ElementInspectorView: View {
         .padding(.vertical, 2)
     }
 
-    private func inspectorFooter(_ message: String) -> some View {
+    private func inspectorFooter(_ message: LocalizedStringKey) -> some View {
         HStack(spacing: 7) {
             Image(systemName: "hand.tap")
                 .font(.caption2.weight(.semibold))
@@ -432,7 +440,12 @@ struct ElementInspectorView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(0..<count, id: \.self) { partition in
-                        EditorOptionChip(title: "区域 \(partition + 1)", isSelected: partition == selected) {
+                        EditorOptionChip(
+                            title: String.localizedStringWithFormat(
+                                NSLocalizedString("区域 %1$lld", comment: "Collage region number"), Int64(partition + 1)
+                            ),
+                            isSelected: partition == selected
+                        ) {
                             action(partition)
                         }
                     }
@@ -540,7 +553,7 @@ struct ElementInspectorView: View {
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel(color.name)
+                            .accessibilityLabel(NSLocalizedString(color.name, comment: "Outline color name"))
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
                         }
                         CompactCustomColorPicker(
@@ -650,7 +663,7 @@ struct ElementInspectorView: View {
     }
 
     private func slider(
-        label: String, value: Binding<Double>, range: ClosedRange<Double>, text: String
+        label: LocalizedStringKey, value: Binding<Double>, range: ClosedRange<Double>, text: String
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
@@ -742,7 +755,10 @@ struct BackgroundFillPreview: View {
                             pivotHandle(index: index, in: rect)
                         }
 
-                        Text("区域 \(settings.selectedPartition + 1)")
+                        Text(String.localizedStringWithFormat(
+                            NSLocalizedString("区域 %1$lld", comment: "Collage region number"),
+                            Int64(settings.selectedPartition + 1)
+                        ))
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(LF.selectionText)
                             .padding(.horizontal, 7)

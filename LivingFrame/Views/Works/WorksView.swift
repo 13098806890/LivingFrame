@@ -92,8 +92,8 @@ struct WorksView: View {
     }
 
     private func worksSectionHeader(
-        title: String,
-        subtitle: String?,
+        title: LocalizedStringKey,
+        subtitle: LocalizedStringKey?,
         icon: String
     ) -> some View {
         HStack(spacing: 10) {
