@@ -68,8 +68,7 @@ struct ThemePalette {
     let timelineText: Color
 }
 
-/// 五套可切换的马卡龙皮肤。首五个颜色分别对应主色、深色、强调色、文字色和中性色，
-/// 其余颜色是为背景、选中态和可读性补充的语义色。
+/// 五套可切换的配色方案。每套按界面用途定义背景、表面、操作、品牌强调、文字和时间轴语义色。
 enum AppTheme: String, CaseIterable, Identifiable {
     case skyPetal
     case coralNavy
@@ -188,20 +187,20 @@ enum AppTheme: String, CaseIterable, Identifiable {
         case .appIcon:
             return ThemePalette(
                 background: Color(hex: "F0F8FF"),
-                surface: Color(hex: "FFFAF0"),
-                surface2: Color(hex: "FCE6CB"),
-                actionPrimary: Color(hex: "146BD4"),
+                surface: Color(hex: "FFF8EF"),
+                surface2: Color(hex: "FBEBD7"),
+                actionPrimary: Color(hex: "0875D1"),
                 actionDeep: Color(hex: "1357AC"),
-                brandTint: Color(hex: "84C3ED"),
+                brandTint: Color(hex: "99CFF0"),
                 selectionSurface: Color(hex: "DDF0FC"),
-                folderIcon: Color(hex: "FE6534"),
-                accent: Color(hex: "C7472B"),
-                destructive: Color(hex: "D84444"),
+                folderIcon: Color(hex: "DE6332"),
+                accent: Color(hex: "BB4128"),
+                destructive: Color(hex: "C0393D"),
                 textPrimary: Color(hex: "18354E"),
-                textSecondary: Color(hex: "5D7282"),
-                timelineClip: Color(hex: "146BD4"),
-                timelineBackground: Color(hex: "84C3ED"),
-                timelineSticker: Color(hex: "FE6534"),
+                textSecondary: Color(hex: "576C7C"),
+                timelineClip: Color(hex: "0875D1"),
+                timelineBackground: Color(hex: "99CFF0"),
+                timelineSticker: Color(hex: "DE6332"),
                 timelineEffect: Color(hex: "D89130"),
                 timelineAudio: Color(hex: "446D91"),
                 timelineText: Color(hex: "B94A2C")

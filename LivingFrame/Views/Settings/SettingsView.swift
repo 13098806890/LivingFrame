@@ -256,7 +256,7 @@ struct SettingsView: View {
                         Array([
                             palette.brandTint,
                             palette.actionPrimary,
-                            palette.accent,
+                            palette.folderIcon,
                             palette.textPrimary,
                             palette.surface2
                         ].enumerated()),
