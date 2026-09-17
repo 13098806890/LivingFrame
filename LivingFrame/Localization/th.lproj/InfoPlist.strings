@@ -1,1 +1,3 @@
 "CFBundleDisplayName" = "GIFBloom";
+"NSPhotoLibraryUsageDescription" = "เลือกวิดีโอหรือ Live Photo เพื่อสร้างภาพถ่ายเคลื่อนไหว";
+"NSPhotoLibraryAddUsageDescription" = "บันทึกภาพเคลื่อนไหวและวิดีโอที่สร้างไว้ในแอปรูปภาพ";

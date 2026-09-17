@@ -183,7 +183,6 @@
 "宽度" = "Lebar";
 "对角" = "Diagonal";
 "对齐" = "Sejajarkan";
-"导出日志 (txt)" = "Ekspor log (txt)";
 "将创建在「\\(folder.name)」里面" = "Akan dibuat di dalam “\\(folder.name)”";
 "将移除画布和时间轴中的全部内容，但不会删除素材库里的素材。" = "Menghapus semua isi canvas dan timeline, tanpa menghapus aset di pustaka.";
 "已存入系统相册，打开「照片」长按即可看到动态效果" = "Tersimpan di Foto — buka Foto dan tekan lama untuk melihat gerakannya";
@@ -305,7 +304,6 @@
 "仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，剪影边缘越精细，处理时间越长。" = "Bingkai tambahan hanya dipertahankan jika laju sumber lebih tinggi. Resolusi dan laju lebih tinggi menghasilkan potongan lebih detail, tetapi membutuhkan waktu lebih lama.";
 "清理临时文件不会删除任何素材（含文件夹内外的所有剪影素材）。" = "Membersihkan file sementara tidak menghapus item apa pun, termasuk potongan orang di dalam atau di luar folder.";
 "剪影生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "Pembuatan, rendering, dan ekspor potongan orang dilakukan di perangkat. Foto dan video tidak diunggah.";
-"日志摘要" = "%d baris · %@\nPemuatan dan pembuatan potongan orang dicatat setelah Anda memilih item dan dapat dianalisis setelah ekspor.";
 "当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。" = "Perangkat ini belum dapat mengenali orang. Coba lagi nanti atau pilih foto atau video lain.";
 "这个素材格式暂不支持。请换一张照片或一段视频重试。" = "Format media ini tidak didukung. Pilih foto atau video lain lalu coba lagi.";
 "无法读取这个素材。请确认素材仍在相册中，或选择其他素材。" = "Media ini tidak dapat dibaca. Pastikan masih ada di Foto, atau pilih item lain.";
@@ -314,3 +312,17 @@
 "素材导入失败：%d 项素材无法读取。请重新选择素材。" = "Impor media gagal: %d item tidak dapat dibaca. Pilih media lagi.";
 "重试" = "Coba Lagi";
 "选择其他素材" = "Pilih Media Lain";
+
+/* GIFBloom Pro, StoreKit, and legal links */
+"关闭" = "Tutup";
+"使用周订阅或一次性买断解锁 GIFBloom Pro。" = "Buka GIFBloom Pro dengan langganan mingguan atau pembelian satu kali.";
+"GIFBloom Pro 已解锁" = "GIFBloom Pro telah dibuka";
+"订阅与买断" = "Berlangganan atau beli sekali";
+"管理订阅" = "Kelola langganan";
+"隐私政策" = "Kebijakan Privasi";
+"支持" = "Dukungan";
+"使用条款" = "Ketentuan Penggunaan";
+"照片、视频、音频和工程均在设备本地处理，不上传到 GIFBloom 服务器。App Store 购买由 Apple 处理。" = "Foto, video, audio, dan proyek diproses di perangkat Anda dan tidak diunggah ke server GIFBloom. Apple memproses pembelian App Store.";
+"周订阅会按周自动续订。除非在当前订阅周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。" = "Langganan mingguan diperpanjang otomatis kecuali Anda membatalkannya setidaknya 24 jam sebelum periode saat ini berakhir. Anda dapat mengelola atau membatalkannya di Pengaturan Apple ID.";
+"一次性买断只需付款一次，可永久解锁 GIFBloom Pro。价格以 App Store 根据你的地区显示的金额为准。" = "Pembelian satu kali membuka GIFBloom Pro secara permanen. App Store menampilkan harga sesuai wilayah Anda.";
+"确认购买后，款项将从你的 Apple ID 账户扣除。付款信息由 Apple 处理；GIFBloom 不接收银行卡或付款账户信息。" = "Setelah dikonfirmasi, pembayaran ditagihkan ke akun Apple ID Anda. Apple memproses informasi pembayaran; GIFBloom tidak menerima detail kartu atau akun pembayaran Anda.";

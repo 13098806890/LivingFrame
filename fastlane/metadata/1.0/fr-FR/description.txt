@@ -1,0 +1,13 @@
+Transformez des vidéos et des Live Photos en détourages animés, puis composez vos propres scènes en mouvement.
+
+Créez un projet sur une même toile :
+• Détourez des personnes à partir de vidéos et de Live Photos sur votre appareil (iOS 17 ou version ultérieure)
+• Superposez plusieurs éléments et réglez leur position, taille, rotation, ordre et durée d’apparition
+• Ajoutez des autocollants, du texte, des arrière-plans, des cadres et des effets visuels
+• Extrayez le son d’une vidéo, placez-le sur la timeline et réglez le volume ainsi que les fondus
+• Exportez en GIF, en vidéo HEVC avec transparence ou en vidéo H.264
+• Enregistrez vos projets sur l’appareil, puis exportez-les dans Photos ou partagez-les
+
+Le détourage, la composition et l’export se font sur votre appareil. Aucun compte n’est nécessaire et les photos et vidéos choisies ne sont pas téléversées.
+
+GIFBloom est un outil créatif pour créer et modifier des projets personnels de photos animées.

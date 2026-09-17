@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct LivingFrameApp: App {
     @StateObject private var appState = AppState()
+    @StateObject private var purchaseManager = PurchaseManager()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -13,6 +14,7 @@ struct LivingFrameApp: App {
         WindowGroup {
             MainTabView()
                 .environmentObject(appState)
+                .environmentObject(purchaseManager)
                 .preferredColorScheme(.light)
                 .tint(LF.gold)
 #if DEBUG

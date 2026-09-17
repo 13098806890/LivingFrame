@@ -1,1 +1,3 @@
 "CFBundleDisplayName" = "GIFBloom";
+"NSPhotoLibraryUsageDescription" = "Выберите видео или Live Photo, чтобы создать анимированные фото.";
+"NSPhotoLibraryAddUsageDescription" = "Сохраняйте созданные анимации и видео в приложении «Фото».";

@@ -231,7 +231,6 @@ public struct VideoSegmentationPipeline {
         }
 
         LogStore.log("segmentVideo done: clip=\(clipID) name=\(name) frames=\(clip.frameCount) fps=\(clip.fps) size=\(clip.width)x\(clip.height) duration=\(clip.duration)s audio=\(clip.audioURL != nil)")
-        LogStore.trimIfNeeded()
         try FrameCache.shared.register(clip)
         succeeded = true
         return clip
@@ -274,7 +273,6 @@ public struct VideoSegmentationPipeline {
             folderURL: folder
         )
         LogStore.log("segmentPhoto done: clip=\(clipID) name=\(name) input=\(sourceImage.extent.width)x\(sourceImage.extent.height) output=\(segmented.width)x\(segmented.height)")
-        LogStore.trimIfNeeded()
         try FrameCache.shared.register(clip)
         succeeded = true
         return clip

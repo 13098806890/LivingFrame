@@ -22,5 +22,13 @@ Packages/*/.swiftpm/
 # 日志
 *.log
 
+# Fastlane credentials and local overrides
+fastlane/.env
+fastlane/.env.*
+!fastlane/.env.example
+fastlane/*.p8
+**/*.p8
+**/AuthKey_*.p8
+
 # UI audit artifacts
 Artifacts/UIAudit/

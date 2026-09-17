@@ -183,7 +183,6 @@
 "宽度" = "Largeur";
 "对角" = "Diagonale";
 "对齐" = "Aligner";
-"导出日志 (txt)" = "Exporter les journaux (txt)";
 "将创建在「\\(folder.name)」里面" = "Sera créé dans « \\(folder.name) »";
 "将移除画布和时间轴中的全部内容，但不会删除素材库里的素材。" = "Supprime tout du canevas et de la timeline, sans supprimer vos éléments de la bibliothèque.";
 "已存入系统相册，打开「照片」长按即可看到动态效果" = "Enregistré dans Photos — ouvrez Photos et maintenez pour voir l'animation";
@@ -305,7 +304,6 @@
 "仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，剪影边缘越精细，处理时间越长。" = "Davantage d’images sont conservées uniquement si la source a une fréquence plus élevée. Une résolution et une fréquence élevées donnent un détourage plus précis, mais prennent plus de temps.";
 "清理临时文件不会删除任何素材（含文件夹内外的所有剪影素材）。" = "Le nettoyage des fichiers temporaires ne supprime aucun élément, y compris les détourage dans ou hors des dossiers.";
 "剪影生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。" = "La création des détourage, le rendu et l’exportation sont effectués sur votre appareil. Aucune photo ni vidéo n’est envoyée.";
-"日志摘要" = "%d lignes · %@\nLe chargement et la création des détourages sont enregistrés après la sélection d’éléments. Les journaux d’exportation peuvent être analysés.";
 "当前设备暂时无法完成人物识别。请稍后重试，或换一张照片/视频。" = "Cet appareil ne peut pas identifier les personnes pour le moment. Réessayez plus tard ou choisissez une autre photo ou vidéo.";
 "这个素材格式暂不支持。请换一张照片或一段视频重试。" = "Ce format n’est pas pris en charge. Choisissez une autre photo ou vidéo, puis réessayez.";
 "无法读取这个素材。请确认素材仍在相册中，或选择其他素材。" = "Ce média n’a pas pu être lu. Vérifiez qu’il est toujours dans Photos ou choisissez un autre élément.";
@@ -314,3 +312,17 @@
 "素材导入失败：%d 项素材无法读取。请重新选择素材。" = "Échec de l’importation : %d éléments n’ont pas pu être lus. Sélectionnez-les à nouveau.";
 "重试" = "Réessayer";
 "选择其他素材" = "Choisir d’autres médias";
+
+/* GIFBloom Pro, StoreKit, and legal links */
+"关闭" = "Fermer";
+"使用周订阅或一次性买断解锁 GIFBloom Pro。" = "Débloquez GIFBloom Pro avec un abonnement hebdomadaire ou un achat unique.";
+"GIFBloom Pro 已解锁" = "GIFBloom Pro est déverrouillé";
+"订阅与买断" = "S’abonner ou acheter une fois";
+"管理订阅" = "Gérer l’abonnement";
+"隐私政策" = "Politique de confidentialité";
+"支持" = "Assistance";
+"使用条款" = "Conditions d’utilisation";
+"照片、视频、音频和工程均在设备本地处理，不上传到 GIFBloom 服务器。App Store 购买由 Apple 处理。" = "Les photos, vidéos, fichiers audio et projets sont traités sur votre appareil et ne sont pas envoyés aux serveurs de GIFBloom. Apple traite les achats effectués dans l’App Store.";
+"周订阅会按周自动续订。除非在当前订阅周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。" = "L’abonnement hebdomadaire se renouvelle automatiquement, sauf si vous l’annulez au moins 24 heures avant la fin de la période en cours. Vous pouvez le gérer ou l’annuler dans les réglages de votre identifiant Apple.";
+"一次性买断只需付款一次，可永久解锁 GIFBloom Pro。价格以 App Store 根据你的地区显示的金额为准。" = "L’achat unique débloque GIFBloom Pro de façon permanente. Le prix affiché par l’App Store dépend de votre région.";
+"确认购买后，款项将从你的 Apple ID 账户扣除。付款信息由 Apple 处理；GIFBloom 不接收银行卡或付款账户信息。" = "Après confirmation, le montant est débité de votre compte Apple. Apple traite les informations de paiement ; GIFBloom ne reçoit pas les données de votre carte ni de votre compte de paiement.";

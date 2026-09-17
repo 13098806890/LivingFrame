@@ -1,0 +1,26 @@
+{
+  "product_id": "com.livingframe.app.pro.weekly",
+  "app_store_connect_resource_id": "6812702157",
+  "reference_name": "GIFBloom Pro Weekly",
+  "display_name_rule": "Keep the product display name identical in all supported locales.",
+  "type": "AUTO_RENEWABLE_SUBSCRIPTION",
+  "subscription_period": "ONE_WEEK",
+  "subscription_group": {
+    "id": "22389365",
+    "reference_name": "GIFBloom订阅"
+  },
+  "app_store_connect_state_as_of_2026_09_17": "MISSING_METADATA",
+  "localization_state_as_of_2026_09_17": "PREPARE_FOR_SUBMISSION",
+  "review_information": {
+    "app_review_screenshot": null,
+    "review_notes": null,
+    "status": "NEEDS_REVIEW_ASSETS_AND_OWNER_INPUT"
+  },
+  "pricing_summary_as_of_2026_09_17": {
+    "territory": "USA",
+    "currency": "USD",
+    "customer_price": "1.99",
+    "billing_period": "week"
+  },
+  "localizations_path": "localizations/<App Store locale>/"
+}

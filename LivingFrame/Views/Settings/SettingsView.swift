@@ -3,9 +3,10 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var logRefresh = 0
-    @State private var isClearingLogs = false
+    @EnvironmentObject private var purchaseManager: PurchaseManager
     @State private var showAdvancedExportFormats = false
+    @State private var showProStore = false
+    @State private var showManageSubscription = false
     // Keep the switch's interaction state local to this view. SwiftUI's
     // environment-object binding can otherwise leave the UIKit accessibility
     // switch snapshot at 0 while AppState is being persisted synchronously.
@@ -152,50 +153,56 @@ struct SettingsView: View {
                         }
                     }
 
-                    SectionCard(title: "调试日志") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(logSummary)
-                                .font(.caption)
-                                .foregroundStyle(LF.textSecondary)
-                            HStack(spacing: 10) {
-                                ShareLink(item: LogStore.logURL) {
-                                    Label("导出日志 (txt)", systemImage: "square.and.arrow.up")
-                                        .font(.caption.weight(.semibold))
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(MagicButtonStyle(prominent: false))
-                                Button(role: .destructive) {
-                                    guard !isClearingLogs else { return }
-                                    isClearingLogs = true
-                                    Task { @MainActor in
-                                        await LogStore.clearAsync()
-                                        isClearingLogs = false
-                                        logRefresh += 1
-                                    }
+                    SectionCard(title: "GIFBloom Pro") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            if purchaseManager.hasPro {
+                                Label("GIFBloom Pro 已解锁", systemImage: "checkmark.seal.fill")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(LF.actionPrimary)
+                            } else {
+                                Text("使用周订阅或一次性买断解锁 GIFBloom Pro。")
+                                    .font(.caption)
+                                    .foregroundStyle(LF.textSecondary)
+                            }
+
+                            Button {
+                                showProStore = true
+                            } label: {
+                                Label("订阅与买断", systemImage: "sparkles")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(LF.actionPrimary)
+
+                            if purchaseManager.hasActiveWeeklySubscription {
+                                Button {
+                                    showManageSubscription = true
                                 } label: {
-                                    if isClearingLogs {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                            .frame(maxWidth: .infinity)
-                                    } else {
-                                        Label("清空", systemImage: "trash")
-                                    }
+                                    Label("管理订阅", systemImage: "arrow.up.right.square")
                                 }
-                                .font(.caption.weight(.semibold))
-                                .disabled(isClearingLogs)
-                                .buttonStyle(MagicButtonStyle(prominent: false))
+                                .buttonStyle(.plain)
+                                .foregroundStyle(LF.actionPrimary)
                             }
                         }
                     }
-                    .id(logRefresh)
 
                     SectionCard(title: "隐私") {
                         VStack(alignment: .leading, spacing: 6) {
                             Label("全部在设备端处理", systemImage: "lock.shield")
                                 .font(.subheadline.weight(.medium))
-                            Text("剪影生成、渲染和导出均在本机完成，不上传任何照片或视频，无需联网、无需账号。")
+                            Text("照片、视频、音频和工程均在设备本地处理，不上传到 GIFBloom 服务器。App Store 购买由 Apple 处理。")
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
+
+                            Link(destination: GIFBloomStoreLinks.privacyPolicy) {
+                                Label("隐私政策", systemImage: "hand.raised")
+                            }
+                            Link(destination: GIFBloomStoreLinks.support) {
+                                Label("支持", systemImage: "questionmark.circle")
+                            }
+                            Link(destination: GIFBloomStoreLinks.termsOfUse) {
+                                Label("使用条款", systemImage: "doc.text")
+                            }
                         }
                     }
 
@@ -226,6 +233,13 @@ struct SettingsView: View {
         .onChange(of: preserveOriginalMediaQuality) { _, value in
             appState.setPreserveOriginalMediaQuality(value)
         }
+        .sheet(isPresented: $showProStore) {
+            GIFBloomProStoreView()
+        }
+        .manageSubscriptionsSheet(
+            isPresented: $showManageSubscription,
+            subscriptionGroupID: PurchaseManager.subscriptionGroupID
+        )
     }
 
     private func themeCard(_ theme: AppTheme) -> some View {
@@ -294,20 +308,6 @@ struct SettingsView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(theme.title)
         .accessibilityValue(isSelected ? "已选中" : "未选中")
-    }
-
-    private var logSummary: String {
-        let log = LogStore.read()
-        let lines = log.split(separator: "\n").count
-        let size = (try? FileManager.default.attributesOfItem(
-            atPath: LogStore.logURL.path
-        )[.size] as? Int) ?? 0
-        let sizeText = ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
-        return String(
-            format: NSLocalizedString("日志摘要", comment: "Log summary"),
-            lines,
-            sizeText
-        )
     }
 
     private var appVersionText: String {

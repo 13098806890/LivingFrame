@@ -1,0 +1,13 @@
+Turn videos and Live Photos into animated cutouts, then arrange them into your own moving scenes.
+
+Create a project on one canvas:
+• Cut people out of videos and Live Photos on your device (iOS 17 or later)
+• Layer multiple cutouts; adjust position, size, rotation, order, and timing
+• Add stickers, text, backgrounds, frames, and visual effects
+• Extract audio from a video, place it on the timeline, and adjust volume and fades
+• Export as GIF, transparent HEVC video, or H.264 video
+• Save projects on your device, then export to Photos or share
+
+Cutout generation, composition, and export happen on your device. No account is required, and the photos and videos you choose are not uploaded.
+
+GIFBloom is a creative tool for making and editing personal animated photo projects.

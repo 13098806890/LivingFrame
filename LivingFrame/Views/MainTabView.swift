@@ -25,4 +25,5 @@ struct MainTabView: View {
 #Preview {
     MainTabView()
         .environmentObject(AppState())
+        .environmentObject(PurchaseManager())
 }

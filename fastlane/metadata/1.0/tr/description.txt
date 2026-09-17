@@ -1,0 +1,13 @@
+Videoları ve Live Photo’ları hareketli kesitlere dönüştür, ardından kendi hareketli sahnelerini oluşturmak için birleştir.
+
+Tek bir tuvalde proje oluştur:
+• Videolardan ve Live Photo’lardan kişileri doğrudan cihazında ayır (iOS 17 veya üzeri gerekir)
+• Birden fazla kesiti katmanla; konum, boyut, döndürme, sıra ve görünme süresini ayarla
+• Çıkartma, metin, arka plan, çerçeve ve görsel efekt ekle
+• Videodan sesi çıkar, zaman çizelgesine yerleştir; ses düzeyini ve geçişleri ayarla
+• GIF, şeffaf HEVC video veya H.264 video olarak dışa aktar
+• Projeleri cihazına kaydet, Fotoğraflar’a aktar veya paylaş
+
+Kesit oluşturma, birleştirme ve dışa aktarma cihazında yapılır. Hesap gerekmez; seçtiğin fotoğraf ve videolar yüklenmez.
+
+GIFBloom, kişisel animasyonlu fotoğraf projeleri oluşturup düzenlemek için yaratıcı bir araçtır.

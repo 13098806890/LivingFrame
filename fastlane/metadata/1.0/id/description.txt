@@ -1,0 +1,13 @@
+Ubah video dan Live Photo menjadi potongan bergerak, lalu susun menjadi adegan animasi buatan Anda.
+
+Buat proyek di satu kanvas:
+• Potong subjek dari video dan Live Photo langsung di perangkat (iOS 17 atau lebih baru)
+• Susun beberapa potongan berlapis; atur posisi, ukuran, rotasi, urutan, dan waktunya
+• Tambahkan stiker, teks, latar, bingkai, dan efek visual
+• Ekstrak audio dari video, letakkan di linimasa, lalu atur volume dan efek fade
+• Ekspor sebagai GIF, video HEVC transparan, atau video H.264
+• Simpan proyek di perangkat, lalu ekspor ke Foto atau bagikan
+
+Pembuatan potongan, komposisi, dan ekspor berlangsung di perangkat Anda. Akun tidak diperlukan; foto dan video yang dipilih tidak diunggah.
+
+GIFBloom adalah alat kreatif untuk membuat dan mengedit proyek foto animasi pribadi.

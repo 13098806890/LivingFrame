@@ -1,0 +1,138 @@
+require "json"
+require "dotenv"
+
+Dotenv.load(File.join(__dir__, ".env"))
+
+default_platform(:ios)
+
+APP_IDENTIFIER = "com.livingframe.app"
+DEFAULT_STORE_VERSION = "1.0"
+
+def app_store_api_key
+  key_id = ENV["ASC_KEY_ID"]
+  issuer_id = ENV["ASC_ISSUER_ID"]
+  key_filepath = ENV["ASC_KEY_FILEPATH"]
+
+  UI.user_error!("Set ASC_KEY_ID, ASC_ISSUER_ID, and ASC_KEY_FILEPATH in fastlane/.env") if [key_id, issuer_id, key_filepath].any?(&:nil?) || [key_id, issuer_id, key_filepath].any?(&:empty?)
+  UI.user_error!("ASC_KEY_FILEPATH does not exist: #{key_filepath}") unless File.file?(key_filepath)
+
+  app_store_connect_api_key(
+    key_id: key_id,
+    issuer_id: issuer_id,
+    key_filepath: key_filepath,
+    in_house: false,
+    set_spaceship_token: true
+  )
+end
+
+def store_version(options)
+  options[:version] || ENV["APP_STORE_VERSION"] || DEFAULT_STORE_VERSION
+end
+
+def metadata_directory(version)
+  path = File.expand_path("metadata/#{version}", __dir__)
+  UI.user_error!("No metadata snapshot found at #{path}") unless File.directory?(path)
+  path
+end
+
+platform :ios do
+  desc "Upload localized App Store listing metadata for a store version (does not submit for review)"
+  lane :upload_metadata do |options|
+    version = store_version(options)
+
+    deliver(
+      api_key: app_store_api_key,
+      app_identifier: APP_IDENTIFIER,
+      app_version: version,
+      metadata_path: metadata_directory(version),
+      force: true,
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      skip_app_version_update: true,
+      submit_for_review: false,
+      automatic_release: false,
+      precheck_include_in_app_purchases: false
+    )
+  end
+
+  desc "Upload App Store screenshots for a store version (does not submit for review)"
+  lane :upload_screenshots do |options|
+    version = store_version(options)
+    screenshots_path = File.expand_path("screenshots/#{version}", __dir__)
+    UI.user_error!("Add localized screenshots under #{screenshots_path} before uploading") unless File.directory?(screenshots_path)
+    image_files = Dir.glob(File.join(screenshots_path, "**", "*.{png,jpg,jpeg}"), File::FNM_CASEFOLD)
+    UI.user_error!("No screenshot images found under #{screenshots_path}") if image_files.empty?
+
+    deliver(
+      api_key: app_store_api_key,
+      app_identifier: APP_IDENTIFIER,
+      app_version: version,
+      metadata_path: metadata_directory(version),
+      screenshots_path: screenshots_path,
+      force: true,
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_app_version_update: true,
+      submit_for_review: false,
+      automatic_release: false
+    )
+  end
+
+  desc "Upload a built IPA to App Store Connect without submitting it for review"
+  lane :upload_build do |options|
+    ipa = options[:ipa]
+    UI.user_error!("Pass ipa:/path/to/GIFBloom.ipa") if ipa.to_s.empty?
+    UI.user_error!("IPA not found: #{ipa}") unless File.file?(ipa)
+
+    deliver(
+      api_key: app_store_api_key,
+      app_identifier: APP_IDENTIFIER,
+      ipa: ipa,
+      skip_metadata: true,
+      skip_screenshots: true,
+      skip_app_version_update: true,
+      submit_for_review: false,
+      automatic_release: false
+    )
+  end
+
+  desc "Set the app's App Store price using Fastlane's price tier support; requires an explicit confirmation"
+  lane :set_app_price do |options|
+    version = store_version(options)
+    source = File.join(__dir__, "data", version, "app.json")
+    UI.user_error!("No App Store data snapshot found at #{source}") unless File.file?(source)
+    config = JSON.parse(File.read(source))
+    tier = config.dig("commercial", "app", "fastlane_price_tier")
+    UI.user_error!("Set a confirmed integer Fastlane price tier in data/#{version}/app.json") if tier.nil?
+    if options[:tier] && Integer(options[:tier]) != Integer(tier)
+      UI.user_error!("The command-line tier differs from the tracked data/#{version}/app.json price tier")
+    end
+    UI.user_error!("Pass confirm:true to apply the app price change") unless options[:confirm].to_s == "true"
+
+    deliver(
+      api_key: app_store_api_key,
+      app_identifier: APP_IDENTIFIER,
+      metadata_path: metadata_directory(version),
+      price_tier: Integer(tier),
+      force: true,
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_screenshots: true,
+      skip_app_version_update: true,
+      submit_for_review: false,
+      automatic_release: false
+    )
+  end
+
+  desc "Download App Store Connect metadata to the selected local version folder"
+  lane :download_store_metadata do |options|
+    version = store_version(options)
+    sh(
+      "fastlane", "deliver", "download_metadata",
+      "--app_identifier", APP_IDENTIFIER,
+      "--app_version", version,
+      "--metadata_path", metadata_directory(version)
+    )
+  end
+
+end

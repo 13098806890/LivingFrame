@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "GIFBloom";
+"NSPhotoLibraryUsageDescription" = "选择视频或 Live Photo，制作动态照片。";
+"NSPhotoLibraryAddUsageDescription" = "将制作的动图和视频保存到“照片”。";

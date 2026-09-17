@@ -18,7 +18,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     /// 文字工具统一使用无语言字符的系统图标，避免显示中文/英文文字本身。
-    static let textIcon = "character.textbox"
+    static let textIcon = "text.alignleft"
 
     var title: LocalizedStringKey {
         switch self {

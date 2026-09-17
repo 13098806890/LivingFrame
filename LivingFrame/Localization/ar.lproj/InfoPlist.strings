@@ -1,1 +1,3 @@
 "CFBundleDisplayName" = "GIFBloom";
+"NSPhotoLibraryUsageDescription" = "اختر فيديو أو صورة Live Photo لإنشاء صور متحركة.";
+"NSPhotoLibraryAddUsageDescription" = "احفظ الرسوم المتحركة ومقاطع الفيديو التي تنشئها في الصور.";

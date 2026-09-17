@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "snapshot_type": "FULL_BASELINE",
+  "snapshot_date": "2026-09-17",
+  "app": {
+    "name": "GIFBloom",
+    "bundle_id": "com.livingframe.app",
+    "app_store_connect_app_id": "6804921680",
+    "store_version": "1.0",
+    "primary_locale": "en-US",
+    "primary_category": "PHOTO_VIDEO",
+    "secondary_category": null,
+    "copyright": {
+      "value": null,
+      "status": "NEEDS_OWNER_INPUT"
+    },
+    "availability": {
+      "status": "NEEDS_CONFIRMATION",
+      "territories": null
+    },
+    "release_options": {
+      "phased_release": false,
+      "automatic_release": false
+    }
+  },
+  "commercial": {
+    "app": {
+      "status": "NEEDS_CONFIRMATION_IN_APP_STORE_CONNECT",
+      "distribution_model": null,
+      "fastlane_price_tier": null,
+      "note": "Do not infer whether the app itself is free or assign a price tier until the owner confirms the intended app price."
+    },
+    "in_app_purchases": [
+      {
+        "product_id": "com.livingframe.app.pro.weekly",
+        "type": "AUTO_RENEWABLE_SUBSCRIPTION",
+        "price_snapshot": "products/weekly/prices.json"
+      },
+      {
+        "product_id": "com.livingframe.app.pro.lifetime",
+        "type": "NON_CONSUMABLE",
+        "price_snapshot": "products/lifetime/prices.json"
+      }
+    ]
+  },
+  "store_urls": {
+    "privacy_policy": "See localized metadata privacy_url.txt files.",
+    "support": "See localized metadata support_url.txt files.",
+    "marketing": "See localized metadata marketing_url.txt files.",
+    "eula": "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+  },
+  "screenshots": {
+    "status": "MISSING_REAL_APP_STORE_SCREENSHOTS",
+    "path": "../../screenshots/1.0/<locale>/"
+  },
+  "review_information": {
+    "status": "NEEDS_OWNER_INPUT",
+    "contact_first_name": null,
+    "contact_last_name": null,
+    "contact_email": null,
+    "contact_phone": null,
+    "demo_account_name": null,
+    "demo_account_password": null,
+    "notes": null
+  },
+  "privacy": {
+    "status": "DRAFT_REQUIRES_OWNER_REVIEW",
+    "data_collection_answers": null,
+    "tracking": null,
+    "privacy_manifest_path": "../../../LivingFrame/PrivacyInfo.xcprivacy"
+  },
+  "age_rating": {
+    "status": "NEEDS_OWNER_QUESTIONNAIRE",
+    "fastlane_config_path": null,
+    "answers": null
+  },
+  "content_rights": {
+    "status": "NEEDS_OWNER_CONFIRMATION",
+    "contains_third_party_content": null
+  },
+  "app_store_connect_snapshot": {
+    "version_state": "PREPARE_FOR_SUBMISSION",
+    "build_attached": false,
+    "known_blockers": [
+      "App Store screenshots",
+      "app privacy answers",
+      "age rating and content rights",
+      "copyright",
+      "App Review contact information",
+      "IAP App Review screenshots and review notes",
+      "app price confirmation",
+      "version/build number alignment"
+    ]
+  }
+}

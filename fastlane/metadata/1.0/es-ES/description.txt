@@ -1,0 +1,13 @@
+Convierte vídeos y Live Photos en recortes animados y combínalos para crear tus propias escenas en movimiento.
+
+Crea tu proyecto en un mismo lienzo:
+• Recorta personas de vídeos y Live Photos directamente en tu dispositivo (iOS 17 o posterior)
+• Combina varios recortes y ajusta su posición, tamaño, rotación, orden y duración
+• Añade stickers, texto, fondos, marcos y efectos visuales
+• Extrae el audio de un vídeo, colócalo en la línea de tiempo y ajusta el volumen y los fundidos
+• Exporta como GIF, vídeo HEVC con transparencia o vídeo H.264
+• Guarda tus proyectos en el dispositivo y expórtalos a Fotos o compártelos
+
+El recorte, la composición y la exportación se realizan en tu dispositivo. No necesitas una cuenta y las fotos y vídeos que eliges no se suben.
+
+GIFBloom es una herramienta creativa para crear y editar proyectos personales de fotos animadas.

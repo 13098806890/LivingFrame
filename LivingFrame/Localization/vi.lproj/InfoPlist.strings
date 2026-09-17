@@ -1,1 +1,3 @@
 "CFBundleDisplayName" = "GIFBloom";
+"NSPhotoLibraryUsageDescription" = "Chọn video hoặc Live Photo để tạo ảnh động.";
+"NSPhotoLibraryAddUsageDescription" = "Lưu ảnh động và video bạn tạo vào ứng dụng Ảnh.";

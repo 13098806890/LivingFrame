@@ -1,1 +1,3 @@
 "CFBundleDisplayName" = "GIFBloom";
+"NSPhotoLibraryUsageDescription" = "動画またはLive Photoを選んで、アニメーション写真を作成します。";
+"NSPhotoLibraryAddUsageDescription" = "作成したアニメーションや動画を写真に保存します。";
