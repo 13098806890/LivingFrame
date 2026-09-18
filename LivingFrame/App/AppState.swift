@@ -100,6 +100,8 @@ final class AppState: ObservableObject {
     @Published var selectedAudioID: UUID?
     /// 是否选中背景对象（点击画布空白处选中，检查器可编辑背景图案）
     @Published var selectedBackground = false
+    @Published private(set) var isAddingFaceSticker = false
+    @Published private(set) var faceStickerStatus: String?
     /// 是否处于裁剪模式（画布显示裁剪框）
     @Published var isCropping = false
 
@@ -274,7 +276,7 @@ final class AppState: ObservableObject {
         }
     }
     /// 全局视觉皮肤；切换后所有使用 LF 语义色的页面会立即刷新。
-    @Published var appTheme: AppTheme = .skyPetal {
+    @Published var appTheme: AppTheme = .appIcon {
         didSet {
             if !isUIAuditFixtureLaunch {
                 UserDefaults.standard.set(appTheme.rawValue, forKey: settingAppThemeKey)
@@ -428,7 +430,7 @@ final class AppState: ObservableObject {
         }
         if let rawTheme = defaults.string(forKey: settingAppThemeKey),
            let theme = AppTheme(rawValue: rawTheme) {
-            appTheme = theme
+            appTheme = AppTheme.selectableThemes.contains(theme) ? theme : .appIcon
         } else {
             LF.apply(appTheme)
         }
@@ -2810,6 +2812,108 @@ final class AppState: ObservableObject {
         recomputeDuration()
     }
 
+    /// Analyze the explicitly selected person clip, then bind the sticker only
+    /// to that clip's source-frame eye landmarks.
+    @discardableResult
+    func addFaceTrackedSticker(_ stickerID: String, targetClipElementID: UUID? = nil) async -> Bool {
+        guard !isAddingFaceSticker,
+              let definition = DecorationRenderer.stickerDefinition(for: stickerID),
+              definition.faceAnchors != nil,
+              let currentComposition = composition ?? defaultComposition() else {
+            return false
+        }
+        guard let targetElement = faceTrackingTarget(
+            in: currentComposition,
+            preferredElementID: targetClipElementID
+        ),
+              case .clip(let clipID) = targetElement.kind,
+              let clip = clips.first(where: { $0.id == clipID }) else {
+            faceStickerStatus = NSLocalizedString(
+                "请先选中对应的人物素材，再添加墨镜。",
+                comment: "AI sticker needs a target clip"
+            )
+            return false
+        }
+
+        isAddingFaceSticker = true
+        faceStickerStatus = NSLocalizedString("正在逐帧识别人脸…", comment: "AI sticker analysis progress")
+        defer { isAddingFaceSticker = false }
+
+        do {
+            let keyframes = try await FaceStickerTracker().analyze(clip: clip)
+            guard var latestComposition = composition,
+                  latestComposition.id == currentComposition.id,
+                  let latestTarget = latestComposition.elements.first(where: { $0.id == targetElement.id }),
+                  case .clip(let latestClipID) = latestTarget.kind,
+                  latestClipID == clip.id else {
+                faceStickerStatus = NSLocalizedString(
+                    "工程在分析期间发生了变化，请重新添加墨镜。",
+                    comment: "AI sticker analysis became stale"
+                )
+                return false
+            }
+
+            FrameCache.shared.registerInMemory(clip)
+            let duration = max(latestTarget.endTime - latestTarget.startTime, 1 / max(latestComposition.fps, 1))
+            let stickerDuration = max(definition.defaultDuration, 0.1)
+            let element = CompositionElement(
+                kind: .decoration(decorationID: stickerID),
+                name: definition.localizedName,
+                transform: ElementTransform(position: .zero, scale: 1, rotation: 0),
+                zIndex: nextElementZIndex(in: latestComposition),
+                startTime: latestTarget.startTime,
+                endTime: latestTarget.startTime + duration,
+                sourceStartTime: 0,
+                sourceEndTime: stickerDuration,
+                followsLongestMaterialDuration: false,
+                faceStickerTracking: FaceStickerTracking(
+                    targetClipElementID: latestTarget.id,
+                    clipID: clip.id,
+                    keyframes: keyframes
+                )
+            )
+            latestComposition.elements.append(element)
+            composition = latestComposition
+            selectElement(element.id)
+            recomputeDuration()
+            faceStickerStatus = NSLocalizedString("墨镜已添加，会跟随双眼移动，可自行调整大小。", comment: "AI sticker was added")
+            return true
+        } catch FaceStickerTracker.TrackingError.noFaceDetected {
+            faceStickerStatus = NSLocalizedString(
+                "没有识别到清晰的双眼，试试正脸更清楚的素材。",
+                comment: "AI sticker face detection failed"
+            )
+        } catch {
+            faceStickerStatus = NSLocalizedString(
+                "人脸分析失败，请重试。",
+                comment: "AI sticker analysis failed"
+            )
+        }
+        return false
+    }
+
+    private func faceTrackingTarget(
+        in composition: Composition,
+        preferredElementID: UUID? = nil
+    ) -> CompositionElement? {
+        if let preferredElementID {
+            return composition.elements.first { element in
+                guard element.id == preferredElementID,
+                      case .clip = element.kind else {
+                    return false
+                }
+                return true
+            }
+        }
+        guard let selectedID = lastSelectedElementID,
+              selectedElementIDs.contains(selectedID),
+              let selected = composition.elements.first(where: { $0.id == selectedID }),
+              case .clip = selected.kind else {
+            return nil
+        }
+        return selected
+    }
+
     // MARK: - 导出
 
     /// Estimates the currently selected export configuration without writing a full output file.
@@ -2818,7 +2922,8 @@ final class AppState: ObservableObject {
         fps: Double,
         chatSticker: Bool,
         chatGIFPixelSize: CGFloat,
-        resolution: ExportResolution
+        resolution: ExportResolution,
+        watermark: ExportWatermark? = nil
     ) async throws -> Int64 {
         guard let composition else { throw AppStateError.noComposition }
 
@@ -2844,6 +2949,7 @@ final class AppState: ObservableObject {
                     maxPixelSize: maxPixelSize,
                     sampleFrameCount: 6,
                     outputSize: outputSize,
+                    watermark: watermark,
                     isCancelled: { Task.isCancelled }
                 )
             }
@@ -2901,7 +3007,8 @@ final class AppState: ObservableObject {
     func exportClipAsTransparentGIF(
         _ clipID: String,
         resolution: ExportResolution = .p720,
-        fps: Double = 15
+        fps: Double = 15,
+        watermark: ExportWatermark? = nil
     ) async throws -> URL {
         guard let clip = clips.first(where: { $0.id == clipID }) else {
             throw AppStateError.clipNotFound
@@ -2932,6 +3039,7 @@ final class AppState: ObservableObject {
                     maxPixelSize: resolution.maxPixelSize,
                     loops: true,
                     appliesClipEffects: false,
+                    watermark: watermark,
                     progress: { [weak self] value in
                     Task { @MainActor in self?.exportProgress = value }
                 }
@@ -2993,7 +3101,8 @@ final class AppState: ObservableObject {
         fps: Double,
         chatSticker: Bool = false,
         chatGIFPixelSize: CGFloat = 240,
-        resolution: ExportResolution = .original
+        resolution: ExportResolution = .original,
+        watermark: ExportWatermark? = nil
     ) async throws -> URL {
         guard let composition else { throw AppStateError.noComposition }
         isExporting = true
@@ -3018,6 +3127,7 @@ final class AppState: ObservableObject {
                     composition,
                     to: url,
                     pixelSize: chatGIFPixelSize,
+                    watermark: watermark,
                     progress: { [weak self] value in
                         Task { @MainActor in self?.exportProgress = value }
                     }
@@ -3033,7 +3143,8 @@ final class AppState: ObservableObject {
                     composition,
                     to: url,
                     fps: fps,
-                    maxPixelSize: resolution.maxPixelSize
+                    maxPixelSize: resolution.maxPixelSize,
+                    watermark: watermark
                 ) { [weak self] value in
                     Task { @MainActor in self?.exportProgress = value }
                 }
@@ -3047,7 +3158,8 @@ final class AppState: ObservableObject {
                 },
                 to: url,
                 fps: fps,
-                maxPixelSize: resolution.maxPixelSize
+                maxPixelSize: resolution.maxPixelSize,
+                watermark: watermark
             ) { [weak self] value in
                 Task { @MainActor in self?.exportProgress = value }
             }
@@ -3056,7 +3168,11 @@ final class AppState: ObservableObject {
                 "xdz.livephoto export begin compositionSize=\(composition.renderRect.size.width)x\(composition.renderRect.size.height) "
                     + "fps=\(composition.fps) duration=\(composition.duration)s"
             )
-            let output = try await LivePhotoExporter().export(composition, to: url) { [weak self] value in
+            let output = try await LivePhotoExporter().export(
+                composition,
+                to: url,
+                watermark: watermark
+            ) { [weak self] value in
                 Task { @MainActor in self?.exportProgress = value }
             }
             let videoBytes = (try? FileManager.default.attributesOfItem(atPath: output.videoURL.path)[.size] as? Int) ?? 0
@@ -3194,6 +3310,11 @@ final class AppState: ObservableObject {
     /// 保存作品时统一维护草稿箱规则：基于磁盘最新状态，仅保留更新时间最新的一份草稿。
     private func saveWorkApplyingDraftPolicy(_ work: WorkItem) async -> (Bool, [WorkItem]) {
         await workPersistence.saveApplyingDraftPolicy(work)
+    }
+
+    /// 按作品目录中的文件计算存储占用；WorksStore 在自己的 I/O 队列执行扫描。
+    func workStorageSizeBytes(for workID: UUID) async -> Int64 {
+        await workPersistence.storageSizeBytes(for: workID)
     }
 
     /// 自动保存当前工程的草稿，不修改正式作品快照。

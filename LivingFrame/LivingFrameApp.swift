@@ -17,6 +17,9 @@ struct LivingFrameApp: App {
                 .environmentObject(purchaseManager)
                 .preferredColorScheme(.light)
                 .tint(LF.gold)
+                .task {
+                    appState.cleanupStaleTemporaryFiles()
+                }
 #if DEBUG
                 .task {
                     await UIAuditFixtureSeeder.seedIfRequested(into: appState)

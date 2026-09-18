@@ -174,10 +174,11 @@ enum PhotoLibraryMediaImporter {
             return BackgroundMedia(data: data, fileExtension: url.pathExtension, isVideo: true)
         }
 
-        guard let movie = try? await item.loadTransferable(type: MovieFile.self),
-              let data = await readData(at: movie.url) else {
+        guard let movie = try? await item.loadTransferable(type: MovieFile.self) else {
             return nil
         }
+        defer { try? FileManager.default.removeItem(at: movie.url) }
+        guard let data = await readData(at: movie.url) else { return nil }
         progress(1)
         return BackgroundMedia(data: data, fileExtension: movie.url.pathExtension, isVideo: true)
     }

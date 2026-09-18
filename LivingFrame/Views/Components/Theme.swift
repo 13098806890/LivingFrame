@@ -68,7 +68,7 @@ struct ThemePalette {
     let timelineText: Color
 }
 
-/// 五套可切换的配色方案。每套按界面用途定义背景、表面、操作、品牌强调、文字和时间轴语义色。
+/// 所有已发布的配色方案。每套按界面用途定义背景、表面、操作、品牌强调、文字和时间轴语义色。
 enum AppTheme: String, CaseIterable, Identifiable {
     case skyPetal
     case coralNavy
@@ -77,6 +77,9 @@ enum AppTheme: String, CaseIterable, Identifiable {
     case appIcon
 
     var id: String { rawValue }
+
+    /// 旧主题保留在枚举中用于读取旧偏好；当前统一使用从 App 图标提取的配色。
+    static let selectableThemes: [AppTheme] = [.appIcon]
 
     var title: String {
         switch self {
@@ -110,16 +113,16 @@ enum AppTheme: String, CaseIterable, Identifiable {
                 brandTint: Color(hex: "95CEE8"),
                 selectionSurface: Color(hex: "DDF2FB"),
                 folderIcon: Color(hex: "47A0C9"),
-                accent: Color(hex: "DF8CAD"),
+                accent: Color(hex: "47A0C9"),
                 destructive: Color(hex: "D6576E"),
                 textPrimary: Color(hex: "0E0E0E"),
                 textSecondary: Color(hex: "5F707B"),
                 timelineClip: Color(hex: "47A0C9"),
                 timelineBackground: Color(hex: "95CEE8"),
-                timelineSticker: Color(hex: "DF8CAD"),
-                timelineEffect: Color(hex: "DF8CAD"),
+                timelineSticker: Color(hex: "47A0C9"),
+                timelineEffect: Color(hex: "47A0C9"),
                 timelineAudio: Color(hex: "95CEE8"),
-                timelineText: Color(hex: "A95D80")
+                timelineText: Color(hex: "47A0C9")
             )
         case .coralNavy:
             return ThemePalette(
@@ -152,16 +155,16 @@ enum AppTheme: String, CaseIterable, Identifiable {
                 brandTint: Color(hex: "E7F0D6"),
                 selectionSurface: Color(hex: "E2F2D3"),
                 folderIcon: Color(hex: "4AA112"),
-                accent: Color(hex: "D4B01D"),
+                accent: Color(hex: "4AA112"),
                 destructive: Color(hex: "D45050"),
                 textPrimary: Color(hex: "1C1A1B"),
                 textSecondary: Color(hex: "687066"),
                 timelineClip: Color(hex: "4AA112"),
                 timelineBackground: Color(hex: "E7F0D6"),
-                timelineSticker: Color(hex: "D4B01D"),
-                timelineEffect: Color(hex: "D4B01D"),
+                timelineSticker: Color(hex: "4AA112"),
+                timelineEffect: Color(hex: "4AA112"),
                 timelineAudio: Color(hex: "4AA112"),
-                timelineText: Color(hex: "6B7D24")
+                timelineText: Color(hex: "4AA112")
             )
         case .gardenSun:
             return ThemePalette(
@@ -194,16 +197,16 @@ enum AppTheme: String, CaseIterable, Identifiable {
                 brandTint: Color(hex: "99CFF0"),
                 selectionSurface: Color(hex: "DDF0FC"),
                 folderIcon: Color(hex: "DE6332"),
-                accent: Color(hex: "BB4128"),
+                accent: Color(hex: "DE6332"),
                 destructive: Color(hex: "C0393D"),
                 textPrimary: Color(hex: "18354E"),
                 textSecondary: Color(hex: "576C7C"),
                 timelineClip: Color(hex: "0875D1"),
                 timelineBackground: Color(hex: "99CFF0"),
                 timelineSticker: Color(hex: "DE6332"),
-                timelineEffect: Color(hex: "D89130"),
-                timelineAudio: Color(hex: "446D91"),
-                timelineText: Color(hex: "B94A2C")
+                timelineEffect: Color(hex: "DE6332"),
+                timelineAudio: Color(hex: "0875D1"),
+                timelineText: Color(hex: "DE6332")
             )
         }
     }
@@ -254,25 +257,188 @@ enum LF {
 
 // MARK: - 组件样式
 
-struct MagicButtonStyle: ButtonStyle {
-    var prominent = true
+enum LFActionButtonKind {
+    case primary
+    case secondary
+    case destructive
+}
+
+/// 普通操作按钮按语义归类：推进任务、辅助操作和不可逆操作共享统一尺寸与按压反馈。
+struct LFActionButtonStyle: ButtonStyle {
+    let kind: LFActionButtonKind
+
+    @Environment(\.controlSize) private var controlSize
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var isCompact: Bool {
+        controlSize == .mini || controlSize == .small
+    }
+
+    private var foregroundColor: Color {
+        switch kind {
+        case .primary: .white
+        case .secondary: LF.selectionText
+        case .destructive: LF.destructive
+        }
+    }
+
+    private var fillStyle: AnyShapeStyle {
+        switch kind {
+        case .primary: AnyShapeStyle(LF.accentGradient)
+        case .secondary: AnyShapeStyle(LF.surface.opacity(0.94))
+        case .destructive: AnyShapeStyle(LF.destructive.opacity(0.09))
+        }
+    }
+
+    private var strokeColor: Color {
+        switch kind {
+        case .primary: .clear
+        case .secondary: LF.actionPrimary.opacity(0.3)
+        case .destructive: LF.destructive.opacity(0.38)
+        }
+    }
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.headline)
-            .foregroundStyle(prominent ? .white : LF.textPrimary)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
+            .font((isCompact ? Font.caption : Font.subheadline).weight(.semibold))
+            .foregroundStyle(foregroundColor)
+            .padding(.horizontal, isCompact ? 12 : 16)
+            .padding(.vertical, isCompact ? 7 : 10)
+            .frame(minHeight: isCompact ? 36 : 44)
             .background {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(prominent ? AnyShapeStyle(LF.accentGradient) : AnyShapeStyle(Color.clear))
+                RoundedRectangle(cornerRadius: isCompact ? 10 : 12, style: .continuous)
+                    .fill(fillStyle)
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(LF.header.opacity(prominent ? 0 : 0.5), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: isCompact ? 10 : 12, style: .continuous)
+                            .strokeBorder(strokeColor, lineWidth: 1)
                     }
             }
-            .opacity(configuration.isPressed ? 0.7 : 1)
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: isCompact ? 10 : 12, style: .continuous))
+            .opacity(isEnabled ? 1 : 0.48)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
+    }
+}
+
+/// 画布快捷入口与作品卡片共用的圆形主题色图标按钮。
+struct LFCircleIconButtonStyle: ButtonStyle {
+    var diameter: CGFloat = 44
+    var iconSize: CGFloat = 18
+    var foregroundColor: Color?
+    var backgroundColor: Color?
+
+    init(
+        diameter: CGFloat = 44,
+        iconSize: CGFloat = 18,
+        foregroundColor: Color? = nil,
+        backgroundColor: Color? = nil
+    ) {
+        self.diameter = diameter
+        self.iconSize = iconSize
+        self.foregroundColor = foregroundColor
+        self.backgroundColor = backgroundColor
+    }
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: iconSize, weight: .semibold))
+            .foregroundStyle(foregroundColor ?? LF.selectionText)
+            .frame(width: diameter, height: diameter)
+            .background(backgroundColor ?? LF.header.opacity(0.78), in: Circle())
+            .shadow(color: (backgroundColor ?? LF.header).opacity(0.22), radius: diameter < 44 ? 5 : 8, y: 3)
+            // 小尺寸视觉按钮仍保留 44pt 的可点击区域。
+            .frame(width: max(diameter, 44), height: max(diameter, 44))
+            .contentShape(Circle())
+            .opacity(isEnabled ? 1 : 0.48)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
+    }
+}
+
+/// 半透明的强调操作：和画布上的添加素材按钮共用主题强调色，同时保持文字清晰。
+struct LFTranslucentActionButtonStyle: ButtonStyle {
+    var compact = false
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: compact ? 13 : 12, style: .continuous)
+
+        configuration.label
+            .font(compact ? .system(size: 17, weight: .semibold) : .subheadline.weight(.semibold))
+            .foregroundStyle(LF.selectionText)
+            .padding(.horizontal, compact ? 0 : 16)
+            .frame(minWidth: 44, minHeight: 44)
+            .background {
+                shape
+                    .fill(LF.accentGradient.opacity(0.78))
+                    .overlay { shape.strokeBorder(Color.white.opacity(0.34), lineWidth: 1) }
+            }
+            .contentShape(shape)
+            .shadow(color: LF.header.opacity(0.18), radius: 7, y: 3)
+            .opacity(isEnabled ? 1 : 0.48)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
+    }
+}
+
+/// 顶栏的文字型主操作：浅色玻璃胶囊叠加轻量主题色，文字在所有主题下保持清晰。
+struct LFTextPillButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = Capsule()
+
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(LF.selectionText)
+            .padding(.horizontal, 14)
+            .frame(minWidth: 64, minHeight: 40)
+            .background {
+                shape
+                    .fill(.ultraThinMaterial)
+                    .overlay { shape.fill(LF.header.opacity(0.2)) }
+                    .overlay { shape.strokeBorder(Color.white.opacity(0.7), lineWidth: 1) }
+            }
+            .contentShape(shape)
+            .shadow(color: LF.header.opacity(0.12), radius: 5, y: 2)
+            .opacity(isEnabled ? 1 : 0.48)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
+    }
+}
+
+extension View {
+    func lfActionButtonStyle(_ kind: LFActionButtonKind) -> some View {
+        buttonStyle(LFActionButtonStyle(kind: kind))
+    }
+
+    func lfCircleIconButtonStyle(
+        diameter: CGFloat = 44,
+        iconSize: CGFloat = 18,
+        foregroundColor: Color? = nil,
+        backgroundColor: Color? = nil
+    ) -> some View {
+        buttonStyle(LFCircleIconButtonStyle(
+            diameter: diameter,
+            iconSize: iconSize,
+            foregroundColor: foregroundColor,
+            backgroundColor: backgroundColor
+        ))
+    }
+
+    func lfTranslucentActionButtonStyle(compact: Bool = false) -> some View {
+        buttonStyle(LFTranslucentActionButtonStyle(compact: compact))
+    }
+
+    func lfTextPillButtonStyle() -> some View {
+        buttonStyle(LFTextPillButtonStyle())
     }
 }
 

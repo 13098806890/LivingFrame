@@ -5,6 +5,33 @@ import SwiftUI
 extension AppState {
     // MARK: - 缓存
 
+    /// 应用启动时清理上次运行遗留的临时文件。当前会话新生成的文件至少保留一天，
+    /// 避免影响正在进行的导入、导出或分享操作。
+    func cleanupStaleTemporaryFiles(maxAge: TimeInterval = 24 * 60 * 60) {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+        let cutoff = Date().addingTimeInterval(-max(maxAge, 0))
+        Task.detached(priority: .utility) {
+            let fileManager = FileManager.default
+            let keys: Set<URLResourceKey> = [.contentModificationDateKey]
+            guard let items = try? fileManager.contentsOfDirectory(
+                at: temporaryDirectory,
+                includingPropertiesForKeys: Array(keys),
+                options: [.skipsHiddenFiles]
+            ) else {
+                return
+            }
+
+            for item in items where item.lastPathComponent.hasPrefix("LF-") {
+                guard let values = try? item.resourceValues(forKeys: keys),
+                      let modifiedAt = values.contentModificationDate,
+                      modifiedAt < cutoff else {
+                    continue
+                }
+                try? fileManager.removeItem(at: item)
+            }
+        }
+    }
+
     /// 清理临时文件：素材（含文件夹内外的所有剪影结果）一律保留，只删导入/导出产生的临时文件。
     func clearCache() {
         let tmp = FileManager.default.temporaryDirectory

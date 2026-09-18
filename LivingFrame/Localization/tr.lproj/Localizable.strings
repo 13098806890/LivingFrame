@@ -82,9 +82,9 @@
 "光束 + 星芒光效" = "Işık hüzmesi + yıldız parıltıları";
 "纯净黑幕" = "Saf Siyah";
 "极简，人物突出" = "Minimal, kişi öne çıkar";
-"GIF（通用）" = "GIF (evrensel)";
-"透明视频（HEVC-alpha）" = "Şeffaf Video (HEVC-alpha)";
-"普通视频（H.264）" = "Standart Video (H.264)";
+"GIF（通用）" = "GIF";
+"透明视频（HEVC-alpha）" = "Video (HEVC)";
+"普通视频（H.264）" = "Video (H.264)";
 "兼容性最广，适合分享，透明边缘为硬边" = "En geniş uyumluluk, paylaşıma uygun; şeffaflık kenarları sert";
 "保留半透明边缘，体积小，适合再次合成" = "Yarı saydam kenarları korur, küçük boyut, yeniden kompozisyon için ideal";
 "无透明通道，最通用的视频格式" = "Alfa kanalı yok, en evrensel video biçimi";
@@ -107,7 +107,7 @@
 "抠图失败" = "Kırpma başarısız";
 "无法读取所选素材" = "Seçilen öğe okunamadı";
 "照片" = "Foto";
-"Live Photo（动态照片）" = "Live Photo (hareketli fotoğraf)";
+"Live Photo（动态照片）" = "Live Photo";
 "存入相册长按播放，透明区域用背景填充" = "Hareketli fotoğraf olarak kaydedilir; oynatmak için basılı tutun. Şeffaf alanlar arka planla doldurulur";
 "需要相册权限才能保存 Live Photo，请在设置中开启" = "Live Photo kaydetmek için Fotoğraflar erişimi gerekir. Ayarlar'dan etkinleştirin";
 "保存" = "Kaydet";
@@ -220,6 +220,7 @@
 "正在下载原始动态照片" = "Orijinal Live Photo indiriliyor…";
 "比例" = "Oran";
 "涂鸦" = "Karalama";
+"表情" = "Emojiler";
 "涂鸦（开发中）" = "Karalama (geliştirme aşamasında)";
 "添加素材后显示时间轴" = "Öğe ekledikten sonra zaman çizelgesi görünür";
 "清理临时文件" = "Geçici dosyaları temizle";
@@ -315,7 +316,7 @@
 "关闭" = "Kapat";
 "使用周订阅或一次性买断解锁 GIFBloom Pro。" = "GIFBloom Pro’nun kilidini haftalık abonelikle veya tek seferlik satın almayla açın.";
 "GIFBloom Pro 已解锁" = "GIFBloom Pro’nun kilidi açıldı";
-"订阅与买断" = "Abone ol veya bir kez satın al";
+"订阅" = "Abone ol";
 "管理订阅" = "Aboneliği yönet";
 "隐私政策" = "Gizlilik Politikası";
 "支持" = "Destek";
@@ -683,7 +684,8 @@
 "微信 GIF 预估值按 15 fps 计算；超过 10 MB 会自动降低帧率。" = "WeChat GIF boyutu 15 fps üzerinden tahmin edilir; 10 MB’ı aşarsa kare hızı otomatik olarak düşürülür.";
 "图标配色" = "Uygulama Simgesi";
 "晴空蓝、奶油白与珊瑚橙，取自 App 图标" = "Uygulama simgesinden gök mavisi, krem ve mercan tonları";
-"选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。" = "GIFBloom Pro’nun kilidini açmak için haftalık veya yıllık abonelik ya da tek seferlik satın alma seçin.";
+"选择周订阅或年订阅解锁 GIFBloom Pro。" = "GIFBloom Pro’nun kilidini açmak için haftalık veya yıllık abonelik seçin.";
+"免费导出会在右下角添加 GIFBloom 水印。" = "Ücretsiz dışa aktarımlarda sağ alt köşede GIFBloom filigranı bulunur.";
 "周订阅和年订阅均会自动续订。除非在当前周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。" = "Haftalık ve yıllık abonelikler otomatik yenilenir. Yenilemeyi durdurmak için mevcut dönem bitmeden en az 24 saat önce iptal edin. Aboneliğinizi Apple ID ayarlarından yönetebilir veya iptal edebilirsiniz.";
 
 /* Emoji sticker names */
@@ -695,3 +697,85 @@
 "思考" = "Düşünme";
 "惊讶" = "Şaşkın";
 "生气" = "Kızgın";
+
+/* Library overview and search */
+"最近添加" = "Son eklenenler";
+"搜索素材名称" = "Ada göre öğe ara";
+"素材类型" = "Öğe türü";
+"没有匹配的素材" = "Eşleşen öğe bulunamadı";
+"全部" = "Tümü";
+
+"订阅 GIFBloom Pro 后可去除导出水印。" = "Dışa aktarmalardaki filigranı kaldırmak için GIFBloom Pro’ya abone olun.";
+"从长视频中选择最长 10 秒的剪影片段。" = "Uzun videolardan en fazla 10 saniyelik klip seçin.";
+"免费版最长 5 秒；GIFBloom Pro 可选 8 秒或 10 秒。" = "Ücretsiz: en çok 5 sn; GIFBloom Pro: 8 veya 10 sn.";
+"解锁更长片段" = "Daha uzun kliplerin kilidini aç";
+"周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Haftalık ve yıllık planlar otomatik yenilenir. Yenilemeyi durdurmak için dönem bitmeden en az 24 saat önce iptal edin. Apple ID ayarlarından yönetin.";
+"使用 AI 贴纸，让墨镜跟随人物双眼移动。" = "Yapay zekâ çıkartmalarıyla gözlüğü kişinin gözlerine sabitleyin.";
+"AI 贴纸仅限 GIFBloom Pro 使用。" = "Yapay zekâ çıkartmaları yalnızca GIFBloom Pro'da kullanılabilir.";
+"解锁 AI 贴纸" = "Yapay zekâ çıkartmalarını aç";
+"解锁 GIFBloom Pro" = "GIFBloom Pro'nun kilidini aç";
+"解锁更长的素材提取时长。" = "Daha uzun klip çıkarma süresini açın.";
+"使用 GIFBloom Pro 专属 AI 贴纸。" = "GIFBloom Pro'ya özel yapay zekâ çıkartmalarını kullanın.";
+"GIFBloom Pro 可解锁更长素材提取时长和 AI 贴纸。" = "GIFBloom Pro daha uzun klipleri ve AI çıkartmaları açar.";
+"订阅去水印" = "Filigranı kaldırmak için abone olun";
+"水果" = "Meyveler";
+"5 秒" = "5 saniye";
+
+"AI贴纸" = "Yapay zekâ çıkartmaları";
+"墨镜" = "Güneş gözlüğü";
+"墨镜 · 2D多视角" = "Güneş gözlüğü · 2D görünümler";
+"紫晶墨镜 · 3D视角" = "Ametist gözlük · 3D görünümler";
+"请先选中画布上的人物素材，或让时间指针停在人物画面上。" = "Tuvalde bir kişi klibi seçin veya oynatma başlığını kişinin göründüğü kareye taşıyın.";
+"正在逐帧识别人脸…" = "Yüz kare kare algılanıyor…";
+"工程在分析期间发生了变化，请重新添加墨镜。" = "Analiz sırasında proje değişti. Gözlüğü yeniden ekleyin.";
+"墨镜已添加，会跟随人物眼睛移动。" = "Gözlük eklendi ve kişinin gözlerini takip edecek.";
+"没有识别到清晰的双眼，试试正脸更清楚的素材。" = "İki net göz bulunamadı. Daha net, önden görünen bir klip deneyin.";
+"人脸分析失败，请重试。" = "Yüz analizi başarısız oldu. Lütfen tekrar deneyin.";
+"请先选中对应的人物素材，再添加墨镜。识别后，您可以自行调整大小。" = "Önce kişinin klibini seçin, ardından güneş gözlüğünü ekleyin. Algılama tamamlanınca boyutunu ayarlayabilirsiniz.";
+
+/* Works list */
+"查看全部" = "Tümünü gör";
+"全部作品" = "Tüm çalışmalar";
+"搜索作品名称" = "Çalışma adına göre ara";
+"排序" = "Sırala";
+"排序方式" = "Sıralama ölçütü";
+"最近保存" = "Son kaydedilenler";
+"名称" = "Ad";
+"加载更多" = "Daha fazla yükle";
+"没有匹配的作品" = "Eşleşen çalışma yok";
+"尝试其他关键词" = "Başka bir anahtar kelime deneyin";
+"请先选中对应的人物素材，再添加墨镜。" = "Güneş gözlüğünü eklemeden önce kullanmak istediğiniz kişi klibini seçin.";
+"墨镜已添加，会跟随双眼移动，可自行调整大小。" = "Gözlük eklendi ve gözleri takip ediyor. Boyutunu ayarlayabilirsiniz.";
+
+/* Sticker names and descriptions */
+"夏日" = "Yaz";
+"苹果" = "Elma";
+"香蕉" = "Muz";
+"橙子" = "Portakal";
+"草莓" = "Çilek";
+"葡萄" = "Üzüm";
+"西瓜" = "Karpuz";
+"桃子" = "Şeftali";
+"菠萝" = "Ananas";
+"柠檬" = "Limon";
+"梨" = "Armut";
+"芒果" = "Mango";
+"猕猴桃" = "Kivi";
+"樱桃" = "Kiraz";
+"牛油果" = "Avokado";
+"蓝莓" = "Yaban mersini";
+"李子" = "Erik";
+"手写字标" = "El yazısı logo";
+"涂鸦字标" = "Karalama logo";
+"蜡笔字标" = "Pastel boya logo";
+"为画面增添趣味的动态涂鸦装饰。" = "Görüntüyü eğlenceli biçimde süsleyen hareketli karalamalar.";
+"用简单表情为画面增添情绪。" = "Görüntüye duygu katan sade ifadeler.";
+"让水果图案以轻快动画点亮画面。" = "Görüntüye canlılık katan renkli meyve animasyonları.";
+"自动贴合双眼，并随人脸角度变化。" = "Gözlere oturur ve yüz açısı değiştikçe onu takip eder.";
+"GIFBloom 品牌字标动态贴纸。" = "Görüntüyü süsleyen hareketli GIFBloom logo çıkartmaları.";
+
+/* AI sticker names and descriptions */
+"AI贴纸 · 2D" = "Yapay zekâ çıkartmaları · 2D";
+"AI贴纸 · 3D" = "Yapay zekâ çıkartmaları · 3D";
+"根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。" = "2D gözlük, yüz açısına göre görünüm değiştirir ve gözlere hizalanır.";
+"使用 3D 模型渲染的视图，随人脸角度平滑变化。" = "Oluşturulan 3D görünümler yüz açısına göre akıcı biçimde değişir.";

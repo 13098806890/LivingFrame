@@ -30,5 +30,8 @@
     "priced_territory_count": 175,
     "available_territory_count": 175,
     "note": "Read from App Store Connect on 2026-09-17."
-  }
+  },
+  "subscription_version_resource_id": "0443d297-6bf6-4bdb-97e8-c64b91694163",
+  "app_store_connect_state": "MISSING_METADATA",
+  "localization_state": "PREPARE_FOR_SUBMISSION"
 }

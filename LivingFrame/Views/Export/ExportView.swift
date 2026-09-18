@@ -25,6 +25,7 @@ struct ExportView: View {
     }
 
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var purchaseManager: PurchaseManager
     @Environment(\.dismiss) private var dismiss
 
     @State private var format: ExportFormat = .gif
@@ -39,6 +40,7 @@ struct ExportView: View {
     @State private var librarySaveError: String?
     @State private var savedToLibrary = false
     @State private var isSavingToLibrary = false
+    @State private var showProStore = false
     @State private var exportTask: Task<Void, Never>?
     /// 导出前先生成正式作品；此阶段与导出进度分开，避免用户误以为只保存了草稿。
     @State private var isPreparingExport = false
@@ -46,6 +48,7 @@ struct ExportView: View {
     @State private var previewTime: TimeInterval = 0
     @State private var estimatedSizeBytes: Int64?
     @State private var isEstimatingSize = false
+    @State private var previewWatermark: ExportWatermark?
 
     var body: some View {
         NavigationStack {
@@ -61,6 +64,12 @@ struct ExportView: View {
 
                     if let comp = appState.composition {
                         exportContext(comp)
+                    }
+
+                    if !purchaseManager.hasPro {
+                        WatermarkNoticeCard {
+                            showProStore = true
+                        }
                     }
 
                     SectionCard(title: "导出格式") {
@@ -122,7 +131,8 @@ struct ExportView: View {
                             time: previewTime,
                             outputSize: previewOutputSize(for: composition),
                             maximumRenderSize: previewMaximumRenderSize,
-                            fps: previewFPS(for: composition)
+                            fps: previewFPS(for: composition),
+                            watermark: previewWatermark
                         )
                     }
 
@@ -184,12 +194,19 @@ struct ExportView: View {
             }
         }
         .presentationDetents([.large])
+        .sheet(isPresented: $showProStore) {
+            GIFBloomProStoreView()
+        }
         .onAppear {
             format = appState.defaultFormat
             showAdvancedFormats = appState.defaultFormat != .gif
             fps = normalizedFPSSelection(appState.exportFPS)
             resolution = normalizedResolutionSelection(resolution)
             previewTime = appState.currentTime
+            previewWatermark = purchaseManager.hasPro ? nil : DecorationRenderer.randomLogoWatermark()
+        }
+        .onChange(of: purchaseManager.hasPro) { _, hasPro in
+            previewWatermark = hasPro ? nil : DecorationRenderer.randomLogoWatermark()
         }
         .onChange(of: format) { _, _ in
             resolution = normalizedResolutionSelection(resolution)
@@ -283,7 +300,7 @@ struct ExportView: View {
                 if let librarySaveError {
                     Label(librarySaveError, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(LF.destructive)
                 }
                 if format == .livePhoto {
                     Text("已存入系统相册，打开「照片」长按即可看到动态效果")
@@ -312,7 +329,7 @@ struct ExportView: View {
                     ShareLink(item: url) {
                         Label("分享", systemImage: "square.and.arrow.up")
                     }
-                    .buttonStyle(MagicButtonStyle())
+                    .lfTranslucentActionButtonStyle()
                 }
 
                 Button {
@@ -324,7 +341,7 @@ struct ExportView: View {
                     )
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(MagicButtonStyle(prominent: false))
+                .lfActionButtonStyle(.secondary)
                 .disabled(savedToLibrary || isSavingToLibrary)
             }
         }
@@ -334,7 +351,7 @@ struct ExportView: View {
         SectionCard(title: "导出失败") {
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .font(.caption)
-                .foregroundStyle(.red)
+                .foregroundStyle(LF.destructive)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -385,9 +402,8 @@ struct ExportView: View {
                     .font(.subheadline)
                 Text(option.title)
                     .font(.caption.weight(.semibold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.78)
-                    .multilineTextAlignment(.leading)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .foregroundStyle(format == option ? LF.selectionText : LF.textPrimary)
@@ -439,8 +455,10 @@ struct ExportView: View {
         let selectedResolution = resolution
         let isChatSticker = format == .gif && chatSticker
         let chatGIFPixelSize = weChatGIFPreset.pixelSize
+        let watermark = purchaseManager.hasPro ? nil : (previewWatermark ?? DecorationRenderer.randomLogoWatermark())
+        previewWatermark = watermark
         isPreparingExport = true
-        exportTask = Task { @MainActor in
+        exportTask = Task(priority: .userInitiated) { @MainActor in
             defer { isPreparingExport = false }
             do {
                 // 导出代表用户确认当前版本，先把它固化为正式作品；
@@ -454,7 +472,8 @@ struct ExportView: View {
                     fps: selectedFPS,
                     chatSticker: isChatSticker,
                     chatGIFPixelSize: chatGIFPixelSize,
-                    resolution: selectedResolution
+                    resolution: selectedResolution,
+                    watermark: watermark
                 )
                 exportedURL = url
                 exportedChatSticker = isChatSticker
@@ -582,12 +601,13 @@ private struct ExportFramePreview: View {
     let outputSize: CGSize
     let maximumRenderSize: CGFloat?
     let fps: Double
+    let watermark: ExportWatermark?
 
     @State private var image: UIImage?
     @State private var isRendering = true
 
     private var renderKey: String {
-        "\(composition.id.uuidString)-\(Int(time * 100))-\(Int(outputSize.width))x\(Int(outputSize.height))-\(Int(maximumRenderSize ?? 0))"
+        "\(composition.id.uuidString)-\(Int(time * 100))-\(Int(outputSize.width))x\(Int(outputSize.height))-\(Int(maximumRenderSize ?? 0))-\(watermark?.decorationID ?? "no-watermark")"
     }
 
     private var frameCount: Int {
@@ -653,9 +673,11 @@ private struct ExportFramePreview: View {
             let snapshot = composition
             let frameTime = time
             let maxPixel = maximumRenderSize
+            let previewWatermark = watermark
             let rendered = await Task.detached(priority: .userInitiated) {
                 autoreleasepool {
-                    CompositionRenderer(frameMaxPixelSize: maxPixel).render(snapshot, at: frameTime)
+                    CompositionRenderer(frameMaxPixelSize: maxPixel, exportWatermark: previewWatermark)
+                        .render(snapshot, at: frameTime)
                 }
             }.value
             guard !Task.isCancelled else { return }

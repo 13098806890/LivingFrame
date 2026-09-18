@@ -4,95 +4,101 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var purchaseManager: PurchaseManager
-    @State private var showAdvancedExportFormats = false
     @State private var showProStore = false
     @State private var showManageSubscription = false
     // Keep the switch's interaction state local to this view. SwiftUI's
     // environment-object binding can otherwise leave the UIKit accessibility
     // switch snapshot at 0 while AppState is being persisted synchronously.
     @State private var preserveOriginalMediaQuality = false
+    @State private var aboutLogoFirstFrame: CGImage?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    SectionCard(title: "外观") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("选择一套马卡龙皮肤，编辑器、素材库和检查器会同步更新。")
-                                .font(.caption)
-                                .foregroundStyle(LF.textSecondary)
-
-                            LazyVGrid(
-                                columns: [
-                                    GridItem(.flexible(), spacing: 10),
-                                    GridItem(.flexible(), spacing: 10)
-                                ],
-                                spacing: 10
-                            ) {
-                                ForEach(AppTheme.allCases) { theme in
-                                    themeCard(theme)
-                                }
-                            }
-                        }
-                    }
-
                     SectionCard(title: "导出") {
-                        if appState.defaultFormat == .gif {
-                            Picker("默认格式", selection: $appState.defaultFormat) {
-                                Text(ExportFormat.gif.title).tag(ExportFormat.gif)
+                        VStack(spacing: 0) {
+                            settingsRow("默认格式") {
+                                Picker("默认格式", selection: $appState.defaultFormat) {
+                                    ForEach(ExportFormat.allCases) { format in
+                                        Text(format.title)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.82)
+                                            .tag(format)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .tint(LF.actionPrimary)
                             }
-                        } else {
-                            HStack {
-                                Text("默认格式")
-                                Spacer()
-                                Text(appState.defaultFormat.title)
-                                    .foregroundStyle(LF.textSecondary)
-                                    .lineLimit(1)
+
+                            settingsDivider
+
+                            settingsRow("默认帧率") {
+                                Picker("默认帧率", selection: $appState.exportFPS) {
+                                    Text("15 fps").tag(15.0)
+                                    Text("30 fps").tag(30.0)
+                                    Text("60 fps").tag(60.0)
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .tint(LF.actionPrimary)
                             }
-                        }
-                        Picker("默认帧率", selection: $appState.exportFPS) {
-                            Text("15 fps").tag(15.0)
-                            Text("30 fps").tag(30.0)
-                            Text("60 fps").tag(60.0)
                         }
 
-                        DisclosureGroup("高级导出格式", isExpanded: $showAdvancedExportFormats) {
-                            Picker("默认格式", selection: $appState.defaultFormat) {
-                                ForEach(ExportFormat.allCases.filter { $0 != .gif }) { format in
-                                    Text(format.title).tag(format)
-                                }
-                            }
-                            .padding(.top, 4)
-                        }
-                        .tint(LF.header)
                     }
 
                     SectionCard(title: "剪影") {
-                        Picker("单个素材最长时长", selection: $appState.maxExtractionDuration) {
-                            Text("3 秒").tag(3.0)
-                            Text("5 秒（推荐）").tag(5.0)
-                            Text("8 秒").tag(8.0)
-                            Text("10 秒").tag(10.0)
+                        VStack(spacing: 0) {
+                            settingsRow("单个素材最长时长") {
+                                Picker("单个素材最长时长", selection: extractionDurationSelection) {
+                                    Text("3 秒").tag(3.0)
+                                    Text("5 秒").tag(5.0)
+                                    if purchaseManager.hasPro {
+                                        Text("8 秒").tag(8.0)
+                                        Text("10 秒").tag(10.0)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .tint(LF.actionPrimary)
+                            }
                         }
                         Text("超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if !purchaseManager.hasPro {
+                            HStack(spacing: 10) {
+                                Label("GIFBloom Pro 可解锁更长素材提取时长和 AI 贴纸。", systemImage: "lock.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(LF.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                Spacer(minLength: 4)
+
+                                Button("解锁更长片段") {
+                                    showProStore = true
+                                }
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(LF.actionPrimary)
+                                .fixedSize()
+                            }
+                            .padding(.top, 4)
+                        }
+
+                        settingsDivider
 
                         HStack(spacing: 12) {
                             // Keep the label as a separate control. SwiftUI's
-                            // labelled Toggle exposes both a full-row
-                            // accessibility Switch and a nested native
-                            // UISwitch. XCTest can tap the former's label
-                            // frame instead of the actual switch, leaving its
-                            // value unchanged. The explicit label button and
-                            // labelsHidden Toggle make the identifier/value
-                            // belong to the real switch only.
+                            // environment-object binding can otherwise leave the UIKit accessibility
+                            // switch snapshot at 0 while AppState is being persisted synchronously.
                             Button {
                                 preserveOriginalMediaQuality.toggle()
                             } label: {
                                 Text("保留原始帧率和分辨率")
                                     .foregroundStyle(LF.textPrimary)
-                                    .multilineTextAlignment(.leading)
                             }
                             .buttonStyle(.plain)
 
@@ -110,46 +116,45 @@ struct SettingsView: View {
                             .accessibilityIdentifier("settings-preserve-original-media-quality")
                             .tint(LF.actionPrimary)
                         }
-                        Text("开启后按源素材实际帧率处理，并保留原始像素尺寸；处理帧率和处理分辨率预设将暂时不生效，处理时间和占用空间可能明显增加。")
-                            .font(.caption)
-                            .foregroundStyle(LF.textSecondary)
 
-                        Picker("处理分辨率", selection: $appState.maxDimension) {
-                            Text("480p（最快）").tag(854.0)
-                            Text("720p（快）").tag(1280.0)
-                            Text("1080p（慢，更精细）").tag(1920.0)
-                        }
-                        .accessibilityIdentifier("settings-processing-resolution")
-                        .disabled(preserveOriginalMediaQuality)
-                        Picker("处理帧率", selection: $appState.processingFPS) {
-                            Text("10 fps（最快）").tag(10.0)
-                            Text("15 fps（快）").tag(15.0)
-                            Text("30 fps（流畅）").tag(30.0)
-                            Text("60 fps（保留高帧率）").tag(60.0)
-                        }
-                        .accessibilityIdentifier("settings-processing-frame-rate")
-                        .disabled(preserveOriginalMediaQuality)
                         Text(preserveOriginalMediaQuality
                              ? "当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。"
                              : "仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，剪影边缘越精细，处理时间越长。")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
-                    }
+                            .fixedSize(horizontal: false, vertical: true)
 
-                    SectionCard(title: "存储") {
-                        HStack {
-                            Text("素材占用")
-                            Spacer()
-                            Text(appState.cacheSizeText)
-                                .foregroundStyle(LF.textSecondary)
-                        }
-                        Text("清理临时文件不会删除任何素材（含文件夹内外的所有剪影素材）。")
-                            .font(.caption)
-                            .foregroundStyle(LF.textSecondary)
-                        Button(role: .destructive) {
-                            appState.clearCache()
-                        } label: {
-                            Label("清理临时文件", systemImage: "trash")
+                        settingsDivider
+
+                        VStack(spacing: 0) {
+                            settingsRow("处理分辨率") {
+                                Picker("处理分辨率", selection: $appState.maxDimension) {
+                                    Text(verbatim: "480p").tag(854.0)
+                                    Text(verbatim: "720p").tag(1280.0)
+                                    Text(verbatim: "1080p").tag(1920.0)
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .tint(LF.actionPrimary)
+                                .accessibilityIdentifier("settings-processing-resolution")
+                            }
+                            .disabled(preserveOriginalMediaQuality)
+
+                            settingsDivider
+
+                            settingsRow("处理帧率") {
+                                Picker("处理帧率", selection: $appState.processingFPS) {
+                                    Text(verbatim: "10 fps").tag(10.0)
+                                    Text(verbatim: "15 fps").tag(15.0)
+                                    Text(verbatim: "30 fps").tag(30.0)
+                                    Text(verbatim: "60 fps").tag(60.0)
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .tint(LF.actionPrimary)
+                                .accessibilityIdentifier("settings-processing-frame-rate")
+                            }
+                            .disabled(preserveOriginalMediaQuality)
                         }
                     }
 
@@ -160,7 +165,7 @@ struct SettingsView: View {
                                     .font(.subheadline.weight(.medium))
                                     .foregroundStyle(LF.actionPrimary)
                             } else {
-                                Text("选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。")
+                                Text("选择周订阅或年订阅解锁 GIFBloom Pro。")
                                     .font(.caption)
                                     .foregroundStyle(LF.textSecondary)
                             }
@@ -168,11 +173,10 @@ struct SettingsView: View {
                             Button {
                                 showProStore = true
                             } label: {
-                                Label("订阅与买断", systemImage: "sparkles")
+                                Text("订阅")
                                     .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(LF.actionPrimary)
+                            .lfActionButtonStyle(.primary)
 
                             if purchaseManager.hasActiveSubscription {
                                 Button {
@@ -186,54 +190,72 @@ struct SettingsView: View {
                         }
                     }
 
-                    SectionCard(title: "隐私") {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label("全部在设备端处理", systemImage: "lock.shield")
-                                .font(.subheadline.weight(.medium))
-                            Text("照片、视频、音频和工程均在设备本地处理，不上传到 GIFBloom 服务器。App Store 购买由 Apple 处理。")
-                                .font(.caption)
-                                .foregroundStyle(LF.textSecondary)
-
-                            Link(destination: GIFBloomStoreLinks.privacyPolicy) {
-                                Label("隐私政策", systemImage: "hand.raised")
-                            }
-                            Link(destination: GIFBloomStoreLinks.support) {
-                                Label("支持", systemImage: "questionmark.circle")
-                            }
-                            Link(destination: GIFBloomStoreLinks.termsOfUse) {
-                                Label("使用条款", systemImage: "doc.text")
-                            }
-                        }
-                    }
-
                     SectionCard(title: "关于") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("GIFBloom")
-                                .font(.headline)
-                            Text("哈利波特风格动态照片制作工具")
-                                .font(.caption)
-                                .foregroundStyle(LF.textSecondary)
+                        VStack(alignment: .leading, spacing: 0) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                if let aboutLogoFirstFrame {
+                                    Image(decorative: aboutLogoFirstFrame, scale: 1)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 144, height: 50, alignment: .leading)
+                                        .accessibilityLabel("GIFBloom")
+                                } else {
+                                    Text("GIFBloom")
+                                        .font(.headline)
+                                }
+                            }
+
+                            settingsDivider
+                                .padding(.vertical, 14)
+
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "lock.shield.fill")
+                                    .foregroundStyle(LF.actionPrimary)
+                                    .frame(width: 20)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("全部在设备端处理")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("照片、视频、音频和工程均在设备本地处理，不上传到 GIFBloom 服务器。App Store 购买由 Apple 处理。")
+                                        .font(.caption)
+                                        .foregroundStyle(LF.textSecondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+
+                            settingsDivider
+                                .padding(.vertical, 14)
+
+                            VStack(spacing: 0) {
+                                aboutLink("隐私政策", icon: "hand.raised", destination: GIFBloomStoreLinks.privacyPolicy)
+                                settingsDivider
+                                aboutLink("支持", icon: "questionmark.circle", destination: GIFBloomStoreLinks.support)
+                                settingsDivider
+                                aboutLink("使用条款", icon: "doc.text", destination: GIFBloomStoreLinks.termsOfUse)
+                            }
+
+                            settingsDivider
+                                .padding(.top, 8)
+                                .padding(.bottom, 10)
+
                             Text(appVersionText)
                                 .font(.caption2)
                                 .foregroundStyle(LF.textSecondary)
-                            Text(verbatim: "Adapted Twemoji artwork © Twitter, Inc. and contributors")
-                                .font(.caption2)
-                                .foregroundStyle(LF.textSecondary)
-                            Link("CC BY 4.0", destination: URL(string: "https://creativecommons.org/licenses/by/4.0/")!)
-                                .font(.caption2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }
                 .padding()
             }
-            .lfNavigationTitle("设置")
-            .navigationBarTitleDisplayMode(.inline)
+            .scrollBounceBehavior(.basedOnSize)
+            .navigationTitle("设置")
+            .navigationBarTitleDisplayMode(.large)
         }
         .magicBackground()
         .task {
-            showAdvancedExportFormats = appState.defaultFormat != .gif
             preserveOriginalMediaQuality = appState.preserveOriginalMediaQuality
-            appState.refreshCacheSize()
+            if let firstAvailableLogo = DecorationRenderer.availableStickerCatalog.first(where: { $0.category == .logo }) {
+                aboutLogoFirstFrame = DecorationRenderer().previewImage(for: firstAvailableLogo.id)
+            }
         }
         .onChange(of: preserveOriginalMediaQuality) { _, value in
             appState.setPreserveOriginalMediaQuality(value)
@@ -247,72 +269,53 @@ struct SettingsView: View {
         )
     }
 
-    private func themeCard(_ theme: AppTheme) -> some View {
-        let palette = theme.palette
-        let isSelected = appState.appTheme == theme
-        return Button {
-            withAnimation(.easeInOut(duration: 0.22)) {
-                appState.appTheme = theme
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 5) {
-                    ForEach(
-                        Array([
-                            palette.brandTint,
-                            palette.actionPrimary,
-                            palette.folderIcon,
-                            palette.textPrimary,
-                            palette.surface2
-                        ].enumerated()),
-                        id: \.offset
-                    ) { _, color in
-                        Circle()
-                            .fill(color)
-                            .frame(width: 17, height: 17)
-                            .overlay {
-                                Circle().stroke(.white.opacity(0.7), lineWidth: 0.6)
-                            }
-                    }
-                    Spacer(minLength: 0)
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(palette.actionPrimary)
-                    }
-                }
+    private var settingsDivider: some View {
+        Divider()
+            .overlay(LF.surface2.opacity(0.8))
+    }
 
-                Text(theme.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LF.textPrimary)
-                    .lineLimit(1)
-                Text(theme.subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(LF.textSecondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-            .background(
-                isSelected ? palette.selectionSurface : palette.surface,
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(
-                        isSelected ? palette.actionPrimary : palette.surface2.opacity(0.8),
-                        lineWidth: isSelected ? 2 : 1
-                    )
-            }
-            .shadow(
-                color: isSelected ? palette.actionPrimary.opacity(0.16) : .clear,
-                radius: 7,
-                y: 3
-            )
+    private var extractionDurationSelection: Binding<Double> {
+        Binding(
+            get: {
+                purchaseManager.allowedExtractionDuration(
+                    configuredDuration: appState.maxExtractionDuration
+                )
+            },
+            set: { appState.maxExtractionDuration = $0 }
+        )
+    }
+
+    private func settingsRow<Control: View>(
+        _ title: LocalizedStringKey,
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            Text(title)
+                .font(.body)
+                .foregroundStyle(LF.textPrimary)
+            Spacer(minLength: 12)
+            control()
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(theme.title)
-        .accessibilityValue(isSelected ? "已选中" : "未选中")
+        .padding(.vertical, 8)
+    }
+
+    private func aboutLink(
+        _ title: LocalizedStringKey,
+        icon: String,
+        destination: URL
+    ) -> some View {
+        Link(destination: destination) {
+            HStack(spacing: 10) {
+                Label(title, systemImage: icon)
+                    .foregroundStyle(LF.textPrimary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LF.textSecondary)
+            }
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
     }
 
     private var appVersionText: String {

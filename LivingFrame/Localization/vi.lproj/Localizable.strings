@@ -82,9 +82,9 @@
 "光束 + 星芒光效" = "Chùm sáng + lấp lánh sao";
 "纯净黑幕" = "Nền đen thuần";
 "极简，人物突出" = "Tối giản, làm nổi bật người";
-"GIF（通用）" = "GIF (phổ dụng)";
-"透明视频（HEVC-alpha）" = "Video trong suốt (HEVC-alpha)";
-"普通视频（H.264）" = "Video tiêu chuẩn (H.264)";
+"GIF（通用）" = "GIF";
+"透明视频（HEVC-alpha）" = "Video (HEVC)";
+"普通视频（H.264）" = "Video (H.264)";
 "兼容性最广，适合分享，透明边缘为硬边" = "Tương thích rộng nhất, phù hợp chia sẻ; mép trong suốt cứng";
 "保留半透明边缘，体积小，适合再次合成" = "Giữ mép bán trong suốt, nhẹ, lý tưởng để tổng hợp lại";
 "无透明通道，最通用的视频格式" = "Không có kênh alpha, định dạng video phổ biến nhất";
@@ -107,7 +107,7 @@
 "抠图失败" = "Tách nền không thành công";
 "无法读取所选素材" = "Không thể đọc mục đã chọn";
 "照片" = "Ảnh";
-"Live Photo（动态照片）" = "Live Photo (ảnh động)";
+"Live Photo（动态照片）" = "Live Photo";
 "存入相册长按播放，透明区域用背景填充" = "Lưu thành ảnh động; giữ để phát. Vùng trong suốt được lấp bằng nền";
 "需要相册权限才能保存 Live Photo，请在设置中开启" = "Cần quyền truy cập Ảnh để lưu Live Photo. Hãy bật trong Cài đặt";
 "保存" = "Lưu";
@@ -220,6 +220,7 @@
 "正在下载原始动态照片" = "Đang tải Live Photo gốc…";
 "比例" = "Tỷ lệ";
 "涂鸦" = "Vẽ nguệch ngoạc";
+"表情" = "Biểu tượng cảm xúc";
 "涂鸦（开发中）" = "Vẽ nguệch ngoạc (đang phát triển)";
 "添加素材后显示时间轴" = "Timeline hiện sau khi bạn thêm vật liệu";
 "清理临时文件" = "Dọn dẹp tệp tạm";
@@ -315,7 +316,7 @@
 "关闭" = "Đóng";
 "使用周订阅或一次性买断解锁 GIFBloom Pro。" = "Mở khóa GIFBloom Pro bằng gói đăng ký theo tuần hoặc mua một lần.";
 "GIFBloom Pro 已解锁" = "GIFBloom Pro đã được mở khóa";
-"订阅与买断" = "Đăng ký hoặc mua một lần";
+"订阅" = "Đăng ký";
 "管理订阅" = "Quản lý gói đăng ký";
 "隐私政策" = "Chính sách quyền riêng tư";
 "支持" = "Hỗ trợ";
@@ -683,7 +684,8 @@
 "微信 GIF 预估值按 15 fps 计算；超过 10 MB 会自动降低帧率。" = "Dung lượng GIF WeChat được ước tính ở 15 fps; nếu vượt 10 MB, tốc độ khung hình sẽ tự động giảm.";
 "图标配色" = "Biểu tượng ứng dụng";
 "晴空蓝、奶油白与珊瑚橙，取自 App 图标" = "Xanh trời, kem và san hô từ biểu tượng ứng dụng";
-"选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。" = "Chọn gói đăng ký theo tuần hoặc năm, hoặc mua một lần để mở khóa GIFBloom Pro.";
+"选择周订阅或年订阅解锁 GIFBloom Pro。" = "Chọn gói đăng ký theo tuần hoặc năm để mở khóa GIFBloom Pro.";
+"免费导出会在右下角添加 GIFBloom 水印。" = "Bản xuất miễn phí sẽ có hình mờ GIFBloom ở góc dưới bên phải.";
 "周订阅和年订阅均会自动续订。除非在当前周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。" = "Các gói đăng ký theo tuần và năm sẽ tự động gia hạn. Hãy hủy ít nhất 24 giờ trước khi kỳ hiện tại kết thúc để dừng gia hạn. Bạn có thể quản lý hoặc hủy gói trong phần cài đặt Apple ID.";
 
 /* Emoji sticker names */
@@ -695,3 +697,85 @@
 "思考" = "Đang suy nghĩ";
 "惊讶" = "Ngạc nhiên";
 "生气" = "Tức giận";
+
+/* Library overview and search */
+"最近添加" = "Mới thêm gần đây";
+"搜索素材名称" = "Tìm nội dung theo tên";
+"素材类型" = "Loại nội dung";
+"没有匹配的素材" = "Không có nội dung phù hợp";
+"全部" = "Tất cả";
+
+"订阅 GIFBloom Pro 后可去除导出水印。" = "Đăng ký GIFBloom Pro để xóa hình mờ khỏi tệp xuất.";
+"从长视频中选择最长 10 秒的剪影片段。" = "Chọn đoạn tối đa 10 giây từ video dài.";
+"免费版最长 5 秒；GIFBloom Pro 可选 8 秒或 10 秒。" = "Miễn phí tối đa 5 giây; GIFBloom Pro: 8 hoặc 10 giây.";
+"解锁更长片段" = "Mở khóa đoạn dài hơn";
+"周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Gói tuần và năm tự động gia hạn. Hủy ít nhất 24 giờ trước khi kỳ hạn kết thúc để dừng gia hạn. Quản lý trong Cài đặt Apple ID.";
+"使用 AI 贴纸，让墨镜跟随人物双眼移动。" = "Dùng nhãn dán AI để kính di chuyển theo mắt người.";
+"AI 贴纸仅限 GIFBloom Pro 使用。" = "Nhãn dán AI chỉ dành cho GIFBloom Pro.";
+"解锁 AI 贴纸" = "Mở khóa nhãn dán AI";
+"解锁 GIFBloom Pro" = "Mở khóa GIFBloom Pro";
+"解锁更长的素材提取时长。" = "Mở khóa thời lượng trích xuất clip dài hơn.";
+"使用 GIFBloom Pro 专属 AI 贴纸。" = "Dùng nhãn dán AI dành riêng cho GIFBloom Pro.";
+"GIFBloom Pro 可解锁更长素材提取时长和 AI 贴纸。" = "GIFBloom Pro mở khóa trích xuất clip dài hơn và nhãn dán AI.";
+"订阅去水印" = "Đăng ký để xóa hình mờ";
+"水果" = "Trái cây";
+"5 秒" = "5 giây";
+
+"AI贴纸" = "Nhãn dán AI";
+"墨镜" = "Kính râm";
+"墨镜 · 2D多视角" = "Kính râm · góc nhìn 2D";
+"紫晶墨镜 · 3D视角" = "Kính thạch anh tím · góc nhìn 3D";
+"请先选中画布上的人物素材，或让时间指针停在人物画面上。" = "Chọn clip có người trên khung vẽ hoặc đưa đầu phát đến khung hình có người.";
+"正在逐帧识别人脸…" = "Đang nhận diện khuôn mặt theo từng khung hình…";
+"工程在分析期间发生了变化，请重新添加墨镜。" = "Dự án đã thay đổi trong lúc phân tích. Hãy thêm kính lại.";
+"墨镜已添加，会跟随人物眼睛移动。" = "Đã thêm kính và kính sẽ theo chuyển động của mắt.";
+"没有识别到清晰的双眼，试试正脸更清楚的素材。" = "Không tìm thấy rõ cả hai mắt. Hãy thử clip nhìn thẳng rõ hơn.";
+"人脸分析失败，请重试。" = "Phân tích khuôn mặt thất bại. Vui lòng thử lại.";
+"请先选中对应的人物素材，再添加墨镜。识别后，您可以自行调整大小。" = "Trước tiên hãy chọn clip có người, sau đó thêm kính. Khi nhận diện xong, bạn có thể chỉnh kích thước.";
+
+/* Works list */
+"查看全部" = "Xem tất cả";
+"全部作品" = "Tất cả tác phẩm";
+"搜索作品名称" = "Tìm theo tên tác phẩm";
+"排序" = "Sắp xếp";
+"排序方式" = "Sắp xếp theo";
+"最近保存" = "Mới lưu gần đây";
+"名称" = "Tên";
+"加载更多" = "Tải thêm";
+"没有匹配的作品" = "Không tìm thấy tác phẩm phù hợp";
+"尝试其他关键词" = "Thử từ khóa khác";
+"请先选中对应的人物素材，再添加墨镜。" = "Hãy chọn clip có người bạn muốn dùng trước khi thêm kính.";
+"墨镜已添加，会跟随双眼移动，可自行调整大小。" = "Đã thêm kính và kính sẽ theo mắt. Bạn có thể chỉnh kích thước.";
+
+/* Sticker names and descriptions */
+"夏日" = "Mùa hè";
+"苹果" = "Táo";
+"香蕉" = "Chuối";
+"橙子" = "Cam";
+"草莓" = "Dâu tây";
+"葡萄" = "Nho";
+"西瓜" = "Dưa hấu";
+"桃子" = "Đào";
+"菠萝" = "Dứa";
+"柠檬" = "Chanh vàng";
+"梨" = "Lê";
+"芒果" = "Xoài";
+"猕猴桃" = "Kiwi";
+"樱桃" = "Anh đào";
+"牛油果" = "Bơ";
+"蓝莓" = "Việt quất";
+"李子" = "Mận";
+"手写字标" = "Logo viết tay";
+"涂鸦字标" = "Logo nét vẽ";
+"蜡笔字标" = "Logo màu sáp";
+"为画面增添趣味的动态涂鸦装饰。" = "Hình vẽ động vui nhộn để trang trí khung hình.";
+"用简单表情为画面增添情绪。" = "Biểu cảm đơn giản giúp khung hình thêm cảm xúc.";
+"让水果图案以轻快动画点亮画面。" = "Hoạt ảnh trái cây rực rỡ làm khung hình thêm sống động.";
+"自动贴合双眼，并随人脸角度变化。" = "Tự khớp với mắt và di chuyển theo góc mặt.";
+"GIFBloom 品牌字标动态贴纸。" = "Nhãn dán logo GIFBloom động để trang trí khung hình.";
+
+/* AI sticker names and descriptions */
+"AI贴纸 · 2D" = "Nhãn dán AI · 2D";
+"AI贴纸 · 3D" = "Nhãn dán AI · 3D";
+"根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。" = "Kính 2D đổi góc nhìn theo góc mặt và luôn khớp với mắt.";
+"使用 3D 模型渲染的视图，随人脸角度平滑变化。" = "Các góc nhìn 3D được dựng thay đổi mượt mà theo góc mặt.";

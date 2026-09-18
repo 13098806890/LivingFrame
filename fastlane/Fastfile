@@ -343,7 +343,7 @@ platform :ios do
     )
   end
 
-  desc "Create or complete the monthly and annual subscriptions from the tracked Fastlane data"
+  desc "Create or synchronize the weekly and annual subscription metadata from the tracked Fastlane data"
   lane :create_subscription_products do |options|
     version = store_version(options)
     data_path = app_store_data_directory(version)
@@ -356,7 +356,7 @@ platform :ios do
       client.get("/v1/subscriptionGroups/#{group_id}/subscriptions", { "limit" => 200 })
     )
 
-    %w[monthly annual].each do |slug|
+    %w[weekly annual].each do |slug|
       product_path = File.join(data_path, "products", slug, "product.json")
       UI.user_error!("Missing subscription data: #{product_path}") unless File.file?(product_path)
       product = JSON.parse(File.read(product_path))
@@ -445,9 +445,30 @@ platform :ios do
       existing_localizations = connect_api_response_data(
         client.get("/v1/subscriptionVersions/#{version_id}/localizations", { "limit" => 200 })
       )
-      existing_locales = existing_localizations.map { |entry| entry.dig("attributes", "locale") }
+      existing_localizations_by_locale = existing_localizations.to_h do |entry|
+        [entry.dig("attributes", "locale"), entry]
+      end
       localized_values.each do |localization|
-        next if existing_locales.include?(localization.fetch("locale"))
+        existing_localization = existing_localizations_by_locale[localization.fetch("locale")]
+
+        if existing_localization
+          existing_attributes = existing_localization.fetch("attributes")
+          next if existing_attributes["name"] == localization.fetch("name") &&
+                  existing_attributes["description"] == localization.fetch("description")
+
+          client.patch("/v2/subscriptionLocalizations/#{existing_localization.fetch("id")}", {
+            "data" => {
+              "type" => "subscriptionLocalizations",
+              "id" => existing_localization.fetch("id"),
+              "attributes" => {
+                "name" => localization.fetch("name"),
+                "description" => localization.fetch("description")
+              }
+            }
+          })
+          UI.message("Updated #{localization.fetch("locale")} metadata for #{product_id}")
+          next
+        end
 
         client.post("/v2/subscriptionLocalizations", {
           "data" => {

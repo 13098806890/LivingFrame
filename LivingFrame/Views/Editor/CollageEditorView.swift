@@ -229,12 +229,8 @@ struct CollageEditorView: View {
                         showAssetPicker = true
                     } label: {
                         Label("添加素材", systemImage: "plus")
-                            .font(.subheadline.weight(.medium))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(LF.actionPrimary)
+                    .lfActionButtonStyle(.secondary)
                 }
             }
         }
@@ -356,12 +352,12 @@ struct CollageEditorView: View {
                     appState.setBackgroundCropScale(elementID, 1)
                     appState.setBackgroundCropOffset(elementID, .zero)
                 }
-                .buttonStyle(.bordered)
+                .lfActionButtonStyle(.secondary)
 
                 Button("旋转90°") {
                     appState.rotateBackground90(elementID)
                 }
-                .buttonStyle(.bordered)
+                .lfActionButtonStyle(.secondary)
                 .accessibilityIdentifier("collage-rotate-active")
             }
         }
@@ -1129,9 +1125,8 @@ struct BackgroundDividerControls: View {
                         .font(.caption2.weight(.semibold))
                         .padding(.vertical, 2)
                 }
-                .buttonStyle(.bordered)
+                .lfActionButtonStyle(.secondary)
                 .controlSize(.small)
-                .tint(LF.actionPrimary)
                 .disabled(!dividerEditingEnabled || settings.dividerLines.count >= BackgroundPartitionGeometry.maximumDividerCount)
             }
 
@@ -1169,10 +1164,8 @@ struct BackgroundDividerControls: View {
                             } label: {
                                 Image(systemName: "trash")
                             }
-                            .font(.caption2)
-                            .buttonStyle(.bordered)
+                            .lfActionButtonStyle(.destructive)
                             .controlSize(.small)
-                            .tint(.red)
                             .accessibilityLabel("删除分割线")
                             .disabled(!dividerEditingEnabled)
                         }
@@ -1387,7 +1380,7 @@ private struct CollageSourceChip: View {
                         .frame(width: 20, height: 22)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.red)
+                .foregroundStyle(LF.destructive)
                 .accessibilityLabel("删除拼接素材")
             }
             .foregroundStyle(LF.textSecondary)

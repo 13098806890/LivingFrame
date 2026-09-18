@@ -583,13 +583,14 @@ struct AnimatedClipPreview: View {
 struct ClipPreviewBadgeIcon: View {
     let systemName: String
     var foregroundStyle: Color = .white
+    var backgroundStyle: Color = .black.opacity(0.34)
 
     var body: some View {
         Image(systemName: systemName)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(foregroundStyle.opacity(0.9))
             .frame(width: 26, height: 26)
-            .background(.black.opacity(0.34), in: Circle())
+            .background(backgroundStyle, in: Circle())
     }
 }
 

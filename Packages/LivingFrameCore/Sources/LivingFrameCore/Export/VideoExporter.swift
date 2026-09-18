@@ -66,6 +66,7 @@ public struct VideoExporter {
         to url: URL,
         fps: Double? = nil,
         maxPixelSize: CGFloat? = nil,
+        watermark: ExportWatermark? = nil,
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws {
@@ -83,6 +84,7 @@ public struct VideoExporter {
         try await writeVideoTrack(
             composition, format: format, to: url,
             fps: exportFPS, frameCount: frameCount, renderSize: renderSize,
+            watermark: watermark,
             progress: progress, isCancelled: isCancelled
         )
         LogStore.log("VideoExporter: video track done elapsed=\(Int(Date().timeIntervalSince(start)))s")
@@ -124,6 +126,7 @@ public struct VideoExporter {
         fps: Double,
         frameCount: Int,
         renderSize: CGSize,
+        watermark: ExportWatermark?,
         progress: @escaping (Double) -> Void,
         isCancelled: @escaping () -> Bool
     ) async throws {
@@ -183,7 +186,7 @@ public struct VideoExporter {
             .useSoftwareRenderer: true,
             .cacheIntermediates: false
         ])
-        let renderer = CompositionRenderer(context: renderContext)
+        let renderer = CompositionRenderer(context: renderContext, exportWatermark: watermark)
         defer {
             renderContext.clearCaches()
             if let pool = adaptor.pixelBufferPool {

@@ -82,9 +82,9 @@
 "光束 + 星芒光效" = "Fascio di luce + scintille stellari";
 "纯净黑幕" = "Fondo nero puro";
 "极简，人物突出" = "Minimalista, la persona risalta";
-"GIF（通用）" = "GIF (universale)";
-"透明视频（HEVC-alpha）" = "Video trasparente (HEVC-alpha)";
-"普通视频（H.264）" = "Video standard (H.264)";
+"GIF（通用）" = "GIF";
+"透明视频（HEVC-alpha）" = "Video (HEVC)";
+"普通视频（H.264）" = "Video (H.264)";
 "兼容性最广，适合分享，透明边缘为硬边" = "Massima compatibilità, ideale per la condivisione; bordi di trasparenza netti";
 "保留半透明边缘，体积小，适合再次合成" = "Mantiene bordi semitrasparenti, leggero, ideale per ricomporre";
 "无透明通道，最通用的视频格式" = "Senza canale alpha, il formato video più universale";
@@ -107,7 +107,7 @@
 "抠图失败" = "Ritaglio non riuscito";
 "无法读取所选素材" = "Impossibile leggere l'elemento selezionato";
 "照片" = "Foto";
-"Live Photo（动态照片）" = "Live Photo (foto animata)";
+"Live Photo（动态照片）" = "Live Photo";
 "存入相册长按播放，透明区域用背景填充" = "Salvata come foto animata; tieni premuto per riprodurre. Le aree trasparenti vengono riempite con lo sfondo";
 "需要相册权限才能保存 Live Photo，请在设置中开启" = "Per salvare una Live Photo serve l'accesso a Foto. Attivalo nelle Impostazioni";
 "保存" = "Salva";
@@ -220,6 +220,7 @@
 "正在下载原始动态照片" = "Scaricamento del Live Photo originale…";
 "比例" = "Proporzioni";
 "涂鸦" = "Doodle";
+"表情" = "Emoji";
 "涂鸦（开发中）" = "Doodle (in sviluppo)";
 "添加素材后显示时间轴" = "La timeline appare dopo aver aggiunto contenuti";
 "清理临时文件" = "Pulisci file temporanei";
@@ -315,7 +316,7 @@
 "关闭" = "Chiudi";
 "使用周订阅或一次性买断解锁 GIFBloom Pro。" = "Sblocca GIFBloom Pro con un abbonamento settimanale o un acquisto una tantum.";
 "GIFBloom Pro 已解锁" = "GIFBloom Pro è sbloccato";
-"订阅与买断" = "Abbonamento o acquisto una tantum";
+"订阅" = "Abbonati";
 "管理订阅" = "Gestisci abbonamento";
 "隐私政策" = "Informativa sulla privacy";
 "支持" = "Supporto";
@@ -683,7 +684,8 @@
 "微信 GIF 预估值按 15 fps 计算；超过 10 MB 会自动降低帧率。" = "La dimensione della GIF WeChat è stimata a 15 fps; oltre 10 MB, la frequenza dei fotogrammi viene ridotta automaticamente.";
 "图标配色" = "Icona app";
 "晴空蓝、奶油白与珊瑚橙，取自 App 图标" = "Azzurro cielo, crema e corallo dall’icona dell’app";
-"选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。" = "Scegli un abbonamento settimanale o annuale oppure un acquisto una tantum per sbloccare GIFBloom Pro.";
+"选择周订阅或年订阅解锁 GIFBloom Pro。" = "Scegli un abbonamento settimanale o annuale per sbloccare GIFBloom Pro.";
+"免费导出会在右下角添加 GIFBloom 水印。" = "Le esportazioni gratuite includono una filigrana GIFBloom in basso a destra.";
 "周订阅和年订阅均会自动续订。除非在当前周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。" = "Gli abbonamenti settimanali e annuali si rinnovano automaticamente. Annulla almeno 24 ore prima della fine del periodo corrente per interrompere il rinnovo. Puoi gestire o annullare l’abbonamento nelle impostazioni dell’Apple ID.";
 
 /* Emoji sticker names */
@@ -695,3 +697,85 @@
 "思考" = "Pensiero";
 "惊讶" = "Sorpreso";
 "生气" = "Arrabbiato";
+
+/* Library overview and search */
+"最近添加" = "Aggiunti di recente";
+"搜索素材名称" = "Cerca elementi per nome";
+"素材类型" = "Tipo di elemento";
+"没有匹配的素材" = "Nessun elemento corrispondente";
+"全部" = "Tutti";
+
+"订阅 GIFBloom Pro 后可去除导出水印。" = "Abbonati a GIFBloom Pro per rimuovere la filigrana dalle esportazioni.";
+"从长视频中选择最长 10 秒的剪影片段。" = "Scegli clip fino a 10 secondi dai video lunghi.";
+"免费版最长 5 秒；GIFBloom Pro 可选 8 秒或 10 秒。" = "Gratis fino a 5 s; GIFBloom Pro fino a 8 o 10 s.";
+"解锁更长片段" = "Sblocca clip più lunghi";
+"周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "I piani settimanali e annuali si rinnovano automaticamente. Annulla almeno 24 ore prima della fine del periodo. Gestisci il piano nelle impostazioni dell’Apple ID.";
+"使用 AI 贴纸，让墨镜跟随人物双眼移动。" = "Usa gli adesivi IA per far seguire gli occhi della persona agli occhiali.";
+"AI 贴纸仅限 GIFBloom Pro 使用。" = "Gli adesivi IA sono disponibili solo con GIFBloom Pro.";
+"解锁 AI 贴纸" = "Sblocca gli adesivi IA";
+"解锁 GIFBloom Pro" = "Sblocca GIFBloom Pro";
+"解锁更长的素材提取时长。" = "Sblocca l'estrazione di clip più lunghi.";
+"使用 GIFBloom Pro 专属 AI 贴纸。" = "Usa gli adesivi IA esclusivi di GIFBloom Pro.";
+"GIFBloom Pro 可解锁更长素材提取时长和 AI 贴纸。" = "GIFBloom Pro sblocca clip più lunghi e adesivi IA.";
+"订阅去水印" = "Abbonati per rimuovere la filigrana";
+"水果" = "Frutta";
+"5 秒" = "5 secondi";
+
+"AI贴纸" = "Adesivi IA";
+"墨镜" = "Occhiali da sole";
+"墨镜 · 2D多视角" = "Occhiali da sole · viste 2D";
+"紫晶墨镜 · 3D视角" = "Occhiali ametista · viste 3D";
+"请先选中画布上的人物素材，或让时间指针停在人物画面上。" = "Seleziona sulla tela una clip con una persona o sposta la testina su un fotogramma con una persona.";
+"正在逐帧识别人脸…" = "Rilevamento del volto fotogramma per fotogramma…";
+"工程在分析期间发生了变化，请重新添加墨镜。" = "Il progetto è cambiato durante l’analisi. Aggiungi di nuovo gli occhiali.";
+"墨镜已添加，会跟随人物眼睛移动。" = "Occhiali aggiunti: seguiranno gli occhi della persona.";
+"没有识别到清晰的双眼，试试正脸更清楚的素材。" = "Non sono stati trovati due occhi nitidi. Prova una ripresa frontale più chiara.";
+"人脸分析失败，请重试。" = "Analisi del volto non riuscita. Riprova.";
+"请先选中对应的人物素材，再添加墨镜。识别后，您可以自行调整大小。" = "Seleziona prima la clip della persona, poi aggiungi gli occhiali. Dopo il rilevamento puoi regolarne la dimensione.";
+
+/* Works list */
+"查看全部" = "Mostra tutto";
+"全部作品" = "Tutte le opere";
+"搜索作品名称" = "Cerca opere per nome";
+"排序" = "Ordina";
+"排序方式" = "Ordina per";
+"最近保存" = "Salvate di recente";
+"名称" = "Nome";
+"加载更多" = "Carica altro";
+"没有匹配的作品" = "Nessuna opera corrispondente";
+"尝试其他关键词" = "Prova un'altra parola chiave";
+"请先选中对应的人物素材，再添加墨镜。" = "Seleziona la clip della persona da usare prima di aggiungere gli occhiali.";
+"墨镜已添加，会跟随双眼移动，可自行调整大小。" = "Occhiali aggiunti e agganciati agli occhi. Puoi regolarne la dimensione.";
+
+/* Sticker names and descriptions */
+"夏日" = "Estate";
+"苹果" = "Mela";
+"香蕉" = "Banana";
+"橙子" = "Arancia";
+"草莓" = "Fragola";
+"葡萄" = "Uva";
+"西瓜" = "Anguria";
+"桃子" = "Pesca";
+"菠萝" = "Ananas";
+"柠檬" = "Limone";
+"梨" = "Pera";
+"芒果" = "Mango";
+"猕猴桃" = "Kiwi";
+"樱桃" = "Ciliegie";
+"牛油果" = "Avocado";
+"蓝莓" = "Mirtilli";
+"李子" = "Prugna";
+"手写字标" = "Logo scritto a mano";
+"涂鸦字标" = "Logo scarabocchio";
+"蜡笔字标" = "Logo a pastello";
+"为画面增添趣味的动态涂鸦装饰。" = "Scarabocchi animati per decorare la scena con allegria.";
+"用简单表情为画面增添情绪。" = "Espressioni semplici per aggiungere emozione alla scena.";
+"让水果图案以轻快动画点亮画面。" = "Animazioni di frutta per dare vita alla scena.";
+"自动贴合双眼，并随人脸角度变化。" = "Si adatta agli occhi e segue i cambiamenti dell’angolazione del viso.";
+"GIFBloom 品牌字标动态贴纸。" = "Loghi GIFBloom animati per decorare la scena.";
+
+/* AI sticker names and descriptions */
+"AI贴纸 · 2D" = "Adesivi IA · 2D";
+"AI贴纸 · 3D" = "Adesivi IA · 3D";
+"根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。" = "Gli occhiali 2D cambiano vista in base all’angolo del viso e restano sugli occhi.";
+"使用 3D 模型渲染的视图，随人脸角度平滑变化。" = "Le viste 3D renderizzate cambiano gradualmente con l’angolo del viso.";

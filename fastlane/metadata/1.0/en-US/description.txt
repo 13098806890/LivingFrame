@@ -1,4 +1,4 @@
-Turn videos and Live Photos into animated cutouts, then arrange them into your own moving scenes.
+GIFBloom is a video cutout and animated photo editor for iPhone. Turn a video or Live Photo into a moving person cutout, then build a layered scene with backgrounds, stickers, text, and audio.
 
 Create a project on one canvas:
 • Cut people out of videos and Live Photos on your device (iOS 17 or later)
@@ -8,6 +8,6 @@ Create a project on one canvas:
 • Export as GIF, transparent HEVC video, or H.264 video
 • Save projects on your device, then export to Photos or share
 
-Cutout generation, composition, and export happen on your device. No account is required, and the photos and videos you choose are not uploaded.
+Cutout generation, composition, and export happen on your device. No account is required, and the photos and videos you select are never uploaded.
 
-GIFBloom is a creative tool for making and editing personal animated photo projects.
+Create animated photos, layered GIFs, and transparent video clips from your own media, then save them to Photos or share them.

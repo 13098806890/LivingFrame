@@ -70,6 +70,10 @@ actor WorkPersistenceCoordinator {
         store.loadWorks()
     }
 
+    func storageSizeBytes(for workID: UUID) -> Int64 {
+        store.storageSizeBytes(for: workID)
+    }
+
     func save(_ work: WorkItem, failureMessage: String) -> Bool {
         do {
             try store.save(work)

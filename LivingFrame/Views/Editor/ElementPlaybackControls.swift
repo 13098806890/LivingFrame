@@ -120,8 +120,7 @@ private struct ElementSourceRangeEditor: View {
                             .font(.subheadline.weight(.medium))
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(LF.actionPrimary)
+                    .lfActionButtonStyle(.secondary)
                 }
                 .padding(16)
             }

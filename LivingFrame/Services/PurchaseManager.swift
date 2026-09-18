@@ -5,20 +5,25 @@ import SwiftUI
 @MainActor
 final class PurchaseManager: ObservableObject {
     static let weeklyProductID = "com.livingframe.app.pro.weekly"
-    static let monthlyProductID = "com.livingframe.app.pro.monthly"
     static let annualProductID = "com.livingframe.app.pro.annual"
-    static let lifetimeProductID = "com.livingframe.app.pro.lifetime"
     static let subscriptionGroupID = "22389365"
+    static let freeMaximumExtractionDuration = 5.0
+    static let proMaximumExtractionDuration = 10.0
 
-    private static let subscriptionProductIDs: Set<String> = [
+    private static let productIDs: Set<String> = [
         weeklyProductID,
-        monthlyProductID,
         annualProductID
     ]
-    private static let productIDs = subscriptionProductIDs.union([lifetimeProductID])
 
     @Published private(set) var hasPro = false
     @Published private(set) var hasActiveSubscription = false
+
+    func allowedExtractionDuration(configuredDuration: Double) -> Double {
+        min(
+            configuredDuration,
+            hasPro ? Self.proMaximumExtractionDuration : Self.freeMaximumExtractionDuration
+        )
+    }
 
     private var transactionUpdatesTask: Task<Void, Never>?
 
@@ -32,7 +37,6 @@ final class PurchaseManager: ObservableObject {
     }
 
     func refreshEntitlements() async {
-        var ownsLifetimePurchase = false
         var hasActiveSubscription = false
 
         for await result in Transaction.currentEntitlements {
@@ -40,18 +44,11 @@ final class PurchaseManager: ObservableObject {
                   transaction.revocationDate == nil,
                   Self.productIDs.contains(transaction.productID) else { continue }
 
-            switch transaction.productID {
-            case Self.lifetimeProductID:
-                ownsLifetimePurchase = true
-            case Self.weeklyProductID, Self.monthlyProductID, Self.annualProductID:
-                hasActiveSubscription = hasActiveSubscription ||
-                    (transaction.expirationDate.map { $0 > .now } ?? false)
-            default:
-                break
-            }
+            hasActiveSubscription = hasActiveSubscription ||
+                (transaction.expirationDate.map { $0 > .now } ?? false)
         }
 
-        hasPro = ownsLifetimePurchase || hasActiveSubscription
+        hasPro = hasActiveSubscription
         self.hasActiveSubscription = hasActiveSubscription
     }
 

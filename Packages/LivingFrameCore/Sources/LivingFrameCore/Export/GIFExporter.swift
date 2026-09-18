@@ -33,6 +33,7 @@ public struct GIFExporter {
         _ composition: Composition,
         to url: URL,
         pixelSize: CGFloat = 240,
+        watermark: ExportWatermark? = nil,
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws -> ChatStickerExportResult {
@@ -49,6 +50,7 @@ public struct GIFExporter {
                 maxPixelSize: outputPixelSize,
                 outputSize: CGSize(width: outputPixelSize, height: outputPixelSize),
                 loops: true,
+                watermark: watermark,
                 progress: { fraction in
                     progress((Double(index) + fraction) / Double(candidates.count))
                 },
@@ -77,6 +79,7 @@ public struct GIFExporter {
         outputSize: CGSize? = nil,
         loops: Bool = false,
         appliesClipEffects: Bool = true,
+        watermark: ExportWatermark? = nil,
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws {
@@ -103,7 +106,8 @@ public struct GIFExporter {
         let renderer = CompositionRenderer(
             context: renderContext,
             frameMaxPixelSize: maxPixelSize,
-            appliesClipEffects: appliesClipEffects
+            appliesClipEffects: appliesClipEffects,
+            exportWatermark: watermark
         )
         defer { renderContext.clearCaches() }
         var skipped = 0
@@ -169,6 +173,7 @@ public struct GIFExporter {
         sampleFrameCount: Int = 8,
         appliesClipEffects: Bool = true,
         outputSize: CGSize? = nil,
+        watermark: ExportWatermark? = nil,
         isCancelled: () -> Bool = { Task.isCancelled }
     ) throws -> Int64 {
         let totalFrames = max(1, Int((composition.duration * fps).rounded(.up)))
@@ -179,7 +184,8 @@ public struct GIFExporter {
 
         let renderer = CompositionRenderer(
             frameMaxPixelSize: maxPixelSize,
-            appliesClipEffects: appliesClipEffects
+            appliesClipEffects: appliesClipEffects,
+            exportWatermark: watermark
         )
         var sampledImages: [CGImage] = []
         sampledImages.reserveCapacity(sampleCount)

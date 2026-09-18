@@ -30,6 +30,76 @@ public struct ElementTransform: Codable, Equatable {
     }
 }
 
+/// A detected pair of eye centers in a source frame. Coordinates are normalized
+/// to the cropped, oriented frame with a lower-left origin (the Vision convention).
+public struct FaceStickerKeyframe: Codable, Equatable, Sendable {
+    public var frameIndex: Int
+    public var leftEye: CGPoint
+    public var rightEye: CGPoint
+    /// Face yaw in radians. Vision provides a value in camera coordinates;
+    /// nil keeps older saved projects on the front-facing sticker view.
+    public var yaw: CGFloat?
+
+    public init(frameIndex: Int, leftEye: CGPoint, rightEye: CGPoint, yaw: CGFloat? = nil) {
+        self.frameIndex = frameIndex
+        self.leftEye = leftEye
+        self.rightEye = rightEye
+        self.yaw = yaw
+    }
+}
+
+/// Source-frame eye landmarks used to keep a face accessory attached to one clip.
+public struct FaceStickerTracking: Codable, Equatable, Sendable {
+    public var targetClipElementID: UUID
+    public var clipID: String
+    public var keyframes: [FaceStickerKeyframe]
+
+    public init(targetClipElementID: UUID, clipID: String, keyframes: [FaceStickerKeyframe]) {
+        self.targetClipElementID = targetClipElementID
+        self.clipID = clipID
+        self.keyframes = keyframes.sorted { $0.frameIndex < $1.frameIndex }
+    }
+
+    public func keyframe(at frameIndex: Int) -> FaceStickerKeyframe? {
+        guard !keyframes.isEmpty else { return nil }
+        if let exact = keyframes.first(where: { $0.frameIndex == frameIndex }) {
+            return exact
+        }
+        guard let before = keyframes.last(where: { $0.frameIndex < frameIndex }) else {
+            return keyframes.first
+        }
+        guard let after = keyframes.first(where: { $0.frameIndex > frameIndex }) else {
+            return keyframes.last
+        }
+        let span = after.frameIndex - before.frameIndex
+        guard span > 0 else { return before }
+        let amount = CGFloat(frameIndex - before.frameIndex) / CGFloat(span)
+        return FaceStickerKeyframe(
+            frameIndex: frameIndex,
+            leftEye: before.leftEye.interpolated(to: after.leftEye, amount: amount),
+            rightEye: before.rightEye.interpolated(to: after.rightEye, amount: amount),
+            yaw: Self.interpolate(before.yaw, after.yaw, amount: amount)
+        )
+    }
+
+    private static func interpolate(_ first: CGFloat?, _ second: CGFloat?, amount: CGFloat) -> CGFloat? {
+        switch (first, second) {
+        case let (.some(a), .some(b)): a + (b - a) * amount
+        case let (.some(value), .none), let (.none, .some(value)): value
+        case (.none, .none): nil
+        }
+    }
+}
+
+private extension CGPoint {
+    func interpolated(to other: CGPoint, amount: CGFloat) -> CGPoint {
+        CGPoint(
+            x: x + (other.x - x) * amount,
+            y: y + (other.y - y) * amount
+        )
+    }
+}
+
 // MARK: - Element
 
 public enum ElementKind: Codable, Equatable {
@@ -506,6 +576,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     /// 是否自动跟随当前工程中最长的素材时长。
     /// nil 用于兼容旧工程；只有新创建且未被手动调整过的文字/贴纸会显式设为 true。
     public var followsLongestMaterialDuration: Bool?
+    /// 仅用于自动贴合人脸的装饰贴纸；眼睛关键点以目标 clip 的源帧索引保存。
+    public var faceStickerTracking: FaceStickerTracking?
 
     public init(
         id: UUID = UUID(),
@@ -523,7 +595,8 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         filter: ElementFilter? = nil,
         backgroundSettings: BackgroundElementSettings? = nil,
         collageGroupID: UUID? = nil,
-        followsLongestMaterialDuration: Bool? = nil
+        followsLongestMaterialDuration: Bool? = nil,
+        faceStickerTracking: FaceStickerTracking? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -541,6 +614,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         self.backgroundSettings = backgroundSettings
         self.collageGroupID = collageGroupID
         self.followsLongestMaterialDuration = followsLongestMaterialDuration
+        self.faceStickerTracking = faceStickerTracking
     }
 
     public func isVisible(at time: TimeInterval) -> Bool {

@@ -14,6 +14,8 @@ public struct CompositionRenderer {
     private let isPlaybackReversed: Bool
     /// Whether clip-level edge and sticker effects should be applied.
     private let appliesClipEffects: Bool
+    /// 仅用于最终导出，编辑预览不传入该值。
+    private let exportWatermark: ExportWatermark?
     /// 背景素材的读取入口由调用方提供，避免渲染器把磁盘存储和渲染逻辑绑在一起。
     private let backgroundMediaProvider: any BackgroundMediaProviding
 
@@ -22,12 +24,14 @@ public struct CompositionRenderer {
         frameMaxPixelSize: CGFloat? = nil,
         isPlaybackReversed: Bool = false,
         appliesClipEffects: Bool = true,
+        exportWatermark: ExportWatermark? = nil,
         backgroundMediaProvider: any BackgroundMediaProviding
     ) {
         self.context = context
         self.frameMaxPixelSize = frameMaxPixelSize
         self.isPlaybackReversed = isPlaybackReversed
         self.appliesClipEffects = appliesClipEffects
+        self.exportWatermark = exportWatermark
         self.backgroundMediaProvider = backgroundMediaProvider
     }
 
@@ -388,6 +392,22 @@ public struct CompositionRenderer {
         in composition: Composition,
         at time: TimeInterval
     ) -> CGSize? {
+        if element.faceStickerTracking != nil,
+           case .decoration(let decorationID) = element.kind,
+           let image = decorationRenderer.image(
+                for: decorationID,
+                canvas: composition.canvasRect,
+                at: max(0, time - element.startTime),
+                duration: element.endTime - element.startTime,
+                sourceStartTime: element.sourceStartTime,
+                sourceEndTime: element.sourceEndTime,
+                playbackOffsetTime: element.sourcePlaybackOffset ?? 0,
+                playbackCount: element.playbackCount,
+                faceYaw: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.yaw
+           ) {
+            return image.extent.standardized.size
+        }
+
         // 素材的选中框代表“素材画布”而不是当前帧的非透明像素范围。
         // 分割结果的透明边缘、描边和滤镜会随帧变化，不能让它们改变交互边界。
         if case .clip(let clipID) = element.kind,
@@ -418,6 +438,49 @@ public struct CompositionRenderer {
             return nil
         }
         return size
+    }
+
+    /// Visible-art bounds for sticker selection frames, in the original sticker
+    /// image's lower-left coordinate space. The interaction still transforms the
+    /// full image canvas; only the visual selection affordance trims transparent
+    /// padding around the sticker artwork.
+    public func stickerSelectionBounds(for element: CompositionElement) -> CGRect? {
+        guard case .decoration(let decorationID) = element.kind,
+              decorationID.hasPrefix("sticker-") else {
+            return nil
+        }
+        return decorationRenderer.selectionBounds(for: decorationID)
+    }
+
+    /// Transform used by the canvas selection frame. Face stickers resolve this
+    /// from the same source frame and landmarks as the rendered image.
+    public func resolvedTransform(
+        for element: CompositionElement,
+        in composition: Composition,
+        at time: TimeInterval
+    ) -> ElementTransform {
+        guard element.faceStickerTracking != nil,
+              case .decoration(let decorationID) = element.kind,
+              let image = decorationRenderer.image(
+                for: decorationID,
+                canvas: composition.canvasRect,
+                at: max(0, time - element.startTime),
+                duration: element.endTime - element.startTime,
+                sourceStartTime: element.sourceStartTime,
+                sourceEndTime: element.sourceEndTime,
+                playbackOffsetTime: element.sourcePlaybackOffset ?? 0,
+                playbackCount: element.playbackCount,
+                faceYaw: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.yaw
+              ),
+              let transform = faceStickerTransform(
+                for: element,
+                in: composition,
+                at: time,
+                stickerSize: image.extent.standardized.size
+              ) else {
+            return element.transform
+        }
+        return transform
     }
 
     // MARK: - 合成
@@ -491,8 +554,47 @@ public struct CompositionRenderer {
                     .composited(over: image)
             }
         }
+        if let exportWatermark {
+            image = watermarkImage(exportWatermark, canvas: canvas, at: time)
+                .composited(over: image)
+        }
         // 统一裁剪到画布：任何背景/元素 extent 异常都不会产生未覆盖黑块
         return image.cropped(to: canvas)
+    }
+
+    private func watermarkImage(
+        _ watermark: ExportWatermark,
+        canvas: CGRect,
+        at time: TimeInterval
+    ) -> CIImage {
+        guard let source = decorationRenderer.image(
+            for: watermark.decorationID,
+            canvas: canvas,
+            at: time,
+            duration: .greatestFiniteMagnitude
+        ) else {
+            return CIImage.clear.cropped(to: canvas)
+        }
+
+        let sourceExtent = source.extent
+        guard sourceExtent.width > 0, sourceExtent.height > 0 else {
+            return CIImage.clear.cropped(to: canvas)
+        }
+        let shortSide = min(canvas.width, canvas.height)
+        let targetWidth = max(shortSide * 0.48, 1)
+        let scale = targetWidth / sourceExtent.width
+        let trailingInset = max(canvas.width * 0.10, 1)
+        let bottomInset = max(canvas.height * 0.10, 1)
+        let transformed = source
+            .transformed(by: CGAffineTransform(translationX: -sourceExtent.minX, y: -sourceExtent.minY))
+            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            .transformed(by: CGAffineTransform(
+                translationX: canvas.maxX - trailingInset - targetWidth,
+                y: canvas.minY + bottomInset
+            ))
+        return transformed.applyingFilter("CIColorMatrix", parameters: [
+            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: watermark.opacity)
+        ])
     }
 
     private func maskedToCanvasOpening(
@@ -684,7 +786,8 @@ public struct CompositionRenderer {
                 sourceStartTime: element.sourceStartTime,
                 sourceEndTime: element.sourceEndTime,
                 playbackOffsetTime: element.sourcePlaybackOffset ?? 0,
-                playbackCount: element.playbackCount
+                playbackCount: element.playbackCount,
+                faceYaw: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.yaw
             )
         case .effect(let effectID):
             source = decorationRenderer.image(
@@ -713,19 +816,142 @@ public struct CompositionRenderer {
         if case .background = element.kind {
             return ci
         }
+        let elementTransform: ElementTransform
+        if element.faceStickerTracking != nil {
+            guard let trackingTransform = faceStickerTransform(
+                for: element,
+                in: composition,
+                at: time,
+                stickerSize: ci.extent.standardized.size
+            ) else {
+                return nil
+            }
+            elementTransform = trackingTransform
+        } else {
+            elementTransform = element.transform
+        }
         // CGAffineTransform 链为右乘：新变换先应用。
         // 目标应用顺序：平移到元素中心(-mid) → 缩放 → 旋转 → 平移到目标位置(position)。
         // 因此矩阵必须从"最后应用"的变换开始构造。
         // fixScale 把缩略图尺寸换算到素材实际像素尺寸，保证元素渲染尺寸与全尺寸一致。
-        let effectiveScale = element.transform.scale * fixScale
+        let effectiveScale = elementTransform.scale * fixScale
         var transform = CGAffineTransform(
-            translationX: element.transform.position.x,
-            y: element.transform.position.y
+            translationX: elementTransform.position.x,
+            y: elementTransform.position.y
         )
-        transform = transform.rotated(by: element.transform.rotation)
+        transform = transform.rotated(by: elementTransform.rotation)
         transform = transform.scaledBy(x: effectiveScale, y: effectiveScale)
         transform = transform.translatedBy(x: -ci.extent.midX, y: -ci.extent.midY)
         return ci.transformed(by: transform)
+    }
+
+    private func faceStickerTransform(
+        for element: CompositionElement,
+        in composition: Composition,
+        at time: TimeInterval,
+        stickerSize: CGSize
+    ) -> ElementTransform? {
+        guard let tracking = element.faceStickerTracking,
+              case .decoration(let decorationID) = element.kind,
+              let definition = DecorationRenderer.stickerDefinition(for: decorationID),
+              let keyframe = trackedFaceStickerKeyframe(for: element, in: composition, at: time),
+              let targetElement = composition.elements.first(where: { $0.id == tracking.targetClipElementID }),
+              case .clip(let clipID) = targetElement.kind,
+              clipID == tracking.clipID,
+              let clip = FrameCache.shared.clip(id: clipID),
+              targetElement.isVisible(at: time) else {
+            return nil
+        }
+
+        let frameSize = CGSize(
+            width: CGFloat(max(clip.renderedWidth, 1)),
+            height: CGFloat(max(clip.renderedHeight, 1))
+        )
+
+        func placement(for sample: FaceStickerKeyframe, scaleOverride: CGFloat? = nil) -> ElementTransform? {
+            guard let anchors = DecorationRenderer.faceViewSelection(for: decorationID, yaw: sample.yaw)?
+                .anchors(for: definition.renderingMode)
+                ?? definition.faceAnchors else {
+                return nil
+            }
+            return FaceStickerPlacement.transform(
+                for: sample,
+                frameSize: frameSize,
+                clipTransform: targetElement.transform,
+                stickerSize: stickerSize,
+                stickerAnchors: anchors,
+                userOffset: element.transform,
+                scaleOverride: scaleOverride
+            )
+        }
+
+        guard let current = placement(for: keyframe) else { return nil }
+        let previousScale = tracking.keyframe(at: keyframe.frameIndex - 1)
+            .flatMap { placement(for: $0)?.scale } ?? current.scale
+        let nextScale = tracking.keyframe(at: keyframe.frameIndex + 1)
+            .flatMap { placement(for: $0)?.scale } ?? current.scale
+        let stableScale = FaceStickerPlacement.smoothedScale(
+            previous: previousScale,
+            current: current.scale,
+            next: nextScale
+        )
+        return placement(for: keyframe, scaleOverride: stableScale) ?? current
+    }
+
+    private func trackedFaceStickerKeyframe(
+        for element: CompositionElement,
+        in composition: Composition,
+        at time: TimeInterval
+    ) -> FaceStickerKeyframe? {
+        guard let tracking = element.faceStickerTracking,
+              let targetElement = composition.elements.first(where: { $0.id == tracking.targetClipElementID }),
+              targetElement.isVisible(at: time),
+              case .clip(let clipID) = targetElement.kind,
+              clipID == tracking.clipID,
+              let clip = FrameCache.shared.clip(id: clipID),
+              let sourceFrameIndex = trackedSourceFrameIndex(for: targetElement, clip: clip, at: time) else {
+            return nil
+        }
+        return tracking.keyframe(at: sourceFrameIndex)
+    }
+
+    private func trackedSourceFrameIndex(
+        for element: CompositionElement,
+        clip: SegmentedClip,
+        at compositionTime: TimeInterval
+    ) -> Int? {
+        let sourceRange = SourcePlaybackRange(
+            duration: clip.playbackSourceDuration,
+            start: element.sourceStartTime,
+            end: element.sourceEndTime
+        )
+        let elapsed = max(0, compositionTime - element.startTime)
+        let cycleDuration = max(sourceRange.span / max(clip.playbackSpeed, 0.01), 0.001)
+        let sourceTime = sourceRange.sourceTime(
+            at: elapsed,
+            playbackRate: clip.playbackSpeed,
+            phase: element.sourcePlaybackOffset ?? 0,
+            looping: element.shouldLoop(cycleDuration: cycleDuration)
+        )
+
+        let playbackFrames = clip.playbackFrameIndices(reversed: isPlaybackReversed)
+        guard !playbackFrames.isEmpty else { return nil }
+        let fps = clip.fps
+        guard fps.isFinite, fps > 0 else { return playbackFrames.first }
+
+        let boundedStart = min(max(sourceRange.start, 0), clip.playbackSourceDuration)
+        let boundedEnd = min(max(sourceRange.end, boundedStart), clip.playbackSourceDuration)
+        let startIndex = min(
+            max(Int((boundedStart * fps).rounded(.down)), 0),
+            playbackFrames.count - 1
+        )
+        let endIndex = min(
+            max(Int((boundedEnd * fps).rounded(.up)), startIndex + 1),
+            playbackFrames.count
+        )
+        let cycleFrameCount = max(endIndex - startIndex, 1)
+        let relativeFrame = max(Int(((sourceTime - boundedStart) * fps).rounded(.down)), 0)
+        return playbackFrames[startIndex + (relativeFrame % cycleFrameCount)]
     }
 
     private func applyingElementFilter(_ filter: ElementFilter?, to image: CIImage) -> CIImage {

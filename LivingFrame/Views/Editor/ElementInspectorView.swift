@@ -132,7 +132,7 @@ struct ElementInspectorView: View {
                             .frame(width: 34, height: 34)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(LF.destructive)
                 }
             }
             .padding(12)

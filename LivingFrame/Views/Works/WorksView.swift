@@ -5,6 +5,7 @@ struct WorksView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showNewProjectConfirmation = false
 
+    private let recentSavedWorkLimit = 6
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 12)]
 
     var body: some View {
@@ -25,7 +26,10 @@ struct WorksView: View {
                     let draftWorks = appState.works.filter { $0.draft != nil }
                     // 自动保存只进入草稿箱；只有存在主动保存快照的条目才进入作品。
                     // 同一工程既有正式版本又有后续草稿时，两区分别展示各自版本。
-                    let savedWorks = appState.works.filter(\.hasSavedVersion)
+                    let savedWorks = appState.works
+                        .filter(\.hasSavedVersion)
+                        .sorted { $0.worksListSavedDate > $1.worksListSavedDate }
+                    let recentSavedWorks = Array(savedWorks.prefix(recentSavedWorkLimit))
 
                     LazyVStack(alignment: .leading, spacing: 18) {
                         worksSectionHeader(
@@ -47,13 +51,31 @@ struct WorksView: View {
                         }
 
                         if !savedWorks.isEmpty {
-                            worksSectionHeader(
-                                title: "已保存作品",
-                                subtitle: draftWorks.isEmpty ? nil : "手动保存的正式版本",
-                                icon: "photo.stack"
-                            )
+                            HStack(spacing: 8) {
+                                worksSectionHeader(
+                                    title: "已保存作品",
+                                    subtitle: draftWorks.isEmpty ? nil : "手动保存的正式版本",
+                                    icon: "photo.stack"
+                                )
+
+                                if savedWorks.count > recentSavedWorkLimit {
+                                    NavigationLink {
+                                        SavedWorksView()
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Text("查看全部")
+                                            Image(systemName: "chevron.right")
+                                                .font(.caption2.weight(.semibold))
+                                        }
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(LF.actionPrimary)
+                                        .fixedSize()
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                             LazyVGrid(columns: columns, spacing: 12) {
-                                ForEach(savedWorks) { work in
+                                ForEach(recentSavedWorks) { work in
                                     WorkCell(work: work, version: .saved)
                                 }
                             }
@@ -62,15 +84,19 @@ struct WorksView: View {
                     .padding()
                 }
             }
-            .lfNavigationTitle("作品")
+            .navigationTitle("作品")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         requestNewProject()
                     } label: {
-                        Label("新建", systemImage: "plus")
+                        Image(systemName: "plus")
+                            .font(.headline.weight(.semibold))
                     }
+                    .tint(LF.actionPrimary)
+                    .accessibilityLabel("新建")
+                    .accessibilityIdentifier("works-create-project")
                 }
             }
             .confirmationDialog("开始新工程？", isPresented: $showNewProjectConfirmation, titleVisibility: .visible) {
@@ -133,6 +159,111 @@ struct WorksView: View {
     }
 }
 
+private enum SavedWorksSortOption: String, CaseIterable, Identifiable {
+    case recentlySaved
+    case name
+
+    var id: Self { self }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .recentlySaved: "最近保存"
+        case .name: "名称"
+        }
+    }
+}
+
+private struct SavedWorksView: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var searchText = ""
+    @State private var sortOption: SavedWorksSortOption = .recentlySaved
+    @State private var displayedCount = 30
+
+    private let pageSize = 30
+    private let columns = [GridItem(.adaptive(minimum: 160), spacing: 12)]
+
+    private var matchingWorks: [WorkItem] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let results = appState.works.filter { work in
+            work.hasSavedVersion && (query.isEmpty || work.name.localizedCaseInsensitiveContains(query))
+        }
+
+        switch sortOption {
+        case .recentlySaved:
+            return results.sorted { $0.worksListSavedDate > $1.worksListSavedDate }
+        case .name:
+            return results.sorted {
+                let comparison = $0.name.localizedStandardCompare($1.name)
+                if comparison == .orderedSame {
+                    return $0.worksListSavedDate > $1.worksListSavedDate
+                }
+                return comparison == .orderedAscending
+            }
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                if matchingWorks.isEmpty {
+                    EmptyStateView(
+                        icon: searchText.isEmpty ? "photo.stack" : "magnifyingglass",
+                        title: searchText.isEmpty ? "还没有作品" : "没有匹配的作品",
+                        message: searchText.isEmpty
+                            ? "在编辑页编辑内容，点击保存后作品会显示在这里"
+                            : "尝试其他关键词"
+                    )
+                    .padding(.top, 32)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(Array(matchingWorks.prefix(displayedCount))) { work in
+                            WorkCell(work: work, version: .saved)
+                        }
+                    }
+
+                    if matchingWorks.count > displayedCount {
+                        Button("加载更多") {
+                            displayedCount += pageSize
+                        }
+                        .lfActionButtonStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 4)
+                    }
+                }
+            }
+            .padding()
+        }
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .navigationTitle("全部作品")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "搜索作品名称")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("排序方式", selection: $sortOption) {
+                        ForEach(SavedWorksSortOption.allCases) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                } label: {
+                    Label("排序", systemImage: "arrow.up.arrow.down")
+                }
+            }
+        }
+        .onChange(of: searchText) { _, _ in
+            displayedCount = pageSize
+        }
+        .onChange(of: sortOption) { _, _ in
+            displayedCount = pageSize
+        }
+    }
+}
+
+private extension WorkItem {
+    var worksListSavedDate: Date { savedAt ?? lastSavedAt }
+}
+
 private struct WorkCell: View {
     @EnvironmentObject private var appState: AppState
     @State private var showDeleteConfirmation = false
@@ -140,6 +271,7 @@ private struct WorkCell: View {
     @State private var showRenameAlert = false
     @State private var renameText = ""
     @State private var pendingAction: WorkAction?
+    @State private var workStorageBytes: Int64?
     let work: WorkItem
     let version: WorkVersion
 
@@ -155,65 +287,82 @@ private struct WorkCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let image = UIImage(data: displayedPosterData) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 118)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                Color.black
-                    .frame(height: 118)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            ZStack(alignment: .top) {
+                if let image = UIImage(data: displayedPosterData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 118)
+                        .clipped()
+                } else {
+                    Color.black
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 118)
+                }
+
+                HStack(alignment: .top) {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .lfCircleIconButtonStyle(
+                        diameter: 26,
+                        iconSize: 11,
+                        foregroundColor: LF.header,
+                        backgroundColor: LF.header.opacity(0.16)
+                    )
+                    .accessibilityLabel("删除")
+                    // 将确认框附着到实际删除按钮，避免在 iPad/大屏上以整张作品卡片为锚点。
+                    .confirmationDialog("删除这个作品？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+                        Button("删除", role: .destructive) {
+                            appState.deleteWork(work)
+                        }
+                        Button("取消", role: .cancel) {}
+                    } message: {
+                        Text("删除后无法恢复，素材库中的素材不会被删除。")
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        request(.edit)
+                    } label: {
+                        Image(systemName: "pencil")
+                    }
+                    .lfCircleIconButtonStyle(
+                        diameter: 26,
+                        iconSize: 11,
+                        foregroundColor: LF.actionPrimary,
+                        backgroundColor: LF.actionPrimary.opacity(0.16)
+                    )
+                    .accessibilityLabel("编辑")
+                }
+
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text(displayedStorageSize)
+                            .font(.caption2.weight(.medium).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(.black.opacity(0.62), in: Capsule())
+                    }
+                }
+                .padding(6)
             }
+            .frame(height: 118)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
             Text(work.name)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
-            HStack {
-                Text(displayedDate.formatted(date: .abbreviated, time: .omitted))
-                Spacer()
-                if version == .draft {
-                    Label("草稿", systemImage: "pencil.circle.fill")
-                        .foregroundStyle(LF.header)
-                } else {
-                    Text("已保存")
-                }
-            }
-            .font(.caption2)
-            .foregroundStyle(LF.textSecondary)
-
-            HStack(spacing: 8) {
-                Button {
-                    request(.edit)
-                } label: {
-                    Image(systemName: "pencil")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .tint(LF.textPrimary)
-                .accessibilityLabel("编辑")
-
-                Button(role: .destructive) {
-                    showDeleteConfirmation = true
-                } label: {
-                    Image(systemName: "trash")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("删除")
-                // 将确认框附着到实际删除按钮，避免在 iPad/大屏上以整张作品卡片为锚点。
-                .confirmationDialog("删除这个作品？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-                    Button("删除", role: .destructive) {
-                        appState.deleteWork(work)
-                    }
-                    Button("取消", role: .cancel) {}
-                } message: {
-                    Text("删除后无法恢复，素材库中的素材不会被删除。")
-                }
-            }
-            .font(.caption.weight(.semibold))
+            Text(displayedDate.formatted(date: .abbreviated, time: .omitted))
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
         }
         .padding(8)
         .background(LF.surface, in: RoundedRectangle(cornerRadius: 12))
@@ -273,6 +422,12 @@ private struct WorkCell: View {
             }
             Button("取消", role: .cancel) {}
         }
+        .task(id: storageSizeTaskID) {
+            workStorageBytes = nil
+            let bytes = await appState.workStorageSizeBytes(for: work.id)
+            guard !Task.isCancelled else { return }
+            workStorageBytes = bytes
+        }
     }
 
     private func request(_ action: WorkAction) {
@@ -307,5 +462,20 @@ private struct WorkCell: View {
             return draftDate
         }
         return work.savedAt ?? work.lastSavedAt
+    }
+
+    private var displayedStorageSize: String {
+        guard let workStorageBytes else { return NSLocalizedString("计算中…", comment: "Work storage size loading placeholder") }
+        return ByteCountFormatter.string(fromByteCount: workStorageBytes, countStyle: .file)
+    }
+
+    private var storageSizeTaskID: String {
+        [
+            work.id.uuidString,
+            String(work.updatedAt.timeIntervalSince1970),
+            String(work.draft?.updatedAt.timeIntervalSince1970 ?? 0),
+            String(work.posterData.count),
+            String(work.draft?.posterData?.count ?? 0)
+        ].joined(separator: ":")
     }
 }

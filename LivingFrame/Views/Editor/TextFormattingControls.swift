@@ -77,7 +77,7 @@ struct TextFormattingControls: View {
                     }
                 }
                 .font(previewFont)
-                .foregroundStyle(.black)
+                .foregroundStyle(LF.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.25)
                 .allowsTightening(true)
@@ -105,7 +105,7 @@ struct TextFormattingControls: View {
                                 VStack(spacing: 3) {
                                     Text("Aa")
                                         .font(fontPreview(for: font))
-                                        .foregroundStyle(.black)
+                                        .foregroundStyle(LF.textPrimary)
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.55)
                                     Text(NSLocalizedString(font.name, comment: "Font name"))

@@ -6,6 +6,7 @@ import SwiftUI
 
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var purchaseManager: PurchaseManager
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var isShowingExtractionPicker = false
     @State private var extractionPhotoSearchText = ""
@@ -77,6 +78,7 @@ struct LibraryView: View {
             .animation(.easeInOut(duration: 0.22), value: isDownloading)
             .animation(.easeInOut(duration: 0.22), value: isExtractionActive)
             .navigationTitle("素材库")
+            .navigationBarTitleDisplayMode(.large)
             .magicBackground()
             .alert("新建文件夹", isPresented: $showNewFolderAlert) {
                 TextField("文件夹名称", text: $newFolderName)
@@ -351,6 +353,7 @@ struct LibraryView: View {
         pickerItems.removeAll()
         // A new selection starts a new retry batch. Never let an older
         // failed URL remain eligible for a later retry action.
+        lastImportedSources.forEach { $0.removeTemporaryFiles() }
         lastImportedSources.removeAll()
         lastImportedKinds.removeAll()
         clearExtractionError()
@@ -378,7 +381,10 @@ struct LibraryView: View {
             let sources = downloadedSources
                 .sorted { $0.index < $1.index }
                 .map(\.source)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                sources.forEach { $0.removeTemporaryFiles() }
+                return
+            }
             guard !sources.isEmpty else {
                 batchFailureTitle = "导入失败"
                 batchFailureMessageText = batchFailureMessage(
@@ -451,14 +457,17 @@ struct LibraryView: View {
                 case .video(let url, let name, let stillOrientation, let stillURL):
                     switch kind {
                     case .live:
+                        let maxExtractionDuration = purchaseManager.allowedExtractionDuration(
+                            configuredDuration: appState.maxExtractionDuration
+                        )
                         let duration = await videoDuration(of: url)
-                        if duration > appState.maxExtractionDuration {
+                        if duration > maxExtractionDuration {
                             let range: ClosedRange<TimeInterval>? = await withCheckedContinuation { continuation in
                                 pendingVideoRange = PendingVideoRange(
                                     url: url,
                                     name: name,
                                     duration: duration,
-                                    maxDuration: appState.maxExtractionDuration
+                                    maxDuration: maxExtractionDuration
                                 ) { selectedRange in
                                     continuation.resume(returning: selectedRange)
                                 }
@@ -529,8 +538,14 @@ struct LibraryView: View {
             // never be sent through AppState again, otherwise addClip would
             // create duplicates after a mixed batch failure.
             if !Task.isCancelled {
+                let retryableURLs = Set(failedSources.flatMap(\.temporaryFileURLs))
+                sources.forEach { $0.removeTemporaryFiles(except: retryableURLs) }
                 lastImportedSources = failedSources
                 lastImportedKinds = failedKinds
+            } else {
+                sources.forEach { $0.removeTemporaryFiles() }
+                lastImportedSources.removeAll()
+                lastImportedKinds.removeAll()
             }
             if !Task.isCancelled, let lastExtractedClip {
                 menuClip = lastExtractedClip
@@ -647,6 +662,7 @@ struct LibraryView: View {
     private func chooseDifferentMedia() {
         clearExtractionError()
         pickerItems.removeAll()
+        lastImportedSources.forEach { $0.removeTemporaryFiles() }
         lastImportedSources.removeAll()
         lastImportedKinds.removeAll()
         // PhotosPicker cannot be opened programmatically from an alert. Move
@@ -670,6 +686,17 @@ struct LibraryView: View {
     private enum ImportSource {
         case video(url: URL, name: String, stillOrientation: CGImagePropertyOrientation, stillURL: URL?)
         case photo(cgImage: CGImage, name: String)
+
+        var temporaryFileURLs: [URL] {
+            guard case .video(let url, _, _, let stillURL) = self else { return [] }
+            return [url] + (stillURL.map { [$0] } ?? [])
+        }
+
+        func removeTemporaryFiles(except preservedURLs: Set<URL> = []) {
+            for url in temporaryFileURLs where !preservedURLs.contains(url) {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
     }
 
     private enum ImportLoadResult {
@@ -932,7 +959,7 @@ struct LibraryView: View {
                 Button("取消生成", role: .cancel) {
                     importTask?.cancel()
                 }
-                .buttonStyle(.bordered)
+                .lfActionButtonStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("library-extraction-progress-cancel")
             }
@@ -940,29 +967,54 @@ struct LibraryView: View {
         .accessibilityIdentifier("library-extraction-progress")
     }
 
-    // MARK: - 素材网格
+    // MARK: - 素材概览
 
     private var clipsSection: some View {
-        SectionCard(verbatimTitle: NSLocalizedString("全部素材", comment: "All clips")) {
-            if appState.clips.isEmpty {
-                EmptyStateView(
-                    icon: "folder",
-                    title: "还没有素材",
-                    message: "选择视频、Live Photo 或照片，\n自动生成透明剪影素材"
-                )
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
-            } else {
-                LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(appState.clips) { clip in
-                        // 四个角标统一由 ClipCell 锚定在预览缩略图内。
-                        ClipCell(
-                            clip: clip,
-                            onOpen: { menuClip = clip },
-                            onDelete: { requestClipDeletion(clip) },
-                            deleteAccessibilityLabel: "删除素材",
-                            deleteAccessibilityIdentifier: "library-delete-clip-\(clip.id)"
-                        )
+        SectionCard(title: nil) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("最近添加")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(LF.header)
+                        .textCase(.uppercase)
+                        .tracking(1.2)
+
+                    Spacer(minLength: 8)
+
+                    NavigationLink {
+                        AllClipsView()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("全部素材")
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LF.brandTint)
+                    }
+                    .accessibilityIdentifier("library-view-all-clips")
+                }
+
+                if appState.clips.isEmpty {
+                    EmptyStateView(
+                        icon: "folder",
+                        title: "还没有素材",
+                        message: "选择视频、Live Photo 或照片，\n自动生成透明剪影素材"
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(appState.clips.prefix(4)) { clip in
+                            // 首页只展示最近四项，完整管理入口在独立素材页。
+                            ClipCell(
+                                clip: clip,
+                                onOpen: { menuClip = clip },
+                                onDelete: { requestClipDeletion(clip) },
+                                deleteAccessibilityLabel: "删除素材",
+                                deleteAccessibilityIdentifier: "library-delete-clip-\(clip.id)"
+                            )
+                        }
                     }
                 }
             }
@@ -1017,6 +1069,155 @@ private struct ClipDeletionAlert: Identifiable {
         switch kind {
         case .confirm: "\(clip.id)-confirm-delete"
         case .referenced: "\(clip.id)-delete-blocked"
+        }
+    }
+}
+
+/// 完整素材浏览页，搜索和类型筛选固定在素材列表入口附近，避免首页随素材数量增长。
+private struct AllClipsView: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var searchText = ""
+    @State private var filter: ClipLibraryFilter = .all
+    @State private var menuClip: SegmentedClip?
+    @State private var clipDeletionAlert: ClipDeletionAlert?
+
+    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
+
+    private var visibleClips: [SegmentedClip] {
+        let filtered = appState.clips.filter { filter.includes($0) }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return filtered }
+        return filtered.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                Picker("素材类型", selection: $filter) {
+                    ForEach(ClipLibraryFilter.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                SectionCard(title: nil) {
+                    if visibleClips.isEmpty {
+                        if appState.clips.isEmpty {
+                            EmptyStateView(
+                                icon: "folder",
+                                title: "还没有素材",
+                                message: "选择视频、Live Photo 或照片，\n自动生成透明剪影素材"
+                            )
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 24)
+                        } else {
+                            ContentUnavailableView(
+                                "没有匹配的素材",
+                                systemImage: "magnifyingglass",
+                                description: Text("试试其他名称或筛选条件")
+                            )
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 24)
+                        }
+                    } else {
+                        HStack {
+                            Text("最近添加")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(LF.header)
+                                .textCase(.uppercase)
+                                .tracking(1.2)
+                            Spacer()
+                            Text("\(visibleClips.count) 项")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(LF.textSecondary)
+                        }
+
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(visibleClips) { clip in
+                                ClipCell(
+                                    clip: clip,
+                                    onOpen: { menuClip = clip },
+                                    onDelete: { requestClipDeletion(clip) },
+                                    deleteAccessibilityLabel: "删除素材",
+                                    deleteAccessibilityIdentifier: "library-all-delete-clip-\(clip.id)"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
+        }
+        .safeAreaPadding(.bottom, 24)
+        .scrollIndicators(.hidden)
+        .navigationTitle("全部素材")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "搜索素材名称")
+        .magicBackground()
+        .fullScreenCover(item: $menuClip) { clip in
+            ClipMenuView(
+                clip: clip,
+                onClose: { menuClip = nil }
+            )
+            .environmentObject(appState)
+        }
+        .alert(item: $clipDeletionAlert) { request in
+            switch request.kind {
+            case .confirm:
+                return Alert(
+                    title: Text("删除素材？"),
+                    message: Text("删除后无法恢复。"),
+                    primaryButton: .destructive(Text("删除")) {
+                        appState.deleteClip(request.clip.id)
+                    },
+                    secondaryButton: .cancel(Text("取消"))
+                )
+            case .referenced:
+                return Alert(
+                    title: Text("素材正在使用中"),
+                    message: Text(String.localizedStringWithFormat(
+                        NSLocalizedString("请先从以下作品中移除它，再删除素材：\n%1$@", comment: "Asset is used by these works"),
+                        request.referencedWorkNames.joined(separator: "、") as NSString
+                    )),
+                    dismissButton: .cancel(Text("知道了"))
+                )
+            }
+        }
+        .accessibilityIdentifier("library-all-clips-page")
+    }
+
+    private func requestClipDeletion(_ clip: SegmentedClip) {
+        let workNames = appState.worksReferencingClip(clip.id).map(\.name)
+        clipDeletionAlert = ClipDeletionAlert(
+            clip: clip,
+            kind: workNames.isEmpty ? .confirm : .referenced,
+            referencedWorkNames: workNames
+        )
+    }
+}
+
+private enum ClipLibraryFilter: String, CaseIterable, Identifiable {
+    case all
+    case live
+    case still
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .all: NSLocalizedString("全部", comment: "All clip filter")
+        case .live: NSLocalizedString("动态", comment: "Animated clip filter")
+        case .still: NSLocalizedString("静态", comment: "Still clip filter")
+        }
+    }
+
+    func includes(_ clip: SegmentedClip) -> Bool {
+        switch self {
+        case .all: true
+        case .live: clip.frameCount > 1
+        case .still: clip.frameCount <= 1
         }
     }
 }
@@ -1127,8 +1328,7 @@ private struct VideoRangePickerView: View {
                         )
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(LF.header)
+                    .lfActionButtonStyle(.primary)
                 }
                 .padding(20)
             }
@@ -1604,7 +1804,9 @@ struct ClipCell: View {
                     // 这里只负责显示，真正的点击分流由预览区的 SpatialTapGesture 处理，
                     // 避免外层详情点击手势再次抢走播放入口。
                     ClipPreviewBadgeIcon(
-                        systemName: isPlaying ? "pause.fill" : "play.fill"
+                        systemName: isPlaying ? "pause.fill" : "play.fill",
+                        foregroundStyle: LF.actionPrimary,
+                        backgroundStyle: LF.actionPrimary.opacity(0.16)
                     )
                     .frame(width: 44, height: 44)
                 }
@@ -1613,18 +1815,23 @@ struct ClipCell: View {
                 if clip.audioURL != nil {
                     ClipPreviewBadgeIcon(
                         systemName: "waveform",
-                        foregroundStyle: LF.gold
+                        foregroundStyle: LF.actionPrimary,
+                        backgroundStyle: LF.actionPrimary.opacity(0.16)
                     )
                     .frame(width: 44, height: 44)
                 }
             }
             .overlay(alignment: .topLeading) {
                 if let onDelete {
-                    Button(action: onDelete) {
-                        ClipPreviewBadgeIcon(systemName: "trash")
-                            .frame(width: 44, height: 44)
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "trash")
                     }
-                    .buttonStyle(.plain)
+                    .lfCircleIconButtonStyle(
+                        diameter: 26,
+                        iconSize: 11,
+                        foregroundColor: LF.header,
+                        backgroundColor: LF.header.opacity(0.16)
+                    )
                     .accessibilityLabel(deleteAccessibilityLabel)
                     .accessibilityIdentifier(deleteAccessibilityIdentifier)
                 }
@@ -1633,14 +1840,16 @@ struct ClipCell: View {
                 if !clip.excludedFrames.isEmpty {
                     ClipPreviewBadgeIcon(
                         systemName: "square.grid.3x3",
-                        foregroundStyle: LF.gold
+                        foregroundStyle: LF.header,
+                        backgroundStyle: LF.header.opacity(0.16)
                     )
                     .frame(width: 44, height: 44)
                     .accessibilityLabel("已修改帧")
                 } else if clip.edgeStyle != .none {
                     ClipPreviewBadgeIcon(
                         systemName: "square.dashed",
-                        foregroundStyle: LF.gold
+                        foregroundStyle: LF.header,
+                        backgroundStyle: LF.header.opacity(0.16)
                     )
                     .frame(width: 44, height: 44)
                     .accessibilityLabel("已设置边缘效果")
@@ -1676,9 +1885,11 @@ struct ClipCell: View {
 private struct ClipDetailPreview: View {
     let clip: SegmentedClip
     @Binding var isPlaying: Bool
+    let watermark: ExportWatermark?
     let onCrop: () -> Void
     let onRotateCounterclockwise: () -> Void
     let onRotateClockwise: () -> Void
+    @State private var watermarkFrame: CGImage?
 
     /// 详情页只负责检查原始素材，不在这里模拟编辑器/导出的边缘效果。
     private var unstyledClip: SegmentedClip {
@@ -1700,6 +1911,23 @@ private struct ClipDetailPreview: View {
             )
                 .aspectRatio(aspectRatio, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    if let watermark, let watermarkFrame {
+                        GeometryReader { geometry in
+                            let targetWidth = min(geometry.size.width, geometry.size.height) * 0.48
+                            Image(decorative: watermarkFrame, scale: 1)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: targetWidth)
+                                .opacity(watermark.opacity)
+                                .padding(.trailing, geometry.size.width * 0.10)
+                                .padding(.bottom, geometry.size.height * 0.10)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        }
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                    }
+                }
 
             if clip.frameCount > 1 {
                 ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
@@ -1732,6 +1960,13 @@ private struct ClipDetailPreview: View {
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(LF.surface2, lineWidth: 1)
+        }
+        .task(id: watermark?.decorationID) {
+            guard let decorationID = watermark?.decorationID else {
+                watermarkFrame = nil
+                return
+            }
+            watermarkFrame = DecorationRenderer().previewImage(for: decorationID)
         }
     }
 }
@@ -1856,9 +2091,10 @@ private struct ClipCropEditorView: View {
     }
 }
 
-/// 素材详情页：单击素材后进入，集中处理原始预览、帧编辑和文件夹管理。
+/// 素材详情页：单击素材后进入，集中处理原始预览、帧编辑和导出。
 struct ClipMenuView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var purchaseManager: PurchaseManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let clip: SegmentedClip
@@ -1869,6 +2105,7 @@ struct ClipMenuView: View {
     @State private var referencedWorkNames: [String] = []
     @State private var isDeletingClip = false
     @State private var showRenameAlert = false
+    @State private var showProStore = false
     @State private var renameText = ""
     @State private var isExportingGIF = false
     @State private var exportGIFError: String?
@@ -1878,6 +2115,7 @@ struct ClipMenuView: View {
     @State private var gifResolution: ExportResolution = .p720
     @State private var gifFPS = 15.0
     @State private var isEstimatingGIF = false
+    @State private var previewWatermark: ExportWatermark?
     @State private var isCroppingClip = false
     @State private var cropRect: CGRect?
     @State private var didManuallySelectGIFPreset = false
@@ -1904,11 +2142,6 @@ struct ClipMenuView: View {
 
     private var gifFPSOptions: [Double] {
         GIFExportPreset.fpsOptions(maxSourceFPS: currentClip.fps)
-    }
-
-    /// 素材当前是否已在指定文件夹。
-    private func isFiled(_ folderID: String) -> Bool {
-        appState.folders.contains { $0.id == folderID && $0.clipIDs.contains(clip.id) }
     }
 
     private func close() {
@@ -1946,6 +2179,15 @@ struct ClipMenuView: View {
         .sheet(isPresented: $showFrameEditor) {
             FrameGridView(clipID: clip.id)
                 .environmentObject(appState)
+        }
+        .sheet(isPresented: $showProStore) {
+            GIFBloomProStoreView()
+        }
+        .onAppear {
+            previewWatermark = purchaseManager.hasPro ? nil : DecorationRenderer.randomLogoWatermark()
+        }
+        .onChange(of: purchaseManager.hasPro) { _, hasPro in
+            previewWatermark = hasPro ? nil : DecorationRenderer.randomLogoWatermark()
         }
         .alert(item: $deleteAlert) { alert in
             switch alert {
@@ -2014,14 +2256,19 @@ struct ClipMenuView: View {
                 ClipDetailPreview(
                     clip: currentClip,
                     isPlaying: $isPlayingPreview,
+                    watermark: previewWatermark,
                     onCrop: beginClipCrop,
                     onRotateCounterclockwise: { rotateClip(clockwise: false) },
                     onRotateClockwise: { rotateClip(clockwise: true) }
                 )
+                if !purchaseManager.hasPro {
+                    WatermarkNoticeCard {
+                        showProStore = true
+                    }
+                }
                 gifExportSection
                 // 帧选择入口暂时隐藏；保留 frameEditorButton、sheet 状态和 FrameGridView，后续可恢复。
                 // frameEditorButton
-                foldersSection
             }
             .padding(20)
         }
@@ -2119,8 +2366,7 @@ struct ClipMenuView: View {
                         )
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(isExportingGIF ? LF.header : LF.actionPrimary)
+                    .lfActionButtonStyle(isExportingGIF ? .secondary : .primary)
                     .disabled(isEstimatingGIF && !isExportingGIF)
                 }
             }
@@ -2139,7 +2385,9 @@ struct ClipMenuView: View {
         exportGIFError = nil
         isExportingGIF = true
         let clipID = clip.id
-        exportGIFTask = Task { @MainActor in
+        let watermark = purchaseManager.hasPro ? nil : (previewWatermark ?? DecorationRenderer.randomLogoWatermark())
+        previewWatermark = watermark
+        exportGIFTask = Task(priority: .userInitiated) { @MainActor in
             defer {
                 isExportingGIF = false
                 exportGIFTask = nil
@@ -2148,7 +2396,8 @@ struct ClipMenuView: View {
                 _ = try await appState.exportClipAsTransparentGIF(
                     clipID,
                     resolution: gifResolution,
-                    fps: gifFPS
+                    fps: gifFPS,
+                    watermark: watermark
                 )
                 let exportedClip = appState.clips.first(where: { $0.id == clipID }) ?? clip
                 clipExportState.markExported(
@@ -2270,62 +2519,6 @@ struct ClipMenuView: View {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(LF.textSecondary)
-            }
-            .padding(14)
-            .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var foldersSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("文件夹")
-                    .font(.headline)
-                    .foregroundStyle(LF.header)
-                Spacer()
-                Text("选择后会移动到该文件夹")
-                    .font(.caption2)
-                    .foregroundStyle(LF.textSecondary)
-            }
-
-            if appState.folders.isEmpty {
-                Text("还没有文件夹，可先在素材库创建")
-                    .font(.subheadline)
-                    .foregroundStyle(LF.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
-                    .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
-            } else {
-                ForEach(appState.folders) { folder in
-                    folderButton(folder)
-                }
-            }
-        }
-    }
-
-    private func folderButton(_ folder: LibraryFolder) -> some View {
-        let filed = isFiled(folder.id)
-        return Button {
-            appState.moveClip(clip.id, toFolder: filed ? nil : folder.id)
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: filed ? "folder.fill" : "folder")
-                    .foregroundStyle(LF.folderIcon)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(folder.name)
-                        .lineLimit(1)
-                    Text(String.localizedStringWithFormat(
-                        NSLocalizedString("%1$lld 个素材", comment: "Clip count in folder"),
-                        Int64(folder.clipIDs.count)
-                    ))
-                        .font(.caption2)
-                        .foregroundStyle(LF.textSecondary)
-                }
-                Spacer()
-                Image(systemName: filed ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(filed ? LF.gold : LF.textSecondary)
             }
             .padding(14)
             .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))

@@ -81,6 +81,29 @@ public struct WorksStore {
         }
     }
 
+    /// 返回作品目录内文件实际占用的字节数（优先使用文件系统分配空间）。
+    public func storageSizeBytes(for workID: UUID) -> Int64 {
+        ioQueue.sync {
+            let workURL = rootURL.appendingPathComponent(workID.uuidString, isDirectory: true)
+            guard let enumerator = fileManager.enumerator(
+                at: workURL,
+                includingPropertiesForKeys: [.isRegularFileKey, .totalFileAllocatedSizeKey, .fileSizeKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                return 0
+            }
+
+            var total: Int64 = 0
+            for case let fileURL as URL in enumerator {
+                guard let values = try? fileURL.resourceValues(
+                    forKeys: [.isRegularFileKey, .totalFileAllocatedSizeKey, .fileSizeKey]
+                ), values.isRegularFile == true else { continue }
+                total += Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
+            }
+            return total
+        }
+    }
+
     @discardableResult
     public func save(_ work: WorkItem) throws -> URL {
         try ioQueue.sync {

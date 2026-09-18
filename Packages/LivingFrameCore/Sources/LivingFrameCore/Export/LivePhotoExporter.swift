@@ -33,6 +33,7 @@ public struct LivePhotoExporter {
     public func export(
         _ composition: Composition,
         to url: URL,
+        watermark: ExportWatermark? = nil,
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws -> Output {
@@ -128,7 +129,7 @@ public struct LivePhotoExporter {
         }
         stillImageTimeInput.markAsFinished()
 
-        let renderer = CompositionRenderer(context: context)
+        let renderer = CompositionRenderer(context: context, exportWatermark: watermark)
         let rect = composition.canvasRect
         let white = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 1)).cropped(to: rect)
         var coverData: Data?

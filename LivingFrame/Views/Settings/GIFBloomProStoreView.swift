@@ -43,27 +43,28 @@ struct GIFBloomProStoreView: View {
                     PurchaseManager.annualProductID
                 ],
                 marketingContent: {
-                    VStack(alignment: .leading, spacing: 14) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label("GIFBloom Pro", systemImage: "sparkles")
-                                .font(.title2.weight(.semibold))
-                            Text("选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        ProductView(id: PurchaseManager.lifetimeProductID)
-                            .productViewStyle(.large)
-                            .frame(maxWidth: .infinity)
-                            .productDescription(.visible)
-
+                    VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("周订阅和年订阅均会自动续订。除非在当前周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。")
-                            Text("一次性买断只需付款一次，可永久解锁 GIFBloom Pro。价格以 App Store 根据你的地区显示的金额为准。")
-                            Text("确认购买后，款项将从你的 Apple ID 账户扣除。付款信息由 Apple 处理；GIFBloom 不接收银行卡或付款账户信息。")
+                            Image("GIFBloomProWordmark")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 210, height: 70, alignment: .leading)
+                                .accessibilityLabel("GIFBloom Pro")
+
+                            Label("订阅 GIFBloom Pro 后可去除导出水印。", systemImage: "checkmark.circle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(LF.textPrimary)
+                            Label("解锁更长的素材提取时长。", systemImage: "checkmark.circle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(LF.textPrimary)
+                            Label("使用 GIFBloom Pro 专属 AI 贴纸。", systemImage: "checkmark.circle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(LF.textPrimary)
                         }
+
+                        Text("周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(LF.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding()
@@ -79,7 +80,7 @@ struct GIFBloomProStoreView: View {
             .onInAppPurchaseCompletion { _, result in
                 await purchaseManager.handlePurchaseCompletion(result)
             }
-            .navigationTitle("GIFBloom Pro")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

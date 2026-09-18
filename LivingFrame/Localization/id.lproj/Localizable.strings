@@ -82,9 +82,9 @@
 "光束 + 星芒光效" = "Sinar cahaya + kilau bintang";
 "纯净黑幕" = "Latar Hitam Murni";
 "极简，人物突出" = "Minimal, orang menonjol";
-"GIF（通用）" = "GIF (Universal)";
-"透明视频（HEVC-alpha）" = "Video Transparan (HEVC-alpha)";
-"普通视频（H.264）" = "Video Standar (H.264)";
+"GIF（通用）" = "GIF";
+"透明视频（HEVC-alpha）" = "Video (HEVC)";
+"普通视频（H.264）" = "Video (H.264)";
 "兼容性最广，适合分享，透明边缘为硬边" = "Kompatibilitas paling luas, cocok dibagikan; tepi transparansi keras";
 "保留半透明边缘，体积小，适合再次合成" = "Mempertahankan tepi semi-transparan, ringan, ideal untuk komposit ulang";
 "无透明通道，最通用的视频格式" = "Tanpa saluran alpha, format video paling universal";
@@ -107,7 +107,7 @@
 "抠图失败" = "Gagal memotong";
 "无法读取所选素材" = "Tidak dapat membaca item yang dipilih";
 "照片" = "Foto";
-"Live Photo（动态照片）" = "Live Photo (foto bergerak)";
+"Live Photo（动态照片）" = "Live Photo";
 "存入相册长按播放，透明区域用背景填充" = "Disimpan sebagai foto bergerak; tahan untuk memutar. Area transparan diisi latar belakang";
 "需要相册权限才能保存 Live Photo，请在设置中开启" = "Diperlukan akses ke Foto untuk menyimpan Live Photo. Aktifkan di Pengaturan";
 "保存" = "Simpan";
@@ -220,6 +220,7 @@
 "正在下载原始动态照片" = "Mengunduh Live Photo asli…";
 "比例" = "Rasio";
 "涂鸦" = "Coretan";
+"表情" = "Emoji";
 "涂鸦（开发中）" = "Coretan (dalam pengembangan)";
 "添加素材后显示时间轴" = "Timeline muncul setelah menambahkan aset";
 "清理临时文件" = "Bersihkan file sementara";
@@ -315,7 +316,7 @@
 "关闭" = "Tutup";
 "使用周订阅或一次性买断解锁 GIFBloom Pro。" = "Buka GIFBloom Pro dengan langganan mingguan atau pembelian satu kali.";
 "GIFBloom Pro 已解锁" = "GIFBloom Pro telah dibuka";
-"订阅与买断" = "Berlangganan atau beli sekali";
+"订阅" = "Berlangganan";
 "管理订阅" = "Kelola langganan";
 "隐私政策" = "Kebijakan Privasi";
 "支持" = "Dukungan";
@@ -683,7 +684,8 @@
 "微信 GIF 预估值按 15 fps 计算；超过 10 MB 会自动降低帧率。" = "Ukuran GIF WeChat diperkirakan pada 15 fps; jika melebihi 10 MB, frame rate akan diturunkan otomatis.";
 "图标配色" = "Ikon Aplikasi";
 "晴空蓝、奶油白与珊瑚橙，取自 App 图标" = "Biru langit, krem, dan koral dari ikon aplikasi";
-"选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。" = "Pilih langganan mingguan atau tahunan, atau pembelian satu kali untuk membuka GIFBloom Pro.";
+"选择周订阅或年订阅解锁 GIFBloom Pro。" = "Pilih langganan mingguan atau tahunan untuk membuka GIFBloom Pro.";
+"免费导出会在右下角添加 GIFBloom 水印。" = "Ekspor gratis menyertakan tanda air GIFBloom di kanan bawah.";
 "周订阅和年订阅均会自动续订。除非在当前周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。" = "Langganan mingguan dan tahunan diperpanjang otomatis. Batalkan setidaknya 24 jam sebelum periode saat ini berakhir untuk menghentikan perpanjangan. Anda dapat mengelola atau membatalkan langganan di Pengaturan Apple ID.";
 
 /* Emoji sticker names */
@@ -695,3 +697,85 @@
 "思考" = "Berpikir";
 "惊讶" = "Terkejut";
 "生气" = "Marah";
+
+/* Library overview and search */
+"最近添加" = "Baru ditambahkan";
+"搜索素材名称" = "Cari aset berdasarkan nama";
+"素材类型" = "Jenis aset";
+"没有匹配的素材" = "Tidak ada aset yang cocok";
+"全部" = "Semua";
+
+"订阅 GIFBloom Pro 后可去除导出水印。" = "Berlangganan GIFBloom Pro untuk menghapus tanda air pada hasil ekspor.";
+"从长视频中选择最长 10 秒的剪影片段。" = "Pilih klip hingga 10 detik dari video panjang.";
+"免费版最长 5 秒；GIFBloom Pro 可选 8 秒或 10 秒。" = "Gratis hingga 5 detik; GIFBloom Pro 8 atau 10 detik.";
+"解锁更长片段" = "Buka klip yang lebih panjang";
+"周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Paket mingguan dan tahunan diperpanjang otomatis. Batalkan setidaknya 24 jam sebelum periode berakhir. Kelola paket di Pengaturan Apple ID.";
+"使用 AI 贴纸，让墨镜跟随人物双眼移动。" = "Gunakan stiker AI agar kacamata mengikuti mata orang.";
+"AI 贴纸仅限 GIFBloom Pro 使用。" = "Stiker AI hanya tersedia dengan GIFBloom Pro.";
+"解锁 AI 贴纸" = "Buka stiker AI";
+"解锁 GIFBloom Pro" = "Buka GIFBloom Pro";
+"解锁更长的素材提取时长。" = "Buka durasi ekstraksi klip yang lebih panjang.";
+"使用 GIFBloom Pro 专属 AI 贴纸。" = "Gunakan stiker AI eksklusif GIFBloom Pro.";
+"GIFBloom Pro 可解锁更长素材提取时长和 AI 贴纸。" = "GIFBloom Pro membuka ekstraksi klip lebih panjang dan stiker AI.";
+"订阅去水印" = "Berlangganan untuk menghapus tanda air";
+"水果" = "Buah";
+"5 秒" = "5 detik";
+
+"AI贴纸" = "Stiker AI";
+"墨镜" = "Kacamata hitam";
+"墨镜 · 2D多视角" = "Kacamata hitam · tampilan 2D";
+"紫晶墨镜 · 3D视角" = "Kacamata ametis · tampilan 3D";
+"请先选中画布上的人物素材，或让时间指针停在人物画面上。" = "Pilih klip orang di kanvas atau pindahkan playhead ke bingkai yang menampilkan orang.";
+"正在逐帧识别人脸…" = "Menganalisis wajah per bingkai…";
+"工程在分析期间发生了变化，请重新添加墨镜。" = "Proyek berubah saat analisis berlangsung. Tambahkan kacamata lagi.";
+"墨镜已添加，会跟随人物眼睛移动。" = "Kacamata ditambahkan dan akan mengikuti mata orang.";
+"没有识别到清晰的双眼，试试正脸更清楚的素材。" = "Tidak menemukan dua mata yang jelas. Coba klip tampak depan yang lebih jelas.";
+"人脸分析失败，请重试。" = "Analisis wajah gagal. Coba lagi.";
+"请先选中对应的人物素材，再添加墨镜。识别后，您可以自行调整大小。" = "Pilih klip orang terlebih dahulu, lalu tambahkan kacamata. Setelah terdeteksi, Anda dapat menyesuaikan ukurannya.";
+
+/* Works list */
+"查看全部" = "Lihat semua";
+"全部作品" = "Semua karya";
+"搜索作品名称" = "Cari nama karya";
+"排序" = "Urutkan";
+"排序方式" = "Urutkan berdasarkan";
+"最近保存" = "Baru disimpan";
+"名称" = "Nama";
+"加载更多" = "Muat lebih banyak";
+"没有匹配的作品" = "Tidak ada karya yang cocok";
+"尝试其他关键词" = "Coba kata kunci lain";
+"请先选中对应的人物素材，再添加墨镜。" = "Pilih klip orang yang ingin digunakan sebelum menambahkan kacamata.";
+"墨镜已添加，会跟随双眼移动，可自行调整大小。" = "Kacamata ditambahkan dan mengikuti mata. Anda dapat menyesuaikan ukurannya.";
+
+/* Sticker names and descriptions */
+"夏日" = "Musim panas";
+"苹果" = "Apel";
+"香蕉" = "Pisang";
+"橙子" = "Jeruk";
+"草莓" = "Stroberi";
+"葡萄" = "Anggur";
+"西瓜" = "Semangka";
+"桃子" = "Persik";
+"菠萝" = "Nanas";
+"柠檬" = "Lemon";
+"梨" = "Pir";
+"芒果" = "Mangga";
+"猕猴桃" = "Kiwi";
+"樱桃" = "Ceri";
+"牛油果" = "Alpukat";
+"蓝莓" = "Bluberi";
+"李子" = "Prem";
+"手写字标" = "Logo tulisan tangan";
+"涂鸦字标" = "Logo coretan";
+"蜡笔字标" = "Logo krayon";
+"为画面增添趣味的动态涂鸦装饰。" = "Coretan animasi yang seru untuk menghias gambar.";
+"用简单表情为画面增添情绪。" = "Ekspresi sederhana untuk memberi nuansa pada gambar.";
+"让水果图案以轻快动画点亮画面。" = "Animasi buah cerah yang membuat gambar lebih hidup.";
+"自动贴合双眼，并随人脸角度变化。" = "Pas di atas mata dan mengikuti perubahan sudut wajah.";
+"GIFBloom 品牌字标动态贴纸。" = "Stiker logo GIFBloom animasi untuk menghias gambar.";
+
+/* AI sticker names and descriptions */
+"AI贴纸 · 2D" = "Stiker AI · 2D";
+"AI贴纸 · 3D" = "Stiker AI · 3D";
+"根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。" = "Kacamata 2D berganti tampilan mengikuti sudut wajah dan tetap pas di mata.";
+"使用 3D 模型渲染的视图，随人脸角度平滑变化。" = "Tampilan 3D hasil render berubah mulus mengikuti sudut wajah.";

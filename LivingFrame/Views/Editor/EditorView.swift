@@ -61,16 +61,31 @@ private struct CollageEditorRequest: Identifiable {
     let elementIDs: [UUID]
 }
 
+private enum StickerPanelSheet: Identifiable {
+    case preview(StickerDefinition)
+    case faceTargetPicker(StickerDefinition)
+    case proStore
+
+    var id: String {
+        switch self {
+        case .preview(let sticker): "preview-\(sticker.id)"
+        case .faceTargetPicker(let sticker): "face-target-\(sticker.id)"
+        case .proStore: "pro-store"
+        }
+    }
+}
+
 /// 编辑页（参考 ImgPlay 布局）
 /// 固定工作区：顶部信息 → 有层次的画布 → 播放控制 → 独立滚动时间轴 → 固定工具栏。
 /// 页面本身不再纵向滚动，避免与时间轴轨道列表争抢同方向手势。
 struct EditorView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var purchaseManager: PurchaseManager
     @State private var showAssetPicker = false
     /// 双击已有背景元素时，直接复用拼接编辑器而不是进入通用检查器。
     @State private var collageEditorRequest: CollageEditorRequest?
     /// 长按贴纸后显示的动态预览。
-    @State private var previewSticker: StickerDefinition?
+    @State private var stickerPanelSheet: StickerPanelSheet?
     /// 贴纸面板当前选中的视觉分类。
     @State private var selectedStickerCategory: StickerCategory = .doodle
     /// 工具 sheet（点击工具栏弹出，遮住编辑页）
@@ -112,25 +127,30 @@ struct EditorView: View {
                         requestInspectorForSelection()
                     }
                         .frame(width: canvasSize.width, height: canvasSize.height)
+                        .overlay(alignment: .topLeading) {
+                            if !appState.isCropping {
+                                canvasCornerActionButton(
+                                    systemName: "slider.horizontal.3",
+                                    accessibilityLabel: "调整",
+                                    anchor: .topLeading
+                                ) {
+                                    requestInspectorForSelection()
+                                }
+                                .accessibilityIdentifier("editor-canvas-adjust")
+                            }
+                        }
                         .overlay(alignment: .topTrailing) {
                             // 添加素材是编辑流程的高频入口，固定在画布右上角，避免用户
                             // 需要先寻找底部工具栏才能开始编辑。圆形按钮只保留图标，
                             // 半透明背景减少对画布内容的遮挡。
                             if !appState.isCropping {
-                                Button {
+                                canvasCornerActionButton(
+                                    systemName: "plus",
+                                    accessibilityLabel: "添加素材",
+                                    anchor: .topTrailing
+                                ) {
                                     showAssetPicker = true
-                                } label: {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .frame(width: 44, height: 44)
-                                        .background(LF.accentGradient.opacity(0.78), in: Circle())
-                                        .shadow(color: LF.header.opacity(0.22), radius: 8, y: 3)
                                 }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("添加素材")
-                                .padding(8)
-                                .transition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
                             }
                         }
                         .animation(.snappy(duration: 0.22), value: appState.isCropping)
@@ -365,33 +385,34 @@ struct EditorView: View {
                     }
                 }
 
-                Button {
+                Button("导出") {
                     appState.showExportView = true
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(LF.actionPrimary)
-                        .frame(width: 42, height: 40)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                .fill(LF.selectionFill.opacity(0.42))
-                                .allowsHitTesting(false)
-                        }
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                .strokeBorder(LF.actionPrimary.opacity(0.32), lineWidth: 1)
-                        }
                 }
-                .buttonStyle(TopBarActionButtonStyle())
-                .accessibilityLabel("导出")
+                .lfTextPillButtonStyle()
+                .accessibilityIdentifier("editor-export")
             }
         }
         .padding(.horizontal, 4)
-}
+    }
 
-@ViewBuilder
-private var saveStatusView: some View {
+    /// 画布两侧的圆形快捷入口共用一套尺寸、底色和按压状态。
+    private func canvasCornerActionButton(
+        systemName: String,
+        accessibilityLabel: String,
+        anchor: UnitPoint,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+        }
+        .lfCircleIconButtonStyle()
+        .accessibilityLabel(accessibilityLabel)
+        .padding(8)
+        .transition(.scale(scale: 0.94, anchor: anchor).combined(with: .opacity))
+    }
+
+    @ViewBuilder
+    private var saveStatusView: some View {
         if appState.isSavingWork {
             Text("保存中…")
                 .foregroundStyle(LF.header)
@@ -814,7 +835,9 @@ private var saveStatusView: some View {
     }
 
     private var stickerPanel: some View {
-        let stickers = DecorationRenderer.stickerCatalog.filter { $0.category == selectedStickerCategory }
+        let stickers = DecorationRenderer.availableStickerCatalog.filter { sticker in
+            sticker.category == selectedStickerCategory
+        }
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("贴纸分类")
@@ -832,9 +855,57 @@ private var saveStatusView: some View {
                     }
                 }
             }
-            Text("轻点添加，长按预览")
-                .font(.caption2)
-                .foregroundStyle(LF.textSecondary)
+            if selectedStickerCategory.requiresPro, purchaseManager.hasPro {
+                HStack(spacing: 7) {
+                    if appState.isAddingFaceSticker {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(appState.faceStickerStatus ?? NSLocalizedString(
+                        "请先选中对应的人物素材，再添加墨镜。识别后，您可以自行调整大小。",
+                        comment: "AI sticker instructions"
+                    ))
+                        .font(.caption2)
+                        .foregroundStyle(appState.faceStickerStatus == nil ? LF.textSecondary : LF.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else if selectedStickerCategory.requiresPro {
+                HStack(spacing: 10) {
+                    Label("AI 贴纸仅限 GIFBloom Pro 使用。", systemImage: "lock.fill")
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 4)
+
+                    Button("解锁 AI 贴纸") {
+                        stickerPanelSheet = .proStore
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LF.actionPrimary)
+                    .fixedSize()
+                }
+            } else {
+                Text("轻点添加，长按预览")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+            }
+
+            if selectedStickerCategory == .expression {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(verbatim: "Twemoji artwork © Twitter, Inc. and contributors. Adapted with transparent SVG padding and rasterized as PNG stickers.")
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 10) {
+                        Link("Twemoji source", destination: URL(string: "https://github.com/twitter/twemoji/tree/master/assets/svg")!)
+                        Link("CC BY 4.0", destination: URL(string: "https://creativecommons.org/licenses/by/4.0/")!)
+                    }
+                    .font(.caption2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVGrid(
@@ -842,23 +913,104 @@ private var saveStatusView: some View {
                     spacing: 10
                 ) {
                     ForEach(stickers) { sticker in
-                        StickerPickerCell(sticker: sticker) {
-                            appState.addSticker(sticker.id)
-                            toolSheet = nil
+                        StickerPickerCell(
+                            sticker: sticker,
+                            isLocked: sticker.category.requiresPro && !purchaseManager.hasPro
+                        ) {
+                            insertSticker(sticker)
                         } onPreview: {
-                            previewSticker = sticker
+                            stickerPanelSheet = .preview(sticker)
                         }
+                        .disabled(appState.isAddingFaceSticker)
                     }
                 }
             }
         }
-        .sheet(item: $previewSticker) { sticker in
-            StickerPreviewSheet(sticker: sticker) {
-                appState.addSticker(sticker.id)
-                previewSticker = nil
-                toolSheet = nil
+        .sheet(item: $stickerPanelSheet) { sheet in
+            Group {
+                switch sheet {
+                case .preview(let sticker):
+                    StickerPreviewSheet(
+                        sticker: sticker,
+                        canAdd: !sticker.category.requiresPro || purchaseManager.hasPro
+                    ) {
+                        if purchaseManager.hasPro || !sticker.category.requiresPro {
+                            insertSticker(sticker)
+                        } else {
+                            stickerPanelSheet = .proStore
+                        }
+                    }
+                case .faceTargetPicker(let sticker):
+                    FaceStickerTargetPickerSheet(
+                        sticker: sticker,
+                        targets: faceStickerTargets,
+                        onSelect: { target in
+                            startFaceStickerAddition(sticker, targetElementID: target.id)
+                        },
+                        onCancel: { stickerPanelSheet = nil }
+                    )
+                case .proStore:
+                    GIFBloomProStoreView()
+                }
             }
             .environmentObject(appState)
+        }
+    }
+
+    private func insertSticker(_ sticker: StickerDefinition) {
+        guard !sticker.category.requiresPro || purchaseManager.hasPro else {
+            stickerPanelSheet = .proStore
+            return
+        }
+
+        guard sticker.faceAnchors != nil else {
+            appState.addSticker(sticker.id)
+            toolSheet = nil
+            stickerPanelSheet = nil
+            return
+        }
+
+        let targets = faceStickerTargets
+        guard !targets.isEmpty else {
+            stickerPanelSheet = .faceTargetPicker(sticker)
+            return
+        }
+
+        if let selectedTargetID = selectedFaceStickerTargetID,
+           targets.contains(where: { $0.id == selectedTargetID }) {
+            startFaceStickerAddition(sticker, targetElementID: selectedTargetID)
+        } else if targets.count == 1, let onlyTarget = targets.first {
+            startFaceStickerAddition(sticker, targetElementID: onlyTarget.id)
+        } else {
+            stickerPanelSheet = .faceTargetPicker(sticker)
+        }
+    }
+
+    private var faceStickerTargets: [CompositionElement] {
+        guard let composition = appState.composition else { return [] }
+        let availableClipIDs = Set(appState.clips.map(\.id))
+        return composition.elements.filter { element in
+            guard case .clip(let clipID) = element.kind else { return false }
+            return availableClipIDs.contains(clipID)
+        }
+    }
+
+    private var selectedFaceStickerTargetID: UUID? {
+        guard let selectedID = appState.lastSelectedElementID,
+              appState.selectedElementIDs.contains(selectedID),
+              faceStickerTargets.contains(where: { $0.id == selectedID }) else {
+            return nil
+        }
+        return selectedID
+    }
+
+    private func startFaceStickerAddition(_ sticker: StickerDefinition, targetElementID: UUID) {
+        appState.selectElement(targetElementID)
+        stickerPanelSheet = nil
+        Task { @MainActor in
+            if await appState.addFaceTrackedSticker(sticker.id, targetClipElementID: targetElementID) {
+                toolSheet = nil
+            }
         }
     }
 
@@ -948,15 +1100,6 @@ private var saveStatusView: some View {
         }
     }
 
-    /// Compact feedback shared by the two high-frequency top-bar actions.
-    private struct TopBarActionButtonStyle: ButtonStyle {
-        func makeBody(configuration: Configuration) -> some View {
-            configuration.label
-                .opacity(configuration.isPressed ? 0.84 : 1)
-                .scaleEffect(configuration.isPressed ? 0.97 : 1)
-                .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-        }
-    }
 }
 
 /// 独立管理输入焦点，保存或取消时先释放键盘，再关闭编辑界面。
@@ -1086,6 +1229,7 @@ private struct EditorPanelHeader: View {
 /// 贴纸网格单元：轻点直接添加，长按打开预览。
 private struct StickerPickerCell: View {
     let sticker: StickerDefinition
+    let isLocked: Bool
     let onSelect: () -> Void
     let onPreview: () -> Void
 
@@ -1103,7 +1247,16 @@ private struct StickerPickerCell: View {
         .background(isPressing ? LF.selectionFill : LF.surface2, in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
-                .stroke(isPressing ? LF.selectionStroke : .clear, lineWidth: 2)
+                .strokeBorder(isPressing ? LF.selectionStroke : .clear, lineWidth: 2)
+        }
+        .overlay(alignment: .topTrailing) {
+            if isLocked {
+                Image(systemName: "lock.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(LF.textSecondary)
+                    .padding(6)
+                    .accessibilityHidden(true)
+            }
         }
         .foregroundStyle(LF.gold)
         .contentShape(RoundedRectangle(cornerRadius: 12))
@@ -1120,10 +1273,91 @@ private struct StickerPickerCell: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint("轻点添加，长按预览")
+        .accessibilityHint(isLocked ? "AI 贴纸仅限 GIFBloom Pro 使用。" : "轻点添加，长按预览")
         .accessibilityAction(named: "预览") {
             onPreview()
         }
+    }
+}
+
+/// 目标素材选择器：AI 贴纸必须绑定到画布中的一条人物素材。
+private struct FaceStickerTargetPickerSheet: View {
+    let sticker: StickerDefinition
+    let targets: [CompositionElement]
+    let onSelect: (CompositionElement) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if targets.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "person.crop.rectangle")
+                            .font(.largeTitle)
+                            .foregroundStyle(LF.actionPrimary)
+                        Text(sticker.localizedName)
+                            .font(.headline)
+                            .foregroundStyle(LF.textPrimary)
+                        Text("请先选中对应的人物素材，再添加墨镜。")
+                            .font(.subheadline)
+                            .foregroundStyle(LF.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        Section {
+                            ForEach(targets.indices, id: \.self) { index in
+                                let target = targets[index]
+                                Button {
+                                    onSelect(target)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "person.crop.rectangle")
+                                            .font(.title3)
+                                            .foregroundStyle(LF.actionPrimary)
+                                            .frame(width: 36, height: 36)
+                                            .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 10))
+
+                                        Text(target.name.isEmpty ? NSLocalizedString("人物素材", comment: "Person clip") : target.name)
+                                            .font(.body.weight(.medium))
+                                            .foregroundStyle(LF.textPrimary)
+                                            .lineLimit(2)
+
+                                        Spacer(minLength: 0)
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(LF.textSecondary)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .listRowBackground(LF.surface)
+                            }
+                        } header: {
+                            Text(sticker.localizedName)
+                        } footer: {
+                            Text("请先选中对应的人物素材，再添加墨镜。")
+                                .foregroundStyle(LF.textSecondary)
+                        }
+                    }
+                    .scrollContentBackground(.hidden)
+                }
+            }
+            .lfNavigationTitle("选择剪影素材")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消", action: onCancel)
+                }
+            }
+            .magicBackground()
+        }
+        .presentationDetents([.medium, .large])
+        .presentationBackground(LF.background)
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -1175,6 +1409,7 @@ private struct StickerPreview: View {
 /// 长按贴纸预览弹窗：动图默认自动播放并支持暂停；单帧贴纸提供直接添加。
 private struct StickerPreviewSheet: View {
     let sticker: StickerDefinition
+    let canAdd: Bool
     let onAdd: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -1184,8 +1419,7 @@ private struct StickerPreviewSheet: View {
         NavigationStack {
             VStack(spacing: 18) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(LF.surface2.opacity(0.72))
+                    CheckerboardView()
                     StickerPreview(
                         decorationID: sticker.id,
                         frameDuration: sticker.frameDuration,
@@ -1195,10 +1429,20 @@ private struct StickerPreviewSheet: View {
                 }
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(LF.brandTint.opacity(0.24), lineWidth: 1)
+                }
 
                 VStack(spacing: 5) {
                     Text(sticker.localizedName)
                         .font(.headline)
+                    Text(sticker.localizedDescription)
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(String.localizedStringWithFormat(
                         NSLocalizedString("长按预览 · %1$lld 帧 · 约 %2$.1f 秒", comment: "Sticker preview duration"),
                         Int64(sticker.frameCount), sticker.defaultDuration
@@ -1209,19 +1453,17 @@ private struct StickerPreviewSheet: View {
 
                 HStack(spacing: 12) {
                     if sticker.frameCount > 1 {
-                        Button {
-                            isPlaying.toggle()
-                        } label: {
-                            Label(isPlaying ? "暂停" : "播放", systemImage: isPlaying ? "pause.fill" : "play.fill")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
+                    Button {
+                        isPlaying.toggle()
+                    } label: {
+                        Label(isPlaying ? "暂停" : "播放", systemImage: isPlaying ? "pause.fill" : "play.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .lfActionButtonStyle(.secondary)
                     }
 
-                    Button("添加贴纸", action: onAdd)
-                        .frame(maxWidth: .infinity)
-                        .buttonStyle(.borderedProminent)
-                        .tint(LF.actionPrimary)
+                    Button(canAdd ? "添加贴纸" : "解锁 GIFBloom Pro", action: onAdd)
+                        .lfActionButtonStyle(.primary)
                 }
             }
             .padding(20)
@@ -1235,6 +1477,7 @@ private struct StickerPreviewSheet: View {
             .magicBackground()
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(LF.background)
         .presentationDragIndicator(.visible)
     }
 }

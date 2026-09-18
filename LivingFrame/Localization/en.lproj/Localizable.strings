@@ -82,9 +82,9 @@
 "光束 + 星芒光效" = "Light beam + star sparkles";
 "纯净黑幕" = "Pure Black";
 "极简，人物突出" = "Minimal — the person stands out";
-"GIF（通用）" = "GIF (Universal)";
-"透明视频（HEVC-alpha）" = "Transparent Video (HEVC-alpha)";
-"普通视频（H.264）" = "Standard Video (H.264)";
+"GIF（通用）" = "GIF";
+"透明视频（HEVC-alpha）" = "Video (HEVC)";
+"普通视频（H.264）" = "Video (H.264)";
 "兼容性最广，适合分享，透明边缘为硬边" = "Most compatible and great for sharing; transparency has hard edges";
 "保留半透明边缘，体积小，适合再次合成" = "Keeps soft transparent edges, small size, ideal for re-compositing";
 "无透明通道，最通用的视频格式" = "No alpha channel; the most universal video format";
@@ -108,7 +108,7 @@
 "抠图失败" = "Segmentation Failed";
 "无法读取所选素材" = "Couldn't read the selected item";
 "照片" = "Photo";
-"Live Photo（动态照片）" = "Live Photo (Dynamic)";
+"Live Photo（动态照片）" = "Live Photo";
 "存入相册长按播放，透明区域用背景填充" = "Saved to Photos; press and hold to play. Transparent areas are filled with the background";
 "需要相册权限才能保存 Live Photo，请在设置中开启" = "Photos access is required to save a Live Photo. Enable it in Settings";
 "保存" = "Save";
@@ -221,6 +221,7 @@
 "正在下载原始动态照片" = "Downloading original Live Photo…";
 "比例" = "Aspect ratio";
 "涂鸦" = "Doodle";
+"表情" = "Emoji";
 "涂鸦（开发中）" = "Doodle (in development)";
 "添加素材后显示时间轴" = "The timeline appears after you add assets";
 "清理临时文件" = "Clean up temporary files";
@@ -318,7 +319,7 @@
 "关闭" = "Close";
 "使用周订阅或一次性买断解锁 GIFBloom Pro。" = "Unlock GIFBloom Pro with a weekly subscription or a one-time purchase.";
 "GIFBloom Pro 已解锁" = "GIFBloom Pro is unlocked";
-"订阅与买断" = "Subscribe or buy once";
+"订阅" = "Subscribe";
 "管理订阅" = "Manage subscription";
 "隐私政策" = "Privacy Policy";
 "支持" = "Support";
@@ -686,7 +687,8 @@
 "微信 GIF 预估值按 15 fps 计算；超过 10 MB 会自动降低帧率。" = "WeChat GIF size is estimated at 15 fps; above 10 MB, the frame rate is reduced automatically.";
 "图标配色" = "App Icon";
 "晴空蓝、奶油白与珊瑚橙，取自 App 图标" = "Sky blue, cream, and coral from the app icon";
-"选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。" = "Choose a weekly or yearly subscription, or a one-time purchase to unlock GIFBloom Pro.";
+"选择周订阅或年订阅解锁 GIFBloom Pro。" = "Choose a weekly or yearly subscription to unlock GIFBloom Pro.";
+"免费导出会在右下角添加 GIFBloom 水印。" = "Free exports include a GIFBloom watermark in the lower-right corner.";
 "周订阅和年订阅均会自动续订。除非在当前周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。" = "Weekly and yearly subscriptions renew automatically. Cancel at least 24 hours before the current period ends to stop renewal. You can manage or cancel your subscription in your Apple ID settings.";
 
 /* Emoji sticker names */
@@ -698,3 +700,85 @@
 "思考" = "Thinking";
 "惊讶" = "Surprised";
 "生气" = "Angry";
+
+/* Library overview and search */
+"最近添加" = "Recently Added";
+"搜索素材名称" = "Search assets by name";
+"素材类型" = "Asset Type";
+"没有匹配的素材" = "No Matching Assets";
+"全部" = "All";
+
+"订阅 GIFBloom Pro 后可去除导出水印。" = "Subscribe to GIFBloom Pro to remove export watermarks.";
+"从长视频中选择最长 10 秒的剪影片段。" = "Choose clips up to 10 seconds from longer videos.";
+"免费版最长 5 秒；GIFBloom Pro 可选 8 秒或 10 秒。" = "Free: up to 5 sec; GIFBloom Pro: 8 or 10 sec.";
+"解锁更长片段" = "Unlock longer clips";
+"周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Weekly and yearly plans auto-renew. Cancel at least 24 hours before the period ends. Manage your plan in Apple ID settings.";
+"使用 AI 贴纸，让墨镜跟随人物双眼移动。" = "Use AI stickers to make sunglasses follow a person's eyes.";
+"AI 贴纸仅限 GIFBloom Pro 使用。" = "AI stickers are only available with GIFBloom Pro.";
+"解锁 AI 贴纸" = "Unlock AI stickers";
+"解锁 GIFBloom Pro" = "Unlock GIFBloom Pro";
+"解锁更长的素材提取时长。" = "Unlock longer clip extraction times.";
+"使用 GIFBloom Pro 专属 AI 贴纸。" = "Use AI stickers exclusive to GIFBloom Pro.";
+"GIFBloom Pro 可解锁更长素材提取时长和 AI 贴纸。" = "GIFBloom Pro unlocks longer clip extraction and AI stickers.";
+"订阅去水印" = "Subscribe to remove watermark";
+"水果" = "Fruit";
+"5 秒" = "5 seconds";
+
+"AI贴纸" = "AI Stickers";
+"墨镜" = "Sunglasses";
+"墨镜 · 2D多视角" = "Sunglasses · 2D Views";
+"紫晶墨镜 · 3D视角" = "Amethyst Sunglasses · 3D Views";
+"请先选中画布上的人物素材，或让时间指针停在人物画面上。" = "Select a person clip on the canvas or move the playhead to a frame with a person.";
+"正在逐帧识别人脸…" = "Detecting the face frame by frame…";
+"工程在分析期间发生了变化，请重新添加墨镜。" = "The project changed during analysis. Add the sunglasses again.";
+"墨镜已添加，会跟随人物眼睛移动。" = "Sunglasses added; they will follow the person’s eyes.";
+"没有识别到清晰的双眼，试试正脸更清楚的素材。" = "Could not find two clear eyes. Try a clearer front-facing clip.";
+"人脸分析失败，请重试。" = "Face analysis failed. Please try again.";
+"请先选中对应的人物素材，再添加墨镜。识别后，您可以自行调整大小。" = "Select the person clip first, then add the sunglasses. After detection, you can adjust their size.";
+
+/* Works list */
+"查看全部" = "View All";
+"全部作品" = "All Works";
+"搜索作品名称" = "Search works by name";
+"排序" = "Sort";
+"排序方式" = "Sort By";
+"最近保存" = "Recently Saved";
+"名称" = "Name";
+"加载更多" = "Load More";
+"没有匹配的作品" = "No Matching Works";
+"尝试其他关键词" = "Try another search term";
+"请先选中对应的人物素材，再添加墨镜。" = "Select the person clip you want to use before adding the sunglasses.";
+"墨镜已添加，会跟随双眼移动，可自行调整大小。" = "Sunglasses added and following the eyes. You can adjust their size.";
+
+/* Sticker names and descriptions */
+"夏日" = "Summer";
+"苹果" = "Apple";
+"香蕉" = "Banana";
+"橙子" = "Orange";
+"草莓" = "Strawberry";
+"葡萄" = "Grapes";
+"西瓜" = "Watermelon";
+"桃子" = "Peach";
+"菠萝" = "Pineapple";
+"柠檬" = "Lemon";
+"梨" = "Pear";
+"芒果" = "Mango";
+"猕猴桃" = "Kiwi";
+"樱桃" = "Cherries";
+"牛油果" = "Avocado";
+"蓝莓" = "Blueberries";
+"李子" = "Plum";
+"手写字标" = "Handwritten wordmark";
+"涂鸦字标" = "Doodle wordmark";
+"蜡笔字标" = "Crayon wordmark";
+"为画面增添趣味的动态涂鸦装饰。" = "Fun animated doodles to decorate your frame.";
+"用简单表情为画面增添情绪。" = "Simple expressions to add emotion to your frame.";
+"让水果图案以轻快动画点亮画面。" = "Bright fruit animations to bring your frame to life.";
+"自动贴合双眼，并随人脸角度变化。" = "Fits over the eyes and follows changes in face angle.";
+"GIFBloom 品牌字标动态贴纸。" = "Animated GIFBloom wordmarks to decorate your frame.";
+
+/* AI sticker names and descriptions */
+"AI贴纸 · 2D" = "AI Stickers · 2D";
+"AI贴纸 · 3D" = "AI Stickers · 3D";
+"根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。" = "The 2D sunglasses switch views with the face angle and stay aligned with the eyes.";
+"使用 3D 模型渲染的视图，随人脸角度平滑变化。" = "Rendered 3D views change smoothly with the face angle.";

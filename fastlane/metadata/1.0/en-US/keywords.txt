@@ -1,1 +1,1 @@
-GIF maker,Live Photo,video editor,photo animation,cutout,collage,stickers
+Live Photo,animated stickers,transparent export,layered animation,HEVC,person masking,audio timeline

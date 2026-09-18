@@ -25,7 +25,13 @@ final class WorksStoreTests: XCTestCase {
         let expectedData = try JSONEncoder().encode(work)
 
         XCTAssertEqual(loaded, [work])
-        XCTAssertEqual(try Data(contentsOf: manifestURL), expectedData)
+        let savedManifest = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(contentsOf: manifestURL)
+        ) as? NSDictionary)
+        let expectedManifest = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: expectedData
+        ) as? NSDictionary)
+        XCTAssertEqual(savedManifest, expectedManifest)
     }
 
     func testLoadKeepsValidWorksAndSkipsCorruptManifest() throws {

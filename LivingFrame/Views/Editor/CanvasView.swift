@@ -326,7 +326,7 @@ struct CanvasView: View {
             )?.contains(point) ?? true
         }
         let center = CGPoint(x: frame.midX, y: frame.midY)
-        let rotation = element.transform.rotation
+        let rotation = renderer.resolvedTransform(for: element, in: comp, at: time).rotation
         if rotation == 0 {
             return frame.contains(point)
         }
@@ -650,11 +650,15 @@ struct CanvasView: View {
                         element,
                         in: appState.composition,
                         geometry: geometry,
-                        at: appState.currentTime
+                        at: appState.currentTime,
+                        usesVisibleStickerBounds: true
                     )
                     let center = CGPoint(x: frame.midX, y: frame.midY)
                     // 画布 rotation 正值=逆时针；SwiftUI rotationEffect 屏幕坐标系正值=顺时针，需取反
-                    let rotation = -element.transform.rotation
+                    let effectiveTransform = appState.composition.map {
+                        renderer.resolvedTransform(for: element, in: $0, at: appState.currentTime)
+                    } ?? element.transform
+                    let rotation = -effectiveTransform.rotation
                     let isBackground = isBackgroundElement(element)
                     ZStack {
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
@@ -847,18 +851,18 @@ struct CanvasView: View {
             Button("取消") {
                 appState.isCropping = false
             }
-            .buttonStyle(MagicButtonStyle(prominent: false))
+            .lfActionButtonStyle(.secondary)
             Button("重置") {
                 cropRect = appState.composition?.canvasRect
             }
-            .buttonStyle(MagicButtonStyle(prominent: false))
+            .lfActionButtonStyle(.secondary)
             Button("完成") {
                 if let cropRect {
                     appState.setCropRect(cropRect)
                 }
                 appState.isCropping = false
             }
-            .buttonStyle(MagicButtonStyle())
+            .lfActionButtonStyle(.primary)
         }
     }
 
@@ -911,7 +915,8 @@ struct CanvasView: View {
         _ element: CompositionElement,
         in comp: Composition?,
         geometry: ViewportGeometry,
-        at time: TimeInterval
+        at time: TimeInterval,
+        usesVisibleStickerBounds: Bool = false
     ) -> CGRect {
         guard let comp else { return .zero }
         // 背景图片由渲染器先生成完整画布尺寸的蒙版图，且背景取景只修改
@@ -928,9 +933,42 @@ struct CanvasView: View {
             )
         }
         let size = elementContentSize(element, in: comp, at: time)
+        let transform = renderer.resolvedTransform(for: element, in: comp, at: time)
+        let fullContentBounds = CGRect(origin: .zero, size: size)
+        let visibleContentBounds: CGRect
+        if usesVisibleStickerBounds {
+            visibleContentBounds = renderer.stickerSelectionBounds(for: element)
+                .map { $0.intersection(fullContentBounds) }
+                .flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil }
+                ?? fullContentBounds
+        } else {
+            visibleContentBounds = fullContentBounds
+        }
+        let imageCenterOffset = CGPoint(
+            x: visibleContentBounds.midX - size.width / 2,
+            y: visibleContentBounds.midY - size.height / 2
+        )
+        let scaledOffset = CGPoint(
+            x: imageCenterOffset.x * transform.scale,
+            y: imageCenterOffset.y * transform.scale
+        )
+        let cosine = cos(transform.rotation)
+        let sine = sin(transform.rotation)
+        let visibleCenterOffset = CGPoint(
+            x: scaledOffset.x * cosine - scaledOffset.y * sine,
+            y: scaledOffset.x * sine + scaledOffset.y * cosine
+        )
+        let visibleTransform = ElementTransform(
+            position: CGPoint(
+                x: transform.position.x + visibleCenterOffset.x,
+                y: transform.position.y + visibleCenterOffset.y
+            ),
+            scale: transform.scale,
+            rotation: transform.rotation
+        )
         return ElementFrameGeometry.frame(
-            contentSize: size,
-            transform: element.transform,
+            contentSize: visibleContentBounds.size,
+            transform: visibleTransform,
             contentRect: geometry.rect,
             viewportScale: geometry.scale,
             viewportOffset: CGPoint(x: geometry.offsetX, y: geometry.offsetY)
