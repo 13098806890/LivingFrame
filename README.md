@@ -48,6 +48,10 @@
 
 详细设计见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
+## 第三方素材
+
+贴纸中的 emoji 图稿改制自 [Twemoji](https://github.com/twitter/twemoji)，版权归 Twitter, Inc. 及贡献者所有，按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可使用。资源来源、改动方式和署名信息见 `Packages/LivingFrameCore/Sources/LivingFrameCore/Resources/TWEMOJI_ATTRIBUTION.txt`。
+
 ## 工程结构
 
 ```

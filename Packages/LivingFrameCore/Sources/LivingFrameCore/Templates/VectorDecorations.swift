@@ -195,6 +195,46 @@ public struct DecorationRenderer {
             isFrameSequence: false, frameCount: 108
         ),
         StickerDefinition(
+            id: "sticker-emoji-smile", name: "微笑", category: .doodle,
+            resourceName: "twemoji-smile", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+        ),
+        StickerDefinition(
+            id: "sticker-emoji-laugh", name: "笑哭", category: .doodle,
+            resourceName: "twemoji-laugh", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+        ),
+        StickerDefinition(
+            id: "sticker-emoji-love", name: "爱心眼", category: .doodle,
+            resourceName: "twemoji-love", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+        ),
+        StickerDefinition(
+            id: "sticker-emoji-wink", name: "眨眼", category: .doodle,
+            resourceName: "twemoji-wink", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+        ),
+        StickerDefinition(
+            id: "sticker-emoji-cry", name: "大哭", category: .doodle,
+            resourceName: "twemoji-cry", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+        ),
+        StickerDefinition(
+            id: "sticker-emoji-think", name: "思考", category: .doodle,
+            resourceName: "twemoji-think", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+        ),
+        StickerDefinition(
+            id: "sticker-emoji-surprise", name: "惊讶", category: .doodle,
+            resourceName: "twemoji-surprise", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+        ),
+        StickerDefinition(
+            id: "sticker-emoji-angry", name: "生气", category: .doodle,
+            resourceName: "twemoji-angry", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+        ),
+        StickerDefinition(
             id: "sticker-logo-bubble", name: "logo", category: .logo,
             resourceName: "gifbloom-bubble", resourceExtension: "gif",
             isFrameSequence: false, frameCount: 6, frameDuration: 0.08

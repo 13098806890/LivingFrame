@@ -629,7 +629,7 @@
 "贴纸" = "pegatinas";
 "贴纸预览" = "Vista previa de la pegatina";
 "起点 %1$@ · 选中 %2$@" = "Punto de partida %1$@ · Seleccione %2$@";
-"轻点添加，长按预览动画" = "Toque para agregar y mantenga presionado para obtener una vista previa de la animación.";
+"轻点添加，长按预览" = "Toca para añadir y mantén pulsado para previsualizar";
 "输入作品名称" = "Introduce el título de la obra.";
 "输入内容并调整文字的视觉样式" = "Ingresa contenido y ajusta el estilo visual de tu texto";
 "输入文字" = "Introducir texto";
@@ -685,3 +685,13 @@
 "晴空蓝、奶油白与珊瑚橙，取自 App 图标" = "Azul cielo, crema y coral del icono de la app";
 "选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。" = "Elige una suscripción semanal o anual, o una compra única para desbloquear GIFBloom Pro.";
 "周订阅和年订阅均会自动续订。除非在当前周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。" = "Las suscripciones semanales y anuales se renuevan automáticamente. Cancela al menos 24 horas antes de que termine el periodo actual para detener la renovación. Puedes gestionarla o cancelarla en los ajustes de tu Apple ID.";
+
+/* Emoji sticker names */
+"微笑" = "Sonrisa";
+"笑哭" = "Risa";
+"爱心眼" = "Ojos de corazón";
+"眨眼" = "Guiño";
+"大哭" = "Llanto";
+"思考" = "Pensando";
+"惊讶" = "Sorprendido";
+"生气" = "Enfadado";

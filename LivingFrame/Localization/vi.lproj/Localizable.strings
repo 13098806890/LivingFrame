@@ -629,7 +629,7 @@
 "贴纸" = "nhãn dán";
 "贴纸预览" = "Xem trước nhãn dán";
 "起点 %1$@ · 选中 %2$@" = "Điểm xuất phát %1$@ · Chọn %2$@";
-"轻点添加，长按预览动画" = "Nhấn để thêm và nhấn và giữ để xem trước hoạt ảnh";
+"轻点添加，长按预览" = "Chạm để thêm và nhấn giữ để xem trước";
 "输入作品名称" = "Nhập tên tác phẩm";
 "输入内容并调整文字的视觉样式" = "Nhập nội dung và điều chỉnh phong cách trực quan của văn bản của bạn";
 "输入文字" = "Nhập văn bản";
@@ -685,3 +685,13 @@
 "晴空蓝、奶油白与珊瑚橙，取自 App 图标" = "Xanh trời, kem và san hô từ biểu tượng ứng dụng";
 "选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。" = "Chọn gói đăng ký theo tuần hoặc năm, hoặc mua một lần để mở khóa GIFBloom Pro.";
 "周订阅和年订阅均会自动续订。除非在当前周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。" = "Các gói đăng ký theo tuần và năm sẽ tự động gia hạn. Hãy hủy ít nhất 24 giờ trước khi kỳ hiện tại kết thúc để dừng gia hạn. Bạn có thể quản lý hoặc hủy gói trong phần cài đặt Apple ID.";
+
+/* Emoji sticker names */
+"微笑" = "Mỉm cười";
+"笑哭" = "Cười";
+"爱心眼" = "Mắt hình tim";
+"眨眼" = "Nháy mắt";
+"大哭" = "Khóc";
+"思考" = "Đang suy nghĩ";
+"惊讶" = "Ngạc nhiên";
+"生气" = "Tức giận";

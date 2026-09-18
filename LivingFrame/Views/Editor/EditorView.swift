@@ -832,7 +832,7 @@ private var saveStatusView: some View {
                     }
                 }
             }
-            Text("轻点添加，长按预览动画")
+            Text("轻点添加，长按预览")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
 
@@ -1083,7 +1083,7 @@ private struct EditorPanelHeader: View {
     }
 }
 
-/// 贴纸网格单元：轻点直接添加，长按打开动态预览。
+/// 贴纸网格单元：轻点直接添加，长按打开预览。
 private struct StickerPickerCell: View {
     let sticker: StickerDefinition
     let onSelect: () -> Void
@@ -1120,7 +1120,7 @@ private struct StickerPickerCell: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint("轻点添加，长按预览动画")
+        .accessibilityHint("轻点添加，长按预览")
         .accessibilityAction(named: "预览") {
             onPreview()
         }
@@ -1172,7 +1172,7 @@ private struct StickerPreview: View {
     }
 }
 
-/// 长按贴纸预览弹窗：默认自动播放，也支持暂停/继续和直接添加。
+/// 长按贴纸预览弹窗：动图默认自动播放并支持暂停；单帧贴纸提供直接添加。
 private struct StickerPreviewSheet: View {
     let sticker: StickerDefinition
     let onAdd: () -> Void
@@ -1208,15 +1208,18 @@ private struct StickerPreviewSheet: View {
                 }
 
                 HStack(spacing: 12) {
-                    Button {
-                        isPlaying.toggle()
-                    } label: {
-                        Label(isPlaying ? "暂停" : "播放", systemImage: isPlaying ? "pause.fill" : "play.fill")
-                            .frame(maxWidth: .infinity)
+                    if sticker.frameCount > 1 {
+                        Button {
+                            isPlaying.toggle()
+                        } label: {
+                            Label(isPlaying ? "暂停" : "播放", systemImage: isPlaying ? "pause.fill" : "play.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
 
                     Button("添加贴纸", action: onAdd)
+                        .frame(maxWidth: .infinity)
                         .buttonStyle(.borderedProminent)
                         .tint(LF.actionPrimary)
                 }

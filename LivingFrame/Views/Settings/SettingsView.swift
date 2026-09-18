@@ -216,6 +216,11 @@ struct SettingsView: View {
                             Text(appVersionText)
                                 .font(.caption2)
                                 .foregroundStyle(LF.textSecondary)
+                            Text(verbatim: "Adapted Twemoji artwork © Twitter, Inc. and contributors")
+                                .font(.caption2)
+                                .foregroundStyle(LF.textSecondary)
+                            Link("CC BY 4.0", destination: URL(string: "https://creativecommons.org/licenses/by/4.0/")!)
+                                .font(.caption2)
                         }
                     }
                 }

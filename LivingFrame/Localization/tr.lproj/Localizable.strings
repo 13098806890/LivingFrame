@@ -629,7 +629,7 @@
 "贴纸" = "çıkartmalar";
 "贴纸预览" = "Çıkartma önizlemesi";
 "起点 %1$@ · 选中 %2$@" = "Başlangıç noktası %1$@ · %2$@'i seçin";
-"轻点添加，长按预览动画" = "Animasyonu önizlemek için eklemek için dokunun ve uzun basın";
+"轻点添加，长按预览" = "Eklemek için dokunun, önizlemek için basılı tutun";
 "输入作品名称" = "Çalışmanın başlığını girin";
 "输入内容并调整文字的视觉样式" = "İçeriği girin ve metninizin görsel stilini ayarlayın";
 "输入文字" = "Metni girin";
@@ -685,3 +685,13 @@
 "晴空蓝、奶油白与珊瑚橙，取自 App 图标" = "Uygulama simgesinden gök mavisi, krem ve mercan tonları";
 "选择周订阅、年订阅或一次性买断解锁 GIFBloom Pro。" = "GIFBloom Pro’nun kilidini açmak için haftalık veya yıllık abonelik ya da tek seferlik satın alma seçin.";
 "周订阅和年订阅均会自动续订。除非在当前周期结束前至少 24 小时取消，否则会自动续订。你可以在 Apple ID 设置中管理或取消订阅。" = "Haftalık ve yıllık abonelikler otomatik yenilenir. Yenilemeyi durdurmak için mevcut dönem bitmeden en az 24 saat önce iptal edin. Aboneliğinizi Apple ID ayarlarından yönetebilir veya iptal edebilirsiniz.";
+
+/* Emoji sticker names */
+"微笑" = "Gülümseme";
+"笑哭" = "Kahkaha";
+"爱心眼" = "Kalp gözler";
+"眨眼" = "Göz kırpma";
+"大哭" = "Ağlama";
+"思考" = "Düşünme";
+"惊讶" = "Şaşkın";
+"生气" = "Kızgın";
