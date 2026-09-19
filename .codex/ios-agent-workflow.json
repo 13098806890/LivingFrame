@@ -6,6 +6,26 @@
     "thinking": "high"
   },
   "report_root": "Artifacts/AgentWorkflow",
+  "test_strategy": {
+    "default": "exploratory-first",
+    "exploration_owner": "orchestrator",
+    "exploration_before_fixed_tests": true,
+    "exploration_protocol": {
+      "driver": "llm-live-ui",
+      "loop": "observe-decide-act-observe",
+      "inputs_per_step": ["screenshot", "accessibility-tree", "relevant-source-context"],
+      "action_granularity": "one-action-per-turn",
+      "fixed_code_prohibited_during_exploration": ["XCUITest", "prewritten selectors", "assertion-driven flows", "bulk action scripts"],
+      "fixed_tests_allowed_after": "orchestrator accepts reproducible exploration evidence"
+    },
+    "applies_to": ["ui", "interaction", "usability", "audit"],
+    "fixed_test_exceptions": [
+      "用户明确要求 fixed-only",
+      "仅代码或单元测试任务",
+      "发布与合规检查"
+    ],
+    "fallback_policy": "探索通道或目标设备不可用时标记 blocked，不得冒充固定测试已覆盖"
+  },
   "commit_reports": false,
   "required_stages": [
     "developer",

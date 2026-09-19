@@ -14,7 +14,11 @@ final class LivingFrameUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
 
+        let isSettingsSubscriptionCapture = name.contains("testSettingsSubscriptionFullPageCapture")
         addUIInterruptionMonitor(withDescription: "System alerts") { alert in
+            // This capture-only test must never choose a system permission
+            // option, even if XCTest tries the shared interruption handler.
+            guard !isSettingsSubscriptionCapture else { return false }
             for title in ["允许", "Allow", "好", "OK"] where alert.buttons[title].exists {
                 alert.buttons[title].tap()
                 return true
@@ -26,6 +30,153 @@ final class LivingFrameUITests: XCTestCase {
     @MainActor
     func testSmokeVisualAudit() throws {
         try runAudit([Self.simplifiedChinese])
+    }
+
+    /// Capture every Settings viewport with deliberate overlap, then open the
+    /// Pro store once. This audit records gaps instead of asserting or acting
+    /// on any system permission or purchase control.
+    @MainActor
+    func testSettingsSubscriptionFullPageCapture() throws {
+        var observations: [String] = []
+        let seedArguments = ["-UIAuditSeedProject"]
+        app.launchArguments = [
+            "-AppleLanguages", "(\(Self.simplifiedChinese.language))",
+            "-AppleLocale", Self.simplifiedChinese.locale,
+            "-AppleInterfaceStyle", Self.simplifiedChinese.appearance
+        ] + seedArguments
+        configureAuditStorageNamespace(for: seedArguments)
+        app.launch()
+
+        guard app.wait(for: .runningForeground, timeout: 15) else {
+            observations.append("启动：未能在 15 秒内进入前台；设置截图与商店截图均跳过。")
+            attachCaptureObservations(observations)
+            if app.state != .notRunning { app.terminate() }
+            return
+        }
+        observations.append("启动：使用 zh-Hans / zh_CN / Light，并启用独立 UI audit 数据命名空间。")
+
+        let tabBar = app.tabBars.firstMatch
+        let settingsTab = tabBar.buttons["设置"]
+        if tabBar.waitForExistence(timeout: 10), settingsTab.exists, settingsTab.isHittable {
+            settingsTab.tap()
+            waitForUIToSettle()
+            observations.append("设置入口：已点按“设置”tab。")
+
+            let scrollView = app.scrollViews.firstMatch
+            if scrollView.exists {
+                var viewportNumber = 1
+                attachSettingsViewportEvidence(number: viewportNumber, position: "top")
+                observations.append("设置视口 01：已保存顶部截图与对应 AX。")
+
+                let aboutMarker = app.staticTexts["关于"]
+                let maxScrolls = 14
+                var reachedAboutEnd = false
+                var aboutEndCandidateY: CGFloat?
+
+                for scrollNumber in 1...maxScrolls {
+                    guard scrollView.exists, scrollView.isHittable else {
+                        observations.append("设置滚动 \(scrollNumber)：滚动容器不可用，停止后续视口采集。")
+                        break
+                    }
+
+                    // A 0.82 → 0.32 drag advances about half a viewport,
+                    // leaving visible content shared with the next image.
+                    let start = scrollView.coordinate(
+                        withNormalizedOffset: CGVector(dx: 0.94, dy: 0.82)
+                    )
+                    let end = scrollView.coordinate(
+                        withNormalizedOffset: CGVector(dx: 0.94, dy: 0.32)
+                    )
+                    start.press(forDuration: 0.05, thenDragTo: end)
+                    waitForUIToSettle()
+
+                    viewportNumber += 1
+                    attachSettingsViewportEvidence(number: viewportNumber, position: "scroll")
+                    let aboutVisible = aboutMarker.exists && aboutMarker.isHittable &&
+                        aboutMarker.frame.maxY < tabBar.frame.minY - 8
+                    let aboutY = aboutVisible ? aboutMarker.frame.minY : nil
+                    if let previousAboutY = aboutEndCandidateY,
+                        let aboutY,
+                        abs(aboutY - previousAboutY) < 2 {
+                        reachedAboutEnd = true
+                    }
+                    observations.append(
+                        String(
+                            format: "设置视口 %02d：已纵向滚动并保存截图与 AX；About 区标题可见=%@，连续滚动后位置稳定=%@。",
+                            viewportNumber,
+                            aboutVisible ? "是" : "否",
+                            reachedAboutEnd ? "是" : "否"
+                        )
+                    )
+
+                    if reachedAboutEnd { break }
+                    aboutEndCandidateY = aboutY
+                }
+
+                observations.append(
+                    "设置完整页：About 区标题在连续滚动后位置\(reachedAboutEnd ? "稳定" : "未能确认稳定")；About 是 SettingsView.swift 中末尾 section，最大滚动次数=\(maxScrolls)，截图序列每次目标位移约半个视口。"
+                )
+
+                // Return toward Pro without creating extra screenshots. Every
+                // gesture is bounded, and the purchase entry is tapped at most once.
+                let proEntry = app.buttons["订阅与买断"]
+                var proEntryReachable = proEntry.exists && proEntry.isHittable
+                if proEntry.exists && !proEntryReachable {
+                    for returnScrollNumber in 1...maxScrolls {
+                        guard scrollView.exists, scrollView.isHittable else {
+                            observations.append("返回 Pro \(returnScrollNumber)：滚动容器不可用，停止。")
+                            break
+                        }
+                        let start = scrollView.coordinate(
+                            withNormalizedOffset: CGVector(dx: 0.94, dy: 0.32)
+                        )
+                        let end = scrollView.coordinate(
+                            withNormalizedOffset: CGVector(dx: 0.94, dy: 0.82)
+                        )
+                        start.press(forDuration: 0.05, thenDragTo: end)
+                        waitForUIToSettle()
+                        proEntryReachable = proEntry.exists && proEntry.isHittable
+                        if proEntryReachable { break }
+                    }
+                }
+
+                if proEntry.exists && proEntryReachable {
+                    proEntry.tap()
+                    observations.append("Pro 商店：已对“订阅与买断”执行一次点按。")
+                    waitForUIToSettle()
+                    attachScreenshot(named: "settings-pro-store--capture")
+                    attachAccessibilityHierarchy(named: "settings-pro-store--capture")
+
+                    let storeHierarchy = app.debugDescription
+                    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+                    let springboardHierarchy = springboard.debugDescription
+                    let permissionTerms = [
+                        "无线数据", "无线局域网", "蜂窝网络", "WLAN",
+                        "Wireless Data", "Cellular Data", "Allow Wireless Data"
+                    ]
+                    let permissionText = permissionTerms.first {
+                        storeHierarchy.localizedCaseInsensitiveContains($0) ||
+                            springboardHierarchy.localizedCaseInsensitiveContains($0)
+                    }
+                    let accessibilityAlertExists = app.alerts.firstMatch.exists ||
+                        springboard.alerts.firstMatch.exists
+                    let unavailableVisible = app.staticTexts["订阅不可用"].exists ||
+                        app.staticTexts["Subscriptions Unavailable"].exists
+                    observations.append(
+                        "商店捕获：已保存截图与 AX；无线数据提示关键词=\(permissionText.map { "可见（\($0)）" } ?? "未检测到（以截图人工确认）")；App/SpringBoard AX alert 存在=\(accessibilityAlertExists ? "是" : "否")；StoreKit 不可用文案=\(unavailableVisible ? "可见" : "未检测到")。"
+                    )
+                } else {
+                    observations.append("Pro 商店：订阅入口不存在或未能在有界回滚后变为可点；未点按，商店截图与 AX 跳过。")
+                }
+            } else {
+                observations.append("设置页：未找到滚动容器；设置视口和 Pro 商店步骤均跳过。")
+            }
+        } else {
+            observations.append("设置入口：设置 tab 不存在或不可点；设置视口和 Pro 商店步骤均跳过。")
+        }
+
+        attachCaptureObservations(observations)
+        app.terminate()
     }
 
     /// The public app identity must stay GIFBloom even though the Xcode
@@ -726,6 +877,19 @@ final class LivingFrameUITests: XCTestCase {
     private func attachScreenshot(named name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func attachSettingsViewportEvidence(number: Int, position: String) {
+        let name = String(format: "settings-fullpage--%02d-%@", number, position)
+        attachScreenshot(named: name)
+        attachAccessibilityHierarchy(named: name)
+    }
+
+    private func attachCaptureObservations(_ observations: [String]) {
+        let attachment = XCTAttachment(string: observations.joined(separator: "\n"))
+        attachment.name = "settings-subscription-capture-observations"
         attachment.lifetime = .keepAlways
         add(attachment)
     }
