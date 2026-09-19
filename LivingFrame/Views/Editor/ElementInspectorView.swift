@@ -163,7 +163,6 @@ struct ElementInspectorView: View {
                     textEditor(text)
                 } else {
                     filterPicker(element)
-                    elementBackgroundPicker(element)
                 }
             }
         }
@@ -491,14 +490,6 @@ struct ElementInspectorView: View {
                 .foregroundStyle(LF.textSecondary)
             TextFormattingControls(text: text)
                 .environmentObject(appState)
-        }
-    }
-
-    // MARK: - 元素背景图案
-
-    private func elementBackgroundPicker(_ element: CompositionElement) -> some View {
-        BackgroundPatternEditor(style: element.backgroundPattern) { style in
-            appState.setElementBackground(element.id, style)
         }
     }
 

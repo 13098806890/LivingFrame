@@ -564,8 +564,6 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     public var sourcePlaybackOffset: TimeInterval?
     /// 总播放次数（1 = 仅一次）。nil 只用于兼容旧工程隐式延长的循环。
     public var playbackCount: Int?
-    /// 元素级背景图案（垫在元素内容下层，nil = 无）
-    public var backgroundPattern: BackgroundPatternStyle?
     /// 滤镜（作用于元素内容，nil = 原图）
     public var filter: ElementFilter?
     /// 仅对 background 元素生效；其它元素为 nil。
@@ -591,7 +589,6 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         sourceEndTime: TimeInterval = .greatestFiniteMagnitude,
         sourcePlaybackOffset: TimeInterval? = nil,
         playbackCount: Int = 1,
-        backgroundPattern: BackgroundPatternStyle? = nil,
         filter: ElementFilter? = nil,
         backgroundSettings: BackgroundElementSettings? = nil,
         collageGroupID: UUID? = nil,
@@ -609,7 +606,6 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
         self.sourceEndTime = sourceEndTime
         self.sourcePlaybackOffset = sourcePlaybackOffset
         self.playbackCount = max(playbackCount, 1)
-        self.backgroundPattern = backgroundPattern
         self.filter = filter
         self.backgroundSettings = backgroundSettings
         self.collageGroupID = collageGroupID

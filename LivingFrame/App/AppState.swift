@@ -98,7 +98,7 @@ final class AppState: ObservableObject {
     @Published var selectedElementIDs: Set<UUID> = []
     @Published var lastSelectedElementID: UUID?
     @Published var selectedAudioID: UUID?
-    /// 是否选中背景对象（点击画布空白处选中，检查器可编辑背景图案）
+    /// 是否选中背景对象（点击画布空白处选中，检查器可编辑画布背景设置）
     @Published var selectedBackground = false
     @Published private(set) var isAddingFaceSticker = false
     @Published private(set) var faceStickerStatus: String?
@@ -1920,14 +1920,6 @@ final class AppState: ObservableObject {
         comp.background.patternOverlay = style
         composition = comp
         rememberCanvasBackground(comp.background)
-    }
-
-    /// 设置元素级背景图案（垫在元素内容下层）
-    func setElementBackground(_ elementID: UUID, _ style: BackgroundPatternStyle?) {
-        guard var comp = composition,
-              let index = comp.elements.firstIndex(where: { $0.id == elementID }) else { return }
-        comp.elements[index].backgroundPattern = style
-        composition = comp
     }
 
     private func addClip(_ clip: SegmentedClip) {

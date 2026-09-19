@@ -219,7 +219,7 @@ public struct CompositionRenderer {
            ) {
             // Normalize the raw cutout first, exactly as the style picker does.
             // Then composite the element's current effects and apply the candidate
-            // filter, so existing outlines/patterns cannot change the zoom estimate.
+            // filter, so existing outlines cannot change the zoom estimate.
             let fixScale = optionPreviewFixScale(clip: clip, preview: preview)
             var source = applyClipStyle(
                 clip.stickerStyle,
@@ -228,15 +228,6 @@ public struct CompositionRenderer {
                 subjectBounds: preview.subjectBounds,
                 to: preview.image
             )
-            if let pattern = element.backgroundPattern,
-               let patternImage = LinePattern.image(
-                    width: Int(preview.image.extent.width),
-                    height: Int(preview.image.extent.height),
-                    style: pattern,
-                    transparentBackground: true
-               ) {
-                source = source.composited(over: CIImage(cgImage: patternImage).cropped(to: preview.image.extent))
-            }
             let filtered = applyingElementFilter(filter, to: source)
             let outputRect = preview.image.extent.integral
             return context.createCGImage(filtered.cropped(to: outputRect), from: outputRect)
@@ -751,7 +742,6 @@ public struct CompositionRenderer {
                 fixScale = targetWidth > 0 && Int(frame.extent.width) > 0
                     ? targetWidth / frame.extent.width
                     : 1
-                // 元素级背景图案垫在底层（先画背景，再叠加人物及其边缘/风格）
                 var content = appliesClipEffects
                     ? applyClipStyle(
                         clip.stickerStyle,
@@ -761,15 +751,6 @@ public struct CompositionRenderer {
                         to: frame
                     )
                     : frame
-                if let pattern = element.backgroundPattern,
-                   let patternCG = LinePattern.image(
-                       width: Int(frame.extent.width),
-                       height: Int(frame.extent.height),
-                       style: pattern,
-                       transparentBackground: true
-                   ) {
-                    content = content.composited(over: CIImage(cgImage: patternCG).cropped(to: frame.extent))
-                }
                 source = content
                 } else {
                     source = nil

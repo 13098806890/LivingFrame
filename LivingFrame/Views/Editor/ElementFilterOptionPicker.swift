@@ -29,12 +29,6 @@ struct ElementFilterOptionPicker: View {
         case .canvasEdge:
             sourceID = "canvas-edge"
         }
-        let patternKey: String
-        if let pattern = element.backgroundPattern {
-            patternKey = "\(pattern.pattern.rawValue)-\(pattern.lineWidth)-\(pattern.colorHex)-\(pattern.spacing)-\(pattern.angle)"
-        } else {
-            patternKey = "none"
-        }
         return [
             element.id.uuidString,
             sourceID,
@@ -46,7 +40,6 @@ struct ElementFilterOptionPicker: View {
             String(element.sourcePlaybackOffset ?? 0),
             element.playbackCount.map { String($0) } ?? "implicit",
             "\(composition.canvas.width)x\(composition.canvas.height)",
-            patternKey,
             String(previewRevision)
         ].joined(separator: "|")
     }
