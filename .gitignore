@@ -32,3 +32,6 @@ fastlane/*.p8
 
 # UI audit artifacts
 Artifacts/UIAudit/
+
+# Local device diagnostics and test evidence
+Artifacts/DeviceDiagnostics/
