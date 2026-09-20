@@ -39,12 +39,30 @@ public struct FaceStickerKeyframe: Codable, Equatable, Sendable {
     /// Face yaw in radians. Vision provides a value in camera coordinates;
     /// nil keeps older saved projects on the front-facing sticker view.
     public var yaw: CGFloat?
+    /// Face pitch in radians. Optional for compatibility with older projects
+    /// and older tracking results that only stored yaw.
+    public var pitch: CGFloat?
+    /// Optional body-pose ear locations in normalized image coordinates. They
+    /// are used only by side-view stickers that define an ear/temple anchor.
+    public var leftEar: CGPoint?
+    public var rightEar: CGPoint?
 
-    public init(frameIndex: Int, leftEye: CGPoint, rightEye: CGPoint, yaw: CGFloat? = nil) {
+    public init(
+        frameIndex: Int,
+        leftEye: CGPoint,
+        rightEye: CGPoint,
+        yaw: CGFloat? = nil,
+        pitch: CGFloat? = nil,
+        leftEar: CGPoint? = nil,
+        rightEar: CGPoint? = nil
+    ) {
         self.frameIndex = frameIndex
         self.leftEye = leftEye
         self.rightEye = rightEye
         self.yaw = yaw
+        self.pitch = pitch
+        self.leftEar = leftEar
+        self.rightEar = rightEar
     }
 }
 
@@ -78,7 +96,10 @@ public struct FaceStickerTracking: Codable, Equatable, Sendable {
             frameIndex: frameIndex,
             leftEye: before.leftEye.interpolated(to: after.leftEye, amount: amount),
             rightEye: before.rightEye.interpolated(to: after.rightEye, amount: amount),
-            yaw: Self.interpolate(before.yaw, after.yaw, amount: amount)
+            yaw: Self.interpolate(before.yaw, after.yaw, amount: amount),
+            pitch: Self.interpolate(before.pitch, after.pitch, amount: amount),
+            leftEar: Self.interpolate(before.leftEar, after.leftEar, amount: amount),
+            rightEar: Self.interpolate(before.rightEar, after.rightEar, amount: amount)
         )
     }
 
@@ -87,6 +108,20 @@ public struct FaceStickerTracking: Codable, Equatable, Sendable {
         case let (.some(a), .some(b)): a + (b - a) * amount
         case let (.some(value), .none), let (.none, .some(value)): value
         case (.none, .none): nil
+        }
+    }
+
+    private static func interpolate(_ first: CGPoint?, _ second: CGPoint?, amount: CGFloat) -> CGPoint? {
+        switch (first, second) {
+        case let (.some(a), .some(b)):
+            CGPoint(
+                x: a.x + (b.x - a.x) * amount,
+                y: a.y + (b.y - a.y) * amount
+            )
+        case let (.some(value), .none), let (.none, .some(value)):
+            value
+        case (.none, .none):
+            nil
         }
     }
 }
@@ -105,6 +140,7 @@ private extension CGPoint {
 public enum ElementKind: Codable, Equatable {
     case clip(clipID: String)
     case background(backgroundID: String)
+    case collage(collageID: UUID)
     case decoration(decorationID: String)
     case effect(effectID: String)
     case text(textID: String)
@@ -568,8 +604,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     public var filter: ElementFilter?
     /// 仅对 background 元素生效；其它元素为 nil。
     public var backgroundSettings: BackgroundElementSettings?
-    /// 仅对拼接创建的 background 元素生效；同一拼接组中的元素共享此标识。
-    /// nil 表示这是从素材页独立添加的普通背景。
+    /// 仅对拼接内部 background 元素生效；同一拼接组中的元素共享此标识。
     public var collageGroupID: UUID?
     /// 是否自动跟随当前工程中最长的素材时长。
     /// nil 用于兼容旧工程；只有新创建且未被手动调整过的文字/贴纸会显式设为 true。

@@ -40,9 +40,25 @@ public enum StickerCategory: String, CaseIterable, Equatable, Sendable {
 public enum StickerRenderingMode: String, Equatable, Sendable {
     /// Select one authored 2D view and place it with the tracked landmarks.
     case multiView2D
-    /// Cross-fade camera renders of a single 3D model between tracked yaw angles.
+    /// Cross-fade authored image views between tracked yaw angles.
     case rendered3DViews
+    /// Render a procedural 3D model at the tracked yaw on demand.
+    case rendered3DModel
     case standard
+
+    /// Short label shown in the sticker picker and its comparison preview.
+    public var previewTitle: String {
+        switch self {
+        case .multiView2D:
+            return "方案 1 · 多视角 2D"
+        case .rendered3DViews:
+            return "方案 2 · 预渲染视角"
+        case .rendered3DModel:
+            return "方案 3 · 真 3D 模型"
+        case .standard:
+            return "普通贴纸"
+        }
+    }
 }
 
 public struct StickerDefinition: Identifiable, Equatable, Sendable {
@@ -56,6 +72,12 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
     public let frameDuration: TimeInterval
     public let faceAnchors: StickerFaceAnchors?
     public let faceViews: [StickerFaceView]?
+    /// Sign correction for authored view sets whose source images use the
+    /// opposite horizontal convention from Vision's yaw value.
+    public let faceViewYawSign: CGFloat
+    /// Sign correction for authored vertical views. This is kept per asset set
+    /// because image-generation prompts and Vision use different pitch wording.
+    public let faceViewPitchSign: CGFloat
     public let renderingMode: StickerRenderingMode
 
     public var localizedName: String {
@@ -64,6 +86,8 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         case "sticker-logo-hand-lettered": key = "手写字标"
         case "sticker-logo-doodle": key = "涂鸦字标"
         case "sticker-logo-crayon": key = "蜡笔字标"
+        case "sticker-ai-sunglasses-crayon-3d": key = "蜡笔墨镜 · 3D"
+        case "sticker-ai-cap-crayon-3d": key = "蜡笔帽子 · 3D"
         default: key = name
         }
         return NSLocalizedString(key, comment: "Sticker name")
@@ -79,13 +103,20 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         case .fruit:
             key = "让水果图案以轻快动画点亮画面。"
         case .aiSticker:
-            switch renderingMode {
-            case .multiView2D:
-                key = "根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。"
-            case .rendered3DViews:
-                key = "使用 3D 模型渲染的视图，随人脸角度平滑变化。"
-            case .standard:
-                key = "自动贴合人脸位置。"
+            switch id {
+            case "sticker-ai-cap-crayon-3d":
+                key = "使用 3D 帽子视角渲染，并随人物头部转动。"
+            default:
+                switch renderingMode {
+                case .multiView2D:
+                    key = "根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。"
+                case .rendered3DViews:
+                    key = "使用多张预渲染视角图，随人脸角度平滑变化。"
+                case .rendered3DModel:
+                    key = "直接渲染 3D 模型，随人脸角度实时变化。"
+                case .standard:
+                    key = "自动贴合人脸位置。"
+                }
             }
         case .logo:
             key = "GIFBloom 品牌字标动态贴纸。"
@@ -108,6 +139,8 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         frameDuration: TimeInterval = 0.1,
         faceAnchors: StickerFaceAnchors? = nil,
         faceViews: [StickerFaceView]? = nil,
+        faceViewYawSign: CGFloat = 1,
+        faceViewPitchSign: CGFloat = 1,
         renderingMode: StickerRenderingMode = .standard
     ) {
         self.id = id
@@ -119,7 +152,14 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         self.frameCount = frameCount
         self.frameDuration = max(frameDuration, 0.01)
         self.faceAnchors = faceAnchors
-        self.faceViews = faceViews?.sorted { $0.yawAngle < $1.yawAngle }
+        self.faceViews = faceViews?.sorted {
+            if abs($0.yawAngle - $1.yawAngle) > 0.0001 {
+                return $0.yawAngle < $1.yawAngle
+            }
+            return $0.pitchAngle < $1.pitchAngle
+        }
+        self.faceViewYawSign = faceViewYawSign < 0 ? -1 : 1
+        self.faceViewPitchSign = faceViewPitchSign < 0 ? -1 : 1
         self.renderingMode = renderingMode
     }
 }
@@ -128,11 +168,18 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
 /// or interpolated when they were rendered from one consistent 3D model.
 public struct StickerFaceView: Equatable, Sendable {
     public let yawAngle: CGFloat
+    public let pitchAngle: CGFloat
     public let resourceName: String
     public let anchors: StickerFaceAnchors
 
-    public init(yawAngle: CGFloat, resourceName: String, anchors: StickerFaceAnchors) {
+    public init(
+        yawAngle: CGFloat,
+        pitchAngle: CGFloat = 0,
+        resourceName: String,
+        anchors: StickerFaceAnchors
+    ) {
         self.yawAngle = max(yawAngle, 0)
+        self.pitchAngle = pitchAngle
         self.resourceName = resourceName
         self.anchors = anchors
     }
@@ -153,7 +200,8 @@ public struct StickerFaceViewSelection: Equatable, Sendable {
         let secondAnchors = isMirrored ? Self.mirrored(second.anchors) : second.anchors
         return StickerFaceAnchors(
             leftEye: Self.interpolate(firstAnchors.leftEye, secondAnchors.leftEye, amount: blend),
-            rightEye: Self.interpolate(firstAnchors.rightEye, secondAnchors.rightEye, amount: blend)
+            rightEye: Self.interpolate(firstAnchors.rightEye, secondAnchors.rightEye, amount: blend),
+            ear: Self.interpolate(firstAnchors.ear, secondAnchors.ear, amount: blend)
         )
     }
 
@@ -166,7 +214,8 @@ public struct StickerFaceViewSelection: Equatable, Sendable {
     private static func mirrored(_ anchors: StickerFaceAnchors) -> StickerFaceAnchors {
         StickerFaceAnchors(
             leftEye: CGPoint(x: 1 - anchors.rightEye.x, y: anchors.rightEye.y),
-            rightEye: CGPoint(x: 1 - anchors.leftEye.x, y: anchors.leftEye.y)
+            rightEye: CGPoint(x: 1 - anchors.leftEye.x, y: anchors.leftEye.y),
+            ear: anchors.ear.map { CGPoint(x: 1 - $0.x, y: $0.y) }
         )
     }
 
@@ -175,6 +224,14 @@ public struct StickerFaceViewSelection: Equatable, Sendable {
             x: first.x + (second.x - first.x) * amount,
             y: first.y + (second.y - first.y) * amount
         )
+    }
+
+    private static func interpolate(_ first: CGPoint?, _ second: CGPoint?, amount: CGFloat) -> CGPoint? {
+        switch (first, second) {
+        case let (.some(a), .some(b)): interpolate(a, b, amount: amount)
+        case let (.some(value), .none), let (.none, .some(value)): value
+        case (.none, .none): nil
+        }
     }
 }
 
@@ -194,6 +251,7 @@ public struct ExportWatermark: Equatable, Sendable {
 public struct DecorationRenderer {
     private let cache = NSCache<NSString, CIImage>()
     private static let lock = NSLock()
+    private static let previewCIContext = CIContext()
     /// 动图贴纸帧缓存。NSCache 会在内存紧张时自动回收，避免未来增加贴纸后永久持有所有帧。
     private static let stickerFrameCache: NSCache<NSString, NSArray> = {
         let cache = NSCache<NSString, NSArray>()
@@ -463,42 +521,6 @@ public struct DecorationRenderer {
             isFrameSequence: false, frameCount: 5, frameDuration: 0.2
         ),
         StickerDefinition(
-            id: "sticker-ai-sunglasses", name: "墨镜 · 2D多视角", category: .aiSticker,
-            resourceName: "sunglasses", resourceExtension: "png",
-            isFrameSequence: false, frameCount: 1, frameDuration: 1,
-            faceAnchors: StickerFaceAnchors(
-                leftEye: CGPoint(x: 0.297, y: 0.510),
-                rightEye: CGPoint(x: 0.703, y: 0.510)
-            ),
-            faceViews: [
-                StickerFaceView(
-                    yawAngle: 0,
-                    resourceName: "sunglasses",
-                    anchors: StickerFaceAnchors(
-                        leftEye: CGPoint(x: 0.297, y: 0.510),
-                        rightEye: CGPoint(x: 0.703, y: 0.510)
-                    )
-                ),
-                StickerFaceView(
-                    yawAngle: 0.68,
-                    resourceName: "sunglasses-2d-three-quarter",
-                    anchors: StickerFaceAnchors(
-                        leftEye: CGPoint(x: 0.395, y: 0.505),
-                        rightEye: CGPoint(x: 0.790, y: 0.505)
-                    )
-                ),
-                StickerFaceView(
-                    yawAngle: 1.28,
-                    resourceName: "sunglasses-2d-profile",
-                    anchors: StickerFaceAnchors(
-                        leftEye: CGPoint(x: 0.120, y: 0.505),
-                        rightEye: CGPoint(x: 0.290, y: 0.505)
-                    )
-                )
-            ],
-            renderingMode: .multiView2D
-        ),
-        StickerDefinition(
             id: "sticker-ai-sunglasses-3d", name: "紫晶墨镜 · 3D视角", category: .aiSticker,
             resourceName: "sunglasses-3d-front", resourceExtension: "png",
             isFrameSequence: false, frameCount: 1, frameDuration: 1,
@@ -520,7 +542,8 @@ public struct DecorationRenderer {
                     resourceName: "sunglasses-3d-three-quarter",
                     anchors: StickerFaceAnchors(
                         leftEye: CGPoint(x: 0.393, y: 0.500),
-                        rightEye: CGPoint(x: 0.661, y: 0.500)
+                        rightEye: CGPoint(x: 0.661, y: 0.500),
+                        ear: CGPoint(x: 0.040, y: 0.500)
                     )
                 ),
                 StickerFaceView(
@@ -528,10 +551,201 @@ public struct DecorationRenderer {
                     resourceName: "sunglasses-3d-profile",
                     anchors: StickerFaceAnchors(
                         leftEye: CGPoint(x: 0.493, y: 0.500),
-                        rightEye: CGPoint(x: 0.587, y: 0.500)
+                        rightEye: CGPoint(x: 0.587, y: 0.500),
+                        ear: CGPoint(x: 0.050, y: 0.500)
                     )
                 )
             ],
+            renderingMode: .rendered3DViews
+        ),
+        StickerDefinition(
+            id: "sticker-ai-sunglasses-crayon-3d", name: "蜡笔墨镜 · 3D", category: .aiSticker,
+            resourceName: "sunglasses-crayon-3d-front", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1,
+            faceAnchors: StickerFaceAnchors(
+                leftEye: CGPoint(x: 0.300, y: 0.500),
+                rightEye: CGPoint(x: 0.700, y: 0.500)
+            ),
+            faceViews: [
+                StickerFaceView(
+                    yawAngle: 0,
+                    resourceName: "sunglasses-crayon-3d-front",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.300, y: 0.500),
+                        rightEye: CGPoint(x: 0.700, y: 0.500)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 0.70,
+                    resourceName: "sunglasses-crayon-3d-three-quarter",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.390, y: 0.500),
+                        rightEye: CGPoint(x: 0.680, y: 0.500),
+                        ear: CGPoint(x: 0.840, y: 0.500)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 1.30,
+                    resourceName: "sunglasses-crayon-3d-profile",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.120, y: 0.500),
+                        rightEye: CGPoint(x: 0.290, y: 0.500),
+                        ear: CGPoint(x: 0.950, y: 0.500)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 0,
+                    pitchAngle: 0.45,
+                    resourceName: "sunglasses-crayon-3d-front-pitch-up",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.300, y: 0.500),
+                        rightEye: CGPoint(x: 0.700, y: 0.500)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 0,
+                    pitchAngle: -0.45,
+                    resourceName: "sunglasses-crayon-3d-front-pitch-down",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.300, y: 0.500),
+                        rightEye: CGPoint(x: 0.700, y: 0.500)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 0.70,
+                    pitchAngle: 0.45,
+                    resourceName: "sunglasses-crayon-3d-three-quarter-pitch-up",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.390, y: 0.500),
+                        rightEye: CGPoint(x: 0.680, y: 0.500),
+                        ear: CGPoint(x: 0.840, y: 0.500)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 0.70,
+                    pitchAngle: -0.45,
+                    resourceName: "sunglasses-crayon-3d-three-quarter-pitch-down",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.390, y: 0.500),
+                        rightEye: CGPoint(x: 0.680, y: 0.500),
+                        ear: CGPoint(x: 0.840, y: 0.500)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 1.30,
+                    pitchAngle: 0.45,
+                    resourceName: "sunglasses-crayon-3d-profile-pitch-up",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.120, y: 0.500),
+                        rightEye: CGPoint(x: 0.290, y: 0.500),
+                        ear: CGPoint(x: 0.950, y: 0.500)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 1.30,
+                    pitchAngle: -0.45,
+                    resourceName: "sunglasses-crayon-3d-profile-pitch-down",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.120, y: 0.500),
+                        rightEye: CGPoint(x: 0.290, y: 0.500),
+                        ear: CGPoint(x: 0.950, y: 0.500)
+                    )
+                )
+            ],
+            faceViewYawSign: -1,
+            faceViewPitchSign: 1,
+            renderingMode: .rendered3DViews
+        ),
+        StickerDefinition(
+            id: "sticker-ai-cap-crayon-3d", name: "蜡笔帽子 · 3D", category: .aiSticker,
+            resourceName: "cap-crayon-3d-front", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1,
+            faceAnchors: StickerFaceAnchors(
+                leftEye: CGPoint(x: 0.300, y: 0.845),
+                rightEye: CGPoint(x: 0.700, y: 0.845)
+            ),
+            faceViews: [
+                StickerFaceView(
+                    yawAngle: 0,
+                    resourceName: "cap-crayon-3d-front",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.300, y: 0.845),
+                        rightEye: CGPoint(x: 0.700, y: 0.845)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 0.70,
+                    resourceName: "cap-crayon-3d-three-quarter",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.400, y: 0.845),
+                        rightEye: CGPoint(x: 0.760, y: 0.845)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 1.30,
+                    resourceName: "cap-crayon-3d-profile",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.280, y: 0.845),
+                        rightEye: CGPoint(x: 0.520, y: 0.845)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 0,
+                    pitchAngle: 0.45,
+                    resourceName: "cap-crayon-3d-front-pitch-up",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.300, y: 0.845),
+                        rightEye: CGPoint(x: 0.700, y: 0.845)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 0,
+                    pitchAngle: -0.45,
+                    resourceName: "cap-crayon-3d-front-pitch-down",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.300, y: 0.845),
+                        rightEye: CGPoint(x: 0.700, y: 0.845)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 0.70,
+                    pitchAngle: 0.45,
+                    resourceName: "cap-crayon-3d-three-quarter-pitch-up",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.400, y: 0.845),
+                        rightEye: CGPoint(x: 0.760, y: 0.845)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 0.70,
+                    pitchAngle: -0.45,
+                    resourceName: "cap-crayon-3d-three-quarter-pitch-down",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.400, y: 0.845),
+                        rightEye: CGPoint(x: 0.760, y: 0.845)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 1.30,
+                    pitchAngle: 0.45,
+                    resourceName: "cap-crayon-3d-profile-pitch-up",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.280, y: 0.845),
+                        rightEye: CGPoint(x: 0.520, y: 0.845)
+                    )
+                ),
+                StickerFaceView(
+                    yawAngle: 1.30,
+                    pitchAngle: -0.45,
+                    resourceName: "cap-crayon-3d-profile-pitch-down",
+                    anchors: StickerFaceAnchors(
+                        leftEye: CGPoint(x: 0.280, y: 0.845),
+                        rightEye: CGPoint(x: 0.520, y: 0.845)
+                    )
+                )
+            ],
+            faceViewYawSign: -1,
+            faceViewPitchSign: 1,
             renderingMode: .rendered3DViews
         ),
         StickerDefinition(
@@ -565,27 +779,38 @@ public struct DecorationRenderer {
 
     public static func faceViewSelection(
         for decorationID: String,
-        yaw: CGFloat?
+        yaw: CGFloat?,
+        pitch: CGFloat? = nil
     ) -> StickerFaceViewSelection? {
-        guard let views = stickerDefinition(for: decorationID)?.faceViews, !views.isEmpty else {
+        guard let definition = stickerDefinition(for: decorationID),
+              let views = definition.faceViews,
+              !views.isEmpty else {
             return nil
         }
-        let signedYaw = (yaw ?? 0).isFinite ? (yaw ?? 0) : 0
+        let rawYaw = (yaw ?? 0).isFinite ? (yaw ?? 0) : 0
+        let signedYaw = rawYaw * definition.faceViewYawSign
         let target = abs(signedYaw)
         let mirrored = signedYaw < 0
-        guard views.count > 1 else {
-            return StickerFaceViewSelection(first: views[0], second: views[0], blend: 0, isMirrored: mirrored)
+        let rawPitch = (pitch ?? 0).isFinite ? (pitch ?? 0) : 0
+        let signedPitch = rawPitch * definition.faceViewPitchSign
+        let pitchLevel = views
+            .map(\StickerFaceView.pitchAngle)
+            .min { abs($0 - signedPitch) < abs($1 - signedPitch) } ?? 0
+        let pitchViews = views.filter { abs($0.pitchAngle - pitchLevel) < 0.0001 }
+        guard !pitchViews.isEmpty else { return nil }
+        guard pitchViews.count > 1 else {
+            return StickerFaceViewSelection(first: pitchViews[0], second: pitchViews[0], blend: 0, isMirrored: mirrored)
         }
-        if target <= views[0].yawAngle {
-            return StickerFaceViewSelection(first: views[0], second: views[0], blend: 0, isMirrored: mirrored)
+        if target <= pitchViews[0].yawAngle {
+            return StickerFaceViewSelection(first: pitchViews[0], second: pitchViews[0], blend: 0, isMirrored: mirrored)
         }
-        if target >= views[views.count - 1].yawAngle {
-            let last = views[views.count - 1]
+        if target >= pitchViews[pitchViews.count - 1].yawAngle {
+            let last = pitchViews[pitchViews.count - 1]
             return StickerFaceViewSelection(first: last, second: last, blend: 0, isMirrored: mirrored)
         }
-        for index in 0..<(views.count - 1) {
-            let first = views[index]
-            let second = views[index + 1]
+        for index in 0..<(pitchViews.count - 1) {
+            let first = pitchViews[index]
+            let second = pitchViews[index + 1]
             guard target >= first.yawAngle, target <= second.yawAngle else { continue }
             let span = max(second.yawAngle - first.yawAngle, 0.001)
             let blend = min(max((target - first.yawAngle) / span, 0), 1)
@@ -697,6 +922,9 @@ public struct DecorationRenderer {
     public static func previewThumbnail(for id: String, at time: TimeInterval,
                                         maxPixelSize: Int = 160) -> CGImage? {
         guard time.isFinite, let definition = stickerDefinition(for: id) else { return nil }
+        if definition.renderingMode == .rendered3DModel {
+            return Procedural3DStickerRenderer.image(for: id, yaw: 0, pixelSize: max(maxPixelSize, 1))
+        }
         let index = min(max(Int(max(time, 0) / definition.frameDuration), 0), max(definition.frameCount - 1, 0))
         guard let url = stickerResourceURL(for: definition, frameIndex: index),
               let source = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -707,6 +935,27 @@ public struct DecorationRenderer {
             kCGImageSourceThumbnailMaxPixelSize: max(maxPixelSize, 1),
             kCGImageSourceCreateThumbnailWithTransform: true
         ] as CFDictionary)
+    }
+
+    /// Render one sticker at a requested preview yaw. The sticker picker uses
+    /// this to compare the authored 2D views, the interpolated view renders,
+    /// and the procedural 3D model through the same interaction.
+    public func previewImage(
+        for decorationID: String,
+        yaw: CGFloat,
+        pitch: CGFloat = 0,
+        maxPixelSize: Int = 768
+    ) -> CGImage? {
+        let size = CGFloat(max(maxPixelSize, 64))
+        guard let image = image(
+            for: decorationID,
+            canvas: CGRect(x: 0, y: 0, width: size, height: size),
+            faceYaw: yaw,
+            facePitch: pitch
+        ) else {
+            return nil
+        }
+        return Self.previewCIContext.createCGImage(image, from: image.extent)
     }
 
     /// 装饰 id 约定：frame-gold / corners / vignette / glow-soft / glow-orb / dust / wand-beam（矢量）
@@ -724,7 +973,8 @@ public struct DecorationRenderer {
         sourceEndTime: TimeInterval = .greatestFiniteMagnitude,
         playbackOffsetTime: TimeInterval = 0,
         playbackCount: Int? = nil,
-        faceYaw: CGFloat? = nil
+        faceYaw: CGFloat? = nil,
+        facePitch: CGFloat? = nil
     ) -> CIImage? {
         if decorationID.hasPrefix("sticker-") {
             return stickerImage(
@@ -735,7 +985,8 @@ public struct DecorationRenderer {
                 sourceEndTime: sourceEndTime,
                 playbackOffsetTime: playbackOffsetTime,
                 playbackCount: playbackCount,
-                faceYaw: faceYaw
+                faceYaw: faceYaw,
+                facePitch: facePitch
             )
         }
         let key = "\(decorationID)-\(Int(canvas.width))x\(Int(canvas.height))" as NSString
@@ -762,9 +1013,16 @@ public struct DecorationRenderer {
 
         guard let definition = Self.stickerDefinition(for: decorationID) else { return nil }
         var loaded: [CGImage] = []
-        loaded.reserveCapacity(definition.frameCount)
-
-        if definition.isFrameSequence {
+        if definition.renderingMode == .rendered3DModel {
+            guard let image = Procedural3DStickerRenderer.image(for: decorationID, yaw: 0) else {
+                Self.lock.lock()
+                Self.stickerFrameCache.setObject([] as NSArray, forKey: cacheKey)
+                Self.lock.unlock()
+                return nil
+            }
+            loaded = [image]
+        } else if definition.isFrameSequence {
+            loaded.reserveCapacity(definition.frameCount)
             for i in 0..<definition.frameCount {
                 guard let url = Self.stickerResourceURL(for: definition, frameIndex: i),
                    let source = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -850,11 +1108,19 @@ public struct DecorationRenderer {
         sourceEndTime: TimeInterval,
         playbackOffsetTime: TimeInterval,
         playbackCount: Int?,
-        faceYaw: CGFloat?
+        faceYaw: CGFloat?,
+        facePitch: CGFloat?
     ) -> CIImage? {
         guard let definition = Self.stickerDefinition(for: decorationID) else { return nil }
+        if definition.renderingMode == .rendered3DModel {
+            guard let image = Procedural3DStickerRenderer.image(
+                for: decorationID,
+                yaw: faceYaw
+            ) else { return nil }
+            return CIImage(cgImage: image)
+        }
         if definition.renderingMode != .standard,
-           let selection = Self.faceViewSelection(for: decorationID, yaw: faceYaw) {
+           let selection = Self.faceViewSelection(for: decorationID, yaw: faceYaw, pitch: facePitch) {
             switch definition.renderingMode {
             case .multiView2D:
                 let view = selection.nearestView
@@ -870,6 +1136,8 @@ public struct DecorationRenderer {
                 let firstImage = selection.isMirrored ? mirrored(first) : first
                 let secondImage = selection.isMirrored ? mirrored(second) : second
                 return blended(firstImage, secondImage, amount: selection.blend)
+            case .rendered3DModel:
+                return nil
             case .standard:
                 break
             }

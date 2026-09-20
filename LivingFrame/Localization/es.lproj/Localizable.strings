@@ -707,7 +707,7 @@
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "Suscríbete a GIFBloom Pro para eliminar la marca de agua de las exportaciones.";
 "从长视频中选择最长 10 秒的剪影片段。" = "Elige clips de hasta 10 segundos de vídeos largos.";
-"免费版最长 5 秒；GIFBloom Pro 可选 8 秒或 10 秒。" = "Gratis: hasta 5 s; GIFBloom Pro: 8 o 10 s.";
+"免费版最长 5 秒；GIFBloom Pro 可选 10 秒。" = "Gratis: hasta 5 s; GIFBloom Pro: 10 s.";
 "解锁更长片段" = "Desbloquear clips más largos";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Los planes semanales y anuales se renuevan automáticamente. Cancela al menos 24 horas antes del fin del periodo. Gestiona tu plan en los ajustes del Apple ID.";
 "使用 AI 贴纸，让墨镜跟随人物双眼移动。" = "Usa stickers con IA para que las gafas sigan los ojos de la persona.";
@@ -779,3 +779,9 @@
 "AI贴纸 · 3D" = "Pegatinas con IA · 3D";
 "根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。" = "Las gafas 2D cambian de vista según el ángulo de la cara y se ajustan a los ojos.";
 "使用 3D 模型渲染的视图，随人脸角度平滑变化。" = "Las vistas 3D renderizadas cambian suavemente con el ángulo de la cara.";
+
+/* Collage layer and asset count */
+"拼接图层" = "Capa de collage";
+"拼接内容在拼接页面中编辑；当前图层在画布中作为一个独立素材。" = "Edita el contenido del collage en el editor de collages; esta capa aparece como un recurso independiente en el lienzo.";
+"试试其他名称或筛选条件" = "Prueba con otro nombre o filtro";
+"%1$lld items" = "%1$lld elementos";

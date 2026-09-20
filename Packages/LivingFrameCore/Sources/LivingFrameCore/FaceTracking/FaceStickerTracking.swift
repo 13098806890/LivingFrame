@@ -9,10 +9,15 @@ import Vision
 public struct StickerFaceAnchors: Codable, Equatable, Sendable {
     public var leftEye: CGPoint
     public var rightEye: CGPoint
+    /// Optional rear temple anchor in the sticker image. Side-view glasses can
+    /// use this to align the temple with a detected ear without affecting
+    /// front-facing stickers.
+    public var ear: CGPoint?
 
-    public init(leftEye: CGPoint, rightEye: CGPoint) {
+    public init(leftEye: CGPoint, rightEye: CGPoint, ear: CGPoint? = nil) {
         self.leftEye = leftEye
         self.rightEye = rightEye
+        self.ear = ear
     }
 }
 
@@ -56,7 +61,7 @@ public struct FaceStickerTracker: Sendable {
         maxPixelSize: Int
     ) throws -> [FaceStickerKeyframe] {
         let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
-        var detected: [Int: (CGPoint, CGPoint, CGFloat?)] = [:]
+        var detected: [Int: (CGPoint, CGPoint, CGFloat?, CGFloat?, CGPoint?, CGPoint?)] = [:]
 
         for input in inputs {
             guard let image = orientedThumbnail(
@@ -72,7 +77,15 @@ public struct FaceStickerTracker: Sendable {
             guard (try? handler.perform([request])) != nil,
                   let faces = request.results,
                   let eyes = eyes(in: faces) else { continue }
-            detected[input.index] = eyes
+            let bodyPoseRequest = VNDetectHumanBodyPoseRequest()
+            let bodyPoseHandler = VNImageRequestHandler(cgImage: image, options: [:])
+            _ = try? bodyPoseHandler.perform([bodyPoseRequest])
+            let eyeMidpoint = CGPoint(
+                x: (eyes.0.x + eyes.1.x) / 2,
+                y: (eyes.0.y + eyes.1.y) / 2
+            )
+            let ears = ears(in: bodyPoseRequest.results, near: eyeMidpoint)
+            detected[input.index] = (eyes.0, eyes.1, eyes.2, eyes.3, ears.0, ears.1)
         }
 
         guard !detected.isEmpty else { throw TrackingError.noFaceDetected }
@@ -119,9 +132,10 @@ public struct FaceStickerTracker: Sendable {
         return context.createCGImage(image, from: image.extent.integral)
     }
 
-    private static func eyes(in faces: [VNFaceObservation]) -> (CGPoint, CGPoint, CGFloat?)? {
+    private static func eyes(in faces: [VNFaceObservation]) -> (CGPoint, CGPoint, CGFloat?, CGFloat?)? {
         for face in faces.sorted(by: { $0.boundingBox.width * $0.boundingBox.height > $1.boundingBox.width * $1.boundingBox.height }) {
             let yaw = face.yaw.map { CGFloat($0.doubleValue) }
+            let pitch = face.pitch.map { CGFloat($0.doubleValue) }
             let left = face.landmarks.flatMap { center(of: $0.leftEye, faceBounds: face.boundingBox) }
             let right = face.landmarks.flatMap { center(of: $0.rightEye, faceBounds: face.boundingBox) }
 
@@ -132,7 +146,7 @@ public struct FaceStickerTracker: Sendable {
                 guard hypot(ordered.1.x - ordered.0.x, ordered.1.y - ordered.0.y) > 0.012 else {
                     continue
                 }
-                return (ordered.0, ordered.1, yaw)
+                return (ordered.0, ordered.1, yaw, pitch)
             }
 
             // A profile face often exposes only one eye landmark. Keep that eye as
@@ -146,7 +160,8 @@ public struct FaceStickerTracker: Sendable {
                 return (
                     CGPoint(x: visibleEye.x - halfGap, y: visibleEye.y),
                     CGPoint(x: visibleEye.x + halfGap, y: visibleEye.y),
-                    yaw
+                    yaw,
+                    pitch
                 )
             }
 
@@ -160,11 +175,37 @@ public struct FaceStickerTracker: Sendable {
                 return (
                     CGPoint(x: centerX - gap / 2, y: eyeY),
                     CGPoint(x: centerX + gap / 2, y: eyeY),
-                    yaw
+                    yaw,
+                    pitch
                 )
             }
         }
         return nil
+    }
+
+    private static func ears(
+        in observations: [VNHumanBodyPoseObservation]?,
+        near eyeMidpoint: CGPoint
+    ) -> (CGPoint?, CGPoint?) {
+        let candidates = (observations ?? []).compactMap { observation -> (CGFloat, CGPoint?, CGPoint?)? in
+            let left = (try? observation.recognizedPoint(.leftEar))
+                .flatMap { $0.confidence >= 0.35 ? $0.location : nil }
+            let right = (try? observation.recognizedPoint(.rightEar))
+                .flatMap { $0.confidence >= 0.35 ? $0.location : nil }
+            let points = [left, right].compactMap { $0 }
+            guard !points.isEmpty else { return nil }
+            let center = CGPoint(
+                x: points.reduce(0) { $0 + $1.x } / CGFloat(points.count),
+                y: points.reduce(0) { $0 + $1.y } / CGFloat(points.count)
+            )
+            return (distance(center, eyeMidpoint), left, right)
+        }
+        guard let nearest = candidates.min(by: { $0.0 < $1.0 }) else { return (nil, nil) }
+        return (nearest.1, nearest.2)
+    }
+
+    private static func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        hypot(a.x - b.x, a.y - b.y)
     }
 
     private static func center(
@@ -185,10 +226,10 @@ public struct FaceStickerTracker: Sendable {
 
     private static func interpolateMissingFrames(
         frameIndices: [Int],
-        detected: [Int: (CGPoint, CGPoint, CGFloat?)]
-    ) -> [Int: (CGPoint, CGPoint, CGFloat?)] {
+        detected: [Int: (CGPoint, CGPoint, CGFloat?, CGFloat?, CGPoint?, CGPoint?)]
+    ) -> [Int: (CGPoint, CGPoint, CGFloat?, CGFloat?, CGPoint?, CGPoint?)] {
         let knownIndices = detected.keys.sorted()
-        var result: [Int: (CGPoint, CGPoint, CGFloat?)] = [:]
+        var result: [Int: (CGPoint, CGPoint, CGFloat?, CGFloat?, CGPoint?, CGPoint?)] = [:]
 
         for frameIndex in frameIndices {
             if let known = detected[frameIndex] {
@@ -205,7 +246,10 @@ public struct FaceStickerTracker: Sendable {
                 result[frameIndex] = (
                     interpolate(a.0, b.0, amount),
                     interpolate(a.1, b.1, amount),
-                    interpolate(a.2, b.2, amount)
+                    interpolate(a.2, b.2, amount),
+                    interpolate(a.3, b.3, amount),
+                    interpolate(a.4, b.4, amount),
+                    interpolate(a.5, b.5, amount)
                 )
             case let (.some(nearest), .none), let (.none, .some(nearest)):
                 result[frameIndex] = detected[nearest]
@@ -218,7 +262,7 @@ public struct FaceStickerTracker: Sendable {
 
     private static func smooth(
         frameIndices: [Int],
-        points: [Int: (CGPoint, CGPoint, CGFloat?)]
+        points: [Int: (CGPoint, CGPoint, CGFloat?, CGFloat?, CGPoint?, CGPoint?)]
     ) -> [FaceStickerKeyframe] {
         frameIndices.enumerated().compactMap { position, frameIndex in
             guard let current = points[frameIndex] else { return nil }
@@ -230,7 +274,10 @@ public struct FaceStickerTracker: Sendable {
                 frameIndex: frameIndex,
                 leftEye: weightedAverage(previous.0, current.0, next.0),
                 rightEye: weightedAverage(previous.1, current.1, next.1),
-                yaw: weightedAverage(previous.2, current.2, next.2)
+                yaw: weightedAverage(previous.2, current.2, next.2),
+                pitch: weightedAverage(previous.3, current.3, next.3),
+                leftEar: weightedAverage(previous.4, current.4, next.4),
+                rightEar: weightedAverage(previous.5, current.5, next.5)
             )
         }
     }
@@ -261,6 +308,29 @@ public struct FaceStickerTracker: Sendable {
         let weight = values.reduce(CGFloat.zero) { $0 + $1.1 }
         guard weight > 0 else { return nil }
         return values.reduce(CGFloat.zero) { $0 + $1.0 * $1.1 } / weight
+    }
+
+    private static func interpolate(_ first: CGPoint?, _ second: CGPoint?, _ amount: CGFloat) -> CGPoint? {
+        switch (first, second) {
+        case let (.some(a), .some(b)): interpolate(a, b, amount)
+        case let (.some(value), .none), let (.none, .some(value)): value
+        case (.none, .none): nil
+        }
+    }
+
+    private static func weightedAverage(_ previous: CGPoint?, _ current: CGPoint?, _ next: CGPoint?) -> CGPoint? {
+        let values = [(previous, 0.2), (current, 0.6), (next, 0.2)].compactMap { value, weight in
+            value.map { ($0, weight) }
+        }
+        let weight = values.reduce(CGFloat.zero) { $0 + $1.1 }
+        guard weight > 0 else { return nil }
+        let sum = values.reduce(CGPoint.zero) { partial, value in
+            CGPoint(
+                x: partial.x + value.0.x * value.1,
+                y: partial.y + value.0.y * value.1
+            )
+        }
+        return CGPoint(x: sum.x / weight, y: sum.y / weight)
     }
 }
 
@@ -328,9 +398,6 @@ public enum FaceStickerPlacement {
             return nil
         }
 
-        let calculatedScale = eyeDistance / anchorDistance * userOffset.scale
-        let scale = scaleOverride.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? calculatedScale
-        let rotation = eyeAngle - atan2(anchorVector.y, anchorVector.x) + userOffset.rotation
         let eyeMidpoint = CGPoint(x: (leftEye.x + rightEye.x) / 2, y: (leftEye.y + rightEye.y) / 2)
         let clipOffset = CGPoint(
             x: (eyeMidpoint.x - frameSize.width / 2) * clipTransform.scale,
@@ -344,6 +411,70 @@ public enum FaceStickerPlacement {
         )
 
         let anchorMidpoint = CGPoint(x: (leftAnchor.x + rightAnchor.x) / 2, y: (leftAnchor.y + rightAnchor.y) / 2)
+        let eyeRotation = eyeAngle - atan2(anchorVector.y, anchorVector.x)
+
+        // Side-view glasses have a long temple. When an ear is available, use
+        // the eye-to-ear distance as a second scale constraint so the temple
+        // lands near the ear. Front views and frames without a reliable ear
+        // continue to use the eye distance alone.
+        let yawMagnitude = abs(keyframe.yaw ?? 0)
+        let earWeight = min(max((yawMagnitude - 0.55) / 0.45, 0), 1)
+        let earPlacement: (sourceVector: CGPoint, targetVector: CGPoint, scale: CGFloat, rotation: CGFloat)? = {
+            guard earWeight > 0,
+                  let stickerEar = stickerAnchors.ear,
+                  let targetEar = [keyframe.leftEar, keyframe.rightEar]
+                    .compactMap({ $0 })
+                    .max(by: { distance($0, eyeMidpoint) < distance($1, eyeMidpoint) }) else {
+                return nil
+            }
+
+            let sourceEar = CGPoint(
+                x: stickerEar.x * stickerSize.width,
+                y: (1 - stickerEar.y) * stickerSize.height
+            )
+            let sourceVector = CGPoint(
+                x: sourceEar.x - anchorMidpoint.x,
+                y: sourceEar.y - anchorMidpoint.y
+            )
+            let targetEarInFrame = CGPoint(
+                x: targetEar.x * frameSize.width,
+                y: targetEar.y * frameSize.height
+            )
+            let targetVectorInFrame = CGPoint(
+                x: (targetEarInFrame.x - eyeMidpoint.x) * clipTransform.scale,
+                y: (targetEarInFrame.y - eyeMidpoint.y) * clipTransform.scale
+            )
+            let clipCos = cos(clipTransform.rotation)
+            let clipSin = sin(clipTransform.rotation)
+            let targetVector = CGPoint(
+                x: targetVectorInFrame.x * clipCos - targetVectorInFrame.y * clipSin,
+                y: targetVectorInFrame.x * clipSin + targetVectorInFrame.y * clipCos
+            )
+            let sourceDistance = distance(sourceVector, .zero)
+            let targetDistance = distance(targetVector, .zero)
+            guard sourceDistance.isFinite, sourceDistance > 0,
+                  targetDistance.isFinite, targetDistance > 0 else {
+                return nil
+            }
+            return (
+                sourceVector,
+                targetVector,
+                targetDistance / sourceDistance,
+                atan2(targetVector.y, targetVector.x) - atan2(sourceVector.y, sourceVector.x)
+            )
+        }()
+
+        let eyeScale = eyeDistance / anchorDistance
+        let earScale = earPlacement?.scale
+        let constrainedScale = earScale.map {
+            eyeScale * (1 - earWeight) + $0 * earWeight
+        } ?? eyeScale
+        let calculatedScale = constrainedScale * userOffset.scale
+        let scale = scaleOverride.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? calculatedScale
+        let rotation = (earPlacement.map {
+            eyeRotation * (1 - earWeight) + $0.rotation * earWeight
+        } ?? eyeRotation) + userOffset.rotation
+
         let stickerOffset = CGPoint(
             x: (anchorMidpoint.x - stickerSize.width / 2) * scale,
             y: (anchorMidpoint.y - stickerSize.height / 2) * scale
@@ -363,5 +494,9 @@ public enum FaceStickerPlacement {
             scale: scale,
             rotation: rotation
         )
+    }
+
+    private static func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        hypot(a.x - b.x, a.y - b.y)
     }
 }

@@ -1127,7 +1127,10 @@ private struct AllClipsView: View {
                                 .textCase(.uppercase)
                                 .tracking(1.2)
                             Spacer()
-                            Text("\(visibleClips.count) 项")
+                            Text(String.localizedStringWithFormat(
+                                NSLocalizedString("%1$lld items", comment: "Visible asset count"),
+                                Int64(visibleClips.count)
+                            ))
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(LF.textSecondary)
                         }

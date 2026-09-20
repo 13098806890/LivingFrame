@@ -21,6 +21,8 @@ struct CanvasView: View {
     @State private var isCanvasManipulating = false
     /// 拖动普通素材时，把未选中内容与选中内容临时分层，避免整张合成图异步刷新造成素材滞后。
     @State private var isLiveDragPreview = false
+    /// 直接操作期间只在预览副本中临时抬高当前素材；不会修改工程里的 zIndex。
+    @State private var temporarilyElevatedElementIDs: Set<UUID> = []
     @State private var interactiveBaseImage: UIImage?
     @State private var interactiveSelectionImage: UIImage?
     @State private var interactiveDragTranslation: CGSize = .zero
@@ -64,17 +66,21 @@ struct CanvasView: View {
 
     /// 双击画布素材时由编辑页打开检查器；全屏预览不传回调，因此保持只读预览。
     private let onRequestInspector: () -> Void
+    /// 选中框左上角的删除入口；全屏预览不传回调，因此不显示编辑操作。
+    private let onDeleteSelection: () -> Void
     /// 拼接器的预览模式只渲染画面，不显示选中框，也不接收编辑手势。
     private let allowsInteraction: Bool
 
     init(
         drivesPlayback: Bool = true,
         allowsInteraction: Bool = true,
-        onRequestInspector: @escaping () -> Void = {}
+        onRequestInspector: @escaping () -> Void = {},
+        onDeleteSelection: @escaping () -> Void = {}
     ) {
         self.drivesPlayback = drivesPlayback
         self.allowsInteraction = allowsInteraction
         self.onRequestInspector = onRequestInspector
+        self.onDeleteSelection = onDeleteSelection
     }
 
     var body: some View {
@@ -88,7 +94,7 @@ struct CanvasView: View {
                        $0.id == interactiveBackgroundElementID
                    }),
                    let composition = appState.composition,
-                   case .background = interactiveBackgroundElement.kind {
+                   isCollageBackgroundElement(interactiveBackgroundElement) {
                     Image(uiImage: interactiveBackgroundBaseImage)
                         .resizable()
                         .interpolation(.high)
@@ -183,14 +189,22 @@ struct CanvasView: View {
             // 时间轴移动/裁剪只影响某个时间点是否可见，不值得在每一个触摸事件
             // 重做整张 CI 合成。拖拽结束时由 isTimelineEditing 的变化补一次最终预览。
             guard !appState.isTimelineEditing,
-                  !isCanvasManipulating,
+                  (!appState.isCanvasEditing || isCanvasManipulating),
                   !isBackgroundInteracting else { return }
+            // 普通拖动已经有“底图 + 当前素材”的轻量分层预览，避免同时启动整张合成。
+            if isLiveDragPreview { return }
             if usesExactBackgroundPreview != needsExactBackgroundPreview {
                 refreshRendererScale()
             }
             render()
         }
         .onChange(of: appState.isTimelineEditing) { _, isEditing in
+            if !isEditing {
+                refreshRendererScale()
+                render()
+            }
+        }
+        .onChange(of: appState.isCanvasEditing) { _, isEditing in
             if !isEditing {
                 refreshRendererScale()
                 render()
@@ -255,6 +269,7 @@ struct CanvasView: View {
             .sorted { $0.zIndex > $1.zIndex }
             .filter { element in
                 if case .canvasEdge = element.kind { return false }
+                if isCollageChild(element, in: comp) { return false }
                 guard element.isVisible(at: time) else { return false }
                 return rotatedHitTest(
                     element: element,
@@ -311,7 +326,7 @@ struct CanvasView: View {
         // 分区背景虽然使用整张画布尺寸生成图像，但画布中只有当前分区实际可见。
         // 命中测试必须同时满足分区遮罩和图片实际取景范围，否则点击空白分区
         // 会错误选中上层背景，同一区域内多张图片也无法按位置区分。
-        if case .background = element.kind {
+        if isCollageBackgroundElement(element) {
             let settings = element.backgroundSettings ?? BackgroundElementSettings()
             let isInsidePartition = BackgroundPartitionShape(settings: settings)
                 .path(in: frame)
@@ -425,7 +440,7 @@ struct CanvasView: View {
                 for id in appState.selectedElementIDs {
                     guard let start = snaps[id] else { continue }
                     guard let element = comp.elements.first(where: { $0.id == id }) else { continue }
-                    if case .background = element.kind,
+                    if isCollageBackgroundElement(element),
                        let backgroundStart = gestureStartBackgroundSettings[id] {
                         appState.setBackgroundCropOffset(
                             id,
@@ -478,7 +493,7 @@ struct CanvasView: View {
                 for id in appState.selectedElementIDs {
                     guard let start = snaps[id] else { continue }
                     guard let element = appState.composition?.elements.first(where: { $0.id == id }) else { continue }
-                    if case .background = element.kind,
+                    if isCollageBackgroundElement(element),
                        let backgroundStart = gestureStartBackgroundSettings[id] {
                         appState.setBackgroundCropScale(
                             id,
@@ -526,7 +541,7 @@ struct CanvasView: View {
                         guard let element = appState.composition?.elements.first(where: { $0.id == id }) else {
                             return false
                         }
-                        if case .background = element.kind { return false }
+                        if isCollageBackgroundElement(element) { return false }
                         if case .canvasEdge = element.kind { return false }
                         return true
                     }
@@ -539,7 +554,7 @@ struct CanvasView: View {
                 for id in appState.selectedElementIDs {
                     guard let start = snaps[id] else { continue }
                     if let element = appState.composition?.elements.first(where: { $0.id == id }) {
-                        if case .background = element.kind { continue }
+                        if isCollageBackgroundElement(element) { continue }
                         if case .canvasEdge = element.kind { continue }
                     }
                     appState.updateElement(id) { element in
@@ -569,7 +584,7 @@ struct CanvasView: View {
             if let element = comp.elements.first(where: { $0.id == id }) {
                 if case .canvasEdge = element.kind { continue }
                 snaps[id] = element.transform
-                if case .background = element.kind {
+                if isCollageBackgroundElement(element) {
                     gestureStartBackgroundSettings[id] = element.backgroundSettings ?? BackgroundElementSettings()
                 }
             }
@@ -584,7 +599,7 @@ struct CanvasView: View {
         let selectedElements = comp.elements.filter { selectedIDs.contains($0.id) }
         guard !selectedElements.isEmpty,
               selectedElements.allSatisfy({ element in
-                  if case .background = element.kind { return false }
+                  if isCollageBackgroundElement(element) { return false }
                   if case .canvasEdge = element.kind { return false }
                   return true
               }) else {
@@ -592,11 +607,27 @@ struct CanvasView: View {
             return
         }
 
+        let selectedCollageGroupIDs = Set(selectedElements.compactMap { element -> UUID? in
+            if case .collage(let groupID) = element.kind { return groupID }
+            return nil
+        })
+        let selectedCollageChildIDs = Set(comp.elements.compactMap { element -> UUID? in
+            guard case .background = element.kind,
+                  let groupID = element.collageGroupID,
+                  selectedCollageGroupIDs.contains(groupID) else { return nil }
+            return element.id
+        })
+
         var baseComposition = comp
-        baseComposition.elements.removeAll { selectedIDs.contains($0.id) }
+        baseComposition.elements.removeAll {
+            selectedIDs.contains($0.id) || selectedCollageChildIDs.contains($0.id)
+        }
 
         var selectionComposition = comp
-        selectionComposition.elements = selectedElements
+        selectionComposition.elements = selectedElements + comp.elements.filter {
+            selectedCollageChildIDs.contains($0.id) && !selectedIDs.contains($0.id)
+        }
+        selectionComposition = compositionWithInteractionElevation(selectionComposition)
         selectionComposition.background = .clear
         selectionComposition.audioClips.removeAll()
 
@@ -659,16 +690,21 @@ struct CanvasView: View {
                         renderer.resolvedTransform(for: element, in: $0, at: appState.currentTime)
                     } ?? element.transform
                     let rotation = -effectiveTransform.rotation
-                    let isBackground = isBackgroundElement(element)
+                    let isBackground = isCollageBackgroundElement(element)
                     ZStack {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .stroke(LF.header, lineWidth: 2)
-                            .shadow(color: LF.header.opacity(0.28), radius: 3)
+                        SelectionBorderShape(cornerGap: 26)
+                            .stroke(
+                                LF.header.opacity(0.75),
+                                style: StrokeStyle(lineWidth: 2, lineCap: .butt, dash: [6, 4])
+                            )
+                            .shadow(color: LF.header.opacity(0.12), radius: 2)
+                            .allowsHitTesting(false)
 
-                        // 前景素材使用四个小控制点，背景素材继续使用下方的
-                        // “背景取景”虚线框，避免在整张画布四角显示无意义的缩放点。
-                        if !isBackground {
-                            selectionHandles
+                        if selectedElements.count == 1,
+                           !isBackground,
+                           allowsInteraction,
+                           !appState.isCropping {
+                            selectionActionButtons(for: element)
                         }
                     }
                     .frame(width: frame.width, height: frame.height)
@@ -676,41 +712,95 @@ struct CanvasView: View {
                     .position(center)
                 }
             }
-            .allowsHitTesting(false)
         }
-        .allowsHitTesting(false)
     }
 
-    private var selectionHandles: some View {
+    /// 单选素材的操作按钮跟随选中外框定位，避免按钮与画布固定角落脱节。
+    /// 四个角共用缩略图上的圆形图标按钮样式，保持尺寸、主题色和按压反馈一致。
+    private func selectionActionButtons(for element: CompositionElement) -> some View {
         Color.clear
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
             .overlay(alignment: .topLeading) {
-            selectionHandle.offset(x: -5, y: -5)
+                selectionCornerButton(
+                    systemName: "trash",
+                    accessibilityLabel: "删除素材",
+                    foregroundColor: LF.destructive,
+                    backgroundColor: LF.destructive.opacity(0.16),
+                    action: onDeleteSelection
+                )
+                .offset(x: -22, y: -22)
             }
             .overlay(alignment: .topTrailing) {
-            selectionHandle.offset(x: 5, y: -5)
+                selectionCornerButton(
+                    systemName: "pencil.line",
+                    accessibilityLabel: "编辑",
+                    accessibilityIdentifier: "editor-canvas-adjust",
+                    foregroundColor: LF.actionPrimary,
+                    backgroundColor: LF.actionPrimary.opacity(0.16),
+                    action: onRequestInspector
+                )
+                .offset(x: 22, y: -22)
             }
             .overlay(alignment: .bottomLeading) {
-            selectionHandle.offset(x: -5, y: 5)
+                selectionCornerButton(
+                    systemName: "square.3.layers.3d.top.filled",
+                    accessibilityLabel: "上移图层",
+                    accessibilityIdentifier: "editor-canvas-layer-up",
+                    foregroundColor: LF.actionPrimary,
+                    backgroundColor: LF.actionPrimary.opacity(0.16)
+                ) {
+                    appState.moveElementZ(element.id, up: true)
+                }
+                .offset(x: -22, y: 22)
             }
             .overlay(alignment: .bottomTrailing) {
-            selectionHandle.offset(x: 5, y: 5)
+                selectionCornerButton(
+                    systemName: "square.3.layers.3d.bottom.filled",
+                    accessibilityLabel: "下移图层",
+                    accessibilityIdentifier: "editor-canvas-layer-down",
+                    foregroundColor: LF.actionPrimary,
+                    backgroundColor: LF.actionPrimary.opacity(0.16)
+                ) {
+                    appState.moveElementZ(element.id, up: false)
+                }
+                .offset(x: 22, y: 22)
             }
     }
 
-    private var selectionHandle: some View {
-        Circle()
-            .fill(Color.white)
-            .overlay {
-                Circle().stroke(LF.header, lineWidth: 2)
-            }
-            .shadow(color: .black.opacity(0.18), radius: 2)
-            .frame(width: 10, height: 10)
+    private func selectionCornerButton(
+        systemName: String,
+        accessibilityLabel: String,
+        accessibilityIdentifier: String? = nil,
+        foregroundColor: Color,
+        backgroundColor: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+        }
+        .lfCircleIconButtonStyle(
+            diameter: 26,
+            iconSize: 15,
+            foregroundColor: foregroundColor,
+            backgroundColor: backgroundColor
+        )
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityIdentifier(accessibilityIdentifier ?? "")
     }
 
-    private func isBackgroundElement(_ element: CompositionElement) -> Bool {
-        if case .background = element.kind { return true }
-        return false
+    private func isCollageBackgroundElement(_ element: CompositionElement) -> Bool {
+        guard case .background = element.kind else { return false }
+        return element.collageGroupID != nil
+    }
+
+    private func isCollageChild(_ element: CompositionElement, in composition: Composition) -> Bool {
+        guard let groupID = element.collageGroupID,
+              case .background = element.kind else { return false }
+        return composition.elements.contains {
+            if case .collage(let collageID) = $0.kind { return collageID == groupID }
+            return false
+        }
     }
 
     private var selectedElements: [CompositionElement] {
@@ -718,6 +808,7 @@ struct CanvasView: View {
         return comp.elements.filter { element in
             guard appState.selectedElementIDs.contains(element.id) else { return false }
             if case .canvasEdge = element.kind { return false }
+            if isCollageChild(element, in: comp) { return false }
             return true
         }
     }
@@ -726,7 +817,7 @@ struct CanvasView: View {
         guard appState.selectedElementIDs.count == 1,
               let id = appState.selectedElementIDs.first,
               let element = appState.composition?.elements.first(where: { $0.id == id }),
-              case .background = element.kind else { return nil }
+              isCollageBackgroundElement(element) else { return nil }
         return element
     }
 
@@ -786,6 +877,7 @@ struct CanvasView: View {
 
     private func beginCanvasManipulation() {
         guard !isCanvasManipulating else { return }
+        temporarilyElevatedElementIDs = appState.selectedElementIDs
         isCanvasManipulating = true
         appState.beginCanvasEdit()
         refreshRendererScale()
@@ -800,9 +892,59 @@ struct CanvasView: View {
         interactiveBackgroundBaseImage = nil
         interactiveBackgroundFrame = nil
         interactiveBackgroundElementID = nil
+        temporarilyElevatedElementIDs.removeAll()
         appState.finishCanvasEdit()
         refreshRendererScale()
         render()
+    }
+
+    /// 为直接操作生成只用于预览的图层顺序：当前素材及其拼接容器放到最上方，
+    /// 保留被选素材之间的原始相对顺序。这个副本不会回写到 AppState。
+    private func compositionWithInteractionElevation(_ composition: Composition) -> Composition {
+        guard !temporarilyElevatedElementIDs.isEmpty else { return composition }
+
+        var elevated = composition
+        var targetIDs = temporarilyElevatedElementIDs
+
+        // 选中拼接子素材时，需要把外层拼接容器一起抬高，否则容器仍可能被其它
+        // 普通图层遮住；子素材自身的 zIndex 仍用于保持拼接组内部顺序。
+        for element in composition.elements where targetIDs.contains(element.id) {
+            guard let groupID = element.collageGroupID else { continue }
+            if let container = composition.elements.first(where: { candidate in
+                if case .collage(let collageID) = candidate.kind {
+                    return collageID == groupID
+                }
+                return false
+            }) {
+                targetIDs.insert(container.id)
+            }
+        }
+
+        let targetIndices = elevated.elements.indices.filter { index in
+            guard targetIDs.contains(elevated.elements[index].id) else { return false }
+            if case .canvasEdge = elevated.elements[index].kind { return false }
+            return true
+        }.sorted {
+            let lhs = elevated.elements[$0]
+            let rhs = elevated.elements[$1]
+            if lhs.zIndex != rhs.zIndex { return lhs.zIndex < rhs.zIndex }
+            return $0 < $1
+        }
+        guard !targetIndices.isEmpty else { return composition }
+
+        // 画布边框仍保持自己的相对层级；临时置顶只在普通内容之间生效，
+        // 避免操作素材时把内容错误地盖到边框上面。
+        let highestZIndex = elevated.elements
+            .filter { element in
+                if case .canvasEdge = element.kind { return false }
+                return true
+            }
+            .map(\.zIndex)
+            .max() ?? 0
+        for (offset, index) in targetIndices.enumerated() {
+            elevated.elements[index].zIndex = highestZIndex + 1 + offset
+        }
+        return elevated
     }
 
     /// 背景拖动/缩放期间不等待整张高质量合成：底层其它内容只渲染一次，选中背景直接作为图层变换。
@@ -819,6 +961,7 @@ struct CanvasView: View {
 
         var baseComposition = comp
         baseComposition.elements.removeAll { $0.id == element.id }
+        baseComposition = compositionWithInteractionElevation(baseComposition)
         let previewRenderer = CompositionRenderer(
             frameMaxPixelSize: 720,
             isPlaybackReversed: appState.isReversed
@@ -919,10 +1062,10 @@ struct CanvasView: View {
         usesVisibleStickerBounds: Bool = false
     ) -> CGRect {
         guard let comp else { return .zero }
-        // 背景图片由渲染器先生成完整画布尺寸的蒙版图，且背景取景只修改
-        // cropOffset/cropScale，不使用 element.transform。选中框必须和这条
-        // 渲染路径一致，否则会出现背景框跟随旧 transform 偏移的问题。
-        if case .background = element.kind {
+        // 拼接背景由渲染器先生成完整画布尺寸的蒙版图，且背景取景只修改
+        // cropOffset/cropScale，不使用 element.transform。独立照片走普通素材
+        // 路径，直接根据图片尺寸和 element.transform 计算选中框。
+        if isCollageBackgroundElement(element) {
             let canvasCenter = CGPoint(x: comp.canvasRect.midX, y: comp.canvasRect.midY)
             return ElementFrameGeometry.frame(
                 contentSize: comp.canvasRect.size,
@@ -983,12 +1126,12 @@ struct CanvasView: View {
         at time: TimeInterval
     ) -> CGSize {
         // 不要依赖 FrameCache 的瞬时注册状态。AppState 是编辑器当前工程的
-        // 稳定素材来源，选中框始终包住完整素材矩形，而不是某一帧的透明像素范围。
+        // 稳定素材来源；选中框要和渲染器实际生成的素材矩形保持一致。
         if case .clip(let clipID) = element.kind,
            let clip = appState.clips.first(where: { $0.id == clipID }) {
-            return CGSize(width: max(clip.orientedWidth, 1), height: max(clip.orientedHeight, 1))
+            return CGSize(width: max(clip.renderedWidth, 1), height: max(clip.renderedHeight, 1))
         }
-        if case .background = element.kind {
+        if isCollageBackgroundElement(element) {
             return comp.canvasRect.size
         }
         return renderer.contentSize(for: element, in: comp, at: time) ?? .zero
@@ -1019,7 +1162,7 @@ struct CanvasView: View {
     private var needsExactBackgroundPreview: Bool {
         guard let elements = appState.composition?.elements else { return false }
         let backgrounds = elements.compactMap { element -> BackgroundElementSettings? in
-            guard case .background = element.kind else { return nil }
+            guard isCollageBackgroundElement(element) else { return nil }
             return element.backgroundSettings ?? BackgroundElementSettings()
         }
         // 分区遮罩必须与最终输出使用同一像素尺寸。单张背景也不能走预览降采样，
@@ -1035,10 +1178,11 @@ struct CanvasView: View {
 
         let version = renderVersion
         let composition = appState.composition.map { composition in
-            guard appState.isCropping else { return composition }
-            var fullCanvasPreview = composition
-            fullCanvasPreview.cropRect = nil
-            return fullCanvasPreview
+            var previewComposition = composition
+            if appState.isCropping {
+                previewComposition.cropRect = nil
+            }
+            return compositionWithInteractionElevation(previewComposition)
         }
         let time = composition.map { min(appState.currentTime, $0.duration) } ?? 0
         let renderer = renderer
@@ -1117,6 +1261,30 @@ private struct InteractiveBackgroundImageLayer: View {
         let turns = ((settings.rotationQuarterTurns % 4) + 4) % 4
         guard turns % 2 == 1 else { return 1 }
         return max(size.width / max(size.height, 1), size.height / max(size.width, 1))
+    }
+}
+
+/// 选中框的四条边各自绘制，四角为圆形操作按钮预留完整空位。
+private struct SelectionBorderShape: Shape {
+    let cornerGap: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let gap = min(cornerGap, min(rect.width, rect.height) / 2)
+        var path = Path()
+
+        path.move(to: CGPoint(x: gap, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - gap, y: rect.minY))
+
+        path.move(to: CGPoint(x: rect.maxX, y: gap))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - gap))
+
+        path.move(to: CGPoint(x: rect.maxX - gap, y: rect.maxY))
+        path.addLine(to: CGPoint(x: gap, y: rect.maxY))
+
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY - gap))
+        path.addLine(to: CGPoint(x: rect.minX, y: gap))
+
+        return path
     }
 }
 

@@ -95,66 +95,92 @@ final class StickerCatalogTests: XCTestCase {
         }
     }
 
-    func testSunglassesStickerIsRegisteredWithFaceAnchorsAndLoads() {
-        let sticker = DecorationRenderer.stickerDefinition(for: "sticker-ai-sunglasses")
-        XCTAssertEqual(sticker?.category, .aiSticker)
-        XCTAssertEqual(sticker?.renderingMode, .multiView2D)
-        XCTAssertEqual(sticker?.resourceName, "sunglasses")
-        XCTAssertEqual(sticker?.resourceExtension, "png")
-        XCTAssertEqual(sticker?.frameCount, 1)
-        XCTAssertEqual(sticker?.faceAnchors, StickerFaceAnchors(
-            leftEye: CGPoint(x: 0.297, y: 0.510),
-            rightEye: CGPoint(x: 0.703, y: 0.510)
-        ))
-
-        let renderer = DecorationRenderer()
-        XCTAssertEqual(renderer.previewFrames(for: "sticker-ai-sunglasses").count, 1)
-        XCTAssertNotNil(renderer.previewImage(for: "sticker-ai-sunglasses"))
-    }
-
-    func test2DAnd3DSunglassesShareCategoryAndKeepSeparateRenderingModes() throws {
-        let twoD = try XCTUnwrap(DecorationRenderer.stickerDefinition(for: "sticker-ai-sunglasses"))
-        let threeD = try XCTUnwrap(DecorationRenderer.stickerDefinition(for: "sticker-ai-sunglasses-3d"))
-
-        XCTAssertEqual(twoD.category, .aiSticker)
-        XCTAssertEqual(twoD.renderingMode, .multiView2D)
-        XCTAssertEqual(threeD.category, .aiSticker)
-        XCTAssertEqual(threeD.renderingMode, .rendered3DViews)
-        XCTAssertTrue(twoD.category.requiresPro)
-        XCTAssertTrue(threeD.category.requiresPro)
+    func testUnavailableAISchemesAreDeletedFromCatalog() {
+        let removedIDs = [
+            "sticker-ai-sunglasses",
+            "sticker-ai-sunglasses-crayon-2d",
+            "sticker-ai-cap-crayon-2d",
+            "sticker-ai-sunglasses-crayon-model-3d",
+            "sticker-ai-cap-crayon-model-3d"
+        ]
+        XCTAssertTrue(removedIDs.allSatisfy { DecorationRenderer.stickerDefinition(for: $0) == nil })
         XCTAssertEqual(
             DecorationRenderer.stickerCatalog.filter { $0.category == .aiSticker }.map(\.id),
-            ["sticker-ai-sunglasses", "sticker-ai-sunglasses-3d"]
+            [
+                "sticker-ai-sunglasses-3d",
+                "sticker-ai-sunglasses-crayon-3d",
+                "sticker-ai-cap-crayon-3d"
+            ]
         )
-
-        let selection = try XCTUnwrap(DecorationRenderer.faceViewSelection(for: twoD.id, yaw: 0.34))
-        XCTAssertEqual(selection.anchors(for: .multiView2D), selection.nearestView.anchors)
-        XCTAssertNotEqual(selection.anchors(for: .rendered3DViews), selection.nearestView.anchors)
+        XCTAssertEqual(
+            DecorationRenderer.availableStickerCatalog.filter { $0.category == .aiSticker }.map(\.id),
+            [
+                "sticker-ai-sunglasses-3d",
+                "sticker-ai-sunglasses-crayon-3d",
+                "sticker-ai-cap-crayon-3d"
+            ]
+        )
     }
 
-    func test2DStickerSelectsAndDisplaysEachAuthoredAngle() throws {
+    func testCrayon3DStickersLoadFrontAndAlternateViews() throws {
         let renderer = DecorationRenderer()
-        var visibleBounds: [CGRect] = []
-
-        for yaw: CGFloat in [0, 0.68, 1.28] {
-            let ciImage = try XCTUnwrap(renderer.image(
-                for: "sticker-ai-sunglasses",
-                canvas: CGRect(x: 0, y: 0, width: 1024, height: 1024),
-                faceYaw: yaw
-            ), "2D render at yaw \(yaw)")
-            let cgImage = try XCTUnwrap(
-                CIContext().createCGImage(ciImage, from: ciImage.extent),
-                "2D image decode at yaw \(yaw)"
-            )
-            visibleBounds.append(try XCTUnwrap(
-                AlphaSubjectBounds.visiblePixelBounds(in: cgImage),
-                "2D sticker must contain visible artwork at yaw \(yaw)"
-            ))
+        for id in ["sticker-ai-sunglasses-crayon-3d", "sticker-ai-cap-crayon-3d"] {
+            let sticker = try XCTUnwrap(DecorationRenderer.stickerDefinition(for: id))
+            XCTAssertEqual(sticker.renderingMode, .rendered3DViews)
+            XCTAssertEqual(sticker.faceViews?.count, 9)
+            XCTAssertEqual(renderer.previewFrames(for: id).count, 1)
+            for yaw in [CGFloat(0), CGFloat(0.70), CGFloat(1.30)] {
+                XCTAssertNotNil(
+                    renderer.image(
+                        for: id,
+                        canvas: CGRect(x: 0, y: 0, width: 1024, height: 1024),
+                        faceYaw: yaw
+                    ),
+                    "3D sticker should render at yaw \(yaw): \(id)"
+                )
+            }
+            for pitch in [CGFloat(-0.45), CGFloat(0.45)] {
+                let selection = try XCTUnwrap(
+                    DecorationRenderer.faceViewSelection(for: id, yaw: 0.70, pitch: pitch)
+                )
+                XCTAssertEqual(selection.first.pitchAngle, pitch, accuracy: 0.001)
+                XCTAssertEqual(selection.second.pitchAngle, pitch, accuracy: 0.001)
+                XCTAssertNotNil(
+                    renderer.image(
+                        for: id,
+                        canvas: CGRect(x: 0, y: 0, width: 1024, height: 1024),
+                        faceYaw: 0.70,
+                        facePitch: pitch
+                    ),
+                    "3D sticker should render at pitch \(pitch): \(id)"
+                )
+            }
         }
+    }
 
-        XCTAssertEqual(visibleBounds.count, 3)
-        XCTAssertNotEqual(visibleBounds[0], visibleBounds[1], "Three-quarter yaw should select its authored 2D view")
-        XCTAssertNotEqual(visibleBounds[1], visibleBounds[2], "Profile yaw should select its authored 2D view")
+    func testCrayonAuthoredViewsUseVisionYawDirection() throws {
+        for id in ["sticker-ai-sunglasses-crayon-3d", "sticker-ai-cap-crayon-3d"] {
+            let selection = try XCTUnwrap(DecorationRenderer.faceViewSelection(for: id, yaw: 0.70))
+            XCTAssertTrue(selection.isMirrored, "Positive Vision yaw should use the mirrored authored view: \(id)")
+        }
+    }
+
+    func testCrayonProfileViewsUseProjectedSideAnchors() throws {
+        let purple = try XCTUnwrap(DecorationRenderer.stickerDefinition(for: "sticker-ai-sunglasses-3d"))
+        let purpleThreeQuarter = try XCTUnwrap(purple.faceViews?.first(where: { abs($0.yawAngle - 0.70) < 0.001 && abs($0.pitchAngle) < 0.001 }))
+        let purpleProfile = try XCTUnwrap(purple.faceViews?.first(where: { $0.yawAngle > 1.2 && abs($0.pitchAngle) < 0.001 }))
+        XCTAssertEqual(try XCTUnwrap(purpleThreeQuarter.anchors.ear?.x), 0.040, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(purpleProfile.anchors.ear?.x), 0.050, accuracy: 0.001)
+
+        let sunglasses = try XCTUnwrap(DecorationRenderer.stickerDefinition(for: "sticker-ai-sunglasses-crayon-3d"))
+        let sunglassesProfile = try XCTUnwrap(sunglasses.faceViews?.first(where: { $0.yawAngle > 1.2 && abs($0.pitchAngle) < 0.001 }))
+        XCTAssertEqual(sunglassesProfile.anchors.leftEye.x, 0.120, accuracy: 0.001)
+        XCTAssertEqual(sunglassesProfile.anchors.rightEye.x, 0.290, accuracy: 0.001)
+
+        let cap = try XCTUnwrap(DecorationRenderer.stickerDefinition(for: "sticker-ai-cap-crayon-3d"))
+        let capProfile = try XCTUnwrap(cap.faceViews?.first(where: { $0.yawAngle > 1.2 && abs($0.pitchAngle) < 0.001 }))
+        XCTAssertEqual(capProfile.anchors.leftEye.x, 0.280, accuracy: 0.001)
+        XCTAssertEqual(capProfile.anchors.rightEye.x, 0.520, accuracy: 0.001)
     }
 
     func testStickerSelectionBoundsExcludeTransparentPaddingAndCoverEveryFrame() throws {

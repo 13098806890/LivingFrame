@@ -90,6 +90,12 @@ public struct BackgroundStore {
         cache.totalCostLimit = 96 * 1024 * 1024
         return cache
     }()
+    private static let previewFrameCache: NSCache<NSString, CGImage> = {
+        let cache = NSCache<NSString, CGImage>()
+        cache.countLimit = 96
+        cache.totalCostLimit = 32 * 1024 * 1024
+        return cache
+    }()
     private static let videoSourceCache: NSCache<NSString, VideoFrameSource> = {
         let cache = NSCache<NSString, VideoFrameSource>()
         cache.countLimit = 8
@@ -149,6 +155,7 @@ public struct BackgroundStore {
     public func purgeDecodedMedia() {
         Self.imageCache.removeAllObjects()
         Self.frameCache.removeAllObjects()
+        Self.previewFrameCache.removeAllObjects()
         Self.videoSourceCache.removeAllObjects()
         Self.orientationContext.clearCaches()
     }
@@ -175,6 +182,7 @@ public struct BackgroundStore {
         let url = rootURL.appendingPathComponent(fileName).appendingPathExtension(fileExtension)
         guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
         Self.imageCache.removeObject(forKey: fileName as NSString)
+        Self.previewFrameCache.removeObject(forKey: fileName as NSString)
         Self.removeCachedMetadata(for: fileName)
         return fileName
     }
@@ -189,6 +197,7 @@ public struct BackgroundStore {
         let url = rootURL.appendingPathComponent(fileName).appendingPathExtension(fileExtension)
         guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
         Self.imageCache.removeObject(forKey: fileName as NSString)
+        Self.previewFrameCache.removeObject(forKey: fileName as NSString)
         Self.removeCachedMetadata(for: fileName)
         return fileName
     }
@@ -250,6 +259,7 @@ public struct BackgroundStore {
                 }
             }
             Self.imageCache.removeObject(forKey: id as NSString)
+            Self.previewFrameCache.removeObject(forKey: id as NSString)
             Self.videoSourceCache.removeObject(forKey: id as NSString)
             Self.removeCachedMetadata(for: id)
         }
@@ -281,6 +291,12 @@ public struct BackgroundStore {
 
     /// 按媒体时间加载一帧。静态图片始终返回第一帧，GIF/APNG 按自身时长循环。
     public func loadFrame(named name: String, at time: TimeInterval) -> CGImage? {
+        // 拼接编辑器会在每次取景状态刷新时重新构造所有预览层。
+        // 静态图片已经由 loadImage 缓存，先命中这层缓存，避免重复判断文件类型、
+        // 创建 CGImageSource 和读取动图元数据。
+        if let cached = Self.imageCache.object(forKey: name as NSString) {
+            return cached
+        }
         let url = mediaURL(named: name)
         if isVideo(url: url) { return loadVideoFrame(named: name, url: url, at: time) }
         guard let source = imageSource(named: name) else { return nil }
@@ -304,6 +320,46 @@ public struct BackgroundStore {
         let oriented = applyingOrientation(to: image, source: source, index: selectedIndex)
         Self.frameCache.setObject(oriented, forKey: key, cost: imageCost(oriented))
         return oriented
+    }
+
+    /// 编辑器预览专用的低分辨率帧。导出仍使用 loadFrame 的原始分辨率，
+    /// 拼接页面只保留足够屏幕显示的像素，避免多张大图同时参与 SwiftUI 合成。
+    public func loadPreviewFrame(
+        named name: String,
+        at time: TimeInterval,
+        maxPixelSize: Int = 720
+    ) -> CGImage? {
+        let pixelSize = max(maxPixelSize, 1)
+        let boundedTime = time.isFinite ? max(time, 0) : 0
+        let timeKey = Int((boundedTime * 60).rounded(.down))
+        let key = "\(name)-preview-\(timeKey)-\(pixelSize)" as NSString
+        if let cached = Self.previewFrameCache.object(forKey: key) { return cached }
+        guard let frame = loadFrame(named: name, at: boundedTime) else { return nil }
+        let longestEdge = max(frame.width, frame.height)
+        guard longestEdge > pixelSize else {
+            Self.previewFrameCache.setObject(frame, forKey: key, cost: imageCost(frame))
+            return frame
+        }
+        let scale = CGFloat(pixelSize) / CGFloat(longestEdge)
+        let width = max(Int((CGFloat(frame.width) * scale).rounded()), 1)
+        let height = max(Int((CGFloat(frame.height) * scale).rounded()), 1)
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                  data: nil,
+                  width: width,
+                  height: height,
+                  bitsPerComponent: 8,
+                  bytesPerRow: 0,
+                  space: colorSpace,
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else {
+            return frame
+        }
+        context.interpolationQuality = .high
+        context.draw(frame, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let preview = context.makeImage() else { return frame }
+        Self.previewFrameCache.setObject(preview, forKey: key, cost: imageCost(preview))
+        return preview
     }
 
     public func media(named name: String) -> BackgroundMediaItem? {

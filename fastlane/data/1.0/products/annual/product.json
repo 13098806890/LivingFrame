@@ -10,12 +10,12 @@
     "id": "22389365",
     "reference_name": "GIFBloom订阅"
   },
-  "app_store_connect_state": "MISSING_METADATA",
+  "app_store_connect_state": "READY_TO_SUBMIT",
   "localization_state": "PREPARE_FOR_SUBMISSION",
   "review_information": {
-    "app_review_screenshot": null,
-    "review_notes": null,
-    "status": "NEEDS_REVIEW_ASSETS_AND_OWNER_INPUT"
+    "app_review_screenshot": "review/app_review_screenshot.png",
+    "review_notes": "review/review_notes.txt",
+    "status": "READY_TO_SUBMIT"
   },
   "pricing": {
     "status": "SYNCED_FROM_APP_STORE_CONNECT",
@@ -31,5 +31,6 @@
     "currency": "USD",
     "customer_price": "29.99",
     "billing_period": "year"
-  }
+  },
+  "app_store_connect_state_as_of_2026_09_20": "READY_TO_SUBMIT"
 }

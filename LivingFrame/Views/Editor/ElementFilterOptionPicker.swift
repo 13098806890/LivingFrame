@@ -26,6 +26,8 @@ struct ElementFilterOptionPicker: View {
         switch element.kind {
         case .clip(let id), .background(let id), .decoration(let id), .effect(let id), .text(let id):
             sourceID = id
+        case .collage(let id):
+            sourceID = id.uuidString
         case .canvasEdge:
             sourceID = "canvas-edge"
         }

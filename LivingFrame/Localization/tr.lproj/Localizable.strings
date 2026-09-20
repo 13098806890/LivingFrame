@@ -707,7 +707,7 @@
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "Dışa aktarmalardaki filigranı kaldırmak için GIFBloom Pro’ya abone olun.";
 "从长视频中选择最长 10 秒的剪影片段。" = "Uzun videolardan en fazla 10 saniyelik klip seçin.";
-"免费版最长 5 秒；GIFBloom Pro 可选 8 秒或 10 秒。" = "Ücretsiz: en çok 5 sn; GIFBloom Pro: 8 veya 10 sn.";
+"免费版最长 5 秒；GIFBloom Pro 可选 10 秒。" = "Ücretsiz: en çok 5 sn; GIFBloom Pro: 10 sn.";
 "解锁更长片段" = "Daha uzun kliplerin kilidini aç";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Haftalık ve yıllık planlar otomatik yenilenir. Yenilemeyi durdurmak için dönem bitmeden en az 24 saat önce iptal edin. Apple ID ayarlarından yönetin.";
 "使用 AI 贴纸，让墨镜跟随人物双眼移动。" = "Yapay zekâ çıkartmalarıyla gözlüğü kişinin gözlerine sabitleyin.";
@@ -779,3 +779,9 @@
 "AI贴纸 · 3D" = "Yapay zekâ çıkartmaları · 3D";
 "根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。" = "2D gözlük, yüz açısına göre görünüm değiştirir ve gözlere hizalanır.";
 "使用 3D 模型渲染的视图，随人脸角度平滑变化。" = "Oluşturulan 3D görünümler yüz açısına göre akıcı biçimde değişir.";
+
+/* Collage layer and asset count */
+"拼接图层" = "Kolaj katmanı";
+"拼接内容在拼接页面中编辑；当前图层在画布中作为一个独立素材。" = "Kolaj içeriğini kolaj düzenleyicide düzenleyin; bu katman tuvalde bağımsız bir öğe olarak görünür.";
+"试试其他名称或筛选条件" = "Başka bir ad veya filtre deneyin";
+"%1$lld items" = "%1$lld öğe";

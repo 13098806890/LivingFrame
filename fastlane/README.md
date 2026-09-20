@@ -1,39 +1,80 @@
-# GIFBloom App Store data
+fastlane documentation
+----
 
-This directory is the version-controlled source for App Store Connect listing content and the related Fastlane release inputs. The initial full baseline is the editable App Store version `1.0`.
+# Installation
 
-## Layout and versioning
-
-- `metadata/1.0/` is the complete first-version Deliver metadata snapshot for all 17 app locales. App Store display name stays `GIFBloom` in every locale.
-- `data/1.0/` is the full App Store Connect baseline: app settings and review state, privacy and age-rating status, in-app purchase definitions, localized purchase text, price schedules, and territory availability.
-- `screenshots/<version>/<locale>/` is where real App Store screenshots go. Nothing has been generated as a store screenshot because the existing UI audit images are not representative product screenshots.
-- For later store versions, add `metadata/<version>/` with only the changed Deliver fields and locales. In `data/<version>/`, add only the changed files or a `changes.json` RFC 7396 merge patch. Do not copy the full `1.0` baseline into later versions.
-
-Keep App Store version directories aligned with the version being prepared in App Store Connect. The current Xcode marketing version is `1.03`, while the editable App Store Connect version is `1.0`; align the build and store version before uploading a build.
-
-## Credentials
-
-`fastlane/.env` is local and ignored by Git. It points Fastlane at the local App Store Connect API key file; the `.p8` itself must remain outside the repository. Use `fastlane/.env.example` when setting up another machine.
-
-## Fastlane lanes
-
-From the repository root:
+Make sure you have the latest version of the Xcode command line tools installed:
 
 ```sh
-fastlane ios upload_metadata version:1.0
-fastlane ios upload_screenshots version:1.0
-fastlane ios upload_build ipa:/absolute/path/GIFBloom.ipa
-fastlane ios download_store_metadata version:1.0
-fastlane ios create_subscription_products version:1.0
-fastlane ios sync_purchase_pricing version:1.0
+xcode-select --install
 ```
 
-These lanes do not submit the app for review or release it. Screenshot uploads stop until localized image assets are added. `set_app_price` requires a confirmed Fastlane price tier and `confirm:true`; the app's price is intentionally unset.
+For _fastlane_ installation instructions, see [Installing _fastlane_](https://docs.fastlane.tools/#installing-fastlane)
 
-Fastlane Deliver uploads the app listing metadata and screenshots and supports an app price tier. Subscription and in-app purchase data is kept in `data/1.0/products/`; Deliver does not upload those product localizations or price schedules as part of `upload_metadata`. `create_subscription_products` creates or synchronizes the weekly and annual subscriptions, including changes to existing localizations, from the tracked product and localization files. `sync_purchase_pricing` reads current subscription and in-app purchase price schedules plus territory availability from App Store Connect, then refreshes the versioned JSON snapshots without changing the remote configuration.
+# Available Actions
 
-References: [Fastlane `upload_to_app_store`](https://docs.fastlane.tools/actions/upload_to_app_store/), [Apple auto-renewable subscriptions](https://developer.apple.com/documentation/appstoreconnectapi/managing-auto-renewable-subscriptions), [Apple subscription prices](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-subscriptions-_id_-prices), [Apple in-app purchase price schedules](https://developer.apple.com/documentation/appstoreconnectapi/get-v2-inapppurchases-_id_-iappriceschedule), [Apple in-app purchase availability](https://developer.apple.com/documentation/appstoreconnectapi/get-v2-inapppurchases-_id_-inapppurchaseavailability).
+## iOS
 
-## Current blockers
+### ios upload_metadata
 
-See [`APP_STORE_REVIEW.md`](APP_STORE_REVIEW.md) for the owner-review checklist. App Store screenshots, App Review screenshots and notes for purchases, privacy and age-rating answers, copyright, App Review contact details, and app price confirmation still need attention.
+```sh
+[bundle exec] fastlane ios upload_metadata
+```
+
+Upload localized App Store listing metadata for a store version (does not submit for review)
+
+### ios upload_screenshots
+
+```sh
+[bundle exec] fastlane ios upload_screenshots
+```
+
+Upload App Store screenshots for a store version (does not submit for review)
+
+### ios upload_build
+
+```sh
+[bundle exec] fastlane ios upload_build
+```
+
+Upload a built IPA to App Store Connect without submitting it for review
+
+### ios set_app_price
+
+```sh
+[bundle exec] fastlane ios set_app_price
+```
+
+Set the app's App Store price using Fastlane's price tier support; requires an explicit confirmation
+
+### ios create_subscription_products
+
+```sh
+[bundle exec] fastlane ios create_subscription_products
+```
+
+Create or synchronize the weekly and annual subscription metadata from the tracked Fastlane data
+
+### ios sync_purchase_pricing
+
+```sh
+[bundle exec] fastlane ios sync_purchase_pricing
+```
+
+Sync App Store Connect price schedules and territory availability into Fastlane data
+
+### ios download_store_metadata
+
+```sh
+[bundle exec] fastlane ios download_store_metadata
+```
+
+Download App Store Connect metadata to the selected local version folder
+
+----
+
+This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.
+
+More information about _fastlane_ can be found on [fastlane.tools](https://fastlane.tools).
+
+The documentation of _fastlane_ can be found on [docs.fastlane.tools](https://docs.fastlane.tools).

@@ -707,7 +707,7 @@
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "Đăng ký GIFBloom Pro để xóa hình mờ khỏi tệp xuất.";
 "从长视频中选择最长 10 秒的剪影片段。" = "Chọn đoạn tối đa 10 giây từ video dài.";
-"免费版最长 5 秒；GIFBloom Pro 可选 8 秒或 10 秒。" = "Miễn phí tối đa 5 giây; GIFBloom Pro: 8 hoặc 10 giây.";
+"免费版最长 5 秒；GIFBloom Pro 可选 10 秒。" = "Miễn phí tối đa 5 giây; GIFBloom Pro: 10 giây.";
 "解锁更长片段" = "Mở khóa đoạn dài hơn";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Gói tuần và năm tự động gia hạn. Hủy ít nhất 24 giờ trước khi kỳ hạn kết thúc để dừng gia hạn. Quản lý trong Cài đặt Apple ID.";
 "使用 AI 贴纸，让墨镜跟随人物双眼移动。" = "Dùng nhãn dán AI để kính di chuyển theo mắt người.";
@@ -779,3 +779,9 @@
 "AI贴纸 · 3D" = "Nhãn dán AI · 3D";
 "根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。" = "Kính 2D đổi góc nhìn theo góc mặt và luôn khớp với mắt.";
 "使用 3D 模型渲染的视图，随人脸角度平滑变化。" = "Các góc nhìn 3D được dựng thay đổi mượt mà theo góc mặt.";
+
+/* Collage layer and asset count */
+"拼接图层" = "Lớp ghép ảnh";
+"拼接内容在拼接页面中编辑；当前图层在画布中作为一个独立素材。" = "Chỉnh sửa nội dung ghép ảnh trong trình chỉnh sửa; lớp này hiển thị như một thành phần riêng trên canvas.";
+"试试其他名称或筛选条件" = "Hãy thử tên hoặc bộ lọc khác";
+"%1$lld items" = "%1$lld mục";

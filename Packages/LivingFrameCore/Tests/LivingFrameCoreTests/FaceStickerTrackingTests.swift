@@ -56,6 +56,59 @@ final class FaceStickerTrackingTests: XCTestCase {
         XCTAssertEqual(resizedPlacement.scale, placement.scale * 1.5, accuracy: 0.001)
     }
 
+    func testSideViewPlacementUsesEarWhenAvailableAndFallsBackToEyes() throws {
+        let eyeOnlyKeyframe = FaceStickerKeyframe(
+            frameIndex: 0,
+            leftEye: CGPoint(x: 0.40, y: 0.50),
+            rightEye: CGPoint(x: 0.60, y: 0.50),
+            yaw: 1.30
+        )
+        let earKeyframe = FaceStickerKeyframe(
+            frameIndex: 0,
+            leftEye: eyeOnlyKeyframe.leftEye,
+            rightEye: eyeOnlyKeyframe.rightEye,
+            yaw: eyeOnlyKeyframe.yaw,
+            leftEar: CGPoint(x: 0.90, y: 0.50)
+        )
+        let anchors = StickerFaceAnchors(
+            leftEye: CGPoint(x: 0.12, y: 0.50),
+            rightEye: CGPoint(x: 0.29, y: 0.50),
+            ear: CGPoint(x: 0.95, y: 0.50)
+        )
+        let parameters: (FaceStickerKeyframe, StickerFaceAnchors) = (eyeOnlyKeyframe, anchors)
+        let eyeOnly = try XCTUnwrap(FaceStickerPlacement.transform(
+            for: parameters.0,
+            frameSize: CGSize(width: 100, height: 100),
+            clipTransform: ElementTransform(position: CGPoint(x: 50, y: 50)),
+            stickerSize: CGSize(width: 100, height: 100),
+            stickerAnchors: parameters.1
+        ))
+        let earConstrained = try XCTUnwrap(FaceStickerPlacement.transform(
+            for: earKeyframe,
+            frameSize: CGSize(width: 100, height: 100),
+            clipTransform: ElementTransform(position: CGPoint(x: 50, y: 50)),
+            stickerSize: CGSize(width: 100, height: 100),
+            stickerAnchors: anchors
+        ))
+
+        XCTAssertEqual(earConstrained.scale, 0.537, accuracy: 0.01)
+        XCTAssertLessThan(earConstrained.scale, eyeOnly.scale)
+        XCTAssertEqual(
+            FaceStickerPlacement.transform(
+                for: eyeOnlyKeyframe,
+                frameSize: CGSize(width: 100, height: 100),
+                clipTransform: ElementTransform(position: CGPoint(x: 50, y: 50)),
+                stickerSize: CGSize(width: 100, height: 100),
+                stickerAnchors: StickerFaceAnchors(
+                    leftEye: anchors.leftEye,
+                    rightEye: anchors.rightEye
+                )
+            )?.scale ?? 0,
+            eyeOnly.scale,
+            accuracy: 0.001
+        )
+    }
+
     func testTrackingInterpolatesMissingFrameLandmarks() {
         let tracking = FaceStickerTracking(
             targetClipElementID: UUID(),
@@ -120,7 +173,7 @@ final class FaceStickerTrackingTests: XCTestCase {
         XCTAssertEqual(mirrored.anchors.rightEye.x, 0.607, accuracy: 0.002)
 
         let renderer = DecorationRenderer()
-        for stickerID in ["sticker-ai-sunglasses", "sticker-ai-sunglasses-3d"] {
+        for stickerID in ["sticker-ai-sunglasses-3d"] {
             let views = try XCTUnwrap(DecorationRenderer.stickerDefinition(for: stickerID)?.faceViews)
             XCTAssertEqual(views.count, 3)
             for view in views {
@@ -201,7 +254,7 @@ final class FaceStickerTrackingTests: XCTestCase {
             sourceEndTime: 2
         )
         let sticker = CompositionElement(
-            kind: .decoration(decorationID: "sticker-ai-sunglasses"),
+            kind: .decoration(decorationID: "sticker-ai-sunglasses-3d"),
             name: "墨镜",
             transform: ElementTransform(position: .zero),
             zIndex: 1,

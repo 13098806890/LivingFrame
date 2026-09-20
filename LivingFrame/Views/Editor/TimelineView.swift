@@ -155,6 +155,13 @@ struct TimelineView: View {
     /// 时间轴从上到下直接对应画布从上层到下层；同层级按插入顺序稳定显示。
     private func timelineElements(_ comp: Composition) -> [CompositionElement] {
         comp.elements
+            .filter { element in
+                guard let groupID = element.collageGroupID else { return true }
+                return !comp.elements.contains {
+                    if case .collage(let collageID) = $0.kind { return collageID == groupID }
+                    return false
+                }
+            }
             .enumerated()
             .sorted { lhs, rhs in
                 if lhs.element.zIndex != rhs.element.zIndex {
@@ -242,6 +249,7 @@ struct TimelineView: View {
         switch element.kind {
         case .clip(let clipID): return "clip:\(clipID.prefix(8))"
         case .background(let backgroundID): return "background:\(backgroundID)"
+        case .collage(let collageID): return "collage:\(collageID.uuidString)"
         case .decoration(let decorationID): return "decoration:\(decorationID)"
         case .effect(let effectID): return "effect:\(effectID)"
         case .text(let textID): return "text:\(textID)"
@@ -387,21 +395,6 @@ struct TimelineView: View {
                 Label("时间轴", systemImage: "film.stack")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(LF.textPrimary)
-            }
-
-            if hasSelection {
-                HStack(spacing: 6) {
-                    Button(action: onRequestInspector) {
-                        Label("调整", systemImage: "slider.horizontal.3")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 9)
-                            .frame(height: 30)
-                            .background(LF.accentGradient, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("调整当前选中内容")
-                }
             }
 
             Spacer(minLength: 4)
@@ -1784,6 +1777,7 @@ struct TimelineView: View {
         switch element.kind {
         case .clip: "person.crop.rectangle"
         case .background: "photo.on.rectangle"
+        case .collage: "square.stack.3d.down.right"
         case .decoration: EditorTool.sticker.icon
         case .effect: "sparkles"
         case .text: EditorTool.textIcon
@@ -1804,8 +1798,12 @@ struct TimelineView: View {
     /// 素材保留类型图标；贴纸只显示帧条；二者都不显示名称。
     private func showsNameOnTimeline(_ element: CompositionElement) -> Bool {
         switch element.kind {
-        case .clip, .background, .decoration:
+        case .clip, .decoration:
             return false
+        case .background:
+            return false
+        case .collage:
+            return true
         case .effect, .text:
             return true
         case .canvasEdge:
@@ -1817,6 +1815,7 @@ struct TimelineView: View {
         switch element.kind {
         case .clip: LF.timelineClip.opacity(0.82)
         case .background: LF.timelineBackground.opacity(0.82)
+        case .collage: LF.timelineBackground.opacity(0.92)
         case .decoration: LF.timelineSticker.opacity(0.82)
         case .effect: LF.timelineEffect.opacity(0.75)
         // 文字轨道使用独立语义色，不跟随文字本身的白/黑/彩色设置，

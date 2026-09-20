@@ -308,7 +308,7 @@ private struct SourceRangeFilmstrip: View {
             return resizedThumbnail(image)
         case .decoration(let id), .effect(let id):
             return DecorationRenderer.previewThumbnail(for: id, at: time)
-        case .text, .canvasEdge:
+        case .text, .canvasEdge, .collage:
             return nil
         }
     }

@@ -123,22 +123,11 @@ struct EditorView: View {
 
                 // ② 纵向工作区：画布 → 播放控制 → 时间轴，避免手机屏幕横向拥挤。
                 VStack(spacing: 0) {
-                    CanvasView {
-                        requestInspectorForSelection()
-                    }
+                    CanvasView(
+                        onRequestInspector: requestInspectorForSelection,
+                        onDeleteSelection: { showDeleteSelectionConfirmation = true }
+                    )
                         .frame(width: canvasSize.width, height: canvasSize.height)
-                        .overlay(alignment: .topLeading) {
-                            if !appState.isCropping {
-                                canvasCornerActionButton(
-                                    systemName: "slider.horizontal.3",
-                                    accessibilityLabel: "调整",
-                                    anchor: .topLeading
-                                ) {
-                                    requestInspectorForSelection()
-                                }
-                                .accessibilityIdentifier("editor-canvas-adjust")
-                            }
-                        }
                         .overlay(alignment: .topTrailing) {
                             // 添加素材是编辑流程的高频入口，固定在画布右上角，避免用户
                             // 需要先寻找底部工具栏才能开始编辑。圆形按钮只保留图标，
@@ -185,6 +174,12 @@ struct EditorView: View {
                 .padding(.bottom, 6)
         }
         .magicBackground()
+        .overlay {
+            if appState.isAddingFaceSticker {
+                FaceStickerLoadingAlert(message: appState.faceStickerStatus)
+                    .transition(.opacity)
+            }
+        }
         .onAppear {
             appState.ensureComposition()
             appState.selectBackground()
@@ -506,18 +501,6 @@ struct EditorView: View {
                     .disabled(!appState.canRedo)
                     .accessibilityLabel("重做")
 
-                    if hasSelectedItems {
-                        Button {
-                            showDeleteSelectionConfirmation = true
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(LF.destructive)
-                                .frame(width: 34, height: 34)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("删除当前选中素材")
-                    }
                 }
 
                 Spacer()
@@ -564,10 +547,6 @@ struct EditorView: View {
         }
 
         appState.play()
-    }
-
-    private var hasSelectedItems: Bool {
-        !appState.selectedElementIDs.isEmpty || appState.selectedAudioID != nil
     }
 
     private var deleteSelectionConfirmationTitle: String {
@@ -666,38 +645,39 @@ struct EditorView: View {
         }
 
         let elementIDs: [UUID]
-        if let selected = appState.primarySelectedElement,
-           case .background = selected.kind {
-            elementIDs = collageElementIDs(for: selected, in: composition)
+        if let selected = appState.primarySelectedElement {
+            if case .collage(let groupID) = selected.kind {
+                elementIDs = composition.elements.compactMap { candidate in
+                    guard candidate.collageGroupID == groupID,
+                          case .background = candidate.kind else { return nil }
+                    return candidate.id
+                }
+            } else if case .background = selected.kind,
+                      let groupID = selected.collageGroupID {
+                // 只有已经属于拼接组的照片才会在这里重新打开；普通照片保持独立。
+                elementIDs = collageElementIDs(for: selected, groupID: groupID, in: composition)
+            } else {
+                // 从普通照片或其它素材打开拼接页时，先创建空的拼接会话。
+                elementIDs = []
+            }
         } else {
-            // 拼接编辑器完成后保留当前素材选中状态；如果用户之后点了其它地方，
-            // 仍优先恢复工程中已有的第一个拼接组，而不是重新打开空白画布。
-            elementIDs = firstExistingCollageElementIDs(in: composition)
+            // 没有选中拼接图层时，拼接工具始终创建一个新的独立图层。
+            elementIDs = []
         }
         collageEditorRequest = CollageEditorRequest(elementIDs: elementIDs)
     }
 
     private func collageElementIDs(
         for element: CompositionElement,
+        groupID: UUID,
         in composition: Composition
     ) -> [UUID] {
         guard case .background = element.kind else { return [] }
-        if let groupID = element.collageGroupID {
-            return composition.elements.compactMap { candidate in
-                guard candidate.collageGroupID == groupID,
-                      case .background = candidate.kind else { return nil }
-                return candidate.id
-            }
+        return composition.elements.compactMap { candidate in
+            guard candidate.collageGroupID == groupID,
+                  case .background = candidate.kind else { return nil }
+            return candidate.id
         }
-        return [element.id]
-    }
-
-    private func firstExistingCollageElementIDs(in composition: Composition) -> [UUID] {
-        guard let first = composition.elements.first(where: {
-            if case .background = $0.kind { return true }
-            return false
-        }) else { return [] }
-        return collageElementIDs(for: first, in: composition)
     }
 
     /// 打开当前选中元素的单素材检查器。
@@ -706,6 +686,11 @@ struct EditorView: View {
     /// 分割线的整体布局仍通过底部“拼接”工具进入 CollageEditorView。
     private func requestInspectorForSelection() {
         appState.pause()
+        if let selected = appState.primarySelectedElement,
+           case .collage = selected.kind {
+            openCollageEditor()
+            return
+        }
         showInspectorSheet = true
     }
 
@@ -1197,6 +1182,50 @@ private struct WorkNameEditorSheet: View {
     }
 }
 
+/// Blocks editor interaction while Vision analyzes the selected person clip.
+/// The progress card is intentionally modal and high contrast so the operation
+/// remains visible after the sticker sheet has been dismissed.
+private struct FaceStickerLoadingAlert: View {
+    let message: String?
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.24)
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(LF.actionPrimary)
+
+                Text("正在添加 AI 贴纸")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+
+                Text(message ?? "正在逐帧识别人脸…")
+                    .font(.subheadline)
+                    .foregroundStyle(LF.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: 248)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 24)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(LF.brandTint.opacity(0.28), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.18), radius: 20, y: 8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("正在添加 AI 贴纸")
+        .accessibilityValue(message ?? "正在逐帧识别人脸")
+    }
+}
+
 /// 工具面板的顶部说明：让用户先知道当前面板解决什么问题，再开始操作控件。
 private struct EditorPanelHeader: View {
     let icon: String
@@ -1239,11 +1268,18 @@ private struct StickerPickerCell: View {
         VStack(spacing: 4) {
             StickerPreview(decorationID: sticker.id, frameDuration: sticker.frameDuration)
                 .frame(width: 58, height: 58)
+            if sticker.category == .aiSticker {
+                Text(sticker.renderingMode.previewTitle)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(LF.actionPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
             Text(sticker.localizedName)
                 .font(.caption2)
                 .lineLimit(1)
         }
-        .frame(width: 84, height: 88)
+        .frame(width: 84, height: sticker.category == .aiSticker ? 100 : 88)
         .background(isPressing ? LF.selectionFill : LF.surface2, in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
@@ -1406,6 +1442,141 @@ private struct StickerPreview: View {
     }
 }
 
+/// AI 贴纸的角度预览：拖动或使用滑杆查看当前贴纸的完整角度范围。
+private struct StickerAnglePreview: View {
+    let sticker: StickerDefinition
+
+    @State private var yaw: CGFloat = 0
+    @State private var pitch: CGFloat = 0
+    @State private var dragStartYaw: CGFloat?
+    @State private var dragStartPitch: CGFloat?
+    @State private var renderedImage: CGImage?
+
+    private var maxYaw: CGFloat {
+        sticker.renderingMode == .rendered3DModel ? .pi : 1.30
+    }
+
+    private var maxPitch: CGFloat {
+        0.45
+    }
+
+    private var supportsPitchPreview: Bool {
+        (sticker.faceViews ?? []).contains { abs($0.pitchAngle) > 0.001 }
+    }
+
+    private var quantizedYaw: CGFloat {
+        (yaw * 24).rounded() / 24
+    }
+
+    private var quantizedPitch: CGFloat {
+        (pitch * 24).rounded() / 24
+    }
+
+    private var angleDegrees: Int {
+        Int((yaw * 180 / .pi).rounded())
+    }
+
+    private var pitchDegrees: Int {
+        Int((pitch * 180 / .pi).rounded())
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Group {
+                if let renderedImage {
+                    Image(decorative: renderedImage, scale: 1)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    ProgressView()
+                        .tint(LF.actionPrimary)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { value in
+                        if dragStartYaw == nil {
+                            dragStartYaw = yaw
+                        }
+                        if supportsPitchPreview, dragStartPitch == nil {
+                            dragStartPitch = pitch
+                        }
+                        let start = dragStartYaw ?? yaw
+                        let pitchStart = dragStartPitch ?? pitch
+                        yaw = min(max(start - value.translation.width / 160, -maxYaw), maxYaw)
+                        if supportsPitchPreview {
+                            pitch = min(max(pitchStart - value.translation.height / 160, -maxPitch), maxPitch)
+                        }
+                    }
+                    .onEnded { _ in
+                        dragStartYaw = nil
+                        dragStartPitch = nil
+                    }
+            )
+
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.left.and.right")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+                Slider(
+                    value: Binding(
+                        get: { yaw },
+                        set: { yaw = min(max($0, -maxYaw), maxYaw) }
+                    ),
+                    in: -maxYaw...maxYaw
+                )
+                Text("\(angleDegrees)°")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(LF.textSecondary)
+                    .frame(width: 48, alignment: .trailing)
+            }
+            .padding(.horizontal, 8)
+
+            if supportsPitchPreview {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.up.and.down")
+                        .font(.caption2)
+                        .foregroundStyle(LF.textSecondary)
+                    Slider(
+                        value: Binding(
+                            get: { pitch },
+                            set: { pitch = min(max($0, -maxPitch), maxPitch) }
+                        ),
+                        in: -maxPitch...maxPitch
+                    )
+                    Text("\(pitchDegrees)°")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(LF.textSecondary)
+                        .frame(width: 48, alignment: .trailing)
+                }
+                .padding(.horizontal, 8)
+            }
+        }
+        .task(id: "\(sticker.id)-\(Int((quantizedYaw * 24).rounded()))-\(Int((quantizedPitch * 24).rounded()))") {
+            let id = sticker.id
+            let previewYaw = quantizedYaw
+            let previewPitch = quantizedPitch
+            let image = await Task.detached(priority: .userInitiated) {
+                DecorationRenderer().previewImage(
+                    for: id,
+                    yaw: previewYaw,
+                    pitch: previewPitch,
+                    maxPixelSize: 768
+                )
+            }.value
+            guard !Task.isCancelled else { return }
+            renderedImage = image
+        }
+        .onDisappear {
+            renderedImage = nil
+            dragStartYaw = nil
+            dragStartPitch = nil
+        }
+    }
+}
+
 /// 长按贴纸预览弹窗：动图默认自动播放并支持暂停；单帧贴纸提供直接添加。
 private struct StickerPreviewSheet: View {
     let sticker: StickerDefinition
@@ -1420,12 +1591,17 @@ private struct StickerPreviewSheet: View {
             VStack(spacing: 18) {
                 ZStack {
                     CheckerboardView()
-                    StickerPreview(
-                        decorationID: sticker.id,
-                        frameDuration: sticker.frameDuration,
-                        isPlaying: isPlaying
-                    )
+                    if sticker.category == .aiSticker {
+                        StickerAnglePreview(sticker: sticker)
+                            .padding(28)
+                    } else {
+                        StickerPreview(
+                            decorationID: sticker.id,
+                            frameDuration: sticker.frameDuration,
+                            isPlaying: isPlaying
+                        )
                         .padding(28)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
@@ -1443,6 +1619,11 @@ private struct StickerPreviewSheet: View {
                         .foregroundStyle(LF.textSecondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
+                    if sticker.category == .aiSticker {
+                        Text(sticker.renderingMode.previewTitle)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(LF.actionPrimary)
+                    }
                     Text(String.localizedStringWithFormat(
                         NSLocalizedString("长按预览 · %1$lld 帧 · 约 %2$.1f 秒", comment: "Sticker preview duration"),
                         Int64(sticker.frameCount), sticker.defaultDuration

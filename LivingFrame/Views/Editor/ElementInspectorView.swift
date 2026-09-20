@@ -92,61 +92,20 @@ struct ElementInspectorView: View {
 
     private func elementInspector(_ element: CompositionElement) -> some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: elementInspectorIcon(for: element))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LF.selectionText)
-                    .frame(width: 36, height: 36)
-                    .background(LF.surface2.opacity(0.72), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .strokeBorder(LF.brandTint.opacity(0.14), lineWidth: 1)
-                    }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(inspectorElementName(for: element))
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(LF.textPrimary)
-                        .lineLimit(1)
-                    Text("当前元素")
-                        .font(.caption2)
-                        .foregroundStyle(LF.textSecondary)
-                }
-
-                Spacer()
-                HStack(spacing: 4) {
-                    inspectorActionButton(
-                        systemName: "square.3.layers.3d.down.right",
-                        accessibilityLabel: "下移图层"
-                    ) {
-                        appState.moveElementZ(element.id, up: false)
-                    }
-                    inspectorActionButton(
-                        systemName: "square.3.layers.3d.up.right",
-                        accessibilityLabel: "上移图层"
-                    ) {
-                        appState.moveElementZ(element.id, up: true)
-                    }
-                    Button(role: .destructive) { appState.deleteElement(element.id) } label: {
-                        Image(systemName: "trash")
-                            .frame(width: 34, height: 34)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(LF.destructive)
-                }
-            }
-            .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(LF.brandTint.opacity(0.14), lineWidth: 1)
-            }
-
             if let source = appState.playbackSource(for: element) {
                 ElementPlaybackControls(element: element, source: source)
             }
 
-            if case .canvasEdge = element.kind {
+            if case .collage = element.kind {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("拼接图层")
+                        .font(.subheadline.weight(.semibold))
+                    Text("拼接内容在拼接页面中编辑；当前图层在画布中作为一个独立素材。")
+                        .font(.caption)
+                        .foregroundStyle(LF.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else if case .canvasEdge = element.kind {
                 canvasEdgeElementInspector
             } else if case .background = element.kind {
                 backgroundElementInspector(element)
@@ -165,58 +124,6 @@ struct ElementInspectorView: View {
                     filterPicker(element)
                 }
             }
-        }
-    }
-
-    private func inspectorActionButton(
-        systemName: String,
-        accessibilityLabel: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.caption.weight(.semibold))
-                .frame(width: 34, height: 34)
-                .background(LF.surface2.opacity(0.68), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(LF.brandTint.opacity(0.12), lineWidth: 1)
-                }
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(LF.textSecondary)
-        .accessibilityLabel(accessibilityLabel)
-    }
-
-    private func inspectorElementName(for element: CompositionElement) -> String {
-        if case .decoration(let decorationID) = element.kind,
-           let sticker = DecorationRenderer.stickerDefinition(for: decorationID) {
-            return sticker.localizedName
-        }
-
-        guard case .background = element.kind,
-              element.collageGroupID == nil else {
-            return element.name
-        }
-
-        // 兼容早期普通入口误用“拼接素材”默认名称的工程；不改写工程数据，
-        // 仅在检查器展示时按当前独立相册元素的语义显示。
-        let legacyCollageName = NSLocalizedString("拼接素材", comment: "Collage element")
-        if element.name == "拼接素材" || element.name == legacyCollageName {
-            return NSLocalizedString("照片", comment: "Standalone album element")
-        }
-        return element.name
-    }
-
-    private func elementInspectorIcon(for element: CompositionElement) -> String {
-        switch element.kind {
-        case .clip: return "film"
-        case .background: return "photo.on.rectangle"
-        case .decoration: return "face.smiling"
-        case .effect: return "sparkles"
-        case .text: return EditorTool.textIcon
-        case .canvasEdge: return "square"
-        @unknown default: return "square"
         }
     }
 

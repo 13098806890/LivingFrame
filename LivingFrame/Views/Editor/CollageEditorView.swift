@@ -7,11 +7,14 @@ struct CollageEditorView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
-    /// 已存在于工程中的背景元素。取消时只回滚本次会话新加入的元素。
+    /// 已存在于工程中的拼接素材。取消时恢复进入编辑器前的完整工程快照。
     let existingElementIDs: [UUID]
 
     @State private var elementIDs: [UUID] = []
-    @State private var temporaryElementIDs: [UUID] = []
+    @State private var collageGroupID: UUID?
+    @State private var collageContainerID: UUID?
+    @State private var sessionSnapshot: Composition?
+    @State private var isNewCollageSession = false
     @State private var activeElementID: UUID?
     @State private var focusedPartition: Int?
     /// 没有图片时也要能先编辑分割线；图片加入后再把这份布局应用到整组元素。
@@ -44,6 +47,17 @@ struct CollageEditorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") {
+                        if elementIDs.isEmpty {
+                            if isNewCollageSession, let sessionSnapshot {
+                                appState.restoreCollageSession(sessionSnapshot)
+                            } else if let collageContainerID {
+                                // 现有拼接被删空时不保留一个没有内容的外层图层。
+                                appState.deleteElement(collageContainerID)
+                            }
+                        } else if let collageContainerID {
+                            // 拼接页完成后，外部编辑器只选中这个独立图层。
+                            appState.selectElement(collageContainerID)
+                        }
                         didFinish = true
                         dismiss()
                     }
@@ -68,7 +82,11 @@ struct CollageEditorView: View {
         .onDisappear {
             appState.pause()
             if !didFinish, !showAssetPicker {
-                appState.removeTemporaryCollageElements(temporaryElementIDs)
+                if let sessionSnapshot {
+                    appState.restoreCollageSession(sessionSnapshot)
+                } else {
+                    appState.clearElementSelection()
+                }
             }
         }
     }
@@ -149,21 +167,27 @@ struct CollageEditorView: View {
     }
 
     private var collagePreviewItems: [BackgroundEditingPreviewItem] {
-        collageElements.compactMap { element in
+        let highestZIndex = collageElements.map(\.zIndex).max() ?? 0
+        return collageElements.compactMap { element -> BackgroundEditingPreviewItem? in
             guard case .background(let mediaID) = element.kind else { return nil }
             let media = appState.backgroundMedia.first(where: { $0.id == mediaID })
                 ?? BackgroundStore.shared.media(named: mediaID)
             let frameTime = previewFrameTime(for: element, media: media)
             guard
-                  let frame = BackgroundStore.shared.loadFrame(
+                  let frame = BackgroundStore.shared.loadPreviewFrame(
                       named: mediaID,
-                      at: frameTime
+                      at: frameTime,
+                      maxPixelSize: 720
                   ) else { return nil }
             return BackgroundEditingPreviewItem(
                 id: element.id,
                 frame: frame,
                 settings: element.backgroundSettings ?? BackgroundElementSettings(),
-                zIndex: element.zIndex
+                // 只在拼接画布正在操作时临时抬高当前素材；完成手势后
+                // isCanvasEditing 变回 false，显示顺序自动恢复为工程中的 zIndex。
+                zIndex: appState.isCanvasEditing && element.id == activeElementID
+                    ? highestZIndex + 1
+                    : element.zIndex
             )
         }
     }
@@ -343,7 +367,13 @@ struct CollageEditorView: View {
             Slider(value: Binding(
                 get: { Double(settings.cropScale) },
                 set: { appState.setBackgroundCropScale(elementID, CGFloat($0)) }
-            ), in: Double(BackgroundElementSettings.minimumCropScale)...Double(BackgroundElementSettings.maximumCropScale), step: 0.05)
+            ), in: Double(BackgroundElementSettings.minimumCropScale)...Double(BackgroundElementSettings.maximumCropScale), step: 0.05) { isEditing in
+                if isEditing {
+                    appState.beginCanvasEdit()
+                } else {
+                    appState.finishCanvasEdit()
+                }
+            }
             .tint(LF.actionPrimary)
             .accessibilityIdentifier("collage-crop-scale")
 
@@ -408,16 +438,37 @@ struct CollageEditorView: View {
     }
 
     private func startSessionIfNeeded() {
-        guard elementIDs.isEmpty else { return }
-        let ids = existingElementIDs
+        guard elementIDs.isEmpty, collageGroupID == nil else { return }
+        sessionSnapshot = appState.composition
+        let ids = existingElementIDs.filter { id in
+            guard let element = appState.composition?.elements.first(where: { $0.id == id }) else {
+                return false
+            }
+            if case .background = element.kind { return true }
+            return false
+        }
         elementIDs = ids
         if !ids.isEmpty {
-            _ = appState.ensureCollageGroup(ids)
+            isNewCollageSession = false
+            let groupID = ids.compactMap { id in
+                appState.composition?.elements.first(where: { $0.id == id })?.collageGroupID
+            }.first ?? appState.ensureCollageGroup(ids)
+            collageGroupID = groupID
+            if let groupID,
+               let containerID = appState.ensureCollageContainer(for: groupID) {
+                collageContainerID = containerID
+            }
             appState.normalizeCollageLayout(ids)
             appState.normalizeCollageBackgroundTiming(ids)
             layoutSettings = collageElements.first?.backgroundSettings ?? BackgroundElementSettings()
             isDividerLayoutLocked = layoutSettings.isDividerLayoutLocked
         } else {
+            isNewCollageSession = true
+            let groupID = UUID()
+            collageGroupID = groupID
+            if let containerID = appState.ensureCollageContainer(for: groupID) {
+                collageContainerID = containerID
+            }
             isDividerLayoutLocked = layoutSettings.isDividerLayoutLocked
         }
         activeElementID = ids.first
@@ -431,16 +482,20 @@ struct CollageEditorView: View {
     private func appendMedia(_ mediaIDs: [String]) {
         let layout = activeElement?.backgroundSettings ?? collageLayoutSettings
         guard !mediaIDs.isEmpty else { return }
-        let groupID = collageElements.compactMap(\.collageGroupID).first ?? UUID()
+        let groupID = collageGroupID ?? collageElements.compactMap(\.collageGroupID).first ?? UUID()
+        if collageGroupID == nil {
+            collageGroupID = groupID
+            collageContainerID = appState.ensureCollageContainer(for: groupID)
+        }
         let addedIDs = appState.addBackgroundElementsToCollage(
             mediaIDs: mediaIDs,
             groupID: groupID
         )
         guard !addedIDs.isEmpty else { return }
         appState.applyCollageLayout(layout, to: addedIDs)
+        appState.assignCollageElementsToAvailablePartitions(addedIDs)
         isDividerLayoutLocked = layout.isDividerLayoutLocked
         elementIDs.append(contentsOf: addedIDs)
-        temporaryElementIDs.append(contentsOf: addedIDs)
         activeElementID = addedIDs.first
         appState.normalizeCollageBackgroundTiming(elementIDs)
         if let activeElementID {
@@ -454,7 +509,11 @@ struct CollageEditorView: View {
             let isAssigned = activeElement.backgroundSettings?.resolvedAssignedPartitions.contains(partition) == true
             HStack(spacing: 8) {
                 if case .background(let mediaID) = activeElement.kind,
-                   let frame = BackgroundStore.shared.loadFrame(named: mediaID, at: 0) {
+                   let frame = BackgroundStore.shared.loadPreviewFrame(
+                       named: mediaID,
+                       at: 0,
+                       maxPixelSize: 220
+                   ) {
                     ZStack(alignment: .bottomTrailing) {
                         Image(decorative: frame, scale: 1)
                             .resizable()
@@ -506,7 +565,7 @@ struct CollageEditorView: View {
     }
 
     /// 复用已有媒体创建一个新的独立实例。它仍引用同一个媒体 ID，
-    /// 但拥有独立取景参数，并等待用户选择要覆盖的区域。
+    /// 但拥有独立取景参数，并自动放入当前可用分区。
     private func duplicateMediaAsIndependentInstance(mediaID: String) {
         let layout = collageLayoutSettings
 
@@ -517,9 +576,9 @@ struct CollageEditorView: View {
         )
         guard let addedID = addedIDs.first else { return }
         appState.applyCollageLayout(layout, to: addedIDs)
+        appState.assignCollageElementsToAvailablePartitions(addedIDs)
         appState.normalizeCollageBackgroundTiming(elementIDs + addedIDs)
         elementIDs.append(addedID)
-        temporaryElementIDs.append(addedID)
         activeElementID = addedID
         appState.selectElement(addedID)
     }
@@ -528,7 +587,6 @@ struct CollageEditorView: View {
         guard elementIDs.contains(elementID) else { return }
         appState.deleteElement(elementID)
         elementIDs.removeAll { $0 == elementID }
-        temporaryElementIDs.removeAll { $0 == elementID }
 
         guard activeElementID == elementID else { return }
         activeElementID = elementIDs.first
@@ -617,6 +675,8 @@ struct BackgroundEditingPreviewItem: Identifiable {
 /// 拼接器唯一的编辑画面：所有照片同时显示，分割线由整组拼接共享，
 /// 当前选中的照片只改变自己的取景参数。
 struct BackgroundEditingPreview: View {
+    @EnvironmentObject private var appState: AppState
+
     let items: [BackgroundEditingPreviewItem]
     let layoutSettings: BackgroundElementSettings
     let activeElementSettings: BackgroundElementSettings?
@@ -644,6 +704,7 @@ struct BackgroundEditingPreview: View {
     @State private var imageDragStartOffset: CGPoint?
     @State private var imageScaleStart: CGFloat?
     @State private var didMoveCanvasDuringDrag = false
+    @State private var activeEditingGestures: Set<String> = []
 
     private var sharedSettings: BackgroundElementSettings {
         items.first?.settings ?? layoutSettings
@@ -688,14 +749,27 @@ struct BackgroundEditingPreview: View {
                             .zIndex(Double(item.zIndex - minimumZIndex))
                     }
 
+                    // 选中框必须直接复用当前素材的分区设置。不能只描绘 focusedPartition，
+                    // 否则一个素材覆盖多个区域时，选中边缘会和实际遮罩不一致。
+                    if let activeItem {
+                        BackgroundPartitionShape(settings: activeItem.settings)
+                            .stroke(
+                                LF.selectionStroke.opacity(0.9),
+                                style: StrokeStyle(
+                                    lineWidth: 2,
+                                    lineCap: .round,
+                                    lineJoin: .round,
+                                    dash: [6, 4]
+                                )
+                            )
+                            .allowsHitTesting(false)
+                            .zIndex(950)
+                    }
+
                     if let focusedPartition {
                         let settings = focusedPartitionSettings(for: focusedPartition)
                         BackgroundPartitionShape(settings: settings)
                             .fill(LF.selectionFill.opacity(0.14))
-                            .overlay {
-                                BackgroundPartitionShape(settings: settings)
-                                    .stroke(LF.selectionStroke.opacity(0.72), lineWidth: 1.5)
-                            }
                             .allowsHitTesting(false)
                             .zIndex(900)
                     }
@@ -775,6 +849,30 @@ struct BackgroundEditingPreview: View {
             .aspectRatio(canvasAspect, contentMode: .fit)
             .frame(maxWidth: .infinity)
         }
+        .onDisappear {
+            finishAllEditingGestures()
+        }
+    }
+
+    private func beginEditingGesture(_ key: String) {
+        guard !activeEditingGestures.contains(key) else { return }
+        if activeEditingGestures.isEmpty {
+            appState.beginCanvasEdit()
+        }
+        activeEditingGestures.insert(key)
+    }
+
+    private func finishEditingGesture(_ key: String) {
+        guard activeEditingGestures.remove(key) != nil else { return }
+        if activeEditingGestures.isEmpty {
+            appState.finishCanvasEdit()
+        }
+    }
+
+    private func finishAllEditingGestures() {
+        guard !activeEditingGestures.isEmpty else { return }
+        activeEditingGestures.removeAll()
+        appState.finishCanvasEdit()
     }
 
     private var dividerCount: Int {
@@ -782,7 +880,9 @@ struct BackgroundEditingPreview: View {
     }
 
     private var collageCanvasAccessibilityValue: String {
-        guard !sharedSettings.dividerLines.isEmpty else { return "无分割线" }
+        guard !sharedSettings.dividerLines.isEmpty else {
+            return NSLocalizedString("无分割线", comment: "No collage divider accessibility value")
+        }
         return sharedSettings.dividerLines.indices.map { index in
             let angle = BackgroundPartitionGeometry.angle(for: index, settings: sharedSettings)
             let offset = BackgroundDividerGeometry.offset(for: index, settings: sharedSettings)
@@ -809,7 +909,7 @@ struct BackgroundEditingPreview: View {
     }
 
     private func focusedPartitionSettings(for partition: Int) -> BackgroundElementSettings {
-        var settings = sharedSettings
+        var settings = activeItem?.settings ?? sharedSettings
         settings.selectedPartition = partition
         settings.assignedPartitions = [partition]
         return settings
@@ -837,13 +937,21 @@ struct BackgroundEditingPreview: View {
             }
     }
 
-    /// 点击只命中触点下方实际显示的素材；多个素材重叠时由 zIndex 决定前后。
+    /// 点击只命中触点下方实际显示的素材；多个素材重叠时从当前素材继续
+    /// 循环图层，避免同一区域永远只能选中最上面的一张。
     private func elementToSelect(
         at point: CGPoint,
         in partition: Int,
         canvasRect: CGRect
     ) -> BackgroundEditingPreviewItem? {
         let candidates = elements(in: partition, at: point, canvasRect: canvasRect)
+        guard !candidates.isEmpty else { return nil }
+
+        if let activeElementID,
+           let activeIndex = candidates.firstIndex(where: { $0.id == activeElementID }),
+           candidates.count > 1 {
+            return candidates[(activeIndex + 1) % candidates.count]
+        }
         return candidates.first
     }
 
@@ -916,6 +1024,7 @@ struct BackgroundEditingPreview: View {
                 DragGesture(minimumDistance: 6)
                     .onChanged { value in
                         guard isEnabled else { return }
+                        beginEditingGesture("pivot-\(index)")
                         activePivotIndex = index
                         let projected = BackgroundPartitionGeometry.projectedPivot(
                             at: value.location,
@@ -935,6 +1044,7 @@ struct BackgroundEditingPreview: View {
                         if activePivotIndex == index {
                             activePivotIndex = nil
                         }
+                        finishEditingGesture("pivot-\(index)")
                     }
             )
     }
@@ -979,6 +1089,7 @@ struct BackgroundEditingPreview: View {
                     mode = .image
                 }
 
+                beginEditingGesture("canvas")
                 if hypot(value.translation.width, value.translation.height) >= 8 {
                     didMoveCanvasDuringDrag = true
                 }
@@ -1035,6 +1146,7 @@ struct BackgroundEditingPreview: View {
                         didMoveCanvasDuringDrag = false
                     }
                 }
+                finishEditingGesture("canvas")
             }
     }
 
@@ -1042,6 +1154,7 @@ struct BackgroundEditingPreview: View {
         MagnificationGesture()
             .onChanged { value in
                 guard let activeItem else { return }
+                beginEditingGesture("magnify")
                 let startScale = imageScaleStart ?? activeItem.settings.cropScale
                 imageScaleStart = startScale
                 onCropScaleChange(min(
@@ -1051,6 +1164,7 @@ struct BackgroundEditingPreview: View {
             }
             .onEnded { _ in
                 imageScaleStart = nil
+                finishEditingGesture("magnify")
             }
     }
 
@@ -1089,6 +1203,8 @@ struct BackgroundEditingPreview: View {
 
 /// 单张素材与拼接编辑器共用的分割线、区域和锁定状态控制面板。
 struct BackgroundDividerControls: View {
+    @EnvironmentObject private var appState: AppState
+
     let settings: BackgroundElementSettings
     let canvasRect: CGRect
     @Binding var isDividerLayoutLocked: Bool
@@ -1176,7 +1292,13 @@ struct BackgroundDividerControls: View {
                             ),
                             in: 0...180,
                             step: 1
-                        )
+                        ) { isEditing in
+                            if isEditing {
+                                appState.beginCanvasEdit()
+                            } else {
+                                appState.finishCanvasEdit()
+                            }
+                        }
                         .tint(LF.actionPrimary)
                         .disabled(!dividerEditingEnabled)
                         .frame(height: 20)
@@ -1271,7 +1393,11 @@ private struct CollageSourceChip: View {
                 VStack(spacing: 5) {
                     ZStack(alignment: .topTrailing) {
                         Group {
-                            if let image = BackgroundStore.shared.loadFrame(named: item.id, at: 0) {
+                            if let image = BackgroundStore.shared.loadPreviewFrame(
+                                named: item.id,
+                                at: 0,
+                                maxPixelSize: 220
+                            ) {
                                 Image(decorative: image, scale: 1)
                                     .resizable()
                                     .scaledToFill()
@@ -1390,7 +1516,11 @@ private struct CollageSourceChip: View {
         .background(isSelected ? LF.selectionFill : LF.surface2.opacity(0.55), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(isSelected ? LF.selectionStroke : LF.header.opacity(0.18), lineWidth: isSelected ? 1.5 : 1)
+                .strokeBorder(
+                    isSelected ? LF.selectionStroke : LF.header.opacity(0.18),
+                    lineWidth: isSelected ? 1.5 : 1
+                )
         }
+        .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 }

@@ -383,6 +383,9 @@ public struct CompositionRenderer {
         in composition: Composition,
         at time: TimeInterval
     ) -> CGSize? {
+        if case .collage = element.kind {
+            return composition.canvasRect.size
+        }
         if element.faceStickerTracking != nil,
            case .decoration(let decorationID) = element.kind,
            let image = decorationRenderer.image(
@@ -394,7 +397,8 @@ public struct CompositionRenderer {
                 sourceEndTime: element.sourceEndTime,
                 playbackOffsetTime: element.sourcePlaybackOffset ?? 0,
                 playbackCount: element.playbackCount,
-                faceYaw: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.yaw
+                faceYaw: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.yaw,
+                facePitch: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.pitch
            ) {
             return image.extent.standardized.size
         }
@@ -461,7 +465,8 @@ public struct CompositionRenderer {
                 sourceEndTime: element.sourceEndTime,
                 playbackOffsetTime: element.sourcePlaybackOffset ?? 0,
                 playbackCount: element.playbackCount,
-                faceYaw: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.yaw
+                faceYaw: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.yaw,
+                facePitch: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.pitch
               ),
               let transform = faceStickerTransform(
                 for: element,
@@ -511,6 +516,18 @@ public struct CompositionRenderer {
         for (renderIndex, item) in orderedElements.enumerated() {
             let element = item.element
             guard element.isVisible(at: time) else { continue }
+
+            // 外层拼接容器负责把整个拼接作为一个图层输出；容器存在时，
+            // 组内素材不能再作为普通画布图层单独合成。
+            if let childGroupID = element.collageGroupID,
+               composition.elements.contains(where: {
+                   if case .collage(let collageID) = $0.kind {
+                       return collageID == childGroupID
+                   }
+                   return false
+               }) {
+                continue
+            }
 
             if case .canvasEdge = element.kind {
                 if let canvasEdge = BackgroundMaskRenderer.canvasEdgeImage(
@@ -698,14 +715,25 @@ public struct CompositionRenderer {
                 named: backgroundID,
                 at: sourceTime
             ) {
-                source = backgroundImage(
-                    frame,
-                    settings: settings,
-                    canvas: canvas
-                )
+                if element.collageGroupID == nil {
+                    source = standaloneBackgroundImage(frame, settings: settings)
+                } else {
+                    source = backgroundImage(
+                        frame,
+                        settings: settings,
+                        canvas: canvas
+                    )
+                }
             } else {
                 source = nil
             }
+        case .collage(let groupID):
+            source = collageGroupImage(
+                groupID: groupID,
+                at: time,
+                canvas: canvas,
+                composition: composition
+            )
         case .clip(let clipID):
             if let clip = FrameCache.shared.clip(id: clipID) {
                 // 素材内时间：从源素材入点起算，再按素材倍速折算播放位置。
@@ -768,7 +796,8 @@ public struct CompositionRenderer {
                 sourceEndTime: element.sourceEndTime,
                 playbackOffsetTime: element.sourcePlaybackOffset ?? 0,
                 playbackCount: element.playbackCount,
-                faceYaw: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.yaw
+                faceYaw: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.yaw,
+                facePitch: trackedFaceStickerKeyframe(for: element, in: composition, at: time)?.pitch
             )
         case .effect(let effectID):
             source = decorationRenderer.image(
@@ -792,9 +821,11 @@ public struct CompositionRenderer {
         guard let raw = source else { return nil }
         // 滤镜（作用于元素内容，保持 extent 不变）
         let ci = applyingElementFilter(element.filter, to: raw)
-        // 背景元素的 transform 由编辑器手势作为“图片在遮罩内的取景”处理，
-        // 不能再对已经生成的遮罩整体做一次元素变换，否则会把遮罩区域一起移动。
-        if case .background = element.kind {
+        // 拼接背景的 transform 由编辑器手势作为“图片在遮罩内的取景”处理，
+        // 不能再对已经生成的遮罩整体做一次元素变换。独立照片则像普通素材一样
+        // 使用 element.transform 参与位置、缩放和旋转。
+        if case .background = element.kind,
+           element.collageGroupID != nil {
             return ci
         }
         let elementTransform: ElementTransform
@@ -826,6 +857,40 @@ public struct CompositionRenderer {
         return ci.transformed(by: transform)
     }
 
+    /// 将同一拼接组的内部素材合成为透明画布，供外层拼接容器作为一个普通元素使用。
+    private func collageGroupImage(
+        groupID: UUID,
+        at time: TimeInterval,
+        canvas: CGRect,
+        composition: Composition
+    ) -> CIImage? {
+        let children = composition.elements
+            .filter { element in
+                guard case .background = element.kind,
+                      let childGroupID = element.collageGroupID else { return false }
+                return childGroupID == groupID && element.isVisible(at: time)
+            }
+            .sorted {
+                if $0.zIndex != $1.zIndex { return $0.zIndex < $1.zIndex }
+                return $0.id.uuidString < $1.id.uuidString
+            }
+        guard !children.isEmpty else { return nil }
+
+        var image = CIImage(
+            color: CIColor(red: 0, green: 0, blue: 0, alpha: 0)
+        ).cropped(to: canvas)
+        for child in children {
+            guard let childImage = placedImage(
+                for: child,
+                at: time,
+                canvas: canvas,
+                composition: composition
+            ) else { continue }
+            image = childImage.composited(over: image)
+        }
+        return image
+    }
+
     private func faceStickerTransform(
         for element: CompositionElement,
         in composition: Composition,
@@ -850,7 +915,11 @@ public struct CompositionRenderer {
         )
 
         func placement(for sample: FaceStickerKeyframe, scaleOverride: CGFloat? = nil) -> ElementTransform? {
-            guard let anchors = DecorationRenderer.faceViewSelection(for: decorationID, yaw: sample.yaw)?
+            guard let anchors = DecorationRenderer.faceViewSelection(
+                for: decorationID,
+                yaw: sample.yaw,
+                pitch: sample.pitch
+            )?
                 .anchors(for: definition.renderingMode)
                 ?? definition.faceAnchors else {
                 return nil
@@ -1002,6 +1071,35 @@ public struct CompositionRenderer {
             translationX: canvas.minX,
             y: canvas.minY
         ))
+    }
+
+    /// 独立相册照片不使用拼接遮罩，保留原始图片矩形交给普通元素变换处理。
+    private func standaloneBackgroundImage(
+        _ cgImage: CGImage,
+        settings: BackgroundElementSettings
+    ) -> CIImage {
+        var image = rotatedBackgroundImage(
+            CIImage(cgImage: cgImage),
+            quarterTurns: settings.rotationQuarterTurns
+        )
+        let extent = image.extent.standardized
+        let cropScale = min(
+            max(
+                settings.cropScale.isFinite ? settings.cropScale : 1,
+                BackgroundElementSettings.minimumCropScale
+            ),
+            BackgroundElementSettings.maximumCropScale
+        )
+        let center = CGPoint(x: extent.midX, y: extent.midY)
+        var cropTransform = CGAffineTransform(translationX: center.x, y: center.y)
+        cropTransform = cropTransform.scaledBy(x: cropScale, y: cropScale)
+        cropTransform = cropTransform.translatedBy(x: -center.x, y: -center.y)
+        image = image.transformed(by: cropTransform)
+        image = image.transformed(by: CGAffineTransform(
+            translationX: settings.cropOffset.x,
+            y: settings.cropOffset.y
+        ))
+        return image
     }
 
     /// Core Image 使用 y-up 坐标，正 90° 会对应界面里的顺时针旋转。

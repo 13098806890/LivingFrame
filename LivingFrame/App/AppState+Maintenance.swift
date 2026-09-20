@@ -50,7 +50,7 @@ extension AppState {
     /// 异步刷新素材占用，避免设置页 body 计算属性反复遍历素材目录。
     func refreshCacheSize() {
         cacheSizeTask?.cancel()
-        cacheSizeText = "计算中…"
+        cacheSizeText = NSLocalizedString("计算中…", comment: "Cache size loading state")
         cacheSizeTask = Task { [weak self] in
             let bytes = await Task.detached(priority: .utility) {
                 FrameCache.shared.totalSizeBytes

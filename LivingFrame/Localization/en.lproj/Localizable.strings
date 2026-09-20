@@ -710,7 +710,7 @@
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "Subscribe to GIFBloom Pro to remove export watermarks.";
 "从长视频中选择最长 10 秒的剪影片段。" = "Choose clips up to 10 seconds from longer videos.";
-"免费版最长 5 秒；GIFBloom Pro 可选 8 秒或 10 秒。" = "Free: up to 5 sec; GIFBloom Pro: 8 or 10 sec.";
+"免费版最长 5 秒；GIFBloom Pro 可选 10 秒。" = "Free: up to 5 sec; GIFBloom Pro: 10 sec.";
 "解锁更长片段" = "Unlock longer clips";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Weekly and yearly plans auto-renew. Cancel at least 24 hours before the period ends. Manage your plan in Apple ID settings.";
 "使用 AI 贴纸，让墨镜跟随人物双眼移动。" = "Use AI stickers to make sunglasses follow a person's eyes.";
@@ -782,3 +782,9 @@
 "AI贴纸 · 3D" = "AI Stickers · 3D";
 "根据人脸角度切换 2D 墨镜视图，并自动贴合双眼。" = "The 2D sunglasses switch views with the face angle and stay aligned with the eyes.";
 "使用 3D 模型渲染的视图，随人脸角度平滑变化。" = "Rendered 3D views change smoothly with the face angle.";
+
+/* Collage layer and asset count */
+"拼接图层" = "Collage layer";
+"拼接内容在拼接页面中编辑；当前图层在画布中作为一个独立素材。" = "Edit collage content in the collage editor; this layer appears as an independent asset on the canvas.";
+"试试其他名称或筛选条件" = "Try another name or filter";
+"%1$lld items" = "%1$lld items";

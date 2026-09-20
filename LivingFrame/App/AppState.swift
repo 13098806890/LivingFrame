@@ -29,7 +29,7 @@ final class AppState: ObservableObject {
     /// 素材文件夹（按创建时间倒序）
     @Published var folders: [LibraryFolder] = []
     /// 设置页展示的素材占用；异步计算，避免每次 SwiftUI 刷新都扫描磁盘。
-    @Published var cacheSizeText = "计算中…"
+    @Published var cacheSizeText = NSLocalizedString("计算中…", comment: "Cache size loading state")
 
     // MARK: - 工程
 
@@ -90,6 +90,8 @@ final class AppState: ObservableObject {
     private var isCoalescingCanvasHistory = false
     /// 供画布区判断是否应跳过高成本合成。时间轴仍然按手指位置逐帧更新。
     @Published private(set) var isTimelineEditing = false
+    /// 画布或拼接预览正在进行高频取景调整时，主编辑画布暂缓重复合成。
+    @Published private(set) var isCanvasEditing = false
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
     /// 素材属性（边缘/风格等）变更版本号，用于触发画布重渲染
@@ -496,7 +498,7 @@ final class AppState: ObservableObject {
             self.isAutosavingDraft = false
             guard !Task.isCancelled else { return }
             if case .failed = result {
-                self.autosaveError = "草稿自动保存失败，请稍后重试。"
+                self.autosaveError = NSLocalizedString("草稿自动保存失败，请稍后重试。", comment: "Draft autosave error")
             } else if case .superseded = result,
                       self.hasPendingDraftAutosave,
                       self.hasUnsavedChanges,
@@ -611,8 +613,16 @@ final class AppState: ObservableObject {
             FrameCache.shared.removeClipInBackground(id: clip.id)
             removeClipReferences(from: clip.id)
             guard var comp = composition else { continue }
+            let removedClipElementIDs = Set(comp.elements.compactMap { element -> UUID? in
+                guard case .clip(let clipID) = element.kind,
+                      clipID == clip.id else { return nil }
+                return element.id
+            })
             comp.elements.removeAll { element in
-                if case .clip(let clipID) = element.kind { return clipID == clip.id }
+                if case .clip(let clipID) = element.kind, clipID == clip.id { return true }
+                if let tracking = element.faceStickerTracking {
+                    return removedClipElementIDs.contains(tracking.targetClipElementID)
+                }
                 return false
             }
             comp.audioClips.removeAll { $0.sourceID == clip.id }
@@ -640,8 +650,16 @@ final class AppState: ObservableObject {
         FrameCache.shared.removeClipInBackground(id: clipID)
         removeClipReferences(from: clipID)
         if var comp = composition {
+            let removedClipElementIDs = Set(comp.elements.compactMap { element -> UUID? in
+                guard case .clip(let referencedID) = element.kind,
+                      referencedID == clipID else { return nil }
+                return element.id
+            })
             comp.elements.removeAll { element in
-                if case .clip(let id) = element.kind { return id == clipID }
+                if case .clip(let id) = element.kind, id == clipID { return true }
+                if let tracking = element.faceStickerTracking {
+                    return removedClipElementIDs.contains(tracking.targetClipElementID)
+                }
                 return false
             }
             comp.audioClips.removeAll { $0.sourceID == clipID }
@@ -921,7 +939,8 @@ final class AppState: ObservableObject {
         func includeBackgrounds(in composition: Composition?) {
             guard let composition else { return }
             for element in composition.elements {
-                if case .background(let id) = element.kind {
+                if case .background(let id) = element.kind,
+                   !id.isEmpty {
                     protectedIDs.insert(id)
                 }
             }
@@ -997,10 +1016,19 @@ final class AppState: ObservableObject {
 
         // 不根据选择数量猜测布局。用户可以先添加分割线，再选择任意数量的图片填入区域。
         let splitCount: BackgroundSplitCount = .full
-        // 拼接中的每个背景都要覆盖同一个工程时长；如果直接使用各自的
+        // 拼接中的每个背景都要覆盖外层拼接图层时长；如果直接使用各自的
         // 动态素材时长，预览播放到较短素材结束后会出现“少一块”的假象。
+        let existingCollageDuration: TimeInterval = {
+            guard let collageGroupID else { return comp.duration }
+            return comp.elements.first(where: { element in
+                if case .collage(let groupID) = element.kind {
+                    return groupID == collageGroupID
+                }
+                return false
+            })?.endTime ?? comp.duration
+        }()
         let collageDuration = max(
-            max(comp.duration, 1),
+            max(existingCollageDuration, 1),
             mediaItems.map { max($0.duration, 0.1) }.max() ?? 0.1
         )
         let minimumZIndex = minimumElementZIndex(in: comp)
@@ -1012,6 +1040,15 @@ final class AppState: ObservableObject {
             )
             let regionRect = backgroundRegionRect(settings.region, in: comp.canvasRect)
             let sourceDuration = max(media.duration, media.isAnimated ? 0.1 : 0.001)
+            let initialScale: CGFloat
+            if collageGroupID == nil, media.width > 0, media.height > 0 {
+                initialScale = min(
+                    0.8 * comp.canvas.width / CGFloat(media.width),
+                    0.8 * comp.canvas.height / CGFloat(media.height)
+                )
+            } else {
+                initialScale = 1
+            }
 
             return CompositionElement(
                 kind: .background(backgroundID: media.id),
@@ -1023,7 +1060,7 @@ final class AppState: ObservableObject {
                     : media.name,
                 transform: ElementTransform(
                     position: CGPoint(x: regionRect.midX, y: regionRect.midY),
-                    scale: 1,
+                    scale: initialScale.isFinite && initialScale > 0 ? initialScale : 0.5,
                     rotation: 0
                 ),
                 zIndex: minimumZIndex - index,
@@ -1037,6 +1074,14 @@ final class AppState: ObservableObject {
         }
 
         comp.elements.append(contentsOf: elements)
+        if let collageGroupID,
+           let childEnd = elements.map(\.endTime).max() {
+            for index in comp.elements.indices {
+                guard case .collage(let groupID) = comp.elements[index].kind,
+                      groupID == collageGroupID else { continue }
+                comp.elements[index].endTime = max(comp.elements[index].endTime, childEnd)
+            }
+        }
         composition = comp
         if let firstElement = elements.first {
             selectElement(firstElement.id)
@@ -1045,7 +1090,7 @@ final class AppState: ObservableObject {
         return elements.map(\.id)
     }
 
-    /// 把旧工程中的单张背景纳入统一的拼接组；已有拼接组则保持原标识。
+    /// 把选中的拼接背景元素纳入统一的拼接组；已有拼接组则保持原标识。
     @discardableResult
     func ensureCollageGroup(_ elementIDs: [UUID]) -> UUID? {
         guard !elementIDs.isEmpty, var comp = composition else { return nil }
@@ -1068,22 +1113,47 @@ final class AppState: ObservableObject {
         return groupID
     }
 
-    /// 取消尚未完成的拼接编辑时移除本次临时添加的元素，不产生额外撤销记录。
-    func removeTemporaryCollageElements(_ elementIDs: [UUID]) {
-        guard !elementIDs.isEmpty, var comp = composition else { return }
-        let ids = Set(elementIDs)
-        comp.elements.removeAll { ids.contains($0.id) }
-        isApplyingHistory = true
+    /// 创建画布上的外层拼接图层。容器是编辑器唯一显示的拼接图层，组内
+    /// background 元素只负责拼接页中的分区、取景和动画内容。
+    @discardableResult
+    func ensureCollageContainer(for groupID: UUID) -> UUID? {
+        guard var comp = composition else { return nil }
+        if let existing = comp.elements.first(where: {
+            if case .collage(let collageID) = $0.kind { return collageID == groupID }
+            return false
+        }) {
+            return existing.id
+        }
+
+        let firstChild = comp.elements.first { element in
+            guard element.collageGroupID == groupID else { return false }
+            if case .background = element.kind { return true }
+            return false
+        }
+        let canvasCenter = CGPoint(x: comp.canvasRect.midX, y: comp.canvasRect.midY)
+        let container = CompositionElement(
+            kind: .collage(collageID: groupID),
+            name: NSLocalizedString("拼接", comment: "Collage container element"),
+            transform: ElementTransform(position: canvasCenter),
+            zIndex: minimumElementZIndex(in: comp) - 1,
+            startTime: 0,
+            endTime: max(max(comp.duration, firstChild?.endTime ?? 0.1), 0.1),
+            backgroundSettings: firstChild?.backgroundSettings
+        )
+        comp.elements.append(container)
         composition = comp
-        recomputeDuration()
+        return container.id
+    }
+
+    /// 放弃拼接编辑会话时恢复进入拼接页前的完整工程状态，不产生撤销记录。
+    func restoreCollageSession(_ snapshot: Composition) {
+        isApplyingHistory = true
+        composition = snapshot
         isApplyingHistory = false
-        selectedElementIDs.subtract(ids)
-        if let lastSelectedElementID, ids.contains(lastSelectedElementID) {
-            self.lastSelectedElementID = nil
-        }
-        if selectedElementIDs.isEmpty {
-            selectedBackground = true
-        }
+        selectedElementIDs.removeAll()
+        lastSelectedElementID = nil
+        selectedAudioID = nil
+        selectedBackground = false
     }
 
     func setBackgroundRegion(_ elementID: UUID, _ region: BackgroundRegion) {
@@ -1280,13 +1350,56 @@ final class AppState: ObservableObject {
                 max(BackgroundPartitionGeometry.regionCount(for: settings, in: comp.canvasRect) - 1, 0)
             )
             settings.selectedPartition = selectedPartition
-            // 新加入的素材不应自动占用区域；由拼接编辑器中的显式操作决定归属。
+            // 先清空区域归属，再由拼接编辑器为新素材分配可用分区。
             settings.assignedPartitions = []
             comp.elements[index].backgroundSettings = settings
             comp.elements[index].transform.position = CGPoint(
                 x: comp.canvasRect.midX,
                 y: comp.canvasRect.midY
             )
+            changed = true
+        }
+        guard changed else { return }
+        composition = comp
+        clipStyleVersion &+= 1
+    }
+
+    /// 新加入的拼接素材自动占用尚未使用的分区，让素材加入后立即可见。
+    /// 没有分割线时保留空分区列表，表示素材覆盖整个拼接画布。
+    func assignCollageElementsToAvailablePartitions(_ elementIDs: [UUID]) {
+        guard !elementIDs.isEmpty, var comp = composition else { return }
+        let ids = Set(elementIDs)
+        guard let templateIndex = comp.elements.firstIndex(where: { ids.contains($0.id) }),
+              case .background = comp.elements[templateIndex].kind else { return }
+        guard let groupID = comp.elements[templateIndex].collageGroupID else { return }
+        let templateSettings = comp.elements[templateIndex].backgroundSettings ?? BackgroundElementSettings()
+        guard !templateSettings.dividerLines.isEmpty else { return }
+
+        let regionCount = BackgroundPartitionGeometry.regionCount(
+            for: templateSettings,
+            in: comp.canvasRect
+        )
+        guard regionCount > 0 else { return }
+
+        var occupied = Set<Int>()
+        for element in comp.elements where !ids.contains(element.id) {
+            guard case .background = element.kind,
+                  element.collageGroupID == groupID else { continue }
+            occupied.formUnion(element.backgroundSettings?.resolvedAssignedPartitions ?? [])
+        }
+
+        var changed = false
+        for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
+            guard case .background = comp.elements[index].kind else { continue }
+            var settings = comp.elements[index].backgroundSettings ?? templateSettings
+            let partition = (0..<regionCount).first { !occupied.contains($0) }
+                ?? min(max(settings.selectedPartition, 0), regionCount - 1)
+            let assigned = [partition]
+            guard settings.resolvedAssignedPartitions != assigned else { continue }
+            settings.assignedPartitions = assigned
+            settings.selectedPartition = partition
+            comp.elements[index].backgroundSettings = settings
+            occupied.insert(partition)
             changed = true
         }
         guard changed else { return }
@@ -1484,14 +1597,19 @@ final class AppState: ObservableObject {
         clipStyleVersion &+= 1
     }
 
-    /// 兼容早期创建的拼接工程：所有背景应覆盖整个工程时长，动态素材在其中循环，
-    /// 否则预览播放到较短素材的尾部时会错误地少掉一个分区。
+    /// 拼接页中的内部背景覆盖拼接组自己的内容时长，动态素材在其中循环，
+    /// 避免预览播放到较短素材尾部时少掉一个分区。
     func normalizeCollageBackgroundTiming(_ elementIDs: [UUID]) {
-        guard !elementIDs.isEmpty,
-              let duration = composition?.duration,
-              duration > 0,
-              var comp = composition else { return }
+        guard !elementIDs.isEmpty, var comp = composition else { return }
         let ids = Set(elementIDs)
+        guard let groupID = comp.elements.first(where: { ids.contains($0.id) })?.collageGroupID else {
+            return
+        }
+        let duration = comp.elements.first(where: { element in
+            guard case .collage(let collageID) = element.kind else { return false }
+            return collageID == groupID
+        })?.endTime ?? comp.duration
+        guard duration > 0 else { return }
         var changed = false
         for index in comp.elements.indices where ids.contains(comp.elements[index].id) {
             guard case .background = comp.elements[index].kind,
@@ -2075,7 +2193,7 @@ final class AppState: ObservableObject {
             guard let definition = DecorationRenderer.stickerDefinition(for: id),
                   definition.frameCount > 1 else { return nil }
             return ElementPlaybackSource(duration: definition.defaultDuration)
-        case .text, .canvasEdge:
+        case .text, .canvasEdge, .collage:
             return nil
         }
     }
@@ -2161,10 +2279,12 @@ final class AppState: ObservableObject {
             redoStack.removeAll()
         }
         isCoalescingCanvasHistory = true
+        isCanvasEditing = true
     }
 
     func finishCanvasEdit() {
         isCoalescingCanvasHistory = false
+        isCanvasEditing = false
         if hasUnsavedChanges {
             scheduleDraftAutosave()
         }
@@ -2184,6 +2304,8 @@ final class AppState: ObservableObject {
         var autoFillBackgroundIndices: [Int] = []
         for e in comp.elements {
             if case .canvasEdge = e.kind { continue }
+            // 拼接组内部的背景只是外层 collage 图层的实现细节，不能单独撑长工程。
+            if isCollageChild(e, in: comp) { continue }
             if e.endTime.isFinite { maxEnd = max(maxEnd, e.endTime) }
         }
         for a in comp.audioClips {
@@ -2201,6 +2323,7 @@ final class AppState: ObservableObject {
             }
             for index in comp.elements.indices {
                 guard case .background = comp.elements[index].kind,
+                      !isCollageChild(comp.elements[index], in: comp),
                       playbackSource(for: comp.elements[index]) == nil,
                       abs(comp.elements[index].endTime - previousDuration) <= 0.001 else { continue }
                 autoFillBackgroundIndices.append(index)
@@ -2214,6 +2337,7 @@ final class AppState: ObservableObject {
             for (index, element) in comp.elements.enumerated()
                 where !autoFillStickerSet.contains(index) &&
                       !autoFillBackgroundSet.contains(index) &&
+                      !isCollageChild(element, in: comp) &&
                       element.endTime.isFinite {
                 maxEnd = max(maxEnd, element.endTime)
             }
@@ -2245,6 +2369,7 @@ final class AppState: ObservableObject {
             }
             for index in comp.elements.indices {
                 guard case .background = comp.elements[index].kind,
+                      !isCollageChild(comp.elements[index], in: comp),
                       playbackSource(for: comp.elements[index]) == nil,
                       comp.elements[index].endTime <= previousDuration + 0.001 else { continue }
                 comp.elements[index].endTime = maxEnd
@@ -2275,12 +2400,22 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func isCollageChild(_ element: CompositionElement, in comp: Composition) -> Bool {
+        guard let groupID = element.collageGroupID,
+              case .background = element.kind else { return false }
+        return comp.elements.contains {
+            if case .collage(let collageID) = $0.kind { return collageID == groupID }
+            return false
+        }
+    }
+
     /// 返回素材元素在时间轴上的最晚结束位置。
     /// 文字和贴纸不是“素材”，不能反过来参与决定自己的自动时长。
     private func longestMaterialTimelineEnd(in comp: Composition) -> TimeInterval? {
         let materialEnds = comp.elements.compactMap { element -> TimeInterval? in
+            if isCollageChild(element, in: comp) { return nil }
             switch element.kind {
-            case .clip, .background:
+            case .clip, .background, .collage:
                 guard element.endTime.isFinite else { return nil }
                 return max(element.startTime, element.endTime)
             case .canvasEdge, .decoration, .effect, .text:
@@ -2317,7 +2452,7 @@ final class AppState: ObservableObject {
                     let count = min(max(Int(ceil(targetEnd / cycleDuration - 0.000001)), 1), 99)
                     comp.elements[index].playbackCount = count
                 }
-            case .canvasEdge, .clip, .background, .effect:
+            case .canvasEdge, .clip, .background, .collage, .effect:
                 continue
             }
         }
@@ -2332,7 +2467,7 @@ final class AppState: ObservableObject {
         switch element.kind {
         case .text, .decoration:
             return true
-        case .canvasEdge, .clip, .background, .effect:
+        case .canvasEdge, .clip, .background, .collage, .effect:
             return false
         }
     }
@@ -2361,18 +2496,41 @@ final class AppState: ObservableObject {
 
     func deleteElement(_ id: UUID) {
         guard var comp = composition else { return }
+        let deletingGroupID = comp.elements.first(where: { $0.id == id }).flatMap { element in
+            if case .collage(let groupID) = element.kind { return groupID }
+            return nil
+        }
         let deletingCanvasEdge = comp.elements.contains { element in
             guard element.id == id else { return false }
             if case .canvasEdge = element.kind { return true }
             return false
         }
-        comp.elements.removeAll { $0.id == id }
+        var removedIDs = Set(comp.elements.compactMap { element -> UUID? in
+            if element.id == id { return element.id }
+            guard let deletingGroupID else { return nil }
+            return element.collageGroupID == deletingGroupID ? element.id : nil
+        })
+        if let deletedElement = comp.elements.first(where: { $0.id == id }),
+           case .clip = deletedElement.kind {
+            removedIDs.formUnion(comp.elements.compactMap { element -> UUID? in
+                guard let tracking = element.faceStickerTracking,
+                      tracking.targetClipElementID == id else { return nil }
+                return element.id
+            })
+        }
+        comp.elements.removeAll { element in
+            if removedIDs.contains(element.id) { return true }
+            guard let deletingGroupID else { return false }
+            return element.collageGroupID == deletingGroupID
+        }
         if deletingCanvasEdge {
             comp.canvasEdgeStyle = .none
         }
         composition = comp
-        selectedElementIDs.remove(id)
-        if lastSelectedElementID == id { lastSelectedElementID = nil }
+        selectedElementIDs.subtract(removedIDs)
+        if let lastSelectedElementID, removedIDs.contains(lastSelectedElementID) {
+            self.lastSelectedElementID = nil
+        }
         recomputeDuration()
     }
 
@@ -2468,7 +2626,19 @@ final class AppState: ObservableObject {
 
     func moveElementZ(_ id: UUID, up: Bool) {
         guard var comp = composition else { return }
-        var ordered = comp.elements.sorted { $0.zIndex < $1.zIndex }
+        let groupedChildIDs = Set(comp.elements.compactMap { element -> UUID? in
+            guard let childGroupID = element.collageGroupID,
+                  comp.elements.contains(where: {
+                      if case .collage(let groupID) = $0.kind {
+                          return groupID == childGroupID
+                      }
+                      return false
+                  }) else { return nil }
+            return element.id
+        })
+        var ordered = comp.elements
+            .filter { !groupedChildIDs.contains($0.id) }
+            .sorted { $0.zIndex < $1.zIndex }
         guard let index = ordered.firstIndex(where: { $0.id == id }) else { return }
         let neighbor = up ? index + 1 : index - 1
         guard ordered.indices.contains(neighbor) else { return }
@@ -2484,13 +2654,30 @@ final class AppState: ObservableObject {
     /// 时间轴拖拽使用稳定的元素 ID 顺序提交，避免拖动经过多行时逐次交换造成跳动。
     func setElementLayerOrder(topToBottom elementIDs: [UUID]) {
         guard var comp = composition,
-              elementIDs.count == comp.elements.count,
-              Set(elementIDs) == Set(comp.elements.map(\.id)) else { return }
+              !elementIDs.isEmpty else { return }
 
-        let highestZIndex = elementIDs.count - 1
+        let groupedChildIDs = Set(comp.elements.compactMap { element -> UUID? in
+            guard let childGroupID = element.collageGroupID,
+                  comp.elements.contains(where: {
+                      if case .collage(let groupID) = $0.kind {
+                          return groupID == childGroupID
+                      }
+                      return false
+                  }) else { return nil }
+            return element.id
+        })
+        let visibleIDs = comp.elements
+            .filter { !groupedChildIDs.contains($0.id) }
+            .map(\.id)
+        guard elementIDs.count == visibleIDs.count,
+              Set(elementIDs) == Set(visibleIDs) else { return }
+        let zSlots = comp.elements
+            .filter { !groupedChildIDs.contains($0.id) }
+            .map(\.zIndex)
+            .sorted(by: >)
         for (displayIndex, id) in elementIDs.enumerated() {
             guard let elementIndex = comp.elements.firstIndex(where: { $0.id == id }) else { continue }
-            comp.elements[elementIndex].zIndex = highestZIndex - displayIndex
+            comp.elements[elementIndex].zIndex = zSlots[displayIndex]
         }
         composition = comp
     }
@@ -2503,7 +2690,7 @@ final class AppState: ObservableObject {
         comp.texts.append(text)
         let element = CompositionElement(
             kind: .text(textID: text.id.uuidString),
-            name: "文字",
+            name: NSLocalizedString("文字", comment: "Text element name"),
             transform: ElementTransform(
                 position: CGPoint(x: comp.canvas.width / 2, y: comp.canvas.height / 2),
                 scale: 1,
@@ -3403,7 +3590,7 @@ final class AppState: ObservableObject {
             case .saved:
                 return true
             case .failed:
-                autosaveError = "草稿保存失败，请稍后重试。"
+                autosaveError = NSLocalizedString("草稿保存失败，请稍后重试。", comment: "Draft save error")
                 return false
             case .superseded:
                 if Task.isCancelled {
@@ -3436,7 +3623,7 @@ final class AppState: ObservableObject {
         }.value
         guard let posterData else {
             LogStore.log("work.save failed: poster render returned nil")
-            saveError = "无法生成作品封面，请稍后重试。"
+            saveError = NSLocalizedString("无法生成作品封面，请稍后重试。", comment: "Work poster render error")
             return false
         }
         // 工程切换或继续编辑后，不要把已经过期的自动保存快照写入新工程。
@@ -3459,7 +3646,7 @@ final class AppState: ObservableObject {
         )
         let persistence = await saveWorkApplyingDraftPolicy(work)
         guard persistence.0 else {
-            saveError = "作品保存失败，请稍后重试。"
+            saveError = NSLocalizedString("作品保存失败，请稍后重试。", comment: "Work save error")
             return false
         }
         editingWorkID = work.id
@@ -3585,7 +3772,7 @@ final class AppState: ObservableObject {
         clearedWork.draft = nil
         let persistence = await saveWorkApplyingDraftPolicy(clearedWork)
         guard persistence.0 else {
-            saveError = "无法删除草稿，请稍后重试。"
+            saveError = NSLocalizedString("无法删除草稿，请稍后重试。", comment: "Draft deletion error")
             return
         }
         works = persistence.1

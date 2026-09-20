@@ -51,17 +51,24 @@ struct SettingsView: View {
                     SectionCard(title: "剪影") {
                         VStack(spacing: 0) {
                             settingsRow("单个素材最长时长") {
-                                Picker("单个素材最长时长", selection: extractionDurationSelection) {
-                                    Text("3 秒").tag(3.0)
-                                    Text("5 秒").tag(5.0)
-                                    if purchaseManager.hasPro {
-                                        Text("8 秒").tag(8.0)
-                                        Text("10 秒").tag(10.0)
+                                Menu {
+                                    extractionDurationOption(3)
+                                    extractionDurationOption(5)
+                                    if !purchaseManager.hasPro {
+                                        Divider()
                                     }
+                                    extractionDurationOption(10)
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Text(extractionDurationLabel(for: selectedExtractionDuration))
+                                        Image(systemName: "chevron.down")
+                                            .font(.caption2.weight(.semibold))
+                                    }
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(LF.actionPrimary)
                                 }
-                                .labelsHidden()
-                                .pickerStyle(.menu)
-                                .tint(LF.actionPrimary)
+                                .accessibilityLabel("单个素材最长时长")
+                                .accessibilityValue(Text(extractionDurationLabel(for: selectedExtractionDuration)))
                             }
                         }
                         Text("超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。")
@@ -71,7 +78,7 @@ struct SettingsView: View {
 
                         if !purchaseManager.hasPro {
                             HStack(spacing: 10) {
-                                Label("GIFBloom Pro 可解锁更长素材提取时长和 AI 贴纸。", systemImage: "lock.fill")
+                                Text("免费版最长 5 秒；GIFBloom Pro 可选 10 秒。")
                                     .font(.caption)
                                     .foregroundStyle(LF.textSecondary)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -170,13 +177,15 @@ struct SettingsView: View {
                                     .foregroundStyle(LF.textSecondary)
                             }
 
-                            Button {
-                                showProStore = true
-                            } label: {
-                                Text("订阅")
-                                    .frame(maxWidth: .infinity)
+                            if !purchaseManager.hasPro {
+                                Button {
+                                    showProStore = true
+                                } label: {
+                                    Text("订阅")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .lfActionButtonStyle(.primary)
                             }
-                            .lfActionButtonStyle(.primary)
 
                             if purchaseManager.hasActiveSubscription {
                                 Button {
@@ -193,7 +202,13 @@ struct SettingsView: View {
                     SectionCard(title: "关于") {
                         VStack(alignment: .leading, spacing: 0) {
                             VStack(alignment: .leading, spacing: 3) {
-                                if let aboutLogoFirstFrame {
+                                if purchaseManager.hasPro {
+                                    Image("GIFBloomProWordmark")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 144, height: 50, alignment: .leading)
+                                        .accessibilityLabel("GIFBloom Pro")
+                                } else if let aboutLogoFirstFrame {
                                     Image(decorative: aboutLogoFirstFrame, scale: 1)
                                         .resizable()
                                         .scaledToFit()
@@ -274,15 +289,59 @@ struct SettingsView: View {
             .overlay(LF.surface2.opacity(0.8))
     }
 
-    private var extractionDurationSelection: Binding<Double> {
-        Binding(
-            get: {
-                purchaseManager.allowedExtractionDuration(
-                    configuredDuration: appState.maxExtractionDuration
-                )
-            },
-            set: { appState.maxExtractionDuration = $0 }
+    private var selectedExtractionDuration: Double {
+        purchaseManager.allowedExtractionDuration(
+            configuredDuration: appState.maxExtractionDuration
         )
+    }
+
+    private func extractionDurationOption(_ duration: Double) -> some View {
+        let isLocked = duration > PurchaseManager.freeMaximumExtractionDuration && !purchaseManager.hasPro
+        let isSelected = abs(selectedExtractionDuration - duration) < 0.001
+
+        return Button {
+            if isLocked {
+                showProStore = true
+            } else {
+                appState.maxExtractionDuration = duration
+            }
+        } label: {
+            HStack {
+                Text(extractionDurationLabel(for: duration))
+                Spacer()
+                if isLocked {
+                    Label {
+                        Text("\(extractionDurationLabelText(for: duration)) · GIFBloom Pro")
+                    } icon: {
+                        Image(systemName: "lock.fill")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(LF.textSecondary)
+                } else if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(LF.actionPrimary)
+                }
+            }
+        }
+        .accessibilityLabel(isLocked
+            ? Text("\(extractionDurationLabelText(for: duration)), GIFBloom Pro")
+            : Text(extractionDurationLabelText(for: duration)))
+    }
+
+    private func extractionDurationLabel(for duration: Double) -> LocalizedStringKey {
+        switch Int(duration.rounded()) {
+        case 3: "3 秒"
+        case 5: "5 秒"
+        default: "10 秒"
+        }
+    }
+
+    private func extractionDurationLabelText(for duration: Double) -> String {
+        switch Int(duration.rounded()) {
+        case 3: NSLocalizedString("3 秒", comment: "Extraction duration")
+        case 5: NSLocalizedString("5 秒", comment: "Extraction duration")
+        default: NSLocalizedString("10 秒", comment: "Extraction duration")
+        }
     }
 
     private func settingsRow<Control: View>(
