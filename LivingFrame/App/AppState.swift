@@ -24,6 +24,14 @@ final class AppState: ObservableObject {
     @Published var segmentingName = ""
     /// 剪影生成失败原因（nil 表示无错误）
     @Published var segmentationError: String?
+    /// 当前动态/静态素材使用的算法。默认切换到 SAM2；Vision 和原始
+    /// foreground 两条旧入口仍保留，可在素材库的“提取设置”中恢复。
+    @Published var segmentationAlgorithm: SegmentationAlgorithm = .sam2 {
+        didSet {
+            guard !isUIAuditFixtureLaunch else { return }
+            UserDefaults.standard.set(segmentationAlgorithm.rawValue, forKey: settingSegmentationAlgorithmKey)
+        }
+    }
     /// 导出完成后的非错误提示（例如微信收藏模式为满足体积而均匀抽帧）。
     @Published private(set) var exportNotice: String?
     /// 素材文件夹（按创建时间倒序）
@@ -293,6 +301,7 @@ final class AppState: ObservableObject {
     private let settingProcessingFPSKey = "setting.processingFPS"
     private let settingPreserveOriginalMediaQualityKey = "setting.preserveOriginalMediaQuality"
     private let settingMaxExtractionDurationKey = "setting.maxExtractionDuration"
+    private let settingSegmentationAlgorithmKey = "setting.segmentationAlgorithm"
     private let settingAppThemeKey = "setting.appTheme"
     private let canvasPreferenceAspectKey = "canvasPreference.aspect"
     private let canvasPreferenceBackgroundKey = "canvasPreference.background"
@@ -325,6 +334,7 @@ final class AppState: ObservableObject {
         defaults.set(processingFPS, forKey: settingProcessingFPSKey)
         defaults.set(preserveOriginalMediaQuality, forKey: settingPreserveOriginalMediaQualityKey)
         defaults.set(maxExtractionDuration, forKey: settingMaxExtractionDurationKey)
+        defaults.set(segmentationAlgorithm.rawValue, forKey: settingSegmentationAlgorithmKey)
         defaults.set(appTheme.rawValue, forKey: settingAppThemeKey)
         defaults.synchronize()
         CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication)
@@ -430,6 +440,10 @@ final class AppState: ObservableObject {
                 defaults.double(forKey: settingMaxExtractionDurationKey)
             )
         }
+        if let rawAlgorithm = defaults.string(forKey: settingSegmentationAlgorithmKey),
+           let algorithm = SegmentationAlgorithm(rawValue: rawAlgorithm) {
+            segmentationAlgorithm = algorithm
+        }
         if let rawTheme = defaults.string(forKey: settingAppThemeKey),
            let theme = AppTheme(rawValue: rawTheme) {
             appTheme = AppTheme.selectableThemes.contains(theme) ? theme : .appIcon
@@ -528,12 +542,67 @@ final class AppState: ObservableObject {
 
     // MARK: - 素材
 
+    /// 扫描动态素材中的前景主体轨迹，供用户选择需要保留的主体。
+    func analyzeVideoSubjects(
+        url: URL,
+        sourceStartTime: TimeInterval = 0,
+        sourceEndTime: TimeInterval? = nil,
+        stillOrientation: CGImagePropertyOrientation = .up,
+        initialSelectionRegion: [CGPoint]? = nil
+    ) async -> VideoSegmentationAnalysis? {
+        isSegmenting = true
+        segmentationProgress = 0
+        segmentingName = NSLocalizedString("正在分析主体…", comment: "Analyzing video subjects")
+        segmentationError = nil
+        do {
+            let result = try await MediaProcessingService.analyzeVideo(
+                at: url,
+                maxDimension: preserveOriginalMediaQuality ? .greatestFiniteMagnitude : CGFloat(maxDimension),
+                maxFPS: preserveOriginalMediaQuality ? .greatestFiniteMagnitude : processingFPS,
+                startTime: sourceStartTime,
+                maxDuration: sourceEndTime.map { max($0 - sourceStartTime, 0.1) } ?? maxExtractionDuration,
+                stillOrientation: stillOrientation,
+                initialSelectionRegion: initialSelectionRegion
+            ) { [weak self] info in
+                Task { @MainActor in
+                    guard let self, info.fraction >= self.segmentationProgress else { return }
+                    self.segmentationProgress = info.fraction
+                }
+            }
+            // AVAssetReader sometimes returns fewer samples than the duration/FPS
+            // estimate. Always publish the completed state so the card cannot stop
+            // at 80–95% while the analysis task has already returned.
+            segmentationProgress = 1
+            isSegmenting = false
+            return result
+        } catch is CancellationError {
+            isSegmenting = false
+            segmentationProgress = 0
+            return nil
+        } catch SegmentationError.cancelled {
+            isSegmenting = false
+            segmentationProgress = 0
+            return nil
+        } catch {
+            LogStore.log("analyzeVideoSubjects failed: \(error)")
+            isSegmenting = false
+            segmentationProgress = 0
+            segmentationError = error.localizedDescription
+            return nil
+        }
+    }
+
     func startSegmenting(
         url: URL,
         name: String,
+        algorithm: SegmentationAlgorithm? = nil,
         sourceStartTime: TimeInterval = 0,
         sourceEndTime: TimeInterval? = nil,
-        stillOrientation: CGImagePropertyOrientation = .up
+        stillOrientation: CGImagePropertyOrientation = .up,
+        analysis: VideoSegmentationAnalysis? = nil,
+        selectedSubjectIDs: Set<Int>? = nil,
+        selectionRegion: [CGPoint]? = nil,
+        sam2Prompt: SAM2Prompt? = nil
     ) async -> SegmentedClip? {
         isSegmenting = true
         segmentationProgress = 0
@@ -545,15 +614,24 @@ final class AppState: ObservableObject {
             let clip = try await MediaProcessingService.extractVideo(
                 at: url,
                 name: name,
+                algorithm: algorithm ?? segmentationAlgorithm,
                 maxDimension: preserveOriginalMediaQuality ? .greatestFiniteMagnitude : CGFloat(maxDimension),
                 maxFPS: preserveOriginalMediaQuality ? .greatestFiniteMagnitude : processingFPS,
                 startTime: sourceStartTime,
                 maxDuration: sourceEndTime.map { max($0 - sourceStartTime, 0.1) } ?? maxExtractionDuration,
-                stillOrientation: stillOrientation
+                stillOrientation: stillOrientation,
+                analysis: analysis,
+                selectedSubjectIDs: selectedSubjectIDs,
+                selectionRegion: selectionRegion,
+                sam2Prompt: sam2Prompt
             ) { [weak self] info in
-                Task { @MainActor in self?.segmentationProgress = info.fraction }
+                Task { @MainActor in
+                    guard let self, info.fraction >= self.segmentationProgress else { return }
+                    self.segmentationProgress = info.fraction
+                }
             }
             addClip(clip)
+            segmentationProgress = 1
             isSegmenting = false
             return clip
         } catch is CancellationError {
@@ -573,7 +651,13 @@ final class AppState: ObservableObject {
         }
     }
 
-    func startPhotoSegmenting(cgImage: CGImage, name: String) async -> SegmentedClip? {
+    func startPhotoSegmenting(
+        cgImage: CGImage,
+        name: String,
+        algorithm: SegmentationAlgorithm? = nil,
+        selectionRegion: [CGPoint]? = nil,
+        sam2Prompt: SAM2Prompt? = nil
+    ) async -> SegmentedClip? {
         isSegmenting = true
         segmentationProgress = 0
         segmentingName = name
@@ -584,6 +668,9 @@ final class AppState: ObservableObject {
             let clip = try await MediaProcessingService.extractPhoto(
                 from: cgImage,
                 name: name,
+                algorithm: algorithm ?? segmentationAlgorithm,
+                selectionRegion: selectionRegion,
+                sam2Prompt: sam2Prompt,
                 maxDimension: preserveOriginalMediaQuality ? .greatestFiniteMagnitude : CGFloat(maxDimension)
             )
             addClip(clip)

@@ -10,9 +10,9 @@
 - 核心链路：视频/Live Photo → 抠出人物 → 多元素合成 + 音轨 → 导出动图/视频 → Widget 展示
 
 ### 平台与版本
-- 首发：iOS 17+（iPhone / iPad）
-- 架构预留：macOS 14+（已验证底层技术全支持，见 §8.1）
-- 最低系统版本约束来源：`VNGeneratePersonInstanceMaskRequest`（iOS 17 / macOS 14）
+- 首发：iOS 26+（iPhone / iPad）
+- 架构预留：macOS 14+（Vision/原始前景可复用；SAM2 路径要求 macOS 26+）
+- App 最低系统版本约束来源：Apple SAM2 Core ML 转换模型（iOS 26）
 
 ### 硬性约束
 - Core 层不 import `UIKit` / `AppKit` / `SwiftUI`（跨平台 + 可单测）
@@ -76,7 +76,9 @@ LivingFrameMac（未来）──→ LivingFrameCore
 | `Models/SegmentedClip.swift` | 抠图结果（帧序列元信息 + 加载） | — |
 | `Models/WorkItem.swift` | 作品快照（JSON + 封面） | Composition |
 | `Models/MagicTemplate.swift` | 模板与装饰类型定义（含 ExportFormat） | — |
-| `Segmentation/VisionPersonSegmenter.swift` | 单帧实例掩码抠图（VNGeneratePersonInstanceMaskRequest） | — |
+| `Segmentation/SegmentationAlgorithm.swift` | 三条抠图算法的统一枚举入口 | — |
+| `Segmentation/SAM2Segmenter.swift` | SAM2.1 Tiny Core ML 三模型加载、提示点和掩码解码 | Core ML, Core Image |
+| `Segmentation/VisionPersonSegmenter.swift` | Vision 人物/通用前景实例掩码，以及 SAM2 → Vision 的人物实例匹配 | Vision |
 | `Segmentation/VideoSegmentationPipeline.swift` | 逐帧读流→抠图→PNG 缓存→音频提取，进度/取消 | VisionPersonSegmenter, AudioExtractor |
 | `Segmentation/FrameCache.swift` | 磁盘帧缓存注册/清理 | SegmentedClip |
 | `Audio/AudioExtractor.swift` | 视频→m4a 提取（AVAssetReader） | — |
@@ -257,7 +259,9 @@ enum ExportFormat: String, Codable { case gif, hevcAlpha, h264 }
 ### 8.1 双平台可行性（已验证）
 | 能力 | API | iOS | macOS |
 |---|---|---|---|
-| 人物实例抠图 | `VNGeneratePersonInstanceMaskRequest` | 17+ | 14.0+ |
+| 原始前景抠图 | `VNGenerateForegroundInstanceMaskRequest` | 17+ | 14.0+ |
+| Vision 人物实例抠图 | `VNGeneratePersonInstanceMaskRequest` | 17+ | 14.0+ |
+| SAM2 提示式抠图 | Apple `coreml-sam2.1-tiny` 三段 Core ML 模型 | 26+ | 26.0+ |
 | 音视频读写 | AVFoundation 全链路 | 全 | 全 |
 | 实时音频 | AVAudioEngine | 全 | 全 |
 | HEVC-alpha | `AVVideoCodecType.hevcWithAlpha` | 13+ | 10.15+ |

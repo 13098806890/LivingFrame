@@ -6,24 +6,56 @@ import LivingFrameCore
 /// 把素材处理管线与 AppState 的界面状态更新分开。
 /// AppState 只负责展示进度、错误和把结果写入素材库。
 enum MediaProcessingService {
-    static func extractVideo(
+    static func analyzeVideo(
         at url: URL,
-        name: String,
         maxDimension: CGFloat,
         maxFPS: Double,
         startTime: TimeInterval,
         maxDuration: TimeInterval,
         stillOrientation: CGImagePropertyOrientation,
+        initialSelectionRegion: [CGPoint]? = nil,
         progress: @escaping (VideoSegmentationPipeline.ProgressInfo) -> Void
-    ) async throws -> SegmentedClip {
-        try await VideoSegmentationPipeline().segmentVideo(
+    ) async throws -> VideoSegmentationAnalysis {
+        try await VideoSegmentationPipeline().analyzeVideo(
             at: url,
-            name: name,
             maxDimension: maxDimension,
             maxFPS: maxFPS,
             startTime: startTime,
             maxDuration: maxDuration,
             stillOrientation: stillOrientation,
+            initialSelectionRegion: initialSelectionRegion,
+            progress: progress
+        )
+    }
+
+    static func extractVideo(
+        at url: URL,
+        name: String,
+        algorithm: SegmentationAlgorithm = .visionPerson,
+        maxDimension: CGFloat,
+        maxFPS: Double,
+        startTime: TimeInterval,
+        maxDuration: TimeInterval,
+        stillOrientation: CGImagePropertyOrientation,
+        analysis: VideoSegmentationAnalysis? = nil,
+        selectedSubjectIDs: Set<Int>? = nil,
+        selectionRegion: [CGPoint]? = nil,
+        sam2Prompt: SAM2Prompt? = nil,
+        progress: @escaping (VideoSegmentationPipeline.ProgressInfo) -> Void
+    ) async throws -> SegmentedClip {
+        try await VideoSegmentationPipeline().segmentVideo(
+            at: url,
+            name: name,
+            algorithm: algorithm,
+            maxDimension: maxDimension,
+            maxFPS: maxFPS,
+            startTime: startTime,
+            maxDuration: maxDuration,
+            stillOrientation: stillOrientation,
+            analysis: analysis,
+            selectedSubjectIDs: selectedSubjectIDs,
+            selectionRegion: selectionRegion,
+            sam2Prompt: sam2Prompt,
             progress: progress
         )
     }
@@ -31,12 +63,18 @@ enum MediaProcessingService {
     static func extractPhoto(
         from image: CGImage,
         name: String,
+        algorithm: SegmentationAlgorithm = .visionPerson,
+        selectionRegion: [CGPoint]? = nil,
+        sam2Prompt: SAM2Prompt? = nil,
         maxDimension: CGFloat
     ) async throws -> SegmentedClip {
         try await Task.detached(priority: .userInitiated) {
             try VideoSegmentationPipeline().segmentPhoto(
                 from: image,
                 name: name,
+                algorithm: algorithm,
+                selectionRegion: selectionRegion,
+                sam2Prompt: sam2Prompt,
                 maxDimension: maxDimension
             )
         }.value
