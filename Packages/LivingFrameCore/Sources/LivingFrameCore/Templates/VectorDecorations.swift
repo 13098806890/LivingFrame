@@ -1,5 +1,6 @@
 import CoreGraphics
 import CoreImage
+import CoreText
 import Foundation
 import ImageIO
 
@@ -11,17 +12,31 @@ private final class StickerSelectionBoundsBox: NSObject {
     }
 }
 
+private final class StickerFrameBox: NSObject {
+    let frames: [CGImage]
+
+    init(_ frames: [CGImage]) {
+        self.frames = frames
+    }
+}
+
 public enum StickerCategory: String, CaseIterable, Equatable, Sendable {
     case doodle
-    case expression
+    case emoji
     case fruit
     case aiSticker
     case logo
 
+    /// AI face stickers remain readable for existing saved compositions, but
+    /// are not exposed to new users while the feature is hidden.
+    public static let allCases: [StickerCategory] = [
+        .doodle, .emoji, .fruit, .logo
+    ]
+
     public var title: String {
         switch self {
         case .doodle: NSLocalizedString("涂鸦", comment: "Sticker category")
-        case .expression: NSLocalizedString("表情", comment: "Sticker category")
+        case .emoji: NSLocalizedString("emoji", comment: "Sticker category")
         case .fruit: NSLocalizedString("水果", comment: "Sticker category")
         case .aiSticker: NSLocalizedString("AI贴纸", comment: "Sticker category")
         case .logo: NSLocalizedString("logo", comment: "Sticker category")
@@ -79,6 +94,9 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
     /// because image-generation prompts and Vision use different pitch wording.
     public let faceViewPitchSign: CGFloat
     public let renderingMode: StickerRenderingMode
+    /// When present, the sticker is rasterized from the platform's native
+    /// emoji font instead of being loaded from a bundled image resource.
+    public let nativeEmoji: String?
 
     public var localizedName: String {
         let key: String
@@ -98,8 +116,8 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         switch category {
         case .doodle:
             key = "为画面增添趣味的动态涂鸦装饰。"
-        case .expression:
-            key = "用简单表情为画面增添情绪。"
+        case .emoji:
+            key = "使用系统的 Apple Color Emoji 风格表情。"
         case .fruit:
             key = "让水果图案以轻快动画点亮画面。"
         case .aiSticker:
@@ -141,7 +159,8 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         faceViews: [StickerFaceView]? = nil,
         faceViewYawSign: CGFloat = 1,
         faceViewPitchSign: CGFloat = 1,
-        renderingMode: StickerRenderingMode = .standard
+        renderingMode: StickerRenderingMode = .standard,
+        nativeEmoji: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -161,6 +180,7 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         self.faceViewYawSign = faceViewYawSign < 0 ? -1 : 1
         self.faceViewPitchSign = faceViewPitchSign < 0 ? -1 : 1
         self.renderingMode = renderingMode
+        self.nativeEmoji = nativeEmoji
     }
 }
 
@@ -253,8 +273,8 @@ public struct DecorationRenderer {
     private static let lock = NSLock()
     private static let previewCIContext = CIContext()
     /// 动图贴纸帧缓存。NSCache 会在内存紧张时自动回收，避免未来增加贴纸后永久持有所有帧。
-    private static let stickerFrameCache: NSCache<NSString, NSArray> = {
-        let cache = NSCache<NSString, NSArray>()
+    private static let stickerFrameCache: NSCache<NSString, StickerFrameBox> = {
+        let cache = NSCache<NSString, StickerFrameBox>()
         cache.countLimit = 8
         cache.totalCostLimit = 32 * 1024 * 1024
         return cache
@@ -277,6 +297,75 @@ public struct DecorationRenderer {
         faceViewImageCache.removeAllObjects()
         stickerSelectionBoundsCache.removeAllObjects()
         lock.unlock()
+    }
+
+    /// Additional emoji face stickers. Keeping the emoji as Unicode
+    /// data lets the system render the current Apple artwork at runtime.
+    private static let additionalEmojiStickers: [StickerDefinition] = [
+        ("grinning", "咧嘴", "😀"),
+        ("grin", "开心", "😄"),
+        ("smile-big", "大笑", "😃"),
+        ("laughing", "嘻笑", "😆"),
+        ("sweat-smile", "苦笑", "😅"),
+        ("rofl", "笑翻", "🤣"),
+        ("slight-smile", "微微笑", "🙂"),
+        ("upside-down", "反向笑", "🙃"),
+        ("smiling-hearts", "宠溺", "🥰"),
+        ("kiss", "飞吻", "😘"),
+        ("kissing", "亲亲", "😗"),
+        ("kissing-smiling", "亲亲笑", "😙"),
+        ("kissing-closed-eyes", "闭眼亲亲", "😚"),
+        ("yum", "好吃", "😋"),
+        ("tongue", "吐舌", "😛"),
+        ("wink-tongue", "调皮", "😜"),
+        ("crazy", "疯狂", "🤪"),
+        ("raised-eyebrow", "挑眉", "🤨"),
+        ("monocle", "单片眼镜", "🧐"),
+        ("nerd", "书呆子", "🤓"),
+        ("cool", "墨镜", "😎"),
+        ("star-struck", "星星眼", "🤩"),
+        ("partying", "庆祝", "🥳"),
+        ("smirk", "得意", "😏"),
+        ("unamused", "不屑", "😒"),
+        ("disappointed", "失望", "😞"),
+        ("pensive", "忧郁", "😔"),
+        ("worried", "担心", "😟"),
+        ("confused", "困惑", "😕"),
+        ("frown", "不开心", "🙁"),
+        ("sad", "难过", "☹️"),
+        ("persevering", "痛苦", "😣"),
+        ("confounded", "纠结", "😖"),
+        ("tired", "疲惫", "😫"),
+        ("weary", "累坏", "😩"),
+        ("pleading", "撒娇", "🥺"),
+        ("sob", "流泪", "😢"),
+        ("triumph", "鼻孔喷气", "😤"),
+        ("cursing", "爆粗", "🤬"),
+        ("scream", "惊恐", "😱"),
+        ("fearful", "害怕", "😨"),
+        ("anxious", "冷汗", "😰"),
+        ("sad-sweat", "失落", "😥"),
+        ("sweat", "汗颜", "😓"),
+        ("cold", "冻脸", "🥶"),
+        ("hot", "热脸", "🥵"),
+        ("hugging", "拥抱", "🤗"),
+        ("lying", "撒谎", "🤥"),
+        ("hand-over-mouth", "偷笑", "🤭"),
+        ("shushing", "嘘", "🤫"),
+        ("salute", "敬礼", "🫡"),
+        ("grimacing", "尴尬", "😬"),
+        ("neutral", "面无表情", "😐"),
+        ("expressionless", "无语", "😑"),
+        ("no-mouth", "沉默", "😶"),
+        ("dotted-face", "隐身", "🫥"),
+        ("melting", "融化", "🫠")
+    ].map { item in
+        StickerDefinition(
+            id: "sticker-apple-emoji-\(item.0)", name: item.1, category: .emoji,
+            resourceName: "apple-emoji-\(item.0)", resourceExtension: "native",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2,
+            nativeEmoji: item.2
+        )
     }
 
     public static let stickerCatalog: [StickerDefinition] = [
@@ -401,45 +490,54 @@ public struct DecorationRenderer {
             isFrameSequence: false, frameCount: 108
         ),
         StickerDefinition(
-            id: "sticker-emoji-smile", name: "微笑", category: .expression,
-            resourceName: "twemoji-smile", resourceExtension: "png",
-            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+            id: "sticker-apple-emoji-smile", name: "微笑", category: .emoji,
+            resourceName: "apple-emoji-smile", resourceExtension: "native",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2,
+            nativeEmoji: "😊"
         ),
         StickerDefinition(
-            id: "sticker-emoji-laugh", name: "笑哭", category: .expression,
-            resourceName: "twemoji-laugh", resourceExtension: "png",
-            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+            id: "sticker-apple-emoji-laugh", name: "笑哭", category: .emoji,
+            resourceName: "apple-emoji-laugh", resourceExtension: "native",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2,
+            nativeEmoji: "😂"
         ),
         StickerDefinition(
-            id: "sticker-emoji-love", name: "爱心眼", category: .expression,
-            resourceName: "twemoji-love", resourceExtension: "png",
-            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+            id: "sticker-apple-emoji-love", name: "爱心眼", category: .emoji,
+            resourceName: "apple-emoji-love", resourceExtension: "native",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2,
+            nativeEmoji: "😍"
         ),
         StickerDefinition(
-            id: "sticker-emoji-wink", name: "眨眼", category: .expression,
-            resourceName: "twemoji-wink", resourceExtension: "png",
-            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+            id: "sticker-apple-emoji-wink", name: "眨眼", category: .emoji,
+            resourceName: "apple-emoji-wink", resourceExtension: "native",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2,
+            nativeEmoji: "😉"
         ),
         StickerDefinition(
-            id: "sticker-emoji-cry", name: "大哭", category: .expression,
-            resourceName: "twemoji-cry", resourceExtension: "png",
-            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+            id: "sticker-apple-emoji-cry", name: "大哭", category: .emoji,
+            resourceName: "apple-emoji-cry", resourceExtension: "native",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2,
+            nativeEmoji: "😭"
         ),
         StickerDefinition(
-            id: "sticker-emoji-think", name: "思考", category: .expression,
-            resourceName: "twemoji-think", resourceExtension: "png",
-            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+            id: "sticker-apple-emoji-think", name: "思考", category: .emoji,
+            resourceName: "apple-emoji-think", resourceExtension: "native",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2,
+            nativeEmoji: "🤔"
         ),
         StickerDefinition(
-            id: "sticker-emoji-surprise", name: "惊讶", category: .expression,
-            resourceName: "twemoji-surprise", resourceExtension: "png",
-            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
+            id: "sticker-apple-emoji-surprise", name: "惊讶", category: .emoji,
+            resourceName: "apple-emoji-surprise", resourceExtension: "native",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2,
+            nativeEmoji: "😮"
         ),
         StickerDefinition(
-            id: "sticker-emoji-angry", name: "生气", category: .expression,
-            resourceName: "twemoji-angry", resourceExtension: "png",
-            isFrameSequence: false, frameCount: 1, frameDuration: 1.2
-        ),
+            id: "sticker-apple-emoji-angry", name: "生气", category: .emoji,
+            resourceName: "apple-emoji-angry", resourceExtension: "native",
+            isFrameSequence: false, frameCount: 1, frameDuration: 1.2,
+            nativeEmoji: "😡"
+        )
+    ] + additionalEmojiStickers + [
         StickerDefinition(
             id: "sticker-fruit-apple", name: "苹果", category: .fruit,
             resourceName: "fruit-apple", resourceExtension: "gif",
@@ -765,7 +863,11 @@ public struct DecorationRenderer {
         )
     ]
 
-    public static let availableStickerCatalog = stickerCatalog
+    /// The editor catalog excludes hidden AI stickers. Keep their definitions
+    /// in `stickerCatalog` so older saved compositions can still render.
+    public static let availableStickerCatalog = stickerCatalog.filter {
+        $0.category != .aiSticker
+    }
 
     public init() {}
 
@@ -925,6 +1027,9 @@ public struct DecorationRenderer {
         if definition.renderingMode == .rendered3DModel {
             return Procedural3DStickerRenderer.image(for: id, yaw: 0, pixelSize: max(maxPixelSize, 1))
         }
+        if let nativeEmoji = definition.nativeEmoji {
+            return nativeEmojiImage(nativeEmoji, pixelSize: max(maxPixelSize, 64))
+        }
         let index = min(max(Int(max(time, 0) / definition.frameDuration), 0), max(definition.frameCount - 1, 0))
         guard let url = stickerResourceURL(for: definition, frameIndex: index),
               let source = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -1007,16 +1112,24 @@ public struct DecorationRenderer {
         Self.lock.lock()
         if let cached = Self.stickerFrameCache.object(forKey: cacheKey) {
             Self.lock.unlock()
-            return cached.map { $0 as! CGImage }
+            return cached.frames
         }
         Self.lock.unlock()
 
         guard let definition = Self.stickerDefinition(for: decorationID) else { return nil }
         var loaded: [CGImage] = []
-        if definition.renderingMode == .rendered3DModel {
+        if let nativeEmoji = definition.nativeEmoji {
+            guard let image = Self.nativeEmojiImage(nativeEmoji) else {
+                Self.lock.lock()
+                Self.stickerFrameCache.setObject(StickerFrameBox([]), forKey: cacheKey)
+                Self.lock.unlock()
+                return nil
+            }
+            loaded = [image]
+        } else if definition.renderingMode == .rendered3DModel {
             guard let image = Procedural3DStickerRenderer.image(for: decorationID, yaw: 0) else {
                 Self.lock.lock()
-                Self.stickerFrameCache.setObject([] as NSArray, forKey: cacheKey)
+                Self.stickerFrameCache.setObject(StickerFrameBox([]), forKey: cacheKey)
                 Self.lock.unlock()
                 return nil
             }
@@ -1028,7 +1141,7 @@ public struct DecorationRenderer {
                    let source = CGImageSourceCreateWithURL(url as CFURL, nil),
                    let img = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
                     Self.lock.lock()
-                    Self.stickerFrameCache.setObject([] as NSArray, forKey: cacheKey)
+                    Self.stickerFrameCache.setObject(StickerFrameBox([]), forKey: cacheKey)
                     Self.lock.unlock()
                     return nil
                 }
@@ -1038,7 +1151,7 @@ public struct DecorationRenderer {
             guard let url = Self.stickerResourceURL(for: definition),
                   let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
                 Self.lock.lock()
-                Self.stickerFrameCache.setObject([] as NSArray, forKey: cacheKey)
+                Self.stickerFrameCache.setObject(StickerFrameBox([]), forKey: cacheKey)
                 Self.lock.unlock()
                 return nil
             }
@@ -1054,9 +1167,48 @@ public struct DecorationRenderer {
         let cost = loaded.reduce(0) { partial, image in
             partial + image.width * image.height * 4
         }
-        Self.stickerFrameCache.setObject(loaded as NSArray, forKey: cacheKey, cost: cost)
+        Self.stickerFrameCache.setObject(StickerFrameBox(loaded), forKey: cacheKey, cost: cost)
         Self.lock.unlock()
         return loaded
+    }
+
+    /// Rasterize a Unicode emoji with the platform color emoji font. This
+    /// keeps Apple artwork out of the app bundle while preserving the native
+    /// appearance on iOS and macOS.
+    private static func nativeEmojiImage(_ emoji: String, pixelSize: Int = 512) -> CGImage? {
+        guard !emoji.isEmpty else { return nil }
+        let font = CTFontCreateWithName("AppleColorEmoji" as CFString, 420, nil)
+        let attributedString = NSAttributedString(string: emoji, attributes: [
+            .font: font
+        ])
+        let line = CTLineCreateWithAttributedString(attributedString)
+        let bounds = CTLineGetBoundsWithOptions(line, [])
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+
+        let size = max(pixelSize, 64)
+        guard let context = CGContext(
+            data: nil,
+            width: size,
+            height: size,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue
+                | CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        context.clear(CGRect(x: 0, y: 0, width: size, height: size))
+        let availableSize = CGFloat(size) * 0.82
+        let scale = min(availableSize / bounds.width, availableSize / bounds.height)
+        context.saveGState()
+        context.translateBy(
+            x: CGFloat(size) * 0.5 - bounds.midX * scale,
+            y: CGFloat(size) * 0.5 - bounds.midY * scale
+        )
+        context.scaleBy(x: scale, y: scale)
+        CTLineDraw(line, context)
+        context.restoreGState()
+        return context.makeImage()
     }
 
     /// 贴纸资源可能来自 Swift Package 的资源包，也可能来自 App target 的 Watermarks

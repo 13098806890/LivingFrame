@@ -230,7 +230,7 @@ struct SettingsView: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("全部在设备端处理")
                                         .font(.subheadline.weight(.semibold))
-                                    Text("照片、视频、音频和工程均在设备本地处理，不上传到 GIFBloom 服务器。App Store 购买由 Apple 处理。")
+                                    Text("照片、视频和工程均在设备本地处理，不上传到 GIFBloom 服务器。App Store 购买由 Apple 处理。")
                                         .font(.caption)
                                         .foregroundStyle(LF.textSecondary)
                                         .fixedSize(horizontal: false, vertical: true)

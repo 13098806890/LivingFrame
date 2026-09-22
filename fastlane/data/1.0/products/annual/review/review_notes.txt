@@ -1,4 +1,4 @@
-GIFBloom Pro Annual is an auto-renewable subscription that unlocks GIFBloom Pro features: removing the GIFBloom export watermark, extending the maximum media extraction duration from 5 seconds to 10 seconds, and using GIFBloom Pro AI stickers.
+GIFBloom Pro Annual is an auto-renewable subscription that unlocks GIFBloom Pro features: removing the GIFBloom export watermark and extending the maximum media extraction duration from 5 seconds to 10 seconds.
 
 To test the purchase flow:
 1. Open GIFBloom.
@@ -6,4 +6,4 @@ To test the purchase flow:
 3. Select GIFBloom Pro Annual and complete the purchase using the App Store sandbox environment.
 4. After purchase, return to the editor or export flow to verify that the Pro entitlement is active.
 
-No account or sign-in is required. The subscription screen includes localized pricing, the automatic-renewal disclosure, Terms of Use, Privacy Policy, and Restore Purchases. Users can manage or cancel the subscription from Apple ID subscription settings. The attached screenshot shows the in-app subscription screen with the annual and weekly plans and the Pro benefits.
+No account or sign-in is required. The subscription screen includes localized pricing, the automatic-renewal disclosure, Terms of Use, Privacy Policy, and Restore Purchases. Users can manage or cancel the subscription from Apple ID subscription settings. The attached screenshot shows the in-app purchase screen with the annual and weekly plans, the lifetime option, and the Pro benefits.

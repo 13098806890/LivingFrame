@@ -6,7 +6,7 @@
 
 ## 功能
 
-- 🪄 **人物抠图**：SAM2 / Vision 人物实例 / 原始前景三种算法（iOS 26+），视频 / Live Photo → 透明素材
+- 🪄 **人物抠图**：Vision 人物实例 / 原始前景两种算法（iOS 17+），视频 / Live Photo → 透明素材
 - 🎞️ **多元素合成**：多个素材同画布，位置 / 缩放 / 旋转 / 层级 / 出现时段
 - 🎵 **音轨**：自动提取视频音频，时间轴摆放、音量、淡入淡出
 - ✨ **魔法模板**：魔法画框 / 金角海报 / 魔杖辉光 / 纯净黑幕，一键套用
@@ -48,10 +48,6 @@
 
 详细设计见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
-## 第三方素材
-
-贴纸中的 emoji 图稿改制自 [Twemoji](https://github.com/twitter/twemoji)，版权归 Twitter, Inc. 及贡献者所有，按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可使用。资源来源、改动方式和署名信息见 `Packages/LivingFrameCore/Sources/LivingFrameCore/Resources/TWEMOJI_ATTRIBUTION.txt`。
-
 ## 工程结构
 
 ```
@@ -82,7 +78,7 @@ xcodebuild -project LivingFrame.xcodeproj \
   -CODE_SIGNING_ALLOWED=NO build
 ```
 
-要求：Xcode 26+，iOS 26+ 部署目标。
+要求：Xcode 26+，iOS 17+ 部署目标。
 
 ## 真机部署注意
 
@@ -91,7 +87,7 @@ xcodebuild -project LivingFrame.xcodeproj \
 
 ## 技术要点
 
-- 抠图：`SegmentationAlgorithm` 明确选择 `.sam2`、`.visionPerson` 或 `.foreground`；方案三用 SAM2 识别点击主体、Vision 输出完整人物轮廓，非人物目标再回退到 SAM2
+- 抠图：`SegmentationAlgorithm` 保留 `.visionPerson` 和 `.foreground` 两个实现；当前界面仅展示原始前景入口，Vision 人物实例入口暂时隐藏，便于后续恢复。
 - 渲染：`CompositionRenderer` 统一管线，预览与导出共用同一份代码（所见即所得）
 - 缓存：抠图结果落地为逐帧 PNG 序列（Caches），按需加载，支持清理
 - 音轨双路径：预览用 `AVAudioEngine` 实时播放（<200ms 误差），导出用 `AVMutableComposition` 离线精确混音

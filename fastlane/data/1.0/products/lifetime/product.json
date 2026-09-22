@@ -9,9 +9,9 @@
   "app_store_connect_state_as_of_2026_09_17": "MISSING_METADATA",
   "localization_state_as_of_2026_09_17": "PREPARE_FOR_SUBMISSION",
   "review_information": {
-    "app_review_screenshot": null,
-    "review_notes": null,
-    "status": "NEEDS_REVIEW_ASSETS_AND_OWNER_INPUT"
+    "app_review_screenshot": "review/app_review_screenshot.png",
+    "review_notes": "review/review_notes.txt",
+    "status": "READY_TO_SUBMIT"
   },
   "localizations_path": "localizations/<App Store locale>/",
   "pricing_summary_as_of_2026_09_17": {

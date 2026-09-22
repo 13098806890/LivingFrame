@@ -6,17 +6,21 @@ import SwiftUI
 final class PurchaseManager: ObservableObject {
     static let weeklyProductID = "com.livingframe.app.pro.weekly"
     static let annualProductID = "com.livingframe.app.pro.annual"
+    static let lifetimeProductID = "com.livingframe.app.pro.lifetime"
     static let subscriptionGroupID = "22389365"
     static let freeMaximumExtractionDuration = 5.0
     static let proMaximumExtractionDuration = 10.0
 
     private static let productIDs: Set<String> = [
         weeklyProductID,
-        annualProductID
+        annualProductID,
+        lifetimeProductID
     ]
 
     @Published private(set) var hasPro = false
     @Published private(set) var hasActiveSubscription = false
+    @Published private(set) var hasLifetimePurchase = false
+    @Published private(set) var entitlementsLoaded = false
 
     func allowedExtractionDuration(configuredDuration: Double) -> Double {
         min(
@@ -37,19 +41,37 @@ final class PurchaseManager: ObservableObject {
     }
 
     func refreshEntitlements() async {
+        var hasProEntitlement = false
         var hasActiveSubscription = false
+        var hasLifetimePurchase = false
 
         for await result in Transaction.currentEntitlements {
             guard case let .verified(transaction) = result,
                   transaction.revocationDate == nil,
                   Self.productIDs.contains(transaction.productID) else { continue }
 
-            hasActiveSubscription = hasActiveSubscription ||
-                (transaction.expirationDate.map { $0 > .now } ?? false)
+            if transaction.productID == Self.lifetimeProductID {
+                hasProEntitlement = true
+                hasLifetimePurchase = true
+            } else if transaction.expirationDate.map({ $0 > .now }) == true {
+                hasProEntitlement = true
+                hasActiveSubscription = true
+            }
         }
 
-        hasPro = hasActiveSubscription
+        hasPro = hasProEntitlement
         self.hasActiveSubscription = hasActiveSubscription
+        self.hasLifetimePurchase = hasLifetimePurchase
+        self.entitlementsLoaded = true
+    }
+
+    func purchase(_ product: Product) async {
+        do {
+            let result = try await product.purchase()
+            await handlePurchaseCompletion(.success(result))
+        } catch {
+            await handlePurchaseCompletion(.failure(error))
+        }
     }
 
     func handlePurchaseCompletion(_ result: Result<Product.PurchaseResult, any Error>) async {

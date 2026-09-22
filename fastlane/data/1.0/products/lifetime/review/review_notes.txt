@@ -1,0 +1,9 @@
+GIFBloom Pro Lifetime is a one-time, non-consumable purchase that permanently unlocks GIFBloom Pro features: removing the GIFBloom export watermark and extending the maximum media extraction duration from 5 seconds to 10 seconds.
+
+To test the purchase flow:
+1. Open GIFBloom.
+2. Open Settings and tap Subscribe in the GIFBloom Pro section.
+3. Select the lifetime purchase and complete the purchase using the App Store sandbox environment.
+4. After purchase, return to the editor or export flow to verify that the Pro entitlement is active. The subscription button should no longer be shown after the lifetime purchase is restored.
+
+No account or sign-in is required. The purchase screen includes localized pricing, Terms of Use, Privacy Policy, and Restore Purchases. The attached screenshot shows the in-app purchase screen with the lifetime option and the Pro benefits.

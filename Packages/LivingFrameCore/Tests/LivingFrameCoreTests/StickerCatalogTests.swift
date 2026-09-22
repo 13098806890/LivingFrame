@@ -3,25 +3,35 @@ import XCTest
 @testable import LivingFrameCore
 
 final class StickerCatalogTests: XCTestCase {
-    func testEmojiStickersAreRegisteredInTheExpressionCategory() {
-        XCTAssertEqual(StickerCategory.allCases, [.doodle, .expression, .fruit, .aiSticker, .logo])
+    func testEmojiStickersRenderFromTheSystemEmojiFont() throws {
+        XCTAssertEqual(StickerCategory.allCases, [.doodle, .emoji, .fruit, .logo])
 
-        let emojiStickers = DecorationRenderer.stickerCatalog.filter { $0.category == .expression }
+        let emojiStickers = DecorationRenderer.stickerCatalog.filter { $0.category == .emoji }
+        XCTAssertEqual(Set(emojiStickers.map(\.id)).count, emojiStickers.count)
+        let originalAppleStickerIDs = [
+            "sticker-apple-emoji-smile",
+            "sticker-apple-emoji-laugh",
+            "sticker-apple-emoji-love",
+            "sticker-apple-emoji-wink",
+            "sticker-apple-emoji-cry",
+            "sticker-apple-emoji-think",
+            "sticker-apple-emoji-surprise",
+            "sticker-apple-emoji-angry"
+        ]
+        XCTAssertEqual(Array(emojiStickers.prefix(originalAppleStickerIDs.count)).map(\.id), originalAppleStickerIDs)
+        XCTAssertGreaterThanOrEqual(emojiStickers.count, 60)
+        XCTAssertTrue(emojiStickers.allSatisfy { $0.nativeEmoji != nil && $0.frameCount == 1 })
 
-        XCTAssertEqual(emojiStickers.map(\.id), [
-            "sticker-emoji-smile",
-            "sticker-emoji-laugh",
-            "sticker-emoji-love",
-            "sticker-emoji-wink",
-            "sticker-emoji-cry",
-            "sticker-emoji-think",
-            "sticker-emoji-surprise",
-            "sticker-emoji-angry"
-        ])
+        let renderer = DecorationRenderer()
+        for sticker in emojiStickers {
+            let image = try XCTUnwrap(renderer.previewImage(for: sticker.id), sticker.id)
+            XCTAssertGreaterThan(image.width, 0, sticker.id)
+            XCTAssertGreaterThan(image.height, 0, sticker.id)
+        }
     }
 
     func testGIFBloomLogoStickersAreRegisteredAndLoadAllFrames() {
-        XCTAssertEqual(StickerCategory.allCases, [.doodle, .expression, .fruit, .aiSticker, .logo])
+        XCTAssertEqual(StickerCategory.allCases, [.doodle, .emoji, .fruit, .logo])
 
         let logoStickers = DecorationRenderer.stickerCatalog.filter { $0.category == .logo }
 
@@ -114,11 +124,7 @@ final class StickerCatalogTests: XCTestCase {
         )
         XCTAssertEqual(
             DecorationRenderer.availableStickerCatalog.filter { $0.category == .aiSticker }.map(\.id),
-            [
-                "sticker-ai-sunglasses-3d",
-                "sticker-ai-sunglasses-crayon-3d",
-                "sticker-ai-cap-crayon-3d"
-            ]
+            []
         )
     }
 

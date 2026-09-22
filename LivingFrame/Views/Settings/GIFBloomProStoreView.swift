@@ -37,7 +37,12 @@ struct GIFBloomProStoreView: View {
 
     var body: some View {
         NavigationStack {
-            SubscriptionStoreView(
+            if !purchaseManager.entitlementsLoaded {
+                ProgressView("正在检查购买状态…")
+            } else if purchaseManager.hasLifetimePurchase {
+                LifetimePurchaseOwnedView()
+            } else {
+                SubscriptionStoreView(
                 productIDs: [
                     PurchaseManager.weeklyProductID,
                     PurchaseManager.annualProductID
@@ -57,15 +62,14 @@ struct GIFBloomProStoreView: View {
                             Label("解锁更长的素材提取时长。", systemImage: "checkmark.circle.fill")
                                 .font(.subheadline)
                                 .foregroundStyle(LF.textPrimary)
-                            Label("使用 GIFBloom Pro 专属 AI 贴纸。", systemImage: "checkmark.circle.fill")
-                                .font(.subheadline)
-                                .foregroundStyle(LF.textPrimary)
                         }
 
                         Text("周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。")
                         .font(.footnote)
                         .foregroundStyle(LF.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
+
+                        LifetimePurchaseOption()
                     }
                     .padding()
                 }
@@ -80,15 +84,96 @@ struct GIFBloomProStoreView: View {
             .onInAppPurchaseCompletion { _, result in
                 await purchaseManager.handlePurchaseCompletion(result)
             }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("关闭") { dismiss() }
-                }
             }
         }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("关闭") { dismiss() }
+                }
+            }
         .task { await purchaseManager.refreshEntitlements() }
         .presentationDetents([.large])
+    }
+}
+
+private struct LifetimePurchaseOwnedView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "infinity.circle.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(LF.actionPrimary)
+
+            Text("已购买 GIFBloom Pro 永久版")
+                .font(.headline)
+                .foregroundStyle(LF.textPrimary)
+
+            Text("你已永久解锁 Pro 功能，无需订阅。")
+                .font(.subheadline)
+                .foregroundStyle(LF.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+}
+
+private struct LifetimePurchaseOption: View {
+    @EnvironmentObject private var purchaseManager: PurchaseManager
+    @State private var product: Product?
+    @State private var isPurchasing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+
+            Label("永久买断", systemImage: "infinity.circle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(LF.textPrimary)
+
+            if purchaseManager.hasLifetimePurchase {
+                Text("已拥有 GIFBloom Pro 永久权益。")
+                    .font(.footnote)
+                    .foregroundStyle(LF.textSecondary)
+            } else if let product {
+                Text(
+                    purchaseManager.hasActiveSubscription
+                        ? "当前订阅已解锁 Pro；购买永久版后将永久保留 Pro 权益。"
+                        : "一次性购买，永久解锁 Pro。"
+                )
+                    .font(.footnote)
+                    .foregroundStyle(LF.textSecondary)
+
+                Button {
+                    Task {
+                        isPurchasing = true
+                        await purchaseManager.purchase(product)
+                        isPurchasing = false
+                    }
+                } label: {
+                    HStack {
+                        Text("购买永久版")
+                        Spacer()
+                        if isPurchasing {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text(product.displayPrice)
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isPurchasing)
+            } else {
+                ProgressView("正在加载永久版…")
+                    .font(.footnote)
+                    .foregroundStyle(LF.textSecondary)
+            }
+        }
+        .task {
+            guard product == nil else { return }
+            product = try? await Product.products(for: [PurchaseManager.lifetimeProductID]).first
+        }
     }
 }

@@ -31,7 +31,7 @@ enum MediaProcessingService {
     static func extractVideo(
         at url: URL,
         name: String,
-        algorithm: SegmentationAlgorithm = .visionPerson,
+        algorithm: SegmentationAlgorithm = .foreground,
         maxDimension: CGFloat,
         maxFPS: Double,
         startTime: TimeInterval,
@@ -40,7 +40,6 @@ enum MediaProcessingService {
         analysis: VideoSegmentationAnalysis? = nil,
         selectedSubjectIDs: Set<Int>? = nil,
         selectionRegion: [CGPoint]? = nil,
-        sam2Prompt: SAM2Prompt? = nil,
         progress: @escaping (VideoSegmentationPipeline.ProgressInfo) -> Void
     ) async throws -> SegmentedClip {
         try await VideoSegmentationPipeline().segmentVideo(
@@ -55,7 +54,6 @@ enum MediaProcessingService {
             analysis: analysis,
             selectedSubjectIDs: selectedSubjectIDs,
             selectionRegion: selectionRegion,
-            sam2Prompt: sam2Prompt,
             progress: progress
         )
     }
@@ -63,9 +61,8 @@ enum MediaProcessingService {
     static func extractPhoto(
         from image: CGImage,
         name: String,
-        algorithm: SegmentationAlgorithm = .visionPerson,
+        algorithm: SegmentationAlgorithm = .foreground,
         selectionRegion: [CGPoint]? = nil,
-        sam2Prompt: SAM2Prompt? = nil,
         maxDimension: CGFloat
     ) async throws -> SegmentedClip {
         try await Task.detached(priority: .userInitiated) {
@@ -74,7 +71,6 @@ enum MediaProcessingService {
                 name: name,
                 algorithm: algorithm,
                 selectionRegion: selectionRegion,
-                sam2Prompt: sam2Prompt,
                 maxDimension: maxDimension
             )
         }.value

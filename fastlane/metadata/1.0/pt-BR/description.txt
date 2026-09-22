@@ -4,7 +4,6 @@ Crie seu projeto em uma única tela:
 • Recorte pessoas de vídeos e Live Photos diretamente no dispositivo (iOS 17 ou posterior)
 • Sobreponha vários recortes e ajuste posição, tamanho, rotação, ordem e duração
 • Adicione figurinhas, texto, planos de fundo, molduras e efeitos visuais
-• Extraia o áudio de um vídeo, coloque-o na linha do tempo e ajuste volume e transições
 • Exporte como GIF, vídeo HEVC com transparência ou vídeo H.264
 • Salve projetos no dispositivo e exporte para o Fotos ou compartilhe
 

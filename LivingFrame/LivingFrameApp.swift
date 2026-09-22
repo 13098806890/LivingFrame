@@ -27,6 +27,13 @@ struct LivingFrameApp: App {
 #endif
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                // StoreKit 的订阅状态可能在 App 位于后台时发生变化；
+                // 回到前台后重新读取当前权益，避免过期/撤销订阅继续保留 Pro。
+                Task { @MainActor in
+                    await purchaseManager.refreshEntitlements()
+                }
+            }
             guard phase == .inactive || phase == .background else { return }
             appState.persistUserSettings()
             // 自动保存不能依赖应用被 kill 时一定会收到终止回调；

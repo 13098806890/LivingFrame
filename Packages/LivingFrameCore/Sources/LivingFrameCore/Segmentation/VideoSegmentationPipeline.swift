@@ -416,7 +416,7 @@ public struct VideoSegmentationPipeline {
     public func segmentVideo(
         at url: URL,
         name: String = NSLocalizedString("素材", comment: "Default clip name"),
-        algorithm: SegmentationAlgorithm = .visionPerson,
+        algorithm: SegmentationAlgorithm = .foreground,
         maxDimension: CGFloat = 1280,
         maxFPS: Double = 30,
         startTime: TimeInterval = 0,
@@ -425,7 +425,6 @@ public struct VideoSegmentationPipeline {
         analysis: VideoSegmentationAnalysis? = nil,
         selectedSubjectIDs: Set<Int>? = nil,
         selectionRegion: [CGPoint]? = nil,
-        sam2Prompt: SAM2Prompt? = nil,
         progress: ProgressHandler? = nil,
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws -> SegmentedClip {
@@ -454,8 +453,13 @@ public struct VideoSegmentationPipeline {
         let naturalSize = try await track.load(.naturalSize)
         // 源帧率异常（0/NaN）时按 30fps 兜底，避免抽帧计算产生 NaN
         let safeFrameRate = frameRate.isFinite && frameRate > 0 ? Double(frameRate) : 30
-        // 抽帧步长：目标帧率低于源帧率时，隔 N 帧处理 1 帧
-        let frameStep = max(1, Int((safeFrameRate / maxFPS).rounded()))
+        // 抽帧步长：目标帧率低于源帧率时，隔 N 帧处理 1 帧。
+        // 处理设置来自 UserDefaults，不能假设永远是设置页写入的合法值；
+        // 无效/小于 1 的值统一回退，避免 Double.infinity/NaN 转 Int 崩溃。
+        let safeMaxFPS = maxFPS.isFinite && maxFPS > 0
+            ? max(maxFPS, 1)
+            : safeFrameRate
+        let frameStep = max(1, Int((safeFrameRate / safeMaxFPS).rounded()))
         let outputFPS = max(1, safeFrameRate / Double(frameStep))
         let timeRange = CMTimeRange(
             start: CMTime(seconds: safeStartTime, preferredTimescale: 600),
@@ -489,23 +493,8 @@ public struct VideoSegmentationPipeline {
         // Algorithm entry points:
         // - .foreground: original class-agnostic foreground extraction.
         // - .visionPerson: existing Vision person-instance analysis/selection.
-        // - .sam2: hybrid prompt-driven extraction. SAM2 identifies the object
-        //   under the user's point; Vision renders the complete person mask.
         let selectionShape = normalizedSelectionShape(from: selectionRegion)
         let absoluteSelectionShape = normalizedAbsoluteSelectionShape(from: selectionRegion)
-        let initialSAM2Prompt = sam2Prompt
-            ?? absoluteSelectionShape.flatMap { shape in
-                SAM2Segmenter.promptPoint(in: shape).map {
-                    SAM2Prompt(foregroundPoints: [$0])
-                }
-            }
-        let sam2: SAM2Segmenter?
-        if algorithm == .sam2 {
-            sam2 = try SAM2Segmenter.bundled()
-            LogStore.log("xdz.sam2.render.loaded=true promptRegion=\(absoluteSelectionShape != nil)")
-        } else {
-            sam2 = nil
-        }
         if let selectedSubjectIDs {
             LogStore.log(
                 "xdz.subject.render.start name=\(name) selectedTracks=\(selectedSubjectIDs.sorted().map(String.init).joined(separator: ",")) "
@@ -533,22 +522,6 @@ public struct VideoSegmentationPipeline {
         let canFollowSingleSubjectLasso = selectedSubjectIDs?.count == 1
             && absoluteSelectionShape != nil
             && lassoSourceBounds != nil
-        var sam2PromptPoint = initialSAM2Prompt?.primaryForegroundPoint
-            ?? CGPoint(x: 0.5, y: 0.5)
-        var activeSAM2Prompt = initialSAM2Prompt ?? SAM2Prompt(
-            foregroundPoints: [sam2PromptPoint]
-        )
-        /// Keep the SAM2 semantic refresh close to 30 Hz. At the default
-        /// 30 fps output this runs SAM2 on every processed frame; at 60 fps it
-        /// refreshes every other processed frame. Lower-FPS exports naturally
-        /// refresh every available frame. This intentionally favors arm/hand
-        /// motion stability over the old ~6 Hz refresh cadence.
-        let sam2RefreshRate = 30.0
-        let sam2RefreshInterval = max(1, Int((outputFPS / sam2RefreshRate).rounded()))
-        var sam2LastMask: CIImage?
-        var sam2LastBounds: CGRect?
-        var hybridPersonCenter: CGPoint?
-
         while let sample = output.copyNextSampleBuffer() {
             if isCancelled() || Task.isCancelled {
                 reader.cancelReading()
@@ -632,102 +605,7 @@ public struct VideoSegmentationPipeline {
                 let current: CIImage
                 var currentHasVisibleSubject = true
                 let hasExplicitSubjectSelection = analysis != nil && selectedSubjectIDs != nil
-                if algorithm == .sam2 {
-                    guard let sam2 else { throw SAM2Error.modelNotFound("bundled SAM2") }
-                    let frameImage = CIImage(cgImage: cgImage)
-                    let shouldRefresh = sam2LastMask == nil || index % sam2RefreshInterval == 0
-                    var maskForFrame: CIImage?
-                    if shouldRefresh {
-                        // Refresh from the tracked position when available,
-                        // instead of blindly using the previous mask's center.
-                        if let tracked = trackerPrediction ?? sam2LastBounds {
-                            sam2PromptPoint = CGPoint(x: tracked.midX, y: tracked.midY)
-                            activeSAM2Prompt.foregroundPoints = [sam2PromptPoint]
-                        }
-
-                        if let result = sam2.maskWithScore(for: frameImage, prompt: activeSAM2Prompt),
-                           result.score >= 0.30,
-                           let candidateBounds = sam2.normalizedBounds(of: result.mask),
-                           isStableSAM2Candidate(candidateBounds, previous: sam2LastBounds) {
-                            maskForFrame = result.mask
-                            sam2LastMask = result.mask
-                            sam2LastBounds = candidateBounds
-                            sam2PromptPoint = CGPoint(x: candidateBounds.midX, y: candidateBounds.midY)
-                            activeSAM2Prompt.foregroundPoints = [sam2PromptPoint]
-                            seedSAM2Tracker(
-                                bounds: candidateBounds,
-                                objectTracker: &objectTracker
-                            )
-                            LogStore.log(
-                                "xdz.sam2.render.frame=\(index) refresh=true "
-                                + "interval=\(sam2RefreshInterval) targetHz=\(sam2RefreshRate) "
-                                    + "score=\(String(format: "%.3f", result.score)) "
-                                    + "bounds=\(candidateBounds)"
-                            )
-                        } else {
-                            LogStore.log(
-                                "xdz.sam2.render.frame=\(index) refresh=rejected "
-                                    + "previous=\(String(describing: sam2LastBounds))"
-                            )
-                        }
-                    }
-
-                    if maskForFrame == nil,
-                       let lastMask = sam2LastMask,
-                       let lastBounds = sam2LastBounds {
-                        let targetBounds = trackedBounds(trackerPrediction ?? lastBounds) ?? lastBounds
-                        maskForFrame = transformedMask(
-                            lastMask,
-                            from: lastBounds,
-                            to: targetBounds,
-                            extent: frameImage.extent
-                        )
-                        sam2PromptPoint = CGPoint(x: targetBounds.midX, y: targetBounds.midY)
-                        LogStore.log(
-                            "xdz.sam2.render.frame=\(index) refresh=false "
-                                + "trackedBounds=\(targetBounds)"
-                        )
-                    }
-                    if let maskForFrame {
-                        let sam2Current = applyLuminanceMask(frameImage, with: maskForFrame)
-                        let targetBounds = sam2.normalizedBounds(of: maskForFrame) ?? sam2LastBounds
-                        // SAM2 supplies identity; Vision supplies the final
-                        // silhouette. Do not intersect the two masks here:
-                        // SAM2 can select only a shirt/leg region when the
-                        // user taps clothing, while Vision can keep the whole
-                        // connected person together.
-                        if let targetBounds,
-                           let hybrid = try? segmenter.segmentedPersonImage(
-                               from: cgImage,
-                               matching: targetBounds,
-                               targetPoint: sam2PromptPoint,
-                               previousCenter: hybridPersonCenter
-                           ),
-                           hybrid.score >= 0.20 {
-                            current = CIImage(cgImage: hybrid.image)
-                            hybridPersonCenter = hybrid.info.center
-                            if let hybridBounds = normalizedVisibleBounds(in: hybrid.image),
-                               objectTracker == nil || index % 10 == 0 {
-                                seedSAM2Tracker(
-                                    bounds: hybridBounds,
-                                    objectTracker: &objectTracker
-                                )
-                            }
-                            LogStore.log(
-                                "xdz.sam2.render.frame=\(index) hybrid=vision-person "
-                                    + "sam2Identity=true score=\(String(format: "%.3f", hybrid.score))"
-                            )
-                        } else {
-                            current = sam2Current
-                            LogStore.log("xdz.sam2.render.frame=\(index) hybrid=vision-fallback-sam2")
-                        }
-                    } else if let previous = prevMaskedImage {
-                        current = previous
-                        LogStore.log("xdz.sam2.render.frame=\(index) mask=previous")
-                    } else {
-                        throw PersonSegmenterError.noSubject
-                    }
-                } else if hasExplicitSubjectSelection {
+                if hasExplicitSubjectSelection {
                     var personMask: CIImage
                     var hasFreshPersonMask = false
                     if selectedInstances?.isEmpty == true {
@@ -863,10 +741,9 @@ public struct VideoSegmentationPipeline {
                 // 逐帧独立分割会偶发漏检（如腿部某帧缺失），并集让漏检帧用上一帧补全。
                 // 只与上一帧并集，不累计，避免人物移动产生拖影。
                 let output: CIImage
-                if hasExplicitSubjectSelection || algorithm == .sam2 {
-                    // Vision 已选择主体时 current 是 person mask；SAM2 路径
-                    // 则已经是当前帧的 prompt mask。两者都不能再和上一帧
-                    // 做并集，否则会把旧帧的错误主体拖回当前帧。
+                if hasExplicitSubjectSelection {
+                    // Vision 已选择主体时 current 是 person mask，不能再和
+                    // 上一帧做并集，否则会把旧帧的错误主体拖回当前帧。
                     output = current
                 } else if let prev = prevMaskedImage {
                     output = current.applyingFilter("CIMaximumCompositing", parameters: [
@@ -983,9 +860,8 @@ public struct VideoSegmentationPipeline {
     public func segmentPhoto(
         from source: CGImage,
         name: String = NSLocalizedString("素材", comment: "Default clip name"),
-        algorithm: SegmentationAlgorithm = .visionPerson,
+        algorithm: SegmentationAlgorithm = .foreground,
         selectionRegion: [CGPoint]? = nil,
-        sam2Prompt: SAM2Prompt? = nil,
         maxDimension: CGFloat = 1280
     ) throws -> SegmentedClip {
         let sourceImage = CIImage(cgImage: source)
@@ -1006,41 +882,6 @@ public struct VideoSegmentationPipeline {
             )
         case .visionPerson:
             segmented = try VisionPersonSegmenter().segmentedImage(from: cgImage)
-        case .sam2:
-            let prompt = sam2Prompt
-                ?? selectionRegion.flatMap { region in
-                    SAM2Segmenter.promptPoint(in: region).map {
-                        SAM2Prompt(foregroundPoints: [$0])
-                    }
-                }
-            guard let prompt, prompt.isUsable else {
-                throw SAM2Error.invalidImage
-            }
-            let sam2 = try SAM2Segmenter.bundled()
-            let inputImage = CIImage(cgImage: cgImage)
-            guard let mask = sam2.mask(for: inputImage, prompt: prompt),
-                  let sam2Output = context.createCGImage(
-                      applyLuminanceMask(inputImage, with: mask),
-                      from: inputImage.extent.integral
-                  ) else {
-                throw PersonSegmenterError.noSubject
-            }
-            let targetBounds = sam2.normalizedBounds(of: mask)
-            if let targetBounds,
-               let hybrid = try? VisionPersonSegmenter().segmentedPersonImage(
-                   from: cgImage,
-                   matching: targetBounds,
-                   targetPoint: prompt.primaryForegroundPoint
-               ),
-               hybrid.score >= 0.20 {
-                LogStore.log(
-                    "xdz.sam2.photo hybrid=vision-person score=\(String(format: "%.3f", hybrid.score))"
-                )
-                segmented = hybrid.image
-            } else {
-                LogStore.log("xdz.sam2.photo hybrid=vision-fallback-sam2")
-                segmented = sam2Output
-            }
         }
 
         let clipID = UUID().uuidString
@@ -1249,29 +1090,6 @@ public struct VideoSegmentationPipeline {
         return Double(intersection.width * intersection.height / union)
     }
 
-    /// Reject a refreshed SAM2 mask when it jumps to a different object or
-    /// suddenly expands to most of the frame. The previous accepted mask plus
-    /// the lightweight tracker is more stable than accepting that outlier.
-    private func isStableSAM2Candidate(_ candidate: CGRect, previous: CGRect?) -> Bool {
-        let candidateArea = candidate.width * candidate.height
-        guard candidateArea > 0.002, candidateArea < 0.82 else { return false }
-        guard let previous else { return true }
-
-        let previousArea = max(previous.width * previous.height, 0.0001)
-        let areaRatio = candidateArea / previousArea
-        let overlap = intersectionOverUnion(candidate, previous)
-        let centerDelta = centerDistance(candidate, previous)
-        return areaRatio > 0.25
-            && areaRatio < 4.0
-            && (overlap >= 0.12 || centerDelta <= 0.18)
-    }
-
-    private func centerDistance(_ lhs: CGRect, _ rhs: CGRect) -> Double {
-        let dx = lhs.midX - rhs.midX
-        let dy = lhs.midY - rhs.midY
-        return min(1, Double(sqrt(dx * dx + dy * dy) / 1.41421356237))
-    }
-
     private func pointDistance(_ lhs: CGPoint, _ rhs: CGPoint) -> Double {
         let dx = lhs.x - rhs.x
         let dy = lhs.y - rhs.y
@@ -1299,49 +1117,6 @@ public struct VideoSegmentationPipeline {
             width: topLeftBounds.width,
             height: topLeftBounds.height
         )
-    }
-
-    private func seedSAM2Tracker(
-        bounds: CGRect,
-        objectTracker: inout VNTrackObjectRequest?
-    ) {
-        let observation = VNDetectedObjectObservation(
-            boundingBox: visionBounds(from: bounds)
-        )
-        let tracker = VNTrackObjectRequest(detectedObjectObservation: observation)
-        tracker.trackingLevel = .fast
-        objectTracker = tracker
-    }
-
-    /// Move a full-frame SAM2 mask from the last refreshed object box to the
-    /// current Vision-tracked box. Both rectangles use normalized top-left
-    /// coordinates, while the CI image uses pixel coordinates.
-    private func transformedMask(
-        _ mask: CIImage,
-        from sourceBounds: CGRect,
-        to targetBounds: CGRect,
-        extent: CGRect
-    ) -> CIImage {
-        guard sourceBounds.width > 0.001, sourceBounds.height > 0.001 else {
-            return mask.cropped(to: extent)
-        }
-        let scaleX = targetBounds.width / sourceBounds.width
-        let scaleY = targetBounds.height / sourceBounds.height
-        let sourceX = sourceBounds.minX * extent.width
-        let sourceY = sourceBounds.minY * extent.height
-        let targetX = targetBounds.minX * extent.width
-        let targetY = targetBounds.minY * extent.height
-        let transform = CGAffineTransform(
-            a: scaleX,
-            b: 0,
-            c: 0,
-            d: scaleY,
-            tx: targetX - sourceX * scaleX,
-            ty: targetY - sourceY * scaleY
-        )
-        return mask
-            .transformed(by: transform)
-            .cropped(to: extent)
     }
 
     private func topLeftBounds(from visionBounds: CGRect) -> CGRect {
@@ -1373,16 +1148,6 @@ public struct VideoSegmentationPipeline {
             result = result.union(CGRect(x: point.x, y: point.y, width: 0, height: 0))
         }
         guard !bounds.isNull, bounds.width > 0.001, bounds.height > 0.001 else {
-            return nil
-        }
-        return bounds
-    }
-
-    private func trackedBounds(_ bounds: CGRect) -> CGRect? {
-        guard bounds.width > 0.02, bounds.height > 0.02,
-              bounds.width < 0.95, bounds.height < 0.95,
-              bounds.minX >= 0, bounds.minY >= 0,
-              bounds.maxX <= 1, bounds.maxY <= 1 else {
             return nil
         }
         return bounds
@@ -1548,18 +1313,6 @@ public struct VideoSegmentationPipeline {
         let extent = image.extent
         let clear = CIImage(color: CIColor.clear).cropped(to: extent)
         return image.applyingFilter("CIBlendWithAlphaMask", parameters: [
-            kCIInputBackgroundImageKey: clear,
-            kCIInputMaskImageKey: mask.cropped(to: extent)
-        ])
-    }
-
-    /// SAM2 returns a grayscale confidence mask, so use luminance rather than
-    /// alpha as the mask channel. Vision's transparent output continues to use
-    /// `applyAlphaMask` above.
-    private func applyLuminanceMask(_ image: CIImage, with mask: CIImage) -> CIImage {
-        let extent = image.extent
-        let clear = CIImage(color: CIColor.clear).cropped(to: extent)
-        return image.applyingFilter("CIBlendWithMask", parameters: [
             kCIInputBackgroundImageKey: clear,
             kCIInputMaskImageKey: mask.cropped(to: extent)
         ])

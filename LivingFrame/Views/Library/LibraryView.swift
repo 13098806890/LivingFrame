@@ -11,7 +11,6 @@ struct LibraryView: View {
     @EnvironmentObject private var purchaseManager: PurchaseManager
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var isShowingExtractionPicker = false
-    @State private var extractionPhotoSearchText = ""
     @State private var loadError: String?
     /// iCloud 素材下载进度（nil 表示进度未知）
     @State private var isDownloading = false
@@ -42,7 +41,6 @@ struct LibraryView: View {
     @State private var batchFailureTitle: String?
     @State private var importTask: Task<Void, Never>?
     @AccessibilityFocusState private var extractionEntryFocused: Bool
-    @FocusState private var isExtractionSearchFocused: Bool
 
     private struct PendingVideoRange: Identifiable {
         let id = UUID()
@@ -64,16 +62,13 @@ struct LibraryView: View {
     private struct SubjectRegionChoice {
         let confirmed: Bool
         let points: [CGPoint]?
-        let sam2Prompt: SAM2Prompt?
 
         init(
             confirmed: Bool,
-            points: [CGPoint]? = nil,
-            sam2Prompt: SAM2Prompt? = nil
+            points: [CGPoint]? = nil
         ) {
             self.confirmed = confirmed
             self.points = points
-            self.sam2Prompt = sam2Prompt
         }
     }
 
@@ -195,7 +190,6 @@ struct LibraryView: View {
             }) { request in
                 InitialSubjectRegionPickerView(
                     image: request.image,
-                    algorithm: appState.segmentationAlgorithm,
                     onCancel: {
                         request.resume(SubjectRegionChoice(confirmed: false, points: nil))
                         pendingSubjectRegionSelection = nil
@@ -204,11 +198,10 @@ struct LibraryView: View {
                         request.resume(SubjectRegionChoice(confirmed: true, points: nil))
                         pendingSubjectRegionSelection = nil
                     },
-                    onConfirm: { prompt, points in
+                    onConfirm: { points in
                         request.resume(SubjectRegionChoice(
                             confirmed: true,
-                            points: points,
-                            sam2Prompt: prompt
+                            points: points
                         ))
                         pendingSubjectRegionSelection = nil
                     }
@@ -253,15 +246,13 @@ struct LibraryView: View {
                 importTask?.cancel()
             }
         }
+        .toolbarBackground(.hidden, for: .navigationBar)
     }
 
     // MARK: - 素材入口
 
     private var pickerSection: some View {
         VStack(spacing: 8) {
-            if #available(iOS 27.0, *) {
-                extractionPhotoSearchField
-            }
             extractionPickerControl
 
             Menu {
@@ -281,7 +272,7 @@ struct LibraryView: View {
                 }
 
                 Section("人物算法") {
-                    ForEach(SegmentationAlgorithm.allCases) { algorithm in
+                    ForEach(visibleSegmentationAlgorithms) { algorithm in
                         Button {
                             appState.segmentationAlgorithm = algorithm
                         } label: {
@@ -341,7 +332,6 @@ struct LibraryView: View {
     @ViewBuilder
     private var extractionPickerControl: some View {
         let button = Button {
-            isExtractionSearchFocused = false
             isShowingExtractionPicker = true
         } label: {
             SectionCard(title: nil) {
@@ -392,59 +382,7 @@ struct LibraryView: View {
         .accessibilityHint("选择视频 / Live Photo / 照片")
         .accessibilityFocused($extractionEntryFocused)
 
-        if #available(iOS 27.0, *) {
-            button.photosPickerSearchText(normalizedExtractionPhotoSearchText)
-        } else {
-            button
-        }
-    }
-
-    @available(iOS 27.0, *)
-    private var extractionPhotoSearchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(LF.textSecondary)
-
-            TextField("搜索照片：猫、狗或地点", text: $extractionPhotoSearchText)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.search)
-                .focused($isExtractionSearchFocused)
-                .onSubmit {
-                    isExtractionSearchFocused = false
-                    guard !isDownloading, !isExtractionActive else { return }
-                    isShowingExtractionPicker = true
-                }
-                .accessibilityIdentifier("library-extraction-photo-search")
-
-            if !extractionPhotoSearchText.isEmpty {
-                Button {
-                    extractionPhotoSearchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(LF.textSecondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("清除搜索")
-            }
-        }
-        .padding(.horizontal, 14)
-        .frame(minHeight: 46)
-        .background(
-            LF.surface2.opacity(0.45),
-            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(LF.brandTint.opacity(0.18), lineWidth: 1)
-        }
-    }
-
-    @available(iOS 27.0, *)
-    private var normalizedExtractionPhotoSearchText: String? {
-        let text = extractionPhotoSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : text
+        button
     }
 
     private func handleExtractionSelection(_ items: [PhotosPickerItem]) {
@@ -512,6 +450,12 @@ struct LibraryView: View {
         return String(format: "%.1f", fps)
     }
 
+    /// Keep the Vision multi-person route available in code for a later
+    /// re-enable, but expose only the original extractor in the current UI.
+    private var visibleSegmentationAlgorithms: [SegmentationAlgorithm] {
+        [.foreground]
+    }
+
     private var extractionSettingsLabel: String {
         let kind = defaultExtractKind == .live
             ? NSLocalizedString("动态剪影", comment: "Animated cutout asset")
@@ -534,8 +478,7 @@ struct LibraryView: View {
         return false
     }
 
-    /// 按所选算法进入对应流程：foreground 直接提取，Vision 先分析轨迹，
-    /// SAM2 先获取首帧提示后直接跟踪目标。
+    /// 按所选算法进入对应流程：foreground 直接提取，Vision 先分析轨迹。
     private func extractVideoSource(
         url: URL,
         name: String,
@@ -559,10 +502,8 @@ struct LibraryView: View {
             )
         }
 
-        // Algorithms 2 and 3 both begin with a representative-frame prompt.
-        // Vision continues into its existing multi-track selection sheet;
-        // SAM2 stops after the structured point/box prompt and follows the
-        // selected object itself.
+        // Vision begins with a representative-frame prompt and continues into
+        // its existing multi-track selection sheet.
         let preview = await firstFrame(
             of: url,
             stillURL: stillURL,
@@ -576,29 +517,6 @@ struct LibraryView: View {
         }
         guard let choice else { return nil }
         let initialRegion = choice.points
-
-        // Algorithm 3: SAM2 is a separate prompt-driven route. There is no
-        // Vision analysis sheet because the user's structured prompt is the
-        // identity input and SAM2 is responsible for separating touching people.
-        if algorithm == .sam2 {
-            guard let prompt = choice.sam2Prompt, prompt.isUsable else {
-                appState.segmentationError = NSLocalizedString(
-                    "SAM2 需要先点击一个要保留的人物。",
-                    comment: "SAM2 requires a subject prompt"
-                )
-                return nil
-            }
-            return await appState.startSegmenting(
-                url: url,
-                name: name,
-                algorithm: .sam2,
-                sourceStartTime: sourceStartTime,
-                sourceEndTime: sourceEndTime,
-                stillOrientation: stillOrientation,
-                selectionRegion: initialRegion,
-                sam2Prompt: prompt
-            )
-        }
 
         guard let analysis = await appState.analyzeVideoSubjects(
             url: url,
@@ -668,28 +586,13 @@ struct LibraryView: View {
         )
     }
 
-    /// Static-image UI flow for the selected algorithm. SAM2 needs the same
-    /// explicit prompt as video; the two Vision routes remain one-tap photo
-    /// extraction and keep their original behavior.
+    /// Static-image UI flow for the selected algorithm.
     private func extractPhotoSource(cgImage: CGImage, name: String) async -> SegmentedClip? {
         let algorithm = appState.segmentationAlgorithm
-        var selectionRegion: [CGPoint]?
-        var sam2Prompt: SAM2Prompt?
-        if algorithm == .sam2 {
-            let choice: SubjectRegionChoice? = await withCheckedContinuation { continuation in
-                pendingSubjectRegionSelection = PendingSubjectRegionSelection(image: cgImage) { result in
-                    continuation.resume(returning: result.confirmed ? result : nil)
-                }
-            }
-            guard let choice, let prompt = choice.sam2Prompt, prompt.isUsable else { return nil }
-            sam2Prompt = prompt
-        }
         return await appState.startPhotoSegmenting(
             cgImage: cgImage,
             name: name,
-            algorithm: algorithm,
-            selectionRegion: selectionRegion,
-            sam2Prompt: sam2Prompt
+            algorithm: algorithm
         )
     }
 
@@ -1173,7 +1076,10 @@ struct LibraryView: View {
     }
 
     private var segmentationCard: some View {
-        SectionCard(title: "正在生成剪影") {
+        let effectiveMaxDuration = purchaseManager.allowedExtractionDuration(
+            configuredDuration: appState.maxExtractionDuration
+        )
+        return SectionCard(title: "正在生成剪影") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     if appState.isSegmenting {
@@ -1205,7 +1111,7 @@ struct LibraryView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Text(String.localizedStringWithFormat(
                     NSLocalizedString("本次最多处理 %1$lld 秒，超出部分从开头截取", comment: "Maximum extraction duration"),
-                    Int64(appState.maxExtractionDuration)
+                    Int64(effectiveMaxDuration)
                 ))
                     .font(.caption2)
                     .foregroundStyle(LF.textSecondary)
@@ -2164,35 +2070,23 @@ private struct SubjectPreviewCanvas: View {
     }
 }
 
-/// Vision 的分析前圈选入口。SAM2 使用独立的保留点/排除点交互，
-/// 因为它需要的是 prompt，而不是把一个 lasso 简化成中心点。
+/// Vision 的分析前圈选入口。
 private struct InitialSubjectRegionPickerView: View {
     let image: CGImage
-    let algorithm: SegmentationAlgorithm
     let onCancel: () -> Void
     let onSkip: () -> Void
-    let onConfirm: (SAM2Prompt?, [CGPoint]?) -> Void
+    let onConfirm: ([CGPoint]?) -> Void
 
     @Environment(\.dismiss) private var dismiss
     var body: some View {
-        if algorithm == .sam2 {
-            SAM2PromptPickerView(
-                image: image,
-                onCancel: onCancel,
-                onConfirm: { prompt in
-                    onConfirm(prompt, nil)
-                }
-            )
-        } else {
-            VisionInitialRegionPickerView(
-                image: image,
-                onCancel: onCancel,
-                onSkip: onSkip,
-                onConfirm: { points in
-                    onConfirm(nil, points.isEmpty ? nil : points)
-                }
-            )
-        }
+        VisionInitialRegionPickerView(
+            image: image,
+            onCancel: onCancel,
+            onSkip: onSkip,
+            onConfirm: { points in
+                onConfirm(points.isEmpty ? nil : points)
+            }
+        )
     }
 }
 
@@ -2287,547 +2181,6 @@ private struct VisionInitialRegionPickerView: View {
         .presentationDragIndicator(.visible)
     }
 }
-
-private enum SAM2PromptMode: String, CaseIterable, Identifiable {
-    case foreground
-    case background
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .foreground: return "保留"
-        case .background: return "排除"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .foreground: return "plus.circle.fill"
-        case .background: return "minus.circle.fill"
-        }
-    }
-}
-
-private struct SAM2PromptPickerView: View {
-    let image: CGImage
-    let onCancel: () -> Void
-    let onConfirm: (SAM2Prompt) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var prompt = SAM2Prompt()
-    @State private var mode: SAM2PromptMode = .foreground
-    @State private var previewImage: CGImage?
-    @State private var previewMaskImage: CGImage?
-    @State private var exclusionMaskImage: CGImage?
-    @State private var isPreviewing = false
-    @State private var previewTask: Task<Void, Never>?
-    /// Core ML inference is synchronous and cannot be interrupted halfway
-    /// through. Coalesce taps while one preview is running so stale prompts
-    /// do not create a pile of concurrent SAM2/Vision requests.
-    @State private var previewGeneration = 0
-    @State private var activePreviewCount = 0
-    @State private var pendingLatestPreview = false
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("标记要提取的人物")
-                        .font(.headline)
-                    Text("点击人物内部选择保留；点击旁边的人物选择排除。点击后会立即显示预览。")
-                        .font(.subheadline)
-                        .foregroundStyle(LF.textSecondary)
-                }
-
-                SAM2PromptCanvas(
-                    image: image,
-                    prompt: $prompt,
-                    mode: $mode,
-                    previewImage: previewImage,
-                    previewMaskImage: previewMaskImage,
-                    exclusionMaskImage: exclusionMaskImage
-                )
-                .frame(maxHeight: .infinity)
-
-                Picker("提示方式", selection: $mode) {
-                    ForEach(SAM2PromptMode.allCases) { item in
-                        Label(item.title, systemImage: item.icon)
-                            .tag(item)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                HStack(spacing: 8) {
-                    promptBadge(
-                        title: "保留 \(prompt.foregroundPoints.count)",
-                        color: .cyan,
-                        systemImage: "plus.circle.fill"
-                    )
-                    promptBadge(
-                        title: "排除 \(prompt.backgroundPoints.count)",
-                        color: .orange,
-                        systemImage: "minus.circle.fill"
-                    )
-                    Spacer(minLength: 0)
-                    if isPreviewing {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-
-                if previewMaskImage != nil {
-                    HStack(spacing: 12) {
-                        Label("青色：保留范围", systemImage: "plus.circle.fill")
-                            .foregroundStyle(.cyan)
-                        if exclusionMaskImage != nil {
-                            Label("橙色：排除范围", systemImage: "xmark.circle.fill")
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                    .font(.caption.weight(.semibold))
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        switch mode {
-                        case .foreground:
-                            if !prompt.foregroundPoints.isEmpty {
-                                prompt.foregroundPoints.removeLast()
-                            }
-                        case .background:
-                            if !prompt.backgroundPoints.isEmpty {
-                                prompt.backgroundPoints.removeLast()
-                            }
-                        }
-                    } label: {
-                        Label("撤销标记", systemImage: "arrow.uturn.backward")
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button("全部清除") {
-                        prompt = SAM2Prompt()
-                        previewImage = nil
-                        previewMaskImage = nil
-                        exclusionMaskImage = nil
-                    }
-                    .buttonStyle(.bordered)
-                    Spacer()
-                }
-                .font(.subheadline.weight(.medium))
-            }
-            .padding(20)
-            .lfNavigationTitle("SAM2 + Vision 混合提取")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") {
-                        previewTask?.cancel()
-                        onCancel()
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("开始提取") {
-                        previewTask?.cancel()
-                        onConfirm(prompt)
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(!prompt.isUsable)
-                }
-            }
-            .magicBackground()
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(LF.background.opacity(0.94), for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
-            .onChange(of: prompt) { _, _ in
-                requestPreview()
-            }
-            .onDisappear {
-                previewTask?.cancel()
-            }
-        }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-    }
-
-    @ViewBuilder
-    private func promptBadge(title: String, color: Color, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.12), in: Capsule())
-    }
-
-    private func requestPreview() {
-        previewTask?.cancel()
-        previewGeneration &+= 1
-        let generation = previewGeneration
-        guard prompt.isUsable else {
-            previewImage = nil
-            previewMaskImage = nil
-            exclusionMaskImage = nil
-            isPreviewing = false
-            pendingLatestPreview = false
-            return
-        }
-
-        if activePreviewCount > 0 {
-            pendingLatestPreview = true
-            isPreviewing = true
-            LogStore.log(
-                "xdz.sam2.preview.queued generation=\(generation) "
-                    + "active=\(activePreviewCount)"
-            )
-            return
-        }
-
-        startPreview(prompt: prompt, generation: generation)
-    }
-
-    private func startPreview(prompt sourcePrompt: SAM2Prompt, generation: Int) {
-        let sourceImage = image
-        let previewID = UUID().uuidString
-        activePreviewCount += 1
-        isPreviewing = true
-        LogStore.log(
-            "xdz.sam2.preview.start id=\(previewID) "
-                + "foreground=\(sourcePrompt.foregroundPoints.count) "
-                + "background=\(sourcePrompt.backgroundPoints.count)"
-        )
-        previewTask = Task { @MainActor in
-            let result: (image: CGImage?, mask: CGImage?, exclusion: CGImage?) = await Task.detached(priority: .userInitiated) { () -> (image: CGImage?, mask: CGImage?, exclusion: CGImage?) in
-                let started = Date()
-                let segmenter: SAM2Segmenter
-                do {
-                    segmenter = try SAM2Segmenter.cached()
-                } catch {
-                    LogStore.log("xdz.sam2.preview.failed id=\(previewID) stage=model error=\(error)")
-                    return (nil, nil, nil)
-                }
-                LogStore.log("xdz.sam2.preview.modelReady id=\(previewID)")
-                let source = CIImage(cgImage: sourceImage)
-                LogStore.log("xdz.sam2.preview.maskStart id=\(previewID)")
-                guard let combined = segmenter.maskWithScore(for: source, prompt: sourcePrompt)?.mask else {
-                    LogStore.log("xdz.sam2.preview.failed id=\(previewID) stage=mask")
-                    return (nil, nil, nil)
-                }
-                let clear = CIImage(color: .clear).cropped(to: source.extent)
-                let sam2Output = source.applyingFilter("CIBlendWithMask", parameters: [
-                    kCIInputBackgroundImageKey: clear,
-                    kCIInputMaskImageKey: combined.cropped(to: source.extent)
-                ])
-                // The point still comes from SAM2, but the preview should show
-                // Vision's complete person instance so the user can see that
-                // clothes and legs will remain in the final cutout.
-                let hybridOutput: CIImage
-                if let targetBounds = segmenter.normalizedBounds(of: combined),
-                   let hybrid = try? VisionPersonSegmenter().segmentedPersonImage(
-                       from: sourceImage,
-                       matching: targetBounds,
-                       targetPoint: sourcePrompt.primaryForegroundPoint
-                   ),
-                   hybrid.score >= 0.20 {
-                    hybridOutput = CIImage(cgImage: hybrid.image)
-                    LogStore.log(
-                        "xdz.sam2.preview.hybrid=vision-person score=\(String(format: "%.3f", hybrid.score))"
-                    )
-                } else {
-                    hybridOutput = sam2Output
-                    LogStore.log("xdz.sam2.preview.hybrid=sam2-fallback")
-                }
-                let context = CIContext(options: [.cacheIntermediates: false])
-                let renderColorMask: (CIImage, CIColor) -> CGImage? = { mask, color in
-                    let colored = CIImage(color: color)
-                        .cropped(to: source.extent)
-                        .applyingFilter("CIBlendWithMask", parameters: [
-                            kCIInputBackgroundImageKey: clear,
-                            kCIInputMaskImageKey: mask.cropped(to: source.extent)
-                        ])
-                    return context.createCGImage(colored, from: source.extent.integral)
-                }
-
-                var exclusion: CGImage?
-                let positivePrompt = SAM2Prompt(
-                    foregroundPoints: sourcePrompt.foregroundPoints,
-                    box: sourcePrompt.box
-                )
-                if !sourcePrompt.backgroundPoints.isEmpty,
-                   let foreground = segmenter.maskWithScore(
-                       for: source,
-                       prompt: positivePrompt
-                   )?.mask {
-                    // Render the actual region selected by each negative
-                    // point, clipped to the positive subject mask. This is
-                    // more reliable than deriving a difference from two
-                    // already-subtracted soft masks.
-                    var removed: CIImage?
-                    for backgroundPoint in sourcePrompt.backgroundPoints {
-                        guard let background = segmenter.maskWithScore(
-                            for: source,
-                            at: backgroundPoint,
-                            label: 0
-                        )?.mask else {
-                            continue
-                        }
-                        let pointRegion = foreground.applyingFilter(
-                            "CIMinimumCompositing",
-                            parameters: [kCIInputBackgroundImageKey: background]
-                        )
-                        removed = removed.map {
-                            pointRegion.applyingFilter(
-                                "CIMaximumCompositing",
-                                parameters: [kCIInputBackgroundImageKey: $0]
-                            )
-                        } ?? pointRegion
-                    }
-                    if let removed {
-                        exclusion = renderColorMask(
-                            removed,
-                            CIColor(red: 1, green: 0.32, blue: 0.05, alpha: 1)
-                        )
-                    } else {
-                        exclusion = nil
-                    }
-                } else {
-                    exclusion = nil
-                }
-
-                let result = (
-                    context.createCGImage(hybridOutput, from: source.extent.integral),
-                    renderColorMask(combined, CIColor(red: 0, green: 1, blue: 1, alpha: 1)),
-                    exclusion
-                )
-                LogStore.log(
-                    "xdz.sam2.preview.done id=\(previewID) "
-                        + "elapsed=\(String(format: "%.2f", Date().timeIntervalSince(started)))s "
-                        + "image=\(result.0 != nil) mask=\(result.1 != nil) exclusion=\(result.2 != nil)"
-                )
-                return result
-            }.value
-
-            activePreviewCount = max(0, activePreviewCount - 1)
-            let isLatest = generation == previewGeneration
-            if !isLatest {
-                LogStore.log(
-                    "xdz.sam2.preview.superseded id=\(previewID) "
-                        + "generation=\(generation) latest=\(previewGeneration) "
-                        + "active=\(activePreviewCount)"
-                )
-                if activePreviewCount == 0, pendingLatestPreview {
-                    pendingLatestPreview = false
-                    startPreview(prompt: prompt, generation: previewGeneration)
-                } else if activePreviewCount == 0 {
-                    isPreviewing = false
-                }
-                return
-            }
-
-            guard !Task.isCancelled else {
-                LogStore.log("xdz.sam2.preview.cancelled id=\(previewID)")
-                isPreviewing = activePreviewCount > 0
-                return
-            }
-            previewImage = result.image
-            previewMaskImage = result.mask
-            exclusionMaskImage = result.exclusion
-            isPreviewing = false
-            if result.image == nil {
-                LogStore.log("xdz.sam2.preview.failed id=\(previewID) stage=render")
-            }
-        }
-    }
-}
-
-private struct SAM2PromptCanvas: View {
-    let image: CGImage
-    @Binding var prompt: SAM2Prompt
-    @Binding var mode: SAM2PromptMode
-    let previewImage: CGImage?
-    let previewMaskImage: CGImage?
-    let exclusionMaskImage: CGImage?
-
-    var body: some View {
-        GeometryReader { proxy in
-            let contentRect = imageContentRect(for: proxy.size)
-            ZStack(alignment: .topLeading) {
-                Image(decorative: image, scale: 1)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .background(.black.opacity(0.12))
-
-                if let previewMaskImage {
-                    Image(decorative: previewMaskImage, scale: 1)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .opacity(0.28)
-                        .allowsHitTesting(false)
-                }
-
-                if let previewImage {
-                    ZStack {
-                        // A tinted silhouette makes the selected result
-                        // obvious even when the alpha edge is too fine for a
-                        // conventional shadow to be visible.
-                        Image(decorative: previewImage, scale: 1)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: proxy.size.width, height: proxy.size.height)
-                            .colorMultiply(.cyan)
-                            .opacity(0.42)
-
-                        Image(decorative: previewImage, scale: 1)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: proxy.size.width, height: proxy.size.height)
-                            .opacity(0.88)
-                    }
-                    // Selection feedback only: the glow is rendered in the
-                    // picker and never becomes part of the exported asset.
-                    .compositingGroup()
-                    .shadow(color: .cyan.opacity(0.95), radius: 0, x: 0, y: 0)
-                    .shadow(color: .cyan.opacity(0.72), radius: 5, x: 0, y: 0)
-                    .shadow(color: .cyan.opacity(0.34), radius: 11, x: 0, y: 0)
-                    .allowsHitTesting(false)
-                }
-
-                // Keep the exclusion overlay above the cutout preview so an
-                // excluded part is still visible instead of being covered by
-                // the original subject image.
-                if let exclusionMaskImage {
-                    Image(decorative: exclusionMaskImage, scale: 1)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .opacity(0.82)
-                        .allowsHitTesting(false)
-                }
-
-                ForEach(Array(prompt.foregroundPoints.enumerated()), id: \.offset) { index, point in
-                    promptMarker(
-                        at: canvasPoint(for: point, in: contentRect),
-                        color: .cyan,
-                        label: "+\(index + 1)",
-                        isExclusion: false
-                    )
-                }
-                ForEach(Array(prompt.backgroundPoints.enumerated()), id: \.offset) { index, point in
-                    promptMarker(
-                        at: canvasPoint(for: point, in: contentRect),
-                        color: .orange,
-                        label: "−\(index + 1)",
-                        isExclusion: true
-                    )
-                }
-
-                Color.clear
-                    .contentShape(Rectangle())
-                    .gesture(promptGesture(in: contentRect))
-            }
-        }
-        .aspectRatio(CGFloat(image.width) / CGFloat(max(image.height, 1)), contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(LF.surface2, lineWidth: 1)
-        }
-    }
-
-    @ViewBuilder
-    private func promptMarker(
-        at point: CGPoint,
-        color: Color,
-        label: String,
-        isExclusion: Bool
-    ) -> some View {
-        ZStack {
-            Circle()
-                .fill(.black.opacity(0.45))
-                .frame(width: isExclusion ? 34 : 28, height: isExclusion ? 34 : 28)
-            if isExclusion {
-                Circle()
-                    .fill(Color.red.opacity(0.20))
-                    .frame(width: 34, height: 34)
-                Circle()
-                    .stroke(Color.orange, lineWidth: 2)
-                    .frame(width: 28, height: 28)
-            }
-            Circle()
-                .fill(color)
-                .frame(width: 20, height: 20)
-            if isExclusion {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(.black)
-            } else {
-                Text(label)
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundStyle(.black)
-            }
-        }
-        .position(point)
-        .shadow(color: isExclusion ? .orange.opacity(0.75) : .clear, radius: 7)
-        .allowsHitTesting(false)
-    }
-
-    private func promptGesture(in contentRect: CGRect) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                // Point prompts are committed on end. Keeping this handler
-                // empty avoids turning a tap into a drag/box interaction.
-            }
-            .onEnded { value in
-                guard let point = normalizedPoint(value.location, in: contentRect) else { return }
-                switch mode {
-                case .foreground:
-                    prompt.foregroundPoints.append(point)
-                case .background:
-                    prompt.backgroundPoints.append(point)
-                }
-            }
-    }
-
-    private func imageContentRect(for size: CGSize) -> CGRect {
-        let imageAspect = CGFloat(image.width) / CGFloat(max(image.height, 1))
-        let containerAspect = size.width / max(size.height, 1)
-        if imageAspect > containerAspect {
-            let width = size.width
-            let height = width / imageAspect
-            return CGRect(x: 0, y: (size.height - height) / 2, width: width, height: height)
-        }
-        let height = size.height
-        let width = height * imageAspect
-        return CGRect(x: (size.width - width) / 2, y: 0, width: width, height: height)
-    }
-
-    private func normalizedPoint(_ point: CGPoint, in rect: CGRect) -> CGPoint? {
-        guard rect.contains(point) else { return nil }
-        return CGPoint(
-            x: (point.x - rect.minX) / rect.width,
-            y: (point.y - rect.minY) / rect.height
-        )
-    }
-
-    private func canvasPoint(for point: CGPoint, in rect: CGRect) -> CGPoint {
-        CGPoint(x: rect.minX + point.x * rect.width, y: rect.minY + point.y * rect.height)
-    }
-
-    private func canvasRect(for rect: CGRect, in contentRect: CGRect) -> CGRect {
-        CGRect(
-            x: contentRect.minX + rect.minX * contentRect.width,
-            y: contentRect.minY + rect.minY * contentRect.height,
-            width: rect.width * contentRect.width,
-            height: rect.height * contentRect.height
-        )
-    }
-
-}
-
 private struct VideoRangePickerView: View {
     let url: URL
     let name: String
@@ -3409,7 +2762,7 @@ struct ClipCell: View {
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                if clip.audioURL != nil {
+                if clip.loadAudioURL() != nil {
                     ClipPreviewBadgeIcon(
                         systemName: "waveform",
                         foregroundStyle: LF.actionPrimary,

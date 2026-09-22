@@ -193,7 +193,9 @@ public final class FrameCache {
                 LogStore.log("library.clip.load.failed id=\(id) error=\(error)")
                 continue
             }
-            let audioURL = manifest.audioFilename.map { dir.appendingPathComponent($0) }
+            let audioURL = manifest.audioFilename
+                .map { dir.appendingPathComponent($0) }
+                .flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
             loaded[id] = SegmentedClip(
                 id: manifest.id,
                 name: manifest.name,

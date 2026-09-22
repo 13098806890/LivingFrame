@@ -4,7 +4,6 @@ Tek bir tuvalde proje oluştur:
 • Videolardan ve Live Photo’lardan kişileri doğrudan cihazında ayır (iOS 17 veya üzeri gerekir)
 • Birden fazla kesiti katmanla; konum, boyut, döndürme, sıra ve görünme süresini ayarla
 • Çıkartma, metin, arka plan, çerçeve ve görsel efekt ekle
-• Videodan sesi çıkar, zaman çizelgesine yerleştir; ses düzeyini ve geçişleri ayarla
 • GIF, şeffaf HEVC video veya H.264 video olarak dışa aktar
 • Projeleri cihazına kaydet, Fotoğraflar’a aktar veya paylaş
 

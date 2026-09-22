@@ -330,7 +330,7 @@ struct AssetPickerView: View {
                                 .allowsHitTesting(false)
                         }
                         .contextMenu {
-                            if clip.audioURL != nil {
+                            if clip.loadAudioURL() != nil {
                                 Button {
                                     appState.addAudioClip(from: clip)
                                 } label: {

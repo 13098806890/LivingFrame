@@ -4,7 +4,6 @@ Crea il tuo progetto su un’unica tela:
 • Ritaglia le persone da video e Live Photo direttamente sul dispositivo (iOS 17 o versioni successive)
 • Sovrapponi più ritagli e regola posizione, dimensioni, rotazione, ordine e durata
 • Aggiungi adesivi, testo, sfondi, cornici ed effetti visivi
-• Estrai l’audio da un video, inseriscilo nella timeline e regola volume e dissolvenze
 • Esporta come GIF, video HEVC trasparente o video H.264
 • Salva i progetti sul dispositivo ed esportali in Foto o condividili
 

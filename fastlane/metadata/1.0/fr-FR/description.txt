@@ -4,7 +4,6 @@ Créez un projet sur une même toile :
 • Détourez des personnes à partir de vidéos et de Live Photos sur votre appareil (iOS 17 ou version ultérieure)
 • Superposez plusieurs éléments et réglez leur position, taille, rotation, ordre et durée d’apparition
 • Ajoutez des autocollants, du texte, des arrière-plans, des cadres et des effets visuels
-• Extrayez le son d’une vidéo, placez-le sur la timeline et réglez le volume ainsi que les fondus
 • Exportez en GIF, en vidéo HEVC avec transparence ou en vidéo H.264
 • Enregistrez vos projets sur l’appareil, puis exportez-les dans Photos ou partagez-les
 

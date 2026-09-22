@@ -88,6 +88,12 @@ final class PaperEffectRendererSnapshotTests: XCTestCase {
                 CompositionElement(
                     kind: .background(backgroundID: imageID),
                     name: "full bleed",
+                    transform: ElementTransform(
+                        position: CGPoint(
+                            x: canvasSize.width / 2,
+                            y: canvasSize.height / 2
+                        )
+                    ),
                     startTime: 0,
                     endTime: 1
                 ),

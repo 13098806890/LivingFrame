@@ -4,7 +4,6 @@ Crea tu proyecto en un mismo lienzo:
 • Recorta personas de vídeos y Live Photos directamente en tu dispositivo (iOS 17 o posterior)
 • Combina varios recortes y ajusta su posición, tamaño, rotación, orden y duración
 • Añade stickers, texto, fondos, marcos y efectos visuales
-• Extrae el audio de un vídeo, colócalo en la línea de tiempo y ajusta el volumen y los fundidos
 • Exporta como GIF, vídeo HEVC con transparencia o vídeo H.264
 • Guarda tus proyectos en el dispositivo y expórtalos a Fotos o compártelos
 

@@ -24,9 +24,9 @@ final class AppState: ObservableObject {
     @Published var segmentingName = ""
     /// 剪影生成失败原因（nil 表示无错误）
     @Published var segmentationError: String?
-    /// 当前动态/静态素材使用的算法。默认切换到 SAM2；Vision 和原始
-    /// foreground 两条旧入口仍保留，可在素材库的“提取设置”中恢复。
-    @Published var segmentationAlgorithm: SegmentationAlgorithm = .sam2 {
+    /// 当前动态/静态素材使用的算法。Vision 人物实例入口暂时隐藏，默认
+    /// 使用原始前景提取；保留枚举和持久化字段，方便后续恢复入口。
+    @Published var segmentationAlgorithm: SegmentationAlgorithm = .foreground {
         didSet {
             guard !isUIAuditFixtureLaunch else { return }
             UserDefaults.standard.set(segmentationAlgorithm.rawValue, forKey: settingSegmentationAlgorithmKey)
@@ -601,8 +601,7 @@ final class AppState: ObservableObject {
         stillOrientation: CGImagePropertyOrientation = .up,
         analysis: VideoSegmentationAnalysis? = nil,
         selectedSubjectIDs: Set<Int>? = nil,
-        selectionRegion: [CGPoint]? = nil,
-        sam2Prompt: SAM2Prompt? = nil
+        selectionRegion: [CGPoint]? = nil
     ) async -> SegmentedClip? {
         isSegmenting = true
         segmentationProgress = 0
@@ -622,8 +621,7 @@ final class AppState: ObservableObject {
                 stillOrientation: stillOrientation,
                 analysis: analysis,
                 selectedSubjectIDs: selectedSubjectIDs,
-                selectionRegion: selectionRegion,
-                sam2Prompt: sam2Prompt
+                selectionRegion: selectionRegion
             ) { [weak self] info in
                 Task { @MainActor in
                     guard let self, info.fraction >= self.segmentationProgress else { return }
@@ -655,8 +653,7 @@ final class AppState: ObservableObject {
         cgImage: CGImage,
         name: String,
         algorithm: SegmentationAlgorithm? = nil,
-        selectionRegion: [CGPoint]? = nil,
-        sam2Prompt: SAM2Prompt? = nil
+        selectionRegion: [CGPoint]? = nil
     ) async -> SegmentedClip? {
         isSegmenting = true
         segmentationProgress = 0
@@ -670,7 +667,6 @@ final class AppState: ObservableObject {
                 name: name,
                 algorithm: algorithm ?? segmentationAlgorithm,
                 selectionRegion: selectionRegion,
-                sam2Prompt: sam2Prompt,
                 maxDimension: preserveOriginalMediaQuality ? .greatestFiniteMagnitude : CGFloat(maxDimension)
             )
             addClip(clip)
@@ -2896,7 +2892,7 @@ final class AppState: ObservableObject {
     // MARK: - 音轨
 
     func addAudioClip(from clip: SegmentedClip) {
-        guard clip.audioURL != nil, var comp = composition ?? defaultComposition() else { return }
+        guard clip.loadAudioURL() != nil, var comp = composition ?? defaultComposition() else { return }
         let audio = AudioClip(
             sourceID: clip.id,
             startTime: 0,

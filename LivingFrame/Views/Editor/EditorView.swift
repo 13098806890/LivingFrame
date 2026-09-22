@@ -876,20 +876,11 @@ struct EditorView: View {
                     .foregroundStyle(LF.textSecondary)
             }
 
-            if selectedStickerCategory == .expression {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: "Twemoji artwork © Twitter, Inc. and contributors. Adapted with transparent SVG padding and rasterized as PNG stickers.")
-                        .font(.caption2)
-                        .foregroundStyle(LF.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    HStack(spacing: 10) {
-                        Link("Twemoji source", destination: URL(string: "https://github.com/twitter/twemoji/tree/master/assets/svg")!)
-                        Link("CC BY 4.0", destination: URL(string: "https://creativecommons.org/licenses/by/4.0/")!)
-                    }
+            if selectedStickerCategory == .emoji {
+                Text("使用设备内置的 Apple Color Emoji 渲染，不额外打包表情图片。")
                     .font(.caption2)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                    .foregroundStyle(LF.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             ScrollView(.vertical, showsIndicators: false) {

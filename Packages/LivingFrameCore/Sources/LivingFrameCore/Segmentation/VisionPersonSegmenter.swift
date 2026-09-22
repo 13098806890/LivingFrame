@@ -226,64 +226,6 @@ public struct VisionPersonSegmenter {
         return output
     }
 
-    /// Select the Vision person instance closest to a SAM2 target and render
-    /// the complete person mask. SAM2 is good at answering "which object did
-    /// the user tap?", while this mask keeps the person's clothes, legs and
-    /// other connected regions together.
-    ///
-    /// The returned score is only a routing confidence. It is based on the
-    /// SAM2 target point/bounds and the Vision instance's mask statistics; it
-    /// is not a Vision model confidence value.
-    public func segmentedPersonImage(
-        from cgImage: CGImage,
-        matching targetBounds: CGRect?,
-        targetPoint: CGPoint?,
-        previousCenter: CGPoint? = nil
-    ) throws -> (image: CGImage, info: ForegroundInstanceInfo, score: Double) {
-        let (observation, handler) = try performObservation(from: cgImage, source: .person)
-        let infos = instanceInfos(in: observation, from: handler)
-        guard !infos.isEmpty else { throw PersonSegmenterError.noSubject }
-
-        let best: (info: ForegroundInstanceInfo, score: Double)
-        if targetBounds == nil, targetPoint == nil, previousCenter == nil {
-            guard let first = infos.first else { throw PersonSegmenterError.noSubject }
-            best = (first, 1)
-        } else {
-            guard let candidate = infos.max(by: {
-                personMatchScore($0, targetBounds: targetBounds, targetPoint: targetPoint, previousCenter: previousCenter)
-                    < personMatchScore($1, targetBounds: targetBounds, targetPoint: targetPoint, previousCenter: previousCenter)
-            }) else {
-                throw PersonSegmenterError.noSubject
-            }
-            best = (
-                candidate,
-                personMatchScore(
-                    candidate,
-                    targetBounds: targetBounds,
-                    targetPoint: targetPoint,
-                    previousCenter: previousCenter
-                )
-            )
-        }
-
-        guard let buffer = try? observation.generateMaskedImage(
-            ofInstances: IndexSet(integer: best.info.index),
-            from: handler,
-            croppedToInstancesExtent: false
-        ) else {
-            throw PersonSegmenterError.noSubject
-        }
-        let ci = CIImage(cvPixelBuffer: buffer)
-        guard let output = context.createCGImage(ci, from: ci.extent) else {
-            throw PersonSegmenterError.renderFailed
-        }
-        LogStore.log(
-            "xdz.vision.hybrid selected=\(best.info.index) score=\(String(format: "%.3f", best.score)) "
-                + "center=\(best.info.center) bounds=\(best.info.boundingBox)"
-        )
-        return (output, best.info, best.score)
-    }
-
     private func performObservation(
         from cgImage: CGImage,
         source: VisionMaskSource
@@ -304,50 +246,6 @@ public struct VisionPersonSegmenter {
             throw PersonSegmenterError.noSubject
         }
         return (observation, handler)
-    }
-
-    private func personMatchScore(
-        _ info: ForegroundInstanceInfo,
-        targetBounds: CGRect?,
-        targetPoint: CGPoint?,
-        previousCenter: CGPoint?
-    ) -> Double {
-        let point = targetPoint ?? targetBounds.map { CGPoint(x: $0.midX, y: $0.midY) }
-        let pointScore: Double
-        if let point {
-            let distance = min(
-                1,
-                sqrt(pow(info.center.x - point.x, 2) + pow(info.center.y - point.y, 2)) / 1.41421356237
-            )
-            pointScore = max(0, 1 - distance)
-        } else {
-            pointScore = 0
-        }
-
-        let boundsScore: Double
-        if let targetBounds {
-            let intersection = info.boundingBox.intersection(targetBounds)
-            let intersectionArea = intersection.isNull ? 0 : intersection.width * intersection.height
-            let unionArea = info.boundingBox.union(targetBounds).width * info.boundingBox.union(targetBounds).height
-            boundsScore = unionArea > 0 ? Double(intersectionArea / unionArea) : 0
-        } else {
-            boundsScore = 0
-        }
-
-        let continuityScore: Double
-        if let previousCenter {
-            let distance = min(
-                1,
-                sqrt(pow(info.center.x - previousCenter.x, 2) + pow(info.center.y - previousCenter.y, 2)) / 1.41421356237
-            )
-            continuityScore = max(0, 1 - distance)
-        } else {
-            continuityScore = 0
-        }
-
-        // The click/track center is the strongest identity cue. Bounds and
-        // last-frame continuity only break ties when people are close.
-        return pointScore * 0.60 + boundsScore * 0.20 + continuityScore * 0.20
     }
 
     /// 保留旧的单参数调用，照片提取默认保留画面中的全部人物。

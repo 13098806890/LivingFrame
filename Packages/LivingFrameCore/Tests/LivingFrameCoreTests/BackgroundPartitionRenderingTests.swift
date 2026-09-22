@@ -102,6 +102,7 @@ final class BackgroundPartitionRenderingTests: XCTestCase {
 
     func testOneElementRendersAcrossTwoAssignedRegions() throws {
         let store = BackgroundStore.shared
+        let collageGroupID = UUID()
         let imageID = try XCTUnwrap(
             store.saveUserImage(
                 try pngData(fill: CGColor(red: 1, green: 0, blue: 0, alpha: 1)),
@@ -120,7 +121,8 @@ final class BackgroundPartitionRenderingTests: XCTestCase {
                 splitCount: .two,
                 dividerAngle: 0,
                 assignedPartitions: [0, 1]
-            )
+            ),
+            collageGroupID: collageGroupID
         )
         let composition = Composition(
             name: "Shared source",
@@ -426,6 +428,7 @@ final class BackgroundPartitionRenderingTests: XCTestCase {
             }
         }
 
+        let collageGroupID = UUID()
         let elements = imageIDs.enumerated().map { index, imageID in
             CompositionElement(
                 kind: .background(backgroundID: imageID),
@@ -438,7 +441,8 @@ final class BackgroundPartitionRenderingTests: XCTestCase {
                     splitCount: .four,
                     dividerAngle: 0,
                     selectedPartition: index
-                )
+                ),
+                collageGroupID: collageGroupID
             )
         }
         let composition = Composition(

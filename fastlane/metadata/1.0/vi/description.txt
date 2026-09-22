@@ -4,7 +4,6 @@ Tạo dự án trên cùng một khung hình:
 • Tách người khỏi video và Live Photo ngay trên thiết bị (yêu cầu iOS 17 trở lên)
 • Xếp nhiều phần cắt thành lớp; chỉnh vị trí, kích thước, góc xoay, thứ tự và thời gian xuất hiện
 • Thêm nhãn dán, văn bản, nền, khung và hiệu ứng hình ảnh
-• Tách âm thanh từ video, đặt vào dòng thời gian và chỉnh âm lượng cùng hiệu ứng mờ dần
 • Xuất dưới dạng GIF, video HEVC trong suốt hoặc video H.264
 • Lưu dự án trên thiết bị, rồi xuất sang Ảnh hoặc chia sẻ
 
