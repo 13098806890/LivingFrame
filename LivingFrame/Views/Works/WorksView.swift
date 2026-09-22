@@ -354,17 +354,21 @@ private struct WorkCell: View {
                 }
                 .padding(6)
             }
+            .frame(maxWidth: .infinity)
             .frame(height: 118)
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Text(work.name)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Text(displayedDate.formatted(date: .abbreviated, time: .omitted))
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
         }
         .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(LF.surface, in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)

@@ -460,11 +460,11 @@ struct LibraryView: View {
         let kind = defaultExtractKind == .live
             ? NSLocalizedString("动态剪影", comment: "Animated cutout asset")
             : NSLocalizedString("静态剪影", comment: "Still cutout asset")
-        return String(
-            format: NSLocalizedString("剪影素材 · %@ · %@ · %@ fps", comment: "Cutout asset extraction summary"),
+        return String.localizedStringWithFormat(
+            NSLocalizedString("剪影素材 · %@ · %@ · %@ fps", comment: "Cutout asset extraction summary"),
             kind,
             appState.segmentationAlgorithm.title,
-            fpsTitle(appState.processingFPS)
+            fpsTitle(appState.processingFPS) as NSString
         )
     }
 
@@ -1104,7 +1104,9 @@ struct LibraryView: View {
                         .foregroundStyle(LF.header)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text(appState.segmentingName.isEmpty ? "正在准备剪影素材" : appState.segmentingName)
+                Text(appState.segmentingName.isEmpty
+                    ? NSLocalizedString("正在准备剪影素材", comment: "Preparing cutout assets")
+                    : appState.segmentingName)
                     .font(.caption)
                     .foregroundStyle(LF.textSecondary)
                     .lineLimit(2)
@@ -1461,7 +1463,7 @@ private struct SubjectSelectionView: View {
                                 }
                             } label: {
                                 Label(
-                                    isLassoMode ? "正在圈选" : "自由圈选",
+                                    NSLocalizedString(isLassoMode ? "正在圈选" : "自由圈选", comment: "Lasso mode"),
                                     systemImage: isLassoMode ? "pencil.and.outline" : "lasso"
                                 )
                             }
@@ -1479,11 +1481,12 @@ private struct SubjectSelectionView: View {
                         }
                         .font(.subheadline.weight(.medium))
 
-                        Text(
+                        Text(NSLocalizedString(
                             isLassoMode
                                 ? "沿着要保留的主体画一圈，松手后会自动选中圈内主体。"
-                                : "也可以使用自由圈选，或在上方列表中选择主体。"
-                        )
+                                : "也可以使用自由圈选，或在上方列表中选择主体。",
+                            comment: "Lasso instructions"
+                        ))
                         .font(.caption)
                         .foregroundStyle(LF.textSecondary)
                     }
@@ -1561,9 +1564,16 @@ private struct SubjectSelectionView: View {
                                 .offset(x: 5, y: -5)
                         }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("主体 \(subjectLabel(for: offset))")
+                            Text(String.localizedStringWithFormat(
+                                NSLocalizedString("主体 %@", comment: "Subject label"),
+                                subjectLabel(for: offset) as NSString
+                            ))
                                 .font(.subheadline.weight(.medium))
-                            Text("出现 \(track.frameCount) 帧 · 平均面积 \(Int(track.averageArea))")
+                            Text(String.localizedStringWithFormat(
+                                NSLocalizedString("出现 %1$lld 帧 · 平均面积 %2$lld", comment: "Subject track summary"),
+                                Int64(track.frameCount),
+                                Int64(track.averageArea.rounded())
+                            ))
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
                         }
@@ -1576,8 +1586,14 @@ private struct SubjectSelectionView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("主体 \(subjectLabel(for: offset))")
-                .accessibilityValue(selectedIDs.contains(track.id) ? "已选择" : "未选择")
+                .accessibilityLabel(String.localizedStringWithFormat(
+                    NSLocalizedString("主体 %@", comment: "Subject accessibility label"),
+                    subjectLabel(for: offset) as NSString
+                ))
+                .accessibilityValue(NSLocalizedString(
+                    selectedIDs.contains(track.id) ? "已选择" : "未选择",
+                    comment: "Subject selection state"
+                ))
 
                 if offset < analysis.tracks.count - 1 {
                     Divider().overlay(LF.surface2.opacity(0.8))
@@ -1587,7 +1603,10 @@ private struct SubjectSelectionView: View {
         .padding(.horizontal, 14)
         .background(LF.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-        Text("已选择 \(selectedIDs.count) 个主体")
+        Text(String.localizedStringWithFormat(
+            NSLocalizedString("已选择 %1$lld 个主体", comment: "Selected subject count"),
+            Int64(selectedIDs.count)
+        ))
             .font(.caption)
             .foregroundStyle(LF.textSecondary)
     }
@@ -1789,7 +1808,11 @@ private struct SubjectFrameInspectorView: View {
                     )
                     .frame(maxHeight: .infinity)
 
-                    Text("第 \(selectedFrame.id + 1) / \(frames.count) 帧")
+                    Text(String.localizedStringWithFormat(
+                        NSLocalizedString("第 %1$lld 帧 / 共 %2$lld 帧", comment: "Frame preview position"),
+                        Int64(selectedFrame.id + 1),
+                        Int64(frames.count)
+                    ))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(LF.textPrimary)
 
@@ -1825,7 +1848,10 @@ private struct SubjectFrameInspectorView: View {
                                         }
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel("第 \(frame.id + 1) 帧")
+                                .accessibilityLabel(String.localizedStringWithFormat(
+                                    NSLocalizedString("第 %1$lld 帧", comment: "Frame accessibility label"),
+                                    Int64(frame.id + 1)
+                                ))
                             }
                         }
                         .padding(.vertical, 2)
@@ -1866,7 +1892,7 @@ private struct SubjectFrameInspectorView: View {
         .foregroundStyle(LF.textSecondary)
     }
 
-    private func legendItem(color: Color, title: String) -> some View {
+    private func legendItem(color: Color, title: LocalizedStringKey) -> some View {
         Label {
             Text(title)
         } icon: {
@@ -2130,13 +2156,16 @@ private struct VisionInitialRegionPickerView: View {
                         isLassoMode = true
                         lassoPoints = []
                     } label: {
-                        Label(isLassoMode ? "正在圈选" : "重新圈选", systemImage: "lasso")
+                        Label(
+                            NSLocalizedString(isLassoMode ? "正在圈选" : "重新圈选", comment: "Lasso mode"),
+                            systemImage: "lasso"
+                        )
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(isLassoMode ? LF.actionPrimary : LF.selectionFill)
 
                     if !lassoPoints.isEmpty {
-                        Button("清除") {
+                        Button(NSLocalizedString("清除", comment: "Clear lasso")) {
                             lassoPoints = []
                             isLassoMode = true
                         }
@@ -2273,7 +2302,10 @@ private struct VideoRangePickerView: View {
                         }
                     } label: {
                         Label(
-                            previewController.isPlaying ? "停止预览" : "预览选中片段",
+                            NSLocalizedString(
+                                previewController.isPlaying ? "停止预览" : "预览选中片段",
+                                comment: "Preview selected segment"
+                            ),
                             systemImage: previewController.isPlaying ? "stop.fill" : "play.fill"
                         )
                         .frame(maxWidth: .infinity)
@@ -3177,7 +3209,7 @@ struct ClipMenuView: View {
         )) {
             Button("好", role: .cancel) {}
         } message: {
-            Text(exportGIFError ?? "请稍后重试。")
+            Text(exportGIFError ?? NSLocalizedString("请稍后重试。", comment: "Retry message"))
         }
         .onDisappear {
             exportGIFTask?.cancel()
@@ -3311,7 +3343,10 @@ struct ClipMenuView: View {
                         }
                     } label: {
                         Label(
-                            isExportingGIF ? "取消导出" : "保存到相册",
+                            NSLocalizedString(
+                                isExportingGIF ? "取消导出" : "保存到相册",
+                                comment: "GIF export action"
+                            ),
                             systemImage: isExportingGIF ? "xmark" : "photo.badge.plus"
                         )
                         .frame(maxWidth: .infinity)

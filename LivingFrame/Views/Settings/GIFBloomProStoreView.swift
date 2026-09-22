@@ -137,11 +137,12 @@ private struct LifetimePurchaseOption: View {
                     .font(.footnote)
                     .foregroundStyle(LF.textSecondary)
             } else if let product {
-                Text(
+                Text(NSLocalizedString(
                     purchaseManager.hasActiveSubscription
                         ? "当前订阅已解锁 Pro；购买永久版后将永久保留 Pro 权益。"
-                        : "一次性购买，永久解锁 Pro。"
-                )
+                        : "一次性购买，永久解锁 Pro。",
+                    comment: "Lifetime purchase explanation"
+                ))
                     .font(.footnote)
                     .foregroundStyle(LF.textSecondary)
 

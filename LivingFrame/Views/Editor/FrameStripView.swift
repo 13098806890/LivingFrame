@@ -183,11 +183,12 @@ struct FrameGridView: View {
             ZStack {
                 ScrollView {
                     VStack(spacing: 4) {
-                        Text(
+                        Text(NSLocalizedString(
                             editsComposition
                                 ? "去掉的合成帧由前一张合成帧填补，时间轴和音频保持不变"
-                                : "去掉的素材帧由前一张素材帧填补，后续帧位置和总时长不变"
-                        )
+                                : "去掉的素材帧由前一张素材帧填补，后续帧位置和总时长不变",
+                            comment: "Frame removal explanation"
+                        ))
                             .font(.caption2)
                             .foregroundStyle(LF.textSecondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -226,7 +227,10 @@ struct FrameGridView: View {
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
-                        Text(editsComposition ? "编辑合成帧" : "编辑素材帧")
+                        Text(NSLocalizedString(
+                            editsComposition ? "编辑合成帧" : "编辑素材帧",
+                            comment: "Frame editor title"
+                        ))
                             .font(.subheadline.weight(.semibold))
                         Text(String.localizedStringWithFormat(
                             NSLocalizedString("%1$lld / %2$lld 张帧", comment: "Selected frame count"),

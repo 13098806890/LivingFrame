@@ -529,7 +529,10 @@ struct CollageEditorView: View {
                             .offset(x: 3, y: 3)
                     }
                     .frame(width: 34, height: 27)
-                    .accessibilityLabel(isAssigned ? "当前素材已在此区域" : "当前素材待添加到此区域")
+                    .accessibilityLabel(NSLocalizedString(
+                        isAssigned ? "当前素材已在此区域" : "当前素材待添加到此区域",
+                        comment: "Collage region assignment state"
+                    ))
                 }
                 Image(systemName: isAssigned ? "checkmark.circle.fill" : "arrow.down.circle")
                     .foregroundStyle(isAssigned ? LF.selectionStroke : LF.actionPrimary)
@@ -538,12 +541,15 @@ struct CollageEditorView: View {
                         NSLocalizedString("区域 %1$lld", comment: "Collage region number"), Int64(partition + 1)
                     ))
                         .font(.caption.weight(.semibold))
-                    Text(isAssigned ? "当前素材已在此区域" : "点击按钮添加到这里")
+                    Text(NSLocalizedString(
+                        isAssigned ? "当前素材已在此区域" : "点击按钮添加到这里",
+                        comment: "Collage region assignment prompt"
+                    ))
                         .font(.caption2)
                         .foregroundStyle(LF.textSecondary)
                 }
                 Spacer(minLength: 8)
-                Button(isAssigned ? "移除" : "点击添加") {
+                Button(NSLocalizedString(isAssigned ? "移除" : "点击添加", comment: "Collage region action")) {
                     appState.toggleBackgroundPartition(activeElement.id, partition)
                 }
                 .font(.caption2.weight(.semibold))
@@ -716,9 +722,12 @@ struct BackgroundEditingPreview: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(isDividerLayoutLocked
-                ? "编辑画面 · 分割线已固定 · 拖动图片调整取景"
-                : "编辑画面 · 拖动图片调整取景 · 拖动分割线调整布局")
+            Text(NSLocalizedString(
+                isDividerLayoutLocked
+                    ? "编辑画面 · 分割线已固定 · 拖动图片调整取景"
+                    : "编辑画面 · 拖动图片调整取景 · 拖动分割线调整布局",
+                comment: "Collage editor instructions"
+            ))
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
 
@@ -1232,7 +1241,7 @@ struct BackgroundDividerControls: View {
             }
 
             HStack(spacing: 6) {
-                Text(isDividerLayoutLocked ? "已固定" : "可编辑")
+                Text(NSLocalizedString(isDividerLayoutLocked ? "已固定" : "可编辑", comment: "Divider layout state"))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(isDividerLayoutLocked ? LF.textSecondary : LF.actionPrimary)
                 Spacer()
@@ -1247,9 +1256,12 @@ struct BackgroundDividerControls: View {
             }
 
             Label(
-                isDividerLayoutLocked
-                    ? "分割线已固定；切换到“编辑”后可继续调整，素材仍可移动和缩放。"
-                    : "拖动分割线上的控制点，可沿线移动旋转中心；调整角度时，分割线会以该点为圆心旋转。",
+                NSLocalizedString(
+                    isDividerLayoutLocked
+                        ? "分割线已固定；切换到“编辑”后可继续调整，素材仍可移动和缩放。"
+                        : "拖动分割线上的控制点，可沿线移动旋转中心；调整角度时，分割线会以该点为圆心旋转。",
+                    comment: "Collage divider instructions"
+                ),
                 systemImage: "info.circle"
             )
             .font(.caption2)

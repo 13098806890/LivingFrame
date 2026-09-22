@@ -426,7 +426,10 @@ struct EditorView: View {
             Text("草稿保存中…")
                 .foregroundStyle(LF.header)
         } else if appState.hasUnsavedChanges {
-            Text(appState.currentWorkHasDraft && !appState.hasPendingDraftAutosave ? "草稿已保存" : "未保存修改")
+            Text(NSLocalizedString(
+                appState.currentWorkHasDraft && !appState.hasPendingDraftAutosave ? "草稿已保存" : "未保存修改",
+                comment: "Save status"
+            ))
                 .foregroundStyle(LF.header)
         } else if appState.editingWorkID != nil {
             Text("已保存")
@@ -535,7 +538,10 @@ struct EditorView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(LF.textPrimary)
-            .accessibilityLabel(appState.isPlaying ? "暂停" : "播放")
+            .accessibilityLabel(NSLocalizedString(
+                appState.isPlaying ? "暂停" : "播放",
+                comment: "Playback accessibility label"
+            ))
         }
         .padding(.horizontal, 16)
         .frame(height: 38)
@@ -675,7 +681,9 @@ struct EditorView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityValue(tool == .timeline ? (showTimeline ? "已显示" : "已隐藏") : "")
+        .accessibilityValue(tool == .timeline
+            ? NSLocalizedString(showTimeline ? "已显示" : "已隐藏", comment: "Timeline visibility")
+            : "")
     }
 
     private func handleToolTap(_ tool: EditorTool) {
@@ -1253,11 +1261,11 @@ private struct FaceStickerLoadingAlert: View {
                     .controlSize(.large)
                     .tint(LF.actionPrimary)
 
-                Text("正在添加 AI 贴纸")
+                Text(NSLocalizedString("正在添加 AI 贴纸", comment: "Adding AI sticker"))
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(LF.textPrimary)
 
-                Text(message ?? "正在逐帧识别人脸…")
+                Text(message ?? NSLocalizedString("正在逐帧识别人脸…", comment: "AI sticker analysis progress"))
                     .font(.subheadline)
                     .foregroundStyle(LF.textSecondary)
                     .multilineTextAlignment(.center)
@@ -1276,8 +1284,8 @@ private struct FaceStickerLoadingAlert: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("正在添加 AI 贴纸")
-        .accessibilityValue(message ?? "正在逐帧识别人脸")
+        .accessibilityLabel(NSLocalizedString("正在添加 AI 贴纸", comment: "Adding AI sticker"))
+        .accessibilityValue(message ?? NSLocalizedString("正在逐帧识别人脸…", comment: "AI sticker analysis progress"))
     }
 }
 
@@ -1364,7 +1372,10 @@ private struct StickerPickerCell: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint(isLocked ? "AI 贴纸仅限 GIFBloom Pro 使用。" : "轻点添加，长按预览")
+        .accessibilityHint(NSLocalizedString(
+            isLocked ? "AI 贴纸仅限 GIFBloom Pro 使用。" : "轻点添加，长按预览",
+            comment: "Sticker access hint"
+        ))
         .accessibilityAction(named: "预览") {
             onPreview()
         }
@@ -1692,13 +1703,16 @@ private struct StickerPreviewSheet: View {
                     Button {
                         isPlaying.toggle()
                     } label: {
-                        Label(isPlaying ? "暂停" : "播放", systemImage: isPlaying ? "pause.fill" : "play.fill")
+                        Label(
+                            NSLocalizedString(isPlaying ? "暂停" : "播放", comment: "Sticker preview playback"),
+                            systemImage: isPlaying ? "pause.fill" : "play.fill"
+                        )
                             .frame(maxWidth: .infinity)
                     }
                     .lfActionButtonStyle(.secondary)
                     }
 
-                    Button(canAdd ? "添加贴纸" : "解锁 GIFBloom Pro", action: onAdd)
+                    Button(NSLocalizedString(canAdd ? "添加贴纸" : "解锁 GIFBloom Pro", comment: "Sticker add action"), action: onAdd)
                         .lfActionButtonStyle(.primary)
                 }
             }

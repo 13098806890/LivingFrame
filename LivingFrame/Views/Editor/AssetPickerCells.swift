@@ -49,7 +49,7 @@ struct BackgroundAssetCell: View {
             }
 
             HStack(spacing: 4) {
-                Text(item.isAnimated ? "动态素材" : "静态素材")
+                Text(NSLocalizedString(item.isAnimated ? "动态素材" : "静态素材", comment: "Media type"))
                 if item.isAnimated {
                     Text("\(String(format: "%.1fs", item.duration))")
                         .foregroundStyle(LF.textSecondary)

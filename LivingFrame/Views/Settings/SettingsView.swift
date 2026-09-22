@@ -124,9 +124,12 @@ struct SettingsView: View {
                             .tint(LF.actionPrimary)
                         }
 
-                        Text(preserveOriginalMediaQuality
-                             ? "当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。"
-                             : "仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，剪影边缘越精细，处理时间越长。")
+                        Text(NSLocalizedString(
+                            preserveOriginalMediaQuality
+                                ? "当前将按源素材实际帧率和原始尺寸处理，不会补帧或放大素材。"
+                                : "仅当源素材帧率更高时才会保留更多帧，不会补帧。分辨率越高、帧率越高，剪影边缘越精细，处理时间越长。",
+                            comment: "Original media quality explanation"
+                        ))
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)

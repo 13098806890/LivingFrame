@@ -19,15 +19,15 @@ public enum SegmentationAlgorithm: String, CaseIterable, Identifiable, Sendable 
 
     public var title: String {
         switch self {
-        case .foreground: return "原始前景提取"
-        case .visionPerson: return "Vision 人物实例"
+        case .foreground: return NSLocalizedString("原始前景提取", comment: "Foreground extraction algorithm")
+        case .visionPerson: return NSLocalizedString("Vision 人物实例", comment: "Vision person extraction algorithm")
         }
     }
 
     public var subtitle: String {
         switch self {
-        case .foreground: return "不区分人物，提取画面中的全部前景"
-        case .visionPerson: return "识别多个人物后选择要保留的主体"
+        case .foreground: return NSLocalizedString("不区分人物，提取画面中的全部前景", comment: "Foreground extraction algorithm description")
+        case .visionPerson: return NSLocalizedString("识别多个人物后选择要保留的主体", comment: "Vision person extraction algorithm description")
         }
     }
 

@@ -618,7 +618,10 @@ struct ClipPreviewPlayButton: View {
             .accessibilityAction {
                 isPlaying.toggle()
             }
-            .accessibilityLabel(isPlaying ? "暂停动态素材" : "播放动态素材")
+            .accessibilityLabel(NSLocalizedString(
+                isPlaying ? "暂停动态素材" : "播放动态素材",
+                comment: "Animated media playback state"
+            ))
         }
     }
 }

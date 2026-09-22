@@ -14,14 +14,6 @@ struct ExportView: View {
         var title: String {
             NSLocalizedString(self == .sticker ? "表情 240" : "高清 720", comment: "WeChat GIF preset")
         }
-        var detail: String {
-            switch self {
-            case .sticker:
-                return NSLocalizedString("240×240、15 fps。适合尝试添加到微信自定义表情。", comment: "WeChat sticker preset description")
-            case .highResolution:
-                return NSLocalizedString("720×720、15 fps。保留更多细节，适合以 GIF 图片发送或在微信中实测；不保证可添加到自定义表情面板。", comment: "High resolution WeChat GIF preset description")
-            }
-        }
     }
 
     @EnvironmentObject private var appState: AppState
@@ -89,10 +81,10 @@ struct ExportView: View {
                                 }
                             }
                             .pickerStyle(.segmented)
-                            Text(verbatim: weChatGIFPreset.detail + NSLocalizedString(
+                            Text(NSLocalizedString(
                                 " 超过 10 MB 时会均匀抽帧，最低 6 fps；不会缩小画面。建议使用 1:1 画布让主体显示更大。半透明阴影会转为硬边。",
                                 comment: "WeChat GIF export note"
-                            ))
+                            ).trimmingCharacters(in: .whitespacesAndNewlines))
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
                         }
@@ -175,7 +167,10 @@ struct ExportView: View {
             .magicBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(appState.isExporting || isSavingToLibrary || isPreparingExport ? "处理中…" : "取消") {
+                    Button(NSLocalizedString(
+                        appState.isExporting || isSavingToLibrary || isPreparingExport ? "处理中…" : "取消",
+                        comment: "Export navigation action"
+                    )) {
                         if appState.isExporting {
                             exportTask?.cancel()
                         } else if !isSavingToLibrary && !isPreparingExport {
@@ -336,7 +331,7 @@ struct ExportView: View {
                     saveToLibrary(url: url)
                 } label: {
                     Label(
-                        savedToLibrary ? "已存入相册" : "存到相册",
+                        NSLocalizedString(savedToLibrary ? "已存入相册" : "存到相册", comment: "Save to Photos action"),
                         systemImage: savedToLibrary ? "checkmark" : "photo.badge.plus"
                     )
                     .frame(maxWidth: .infinity)
@@ -464,7 +459,7 @@ struct ExportView: View {
                 // 导出代表用户确认当前版本，先把它固化为正式作品；
                 // 编辑期间的自动保存仍只会写入草稿。
                 guard await appState.saveCurrentToWorks() else {
-                    exportError = appState.saveError ?? "作品保存失败，请稍后重试。"
+                    exportError = appState.saveError ?? NSLocalizedString("作品保存失败，请稍后重试。", comment: "Work save error")
                     return
                 }
                 let url = try await appState.export(

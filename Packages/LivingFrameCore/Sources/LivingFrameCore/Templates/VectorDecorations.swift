@@ -65,13 +65,13 @@ public enum StickerRenderingMode: String, Equatable, Sendable {
     public var previewTitle: String {
         switch self {
         case .multiView2D:
-            return "方案 1 · 多视角 2D"
+            return NSLocalizedString("方案 1 · 多视角 2D", comment: "Sticker rendering mode")
         case .rendered3DViews:
-            return "方案 2 · 预渲染视角"
+            return NSLocalizedString("方案 2 · 预渲染视角", comment: "Sticker rendering mode")
         case .rendered3DModel:
-            return "方案 3 · 真 3D 模型"
+            return NSLocalizedString("方案 3 · 真 3D 模型", comment: "Sticker rendering mode")
         case .standard:
-            return "普通贴纸"
+            return NSLocalizedString("普通贴纸", comment: "Sticker rendering mode")
         }
     }
 }
