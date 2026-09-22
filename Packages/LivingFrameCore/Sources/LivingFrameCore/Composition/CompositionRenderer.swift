@@ -1282,9 +1282,20 @@ public struct CompositionRenderer {
         case .shadow:
             return shadow(image, fixScale: s)
         case .comic:
-            let white = outlineLayer(image, radius: 9 / s, color: CIColor(hex: "FFFFFF"), lineStyle: .solid, fixScale: s)
-            let black = outlineLayer(image, radius: 3 / s, color: CIColor(hex: "000000"), lineStyle: .solid, fixScale: s)
-            return image.composited(over: black.composited(over: white))
+            // iOS-style sticker treatment: a clean white border with a soft,
+            // offset drop shadow. The old black contour looked like a comic
+            // filter rather than a lifted sticker.
+            let extent = image.extent
+            let whiteRadius = max(1, thickness.radius * 2 / s)
+            let white = outlineLayer(image, radius: whiteRadius, color: CIColor(hex: "FFFFFF"), lineStyle: .solid, fixScale: s)
+                .cropped(to: extent)
+            let shadow = stickerShadowLayer(
+                white,
+                offset: CGSize(width: max(3, whiteRadius * 0.28), height: -max(3, whiteRadius * 0.28)),
+                blurRadius: max(4, whiteRadius * 0.42),
+                opacity: 0.28
+            )
+            return image.composited(over: white.composited(over: shadow)).cropped(to: extent)
         }
     }
 
@@ -1354,18 +1365,22 @@ public struct CompositionRenderer {
                 .cropped(to: image.extent)
             return image.composited(over: soft)
         case .comic:
-            // 漫画贴纸：黑色外描边 + 白色内描边。
-            // 现在跟自定义描边共用三档粗细，且按预览缩略图比例换算，
-            // 这样用户在两种风格之间切换时，粗细控制不会失效。
+            // 贴纸效果：白色外圈 + 右下方柔和阴影。
+            // 不改变人物本身的颜色和细节，也不再使用黑色漫画线条。
             let scale = max(fixScale, 0.001)
-            // 白色留白带加倍，同时保留原来的黑色外轮廓宽度：
-            // 旧值为白色 0.5R + 黑色 0.5R；现在为白色 R + 黑色 0.5R。
-            let blackBand = max(1, thickness.radius * 0.5 / scale)
-            let whiteRadius = max(1, thickness.radius / scale)
-            let blackRadius = whiteRadius + blackBand
-            let black = outlineLayer(image, radius: blackRadius, color: CIColor(hex: "000000"), lineStyle: .solid)
+            let extent = image.extent
+            // 漫画贴纸的白色外圈统一比原三档基准厚一倍：细 18px、中 36px、粗 60px
+            // （再按预览缩放因子换算），阴影跟随新的贴纸轮廓同步扩大。
+            let whiteRadius = max(1, thickness.radius * 2 / scale)
             let white = outlineLayer(image, radius: whiteRadius, color: CIColor(hex: "FFFFFF"), lineStyle: .solid)
-            return image.composited(over: white.composited(over: black))
+                .cropped(to: extent)
+            let shadow = stickerShadowLayer(
+                white,
+                offset: CGSize(width: max(3, whiteRadius * 0.38), height: -max(3, whiteRadius * 0.38)),
+                blurRadius: max(4, whiteRadius * 0.55),
+                opacity: 0.28
+            )
+            return image.composited(over: white.composited(over: shadow)).cropped(to: extent)
         case .smooth:
             // 平滑贴纸：仅羽化边缘（边缘带变半透明过渡，内部保持清晰不模糊）。
             // 用模糊后的 alpha 作掩码：内部 alpha≈1 → 原图；边缘 0<alpha<1 → 半透明；外部 → 透明
@@ -1440,6 +1455,29 @@ public struct CompositionRenderer {
             .clampedToExtent()
             .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 10 / fixScale])
         return image.composited(over: tinted(blurred, color: CIColor(hex: "000000")))
+    }
+
+    /// Shadow layer used by the sticker-style comic preset. It stays separate
+    /// from the subject so the final compositing order is subject → white
+    /// border → shadow, matching the lifted-paper look of system stickers.
+    private func stickerShadowLayer(
+        _ image: CIImage,
+        offset: CGSize,
+        blurRadius: CGFloat,
+        opacity: CGFloat
+    ) -> CIImage {
+        let mask = image.applyingFilter("CIMaskToAlpha")
+        let shifted = mask.transformed(by: CGAffineTransform(
+            translationX: offset.width,
+            y: offset.height
+        ))
+        let blurred = shifted
+            .clampedToExtent()
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: max(0.1, blurRadius)])
+        return tinted(
+            blurred,
+            color: CIColor(red: 0, green: 0, blue: 0, alpha: min(max(opacity, 0), 1))
+        ).cropped(to: image.extent)
     }
 
     /// 用 alpha 掩码染色：纯色 × 人物 alpha（CIBlendWithAlphaMask 使用掩码的
