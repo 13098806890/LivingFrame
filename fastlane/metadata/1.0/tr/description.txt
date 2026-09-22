@@ -1,4 +1,4 @@
-Videoları ve Live Photo’ları hareketli kesitlere dönüştür, ardından kendi hareketli sahnelerini oluşturmak için birleştir.
+Videoları ve Live Photo’ları hareketli kesitlere dönüştürerek GIF ve kişisel çıkartmalar oluştur, ardından WhatsApp ve diğer uygulamalarla paylaş.
 
 Tek bir tuvalde proje oluştur:
 • Videolardan ve Live Photo’lardan kişileri doğrudan cihazında ayır (iOS 17 veya üzeri gerekir)
@@ -10,3 +10,5 @@ Tek bir tuvalde proje oluştur:
 Kesit oluşturma, birleştirme ve dışa aktarma cihazında yapılır. Hesap gerekmez; seçtiğin fotoğraf ve videolar yüklenmez.
 
 GIFBloom, kişisel animasyonlu fotoğraf projeleri oluşturup düzenlemek için yaratıcı bir araçtır.
+
+Kullanım Koşulları: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

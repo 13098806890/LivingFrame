@@ -1,4 +1,4 @@
-Convierte vídeos y Live Photos en recortes animados y combínalos para crear tus propias escenas en movimiento.
+Convierte vídeos y Live Photos en recortes animados para crear GIFs y stickers personalizados, y compártelos por WhatsApp y otras aplicaciones.
 
 Crea tu proyecto en un mismo lienzo:
 • Recorta personas de vídeos y Live Photos directamente en tu dispositivo (iOS 17 o posterior)
@@ -10,3 +10,5 @@ Crea tu proyecto en un mismo lienzo:
 El recorte, la composición y la exportación se realizan en tu dispositivo. No necesitas una cuenta y las fotos y vídeos que eliges no se suben.
 
 GIFBloom es una herramienta creativa para crear y editar proyectos personales de fotos animadas.
+
+Términos de uso: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

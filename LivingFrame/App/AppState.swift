@@ -1152,7 +1152,8 @@ final class AppState: ObservableObject {
                 sourceStartTime: 0,
                 sourceEndTime: sourceDuration,
                 backgroundSettings: settings,
-                collageGroupID: collageGroupID
+                collageGroupID: collageGroupID,
+                followsLongestMaterialDuration: media.isAnimated ? true : nil
             )
         }
 
@@ -2292,6 +2293,7 @@ final class AppState: ObservableObject {
             let range = source.range(for: item)
             item.sourceStartTime = range.start
             item.sourceEndTime = range.end
+            item.followsLongestMaterialDuration = false
             // 检查器操作以源范围起点作为每轮循环的起点，清除时间轴拖拽留下的相位。
             item.sourcePlaybackOffset = nil
             item.playbackCount = count
@@ -2314,12 +2316,37 @@ final class AppState: ObservableObject {
         updateElement(id, { item in
             item.sourceStartTime = start
             item.sourceEndTime = end
+            item.followsLongestMaterialDuration = false
             // 检查器重新定义每一轮的源区间后，从该区间的起点重新开始播放。
             item.sourcePlaybackOffset = nil
             item.playbackCount = count
             item.endTime = item.startTime + (end - start) / source.playbackRate * Double(count)
         }, recomputeDuration: false)
         recomputeDuration(autoFillOverlayElements: false)
+    }
+
+    /// 设置动态元素是否持续循环到工程中最长素材结束。
+    func setElementFollowsLongestDuration(_ id: UUID, follows: Bool) {
+        guard let element = composition?.elements.first(where: { $0.id == id }),
+              let source = playbackSource(for: element) else { return }
+        pause()
+        beginTimelineEdit()
+        defer { finishTimelineEdit() }
+        updateElement(id, { item in
+            item.followsLongestMaterialDuration = follows
+            if follows {
+                // 自动模式从循环单元起点开始，避免保留时间轴拖拽产生的相位。
+                item.sourcePlaybackOffset = nil
+            } else {
+                // 关闭自动模式时把当前时长固化为明确的循环次数，后续工程时长变化
+                // 不会再悄悄改变该元素的播放长度。
+                item.playbackCount = min(
+                    item.resolvedPlaybackCount(cycleDuration: source.cycleDuration(for: item)),
+                    99
+                )
+            }
+        }, recomputeDuration: false)
+        recomputeDuration(autoFillOverlayElements: follows)
     }
 
     func updateElement(
@@ -2493,7 +2520,7 @@ final class AppState: ObservableObject {
     }
 
     /// 返回素材元素在时间轴上的最晚结束位置。
-    /// 文字和贴纸不是“素材”，不能反过来参与决定自己的自动时长。
+    /// 覆盖层和循环素材不能反过来参与决定自己的自动时长。
     private func longestMaterialTimelineEnd(in comp: Composition) -> TimeInterval? {
         let materialEnds = comp.elements.compactMap { element -> TimeInterval? in
             if isCollageChild(element, in: comp) { return nil }
@@ -2511,7 +2538,7 @@ final class AppState: ObservableObject {
         return longest
     }
 
-    /// 自动创建的文字/贴纸跟随最长素材；用户手动拖过时间轴后会退出自动模式。
+    /// 自动模式的元素跟随最长素材；用户手动拖过时间轴后会退出自动模式。
     private func alignAutoSizedOverlaysToLongestMaterial(in comp: inout Composition) {
         guard let materialEnd = longestMaterialTimelineEnd(in: comp) else { return }
         let targetEnd = max(materialEnd, 0.1)
@@ -2523,20 +2550,25 @@ final class AppState: ObservableObject {
             case .text:
                 comp.elements[index].startTime = 0
                 comp.elements[index].endTime = targetEnd
-            case .decoration(let decorationID):
+            case .decoration:
                 comp.elements[index].startTime = 0
                 comp.elements[index].endTime = targetEnd
-
-                // 动态贴纸需要同步增加播放次数，否则时间轴虽然变长，动画会在
-                // 第一轮结束后停在最后一帧。静态贴纸保持一次播放即可。
-                if let definition = DecorationRenderer.stickerDefinition(for: decorationID),
-                   definition.frameCount > 1 {
-                    let cycleDuration = max(definition.defaultDuration, 0.1)
-                    let count = min(max(Int(ceil(targetEnd / cycleDuration - 0.000001)), 1), 99)
-                    comp.elements[index].playbackCount = count
-                }
-            case .canvasEdge, .clip, .background, .collage, .effect:
+            case .clip, .background, .effect:
+                comp.elements[index].startTime = 0
+                comp.elements[index].endTime = targetEnd
+            case .canvasEdge, .collage:
                 continue
+            }
+
+            // 动态素材需要同步增加播放次数，否则时间轴虽然变长，动画会在
+            // 第一轮结束后停在最后一帧。静态覆盖层没有 playbackSource，不进入这里。
+            if let source = playbackSource(for: comp.elements[index]) {
+                let cycleDuration = max(source.cycleDuration(for: comp.elements[index]), 0.001)
+                // 自动模式不受检查器“自定义次数”99 次上限影响，确保超长素材也能
+                // 真正播放到最长素材结束；仍保留一个足够大的保护上限。
+                let count = min(max(Int(ceil(targetEnd / cycleDuration - 0.000001)), 1), 10_000)
+                comp.elements[index].playbackCount = count
+                comp.elements[index].sourcePlaybackOffset = nil
             }
         }
     }
@@ -2847,7 +2879,8 @@ final class AppState: ObservableObject {
             startTime: 0,
             endTime: clip.effectiveDuration.isFinite ? clip.effectiveDuration : 1,
             sourceStartTime: 0,
-            sourceEndTime: clip.playbackSourceDuration
+            sourceEndTime: clip.playbackSourceDuration,
+            followsLongestMaterialDuration: true
         )
         comp.elements.append(element)
         composition = comp
@@ -3042,7 +3075,8 @@ final class AppState: ObservableObject {
             zIndex: nextElementZIndex(in: comp),
             startTime: 0,
             endTime: sourceDuration ?? max(comp.duration, 1),
-            sourceEndTime: sourceDuration ?? .greatestFiniteMagnitude
+            sourceEndTime: sourceDuration ?? .greatestFiniteMagnitude,
+            followsLongestMaterialDuration: sourceDuration != nil ? true : nil
         )
         comp.elements.append(element)
         composition = comp

@@ -162,8 +162,9 @@ private struct LifetimePurchaseOption: View {
                             Text(product.displayPrice)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .buttonStyle(.borderedProminent)
+                .lfActionButtonStyle(.primary)
                 .disabled(isPurchasing)
             } else {
                 ProgressView("正在加载永久版…")

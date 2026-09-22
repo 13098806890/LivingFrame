@@ -603,11 +603,8 @@ struct MagicBackground: ViewModifier {
                 }
                 .ignoresSafeArea()
             }
-            // 导航栏不再使用一块独立的不透明色带，让标题和主体共享同一层背景。
-            // Tab 栏保留稳定底色，避免滚动内容穿透到底部操作区。
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarBackground(.visible, for: .tabBar)
-            .toolbarBackground(LF.background.opacity(0.96), for: .tabBar)
+            // 导航栏和 Tab 栏都直接使用页面背景，不绘制系统材质边界线。
+            .toolbarBackground(.hidden, for: .navigationBar, .tabBar)
             .toolbarColorScheme(.light, for: .navigationBar, .tabBar)
     }
 }

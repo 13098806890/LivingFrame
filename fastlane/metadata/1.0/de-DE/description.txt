@@ -1,4 +1,4 @@
-Verwandle Videos und Live Photos in animierte Freisteller und gestalte daraus eigene bewegte Szenen.
+Verwandle Videos und Live Photos in animierte Freisteller für GIF-Sticker und eigene bewegte Szenen, die du über WhatsApp und andere Messenger teilen kannst.
 
 Erstelle dein Projekt auf einer Leinwand:
 • Stelle Personen direkt auf deinem Gerät aus Videos und Live Photos frei (iOS 17 oder neuer)
@@ -10,3 +10,5 @@ Erstelle dein Projekt auf einer Leinwand:
 Freistellen, Komposition und Export erfolgen auf deinem Gerät. Ein Konto ist nicht erforderlich; ausgewählte Fotos und Videos werden nicht hochgeladen.
 
 GIFBloom ist ein Kreativwerkzeug zum Erstellen und Bearbeiten persönlicher animierter Fotoprojekte.
+
+Nutzungsbedingungen: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

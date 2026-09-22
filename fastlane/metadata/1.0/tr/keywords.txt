@@ -1,1 +1,1 @@
-GIF yapma,animasyonlu fotoğraf,Live Photo,video düzenleme,kesit,kolaj,çıkartma
+animasyonlu fotoğraf,Live Photo,video düzenleme,şeffaf video,arka plan kaldırma,kolaj

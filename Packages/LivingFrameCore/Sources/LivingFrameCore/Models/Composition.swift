@@ -607,7 +607,7 @@ public struct CompositionElement: Identifiable, Codable, Equatable {
     /// 仅对拼接内部 background 元素生效；同一拼接组中的元素共享此标识。
     public var collageGroupID: UUID?
     /// 是否自动跟随当前工程中最长的素材时长。
-    /// nil 用于兼容旧工程；只有新创建且未被手动调整过的文字/贴纸会显式设为 true。
+    /// nil 用于兼容旧工程；新创建的动态素材和普通覆盖层会显式设为 true。
     public var followsLongestMaterialDuration: Bool?
     /// 仅用于自动贴合人脸的装饰贴纸；眼睛关键点以目标 clip 的源帧索引保存。
     public var faceStickerTracking: FaceStickerTracking?

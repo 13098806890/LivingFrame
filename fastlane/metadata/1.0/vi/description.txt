@@ -1,4 +1,4 @@
-Biến video và Live Photo thành các phần cắt chuyển động, rồi sắp xếp thành cảnh động của riêng bạn.
+Biến video và Live Photo thành phần cắt chuyển động để tạo GIF và sticker của riêng bạn, rồi chia sẻ qua Zalo và các ứng dụng khác.
 
 Tạo dự án trên cùng một khung hình:
 • Tách người khỏi video và Live Photo ngay trên thiết bị (yêu cầu iOS 17 trở lên)
@@ -10,3 +10,5 @@ Tạo dự án trên cùng một khung hình:
 Việc tạo phần cắt, ghép hình và xuất đều diễn ra trên thiết bị. Không cần tài khoản; ảnh và video bạn chọn không được tải lên.
 
 GIFBloom là công cụ sáng tạo để tạo và chỉnh sửa các dự án ảnh động cá nhân.
+
+Điều khoản sử dụng: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

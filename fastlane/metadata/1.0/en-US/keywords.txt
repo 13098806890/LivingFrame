@@ -1,1 +1,1 @@
-Live Photo,animated stickers,transparent export,layered animation,HEVC,person masking
+Live Photo,photo animation,transparent video,background remover,animated photo,collage

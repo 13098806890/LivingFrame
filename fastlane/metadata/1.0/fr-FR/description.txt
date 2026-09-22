@@ -1,4 +1,4 @@
-Transformez des vidéos et des Live Photos en détourages animés, puis composez vos propres scènes en mouvement.
+Transformez des vidéos et des Live Photos en détourages animés pour créer des GIF et stickers personnalisés, puis partagez-les via WhatsApp et d'autres applications.
 
 Créez un projet sur une même toile :
 • Détourez des personnes à partir de vidéos et de Live Photos sur votre appareil (iOS 17 ou version ultérieure)
@@ -10,3 +10,5 @@ Créez un projet sur une même toile :
 Le détourage, la composition et l’export se font sur votre appareil. Aucun compte n’est nécessaire et les photos et vidéos choisies ne sont pas téléversées.
 
 GIFBloom est un outil créatif pour créer et modifier des projets personnels de photos animées.
+
+Conditions d’utilisation: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

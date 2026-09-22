@@ -343,6 +343,10 @@ struct ElementPlaybackControls: View {
         element.resolvedPlaybackCount(cycleDuration: source.cycleDuration(for: element))
     }
 
+    private var followsLongestMaterialDuration: Bool {
+        element.followsLongestMaterialDuration == true
+    }
+
     private var range: SourcePlaybackRange {
         source.range(for: element)
     }
@@ -407,6 +411,9 @@ struct ElementPlaybackControls: View {
                     .foregroundStyle(LF.textSecondary)
                 Spacer()
                 Menu {
+                    Button(NSLocalizedString("对齐到最长", comment: "Loop until the longest material ends")) {
+                        appState.setElementFollowsLongestDuration(element.id, follows: true)
+                    }
                     ForEach([1, 2, 3], id: \.self) { value in
                         Button(value == 1 ? NSLocalizedString("仅播放一次", comment: "Play once") : String.localizedStringWithFormat(
                             NSLocalizedString("播放 %1$lld 次", comment: "Playback repeat count"),
@@ -420,10 +427,13 @@ struct ElementPlaybackControls: View {
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Text(count == 1 ? NSLocalizedString("仅播放一次", comment: "Play once") : String.localizedStringWithFormat(
+                        Text(followsLongestMaterialDuration ? NSLocalizedString(
+                            "对齐到最长",
+                            comment: "Loop until the longest material ends"
+                        ) : (count == 1 ? NSLocalizedString("仅播放一次", comment: "Play once") : String.localizedStringWithFormat(
                             NSLocalizedString("播放 %1$lld 次", comment: "Playback repeat count"),
                             Int64(count)
-                        ))
+                        )))
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.caption2.weight(.bold))
                     }
@@ -437,7 +447,7 @@ struct ElementPlaybackControls: View {
                     }
                 }
             }
-            if count > 3 {
+            if !followsLongestMaterialDuration && count > 3 {
                 Stepper(String.localizedStringWithFormat(
                     NSLocalizedString("总共播放 %1$lld 次", comment: "Total playback repetition count"), Int64(count)
                 ), value: Binding(

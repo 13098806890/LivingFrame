@@ -221,7 +221,7 @@ public struct CompositionRenderer {
             // Then composite the element's current effects and apply the candidate
             // filter, so existing outlines cannot change the zoom estimate.
             let fixScale = optionPreviewFixScale(clip: clip, preview: preview)
-            var source = applyClipStyle(
+            let source = applyClipStyle(
                 clip.stickerStyle,
                 clip: clip,
                 fixScale: fixScale,
@@ -770,7 +770,7 @@ public struct CompositionRenderer {
                 fixScale = targetWidth > 0 && Int(frame.extent.width) > 0
                     ? targetWidth / frame.extent.width
                     : 1
-                var content = appliesClipEffects
+                let content = appliesClipEffects
                     ? applyClipStyle(
                         clip.stickerStyle,
                         clip: clip,

@@ -1,4 +1,4 @@
-Trasforma video e Live Photo in ritagli animati e componili per creare scene in movimento.
+Trasforma video e Live Photo in ritagli animati per creare GIF e sticker personalizzati, poi condividili tramite WhatsApp e altre app.
 
 Crea il tuo progetto su un’unica tela:
 • Ritaglia le persone da video e Live Photo direttamente sul dispositivo (iOS 17 o versioni successive)
@@ -10,3 +10,5 @@ Crea il tuo progetto su un’unica tela:
 Ritaglio, composizione ed esportazione avvengono sul dispositivo. Non serve un account e le foto e i video scelti non vengono caricati.
 
 GIFBloom è uno strumento creativo per realizzare e modificare progetti personali di foto animate.
+
+Termini di utilizzo: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

@@ -1,4 +1,4 @@
-Ubah video dan Live Photo menjadi potongan bergerak, lalu susun menjadi adegan animasi buatan Anda.
+Ubah video dan Live Photo menjadi potongan bergerak untuk membuat GIF dan stiker animasi Anda sendiri, lalu bagikan melalui WhatsApp dan aplikasi lain.
 
 Buat proyek di satu kanvas:
 • Potong subjek dari video dan Live Photo langsung di perangkat (iOS 17 atau lebih baru)
@@ -10,3 +10,5 @@ Buat proyek di satu kanvas:
 Pembuatan potongan, komposisi, dan ekspor berlangsung di perangkat Anda. Akun tidak diperlukan; foto dan video yang dipilih tidak diunggah.
 
 GIFBloom adalah alat kreatif untuk membuat dan mengedit proyek foto animasi pribadi.
+
+Ketentuan Penggunaan: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

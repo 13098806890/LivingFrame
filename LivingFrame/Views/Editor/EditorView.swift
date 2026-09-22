@@ -81,6 +81,7 @@ private enum StickerPanelSheet: Identifiable {
 struct EditorView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var purchaseManager: PurchaseManager
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showAssetPicker = false
     /// 双击已有背景元素时，直接复用拼接编辑器而不是进入通用检查器。
     @State private var collageEditorRequest: CollageEditorRequest?
@@ -209,6 +210,14 @@ struct EditorView: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .magicBackground()
                     .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(role: .destructive) {
+                                showDeleteSelectionConfirmation = true
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                            .disabled(appState.selectedElementIDs.isEmpty && appState.selectedAudioID == nil)
+                        }
                         ToolbarItem(placement: .confirmationAction) {
                             Button("完成") { showInspectorSheet = false }
                                 .fontWeight(.semibold)
@@ -570,6 +579,7 @@ struct EditorView: View {
         if let audioID {
             appState.deleteAudio(audioID)
         }
+        showInspectorSheet = false
     }
 
     // MARK: - 底部区域
@@ -577,33 +587,12 @@ struct EditorView: View {
     // MARK: - 工具栏（ImgPlay 式：图标+文字，横排可滚动）
 
     private var editorToolbar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
-                ForEach(EditorTool.visibleCases) { tool in
-                    let isTimelineActive = tool == .timeline && showTimeline
-                    Button {
-                        handleToolTap(tool)
-                    } label: {
-                        VStack(spacing: 3) {
-                            Image(systemName: tool.icon)
-                                .font(.title3)
-                                .frame(width: 28, height: 28)
-                            Text(tool.title)
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(isTimelineActive ? LF.selectionStroke : LF.textPrimary)
-                        .frame(width: 52)
-                        .background(
-                            isTimelineActive ? LF.selectionFill.opacity(0.78) : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityValue(tool == .timeline ? (showTimeline ? "已显示" : "已隐藏") : "")
-                }
+        Group {
+            if horizontalSizeClass == .regular {
+                regularEditorToolbar
+            } else {
+                compactEditorToolbar
             }
-            .frame(minWidth: 0, maxWidth: .infinity)
-            .padding(.horizontal, 10)
         }
         .frame(height: 70)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -612,6 +601,81 @@ struct EditorView: View {
                 .stroke(Color.white.opacity(0.68), lineWidth: 0.8)
         }
         .shadow(color: Color.black.opacity(0.09), radius: 16, y: 5)
+    }
+
+    private var regularEditorToolbar: some View {
+        HStack(spacing: 6) {
+            ForEach(EditorTool.visibleCases) { tool in
+                editorToolButton(tool, fillsAvailableWidth: true)
+            }
+        }
+        // iPad 上不要让工具集中在左侧；限制内容宽度后整体居中，
+        // 每个工具再平均分配剩余空间，避免超宽屏按钮过度拉伸。
+        .frame(maxWidth: 720)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 10)
+    }
+
+    private var compactEditorToolbar: some View {
+        GeometryReader { proxy in
+            let availableWidth = max(proxy.size.width - 20, 0)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                compactEditorToolbarContent(availableWidth: availableWidth)
+                    .padding(.horizontal, 10)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func compactEditorToolbarContent(availableWidth: CGFloat) -> some View {
+        if availableWidth >= minimumEditorToolbarContentWidth {
+            HStack(spacing: 6) {
+                ForEach(EditorTool.visibleCases) { tool in
+                    editorToolButton(tool, fillsAvailableWidth: true)
+                }
+            }
+            .frame(width: availableWidth, height: 70, alignment: .center)
+        } else {
+            HStack(spacing: 14) {
+                ForEach(EditorTool.visibleCases) { tool in
+                    editorToolButton(tool, fillsAvailableWidth: false)
+                }
+            }
+            .frame(minHeight: 70, alignment: .center)
+        }
+    }
+
+    private var minimumEditorToolbarContentWidth: CGFloat {
+        let toolCount = EditorTool.visibleCases.count
+        return CGFloat(toolCount) * 52
+            + CGFloat(max(toolCount - 1, 0)) * 14
+    }
+
+    private func editorToolButton(
+        _ tool: EditorTool,
+        fillsAvailableWidth: Bool
+    ) -> some View {
+        let isTimelineActive = tool == .timeline && showTimeline
+        return Button {
+            handleToolTap(tool)
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: tool.icon)
+                    .font(.title3)
+                    .frame(width: 28, height: 28)
+                Text(tool.title)
+                    .font(.caption2)
+            }
+            .foregroundStyle(isTimelineActive ? LF.selectionStroke : LF.textPrimary)
+            .frame(maxWidth: fillsAvailableWidth ? .infinity : 52)
+            .background(
+                isTimelineActive ? LF.selectionFill.opacity(0.78) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(tool == .timeline ? (showTimeline ? "已显示" : "已隐藏") : "")
     }
 
     private func handleToolTap(_ tool: EditorTool) {

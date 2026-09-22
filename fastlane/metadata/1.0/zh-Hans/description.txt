@@ -1,4 +1,4 @@
-GIFBloom 是一款视频抠图与动图编辑工具。将视频或 Live Photo 中的人物提取为动态剪影，再把剪影、背景、贴纸和文字组合成自己的动态作品。
+GIFBloom 是一款用于制作 GIF 动态表情和视频抠图的工具。将视频或 Live Photo 中的人物提取为动态剪影，再把剪影、背景、贴纸和文字组合成自己的动态作品，导出后可通过微信、iMessage 等应用分享。
 
 在同一画布上创作：
 • 从视频和 Live Photo 中提取人物剪影（需要 iOS 17 或更高版本）
@@ -10,3 +10,5 @@ GIFBloom 是一款视频抠图与动图编辑工具。将视频或 Live Photo �
 人物分割、画面合成与导出均在设备上完成。无需账号；你选择的照片和视频不会上传。
 
 用自己的素材制作动态照片、分层 GIF 和透明视频，然后保存到“照片”或分享。
+
+使用条款: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

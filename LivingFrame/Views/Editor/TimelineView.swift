@@ -1423,11 +1423,9 @@ struct TimelineView: View {
                     appState.updateElement(element.id, { element in
                         let before = ElementTiming(element)
                         guard let mode = completedSession?.mode else { return }
-                        if case .text = element.kind {
-                            element.followsLongestMaterialDuration = false
-                        } else if case .decoration = element.kind {
-                            element.followsLongestMaterialDuration = false
-                        }
+                        // 时间轴手动拖动表示用户接管了该元素的播放长度，退出
+                        // “对齐到最长”；之后只有检查器中的显式选项可以重新开启。
+                        element.followsLongestMaterialDuration = false
                         switch mode {
                         case .trimStart:
                             element.startTime = timing.start

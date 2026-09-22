@@ -11,8 +11,8 @@
     "primary_category": "PHOTO_AND_VIDEO",
     "secondary_category": null,
     "copyright": {
-      "value": null,
-      "status": "NEEDS_OWNER_INPUT"
+      "value": "Dongze Xie",
+      "status": "SYNCED_FROM_APP_STORE_CONNECT"
     },
     "availability": {
       "status": "NEEDS_CONFIRMATION",
@@ -106,8 +106,26 @@
     "eula": "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
   },
   "screenshots": {
-    "status": "MISSING_REAL_APP_STORE_SCREENSHOTS",
-    "path": "../../screenshots/1.0/<locale>/"
+    "status": "UPLOADED_TO_APP_STORE_CONNECT",
+    "path": "../../screenshots/1.0/en-US/",
+    "locale": "en-US",
+    "display_type": "APP_IPHONE_65",
+    "count": 6,
+    "additional_sets": [
+      {
+        "display_type": "APP_IPAD_PRO_3GEN_11",
+        "count": 5,
+        "source": "/Users/doxie/Desktop/iPhone/ipad"
+      },
+      {
+        "display_type": "APP_IPAD_PRO_3GEN_129",
+        "count": 5,
+        "source": "/Users/doxie/Desktop/iPhone/ipad",
+        "normalization": "Source 2420x1668 screenshots were resized proportionally into a 2752x2064 canvas with matching light background extension; originals were preserved."
+      }
+    ],
+    "source": "/Users/doxie/Desktop/iPhone",
+    "normalization": "Four 1280x2769 source images were resized to Apple-compatible 1284x2778 before upload; desktop originals were preserved."
   },
   "review_information": {
     "status": "NEEDS_OWNER_INPUT",
@@ -138,12 +156,9 @@
     "version_state": "PREPARE_FOR_SUBMISSION",
     "build_attached": false,
     "known_blockers": [
-      "App Store screenshots",
       "app privacy answers",
       "age rating and content rights",
-      "copyright",
       "App Review contact information",
-      "IAP App Review screenshots and review notes",
       "app price confirmation",
       "version/build number alignment"
     ]
