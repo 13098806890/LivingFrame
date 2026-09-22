@@ -1,0 +1,18 @@
+Ubah video dan Live Photo menjadi potongan bergerak untuk membuat GIF dan stiker animasi Anda sendiri, lalu bagikan melalui WhatsApp dan aplikasi lain.
+
+Buat proyek di satu kanvas:
+• Potong subjek dari video dan Live Photo langsung di perangkat (iOS 17 atau lebih baru)
+• Susun beberapa potongan berlapis; atur posisi, ukuran, rotasi, urutan, dan waktunya
+• Tambahkan stiker, teks, latar, bingkai, dan efek visual
+• Ekspor sebagai GIF, video HEVC transparan, atau video H.264
+• Simpan proyek di perangkat, lalu ekspor ke Foto atau bagikan
+
+Pembuatan potongan, komposisi, dan ekspor berlangsung di perangkat Anda. Akun tidak diperlukan; foto dan video yang dipilih tidak diunggah.
+
+GIFBloom adalah alat kreatif untuk membuat dan mengedit proyek foto animasi pribadi.
+
+
+Pilih satu atau beberapa orang yang ingin dipertahankan, gunakan seleksi bebas saat membutuhkan kontrol lebih, lalu potong rentang sumber sebelum membuat potongan. Setelah itu, sesuaikan setiap potongan bergerak di linimasa, termasuk posisi, ukuran, rotasi, urutan lapisan, dan waktunya. GIFBloom Pro mendukung ekstraksi hingga 10 detik dan tersedia dengan opsi pembelian mingguan, tahunan, atau seumur hidup.
+
+Ketentuan Penggunaan: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Kebijakan Privasi: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=id

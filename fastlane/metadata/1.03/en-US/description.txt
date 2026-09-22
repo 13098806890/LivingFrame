@@ -1,0 +1,18 @@
+GIFBloom is a person cutout and GIF maker for iPhone. Turn a video or Live Photo into a moving cutout, then build an animated photo scene with backgrounds, stickers, and text. Export and share the result through WhatsApp, Instagram, iMessage, and other apps.
+
+Create a project on one canvas:
+• Cut people out of videos and Live Photos on your device (iOS 17 or later)
+• Layer multiple cutouts; adjust position, size, rotation, order, and timing
+• Add stickers, text, backgrounds, frames, and visual effects
+• Export as GIF, transparent HEVC video, or H.264 video
+• Save projects on your device, then export to Photos or share
+
+Cutout generation, composition, and export happen on your device. No account is required, and the photos and videos you select are never uploaded.
+
+Create animated photos, layered GIFs, and transparent video clips from your own media, then save them to Photos or share them.
+
+
+Choose one person or several people to keep, draw a freeform selection when you need more control, and trim the source range before extraction. Then fine-tune each moving cutout on the timeline, including its position, scale, rotation, layer order, and timing. GIFBloom Pro supports extraction up to 10 seconds and is available with weekly, annual, or lifetime purchase options.
+
+Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Privacy Policy: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=en

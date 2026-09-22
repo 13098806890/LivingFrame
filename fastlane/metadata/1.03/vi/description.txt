@@ -1,0 +1,18 @@
+Biến video và Live Photo thành phần cắt chuyển động để tạo GIF và sticker của riêng bạn, rồi chia sẻ qua Zalo và các ứng dụng khác.
+
+Tạo dự án trên cùng một khung hình:
+• Tách người khỏi video và Live Photo ngay trên thiết bị (yêu cầu iOS 17 trở lên)
+• Xếp nhiều phần cắt thành lớp; chỉnh vị trí, kích thước, góc xoay, thứ tự và thời gian xuất hiện
+• Thêm nhãn dán, văn bản, nền, khung và hiệu ứng hình ảnh
+• Xuất dưới dạng GIF, video HEVC trong suốt hoặc video H.264
+• Lưu dự án trên thiết bị, rồi xuất sang Ảnh hoặc chia sẻ
+
+Việc tạo phần cắt, ghép hình và xuất đều diễn ra trên thiết bị. Không cần tài khoản; ảnh và video bạn chọn không được tải lên.
+
+GIFBloom là công cụ sáng tạo để tạo và chỉnh sửa các dự án ảnh động cá nhân.
+
+
+Chọn một hoặc nhiều người muốn giữ lại, dùng vùng chọn tự do khi cần kiểm soát chính xác hơn và cắt khoảng nguồn trước khi tách. Sau đó, tinh chỉnh từng phần cắt chuyển động trên dòng thời gian: vị trí, kích thước, góc xoay, thứ tự lớp và thời lượng. GIFBloom Pro hỗ trợ tách tối đa 10 giây và có các lựa chọn mua theo tuần, theo năm hoặc trọn đời.
+
+Điều khoản sử dụng: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Chính sách quyền riêng tư: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=vi

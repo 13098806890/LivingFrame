@@ -1,0 +1,18 @@
+Videoları ve Live Photo’ları hareketli kesitlere dönüştürerek GIF ve kişisel çıkartmalar oluştur, ardından WhatsApp ve diğer uygulamalarla paylaş.
+
+Tek bir tuvalde proje oluştur:
+• Videolardan ve Live Photo’lardan kişileri doğrudan cihazında ayır (iOS 17 veya üzeri gerekir)
+• Birden fazla kesiti katmanla; konum, boyut, döndürme, sıra ve görünme süresini ayarla
+• Çıkartma, metin, arka plan, çerçeve ve görsel efekt ekle
+• GIF, şeffaf HEVC video veya H.264 video olarak dışa aktar
+• Projeleri cihazına kaydet, Fotoğraflar’a aktar veya paylaş
+
+Kesit oluşturma, birleştirme ve dışa aktarma cihazında yapılır. Hesap gerekmez; seçtiğin fotoğraf ve videolar yüklenmez.
+
+GIFBloom, kişisel animasyonlu fotoğraf projeleri oluşturup düzenlemek için yaratıcı bir araçtır.
+
+
+Tutmak istediğin bir kişiyi veya birkaç kişiyi seç, daha fazla kontrol gerektiğinde serbest seçim çiz ve çıkarma işleminden önce kaynak aralığını kırp. Ardından her hareketli kesitin konumunu, boyutunu, dönüşünü, katman sırasını ve süresini zaman çizelgesinde ayarla. GIFBloom Pro, 10 saniyeye kadar çıkarma işlemini destekler ve haftalık, yıllık veya ömür boyu satın alma seçenekleri sunar.
+
+Kullanım Koşulları: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Gizlilik Politikası: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=tr

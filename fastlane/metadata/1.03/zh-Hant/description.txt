@@ -1,0 +1,18 @@
+GIFBloom 是一款用來製作 GIF 動態貼圖和影片去背的工具。將影片或 Live Photo 中的人物擷取成動態剪影，再搭配背景、貼圖和文字，匯出後可透過 LINE、iMessage 等 App 分享。
+
+在同一個畫布上創作：
+• 在裝置上從影片和 Live Photo 擷取人物剪影（需要 iOS 17 或以上版本）
+• 將多個剪影分層合成，調整位置、大小、旋轉、順序和顯示時間
+• 加入貼圖、文字、背景、相框和視覺效果
+• 匯出 GIF、透明 HEVC 影片或 H.264 影片
+• 在裝置本機儲存專案，並匯出到「照片」或分享
+
+剪影產生、合成和匯出都在裝置上完成。無需帳號，你選取的照片和影片不會上傳。
+
+GIFBloom 是用來創作和編輯個人動態照片作品的工具。
+
+
+你可以選擇保留一個或多個主體；需要更精確時，使用自由圈選限定大致範圍，再於擷取前裁剪素材片段。擷取後，可在時間軸上分別調整每個動態剪影的位置、大小、旋轉、圖層順序和播放時間。GIFBloom Pro 支援最長 10 秒的擷取，並提供每週訂閱、年度訂閱和永久買斷選項。
+
+使用條款: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+隱私權政策: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=zh-Hant

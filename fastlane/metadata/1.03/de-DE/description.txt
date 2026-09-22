@@ -1,0 +1,18 @@
+Verwandle Videos und Live Photos in animierte Freisteller für GIF-Sticker und eigene bewegte Szenen, die du über WhatsApp und andere Messenger teilen kannst.
+
+Erstelle dein Projekt auf einer Leinwand:
+• Stelle Personen direkt auf deinem Gerät aus Videos und Live Photos frei (iOS 17 oder neuer)
+• Kombiniere mehrere Freisteller und passe Position, Größe, Drehung, Reihenfolge und Timing an
+• Ergänze Sticker, Text, Hintergründe, Rahmen und visuelle Effekte
+• Exportiere als GIF, transparentes HEVC-Video oder H.264-Video
+• Speichere Projekte auf deinem Gerät und exportiere sie in Fotos oder teile sie
+
+Freistellen, Komposition und Export erfolgen auf deinem Gerät. Ein Konto ist nicht erforderlich; ausgewählte Fotos und Videos werden nicht hochgeladen.
+
+GIFBloom ist ein Kreativwerkzeug zum Erstellen und Bearbeiten persönlicher animierter Fotoprojekte.
+
+
+Wähle eine oder mehrere Personen aus, zeichne bei Bedarf eine freie Auswahl und kürze den gewünschten Abschnitt vor dem Freistellen. Passe anschließend jede animierte Freistellung in der Zeitleiste an: Position, Größe, Drehung, Ebenenreihenfolge und Anzeigedauer. GIFBloom Pro unterstützt Extraktionen von bis zu 10 Sekunden und ist als Wochen‑, Jahres‑ oder zeitlich unbegrenzter Kauf erhältlich.
+
+Nutzungsbedingungen: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Datenschutzerklärung: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=de
