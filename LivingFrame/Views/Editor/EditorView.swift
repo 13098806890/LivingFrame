@@ -532,9 +532,17 @@ struct EditorView: View {
             Button {
                 togglePlayback()
             } label: {
-                Image(systemName: appState.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(width: 36, height: 36)
+                Group {
+                    if appState.isPreparingPlayback {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(LF.textPrimary)
+                    } else {
+                        Image(systemName: appState.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                }
+                .frame(width: 36, height: 36)
             }
             .buttonStyle(.plain)
             .foregroundStyle(LF.textPrimary)

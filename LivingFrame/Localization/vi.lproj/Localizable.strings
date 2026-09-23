@@ -672,6 +672,7 @@
 
 /* i18n completion */
 "正在分析主体…" = "Phân tích đề tài…";
+"剪影素材 · %@" = "Nội dung bị cắt · %@";
 "剪影素材 · %@ · %@ · %@ fps" = "Nội dung bị cắt · %@ · %@ · %@ khung hình / giây";
 "emoji" = "Biểu tượng cảm xúc";
 "原始前景提取" = "Trích xuất tiền cảnh gốc";

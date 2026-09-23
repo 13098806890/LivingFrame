@@ -43,11 +43,13 @@ struct WorksView: View {
                                     WorkCell(work: work, version: .draft)
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         } else {
                             Text("暂无草稿。编辑中的内容会自动出现在这里，正式作品不会被覆盖。")
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
                                 .padding(.horizontal, 4)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
                         if !savedWorks.isEmpty {
@@ -79,8 +81,10 @@ struct WorksView: View {
                                     WorkCell(work: work, version: .saved)
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
                 }
             }
@@ -137,12 +141,13 @@ struct WorksView: View {
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(LF.textSecondary)
+                        .lineLimit(2)
                 }
             }
 
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func requestNewProject() {
@@ -220,6 +225,7 @@ private struct SavedWorksView: View {
                             WorkCell(work: work, version: .saved)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     if matchingWorks.count > displayedCount {
                         Button("加载更多") {
@@ -231,6 +237,7 @@ private struct SavedWorksView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
         }
         .scrollIndicators(.hidden)
@@ -339,6 +346,7 @@ private struct WorkCell: View {
                     )
                     .accessibilityLabel("编辑")
                 }
+                .frame(maxWidth: .infinity, alignment: .top)
 
                 VStack {
                     Spacer()
@@ -347,6 +355,8 @@ private struct WorkCell: View {
                         Text(displayedStorageSize)
                             .font(.caption2.weight(.medium).monospacedDigit())
                             .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 4)
                             .background(.black.opacity(0.62), in: Capsule())
@@ -366,6 +376,10 @@ private struct WorkCell: View {
             Text(displayedDate.formatted(date: .abbreviated, time: .omitted))
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)

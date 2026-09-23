@@ -52,7 +52,14 @@ public struct VisionPersonSegmenter {
     private let context: CIContext
 
     public init() {
-        context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
+        context = CIContext(options: [
+            .workingColorSpace: NSNull(),
+            .outputColorSpace: NSNull(),
+            // Segmentation creates a new full-frame mask for every input frame.
+            // Keeping intermediate textures here causes the process footprint to
+            // grow linearly during long video extraction.
+            .cacheIntermediates: false
+        ])
     }
 
     /// 返回当前帧的人物实例统计。Vision 的实例编号只在当前帧内有效。
@@ -220,9 +227,6 @@ public struct VisionPersonSegmenter {
         guard let output = context.createCGImage(ci, from: ci.extent) else {
             throw PersonSegmenterError.renderFailed
         }
-        LogStore.log(
-            "xdz.vision.render source=\(source.rawValue) selected=\(selected.map(String.init).joined(separator: ","))"
-        )
         return output
     }
 

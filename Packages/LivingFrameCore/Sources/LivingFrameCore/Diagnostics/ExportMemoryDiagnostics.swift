@@ -17,12 +17,14 @@ struct ExportMemoryDiagnostics {
     }
 
     private let exporter: String
+    private let logPrefix: String
     private let baseline: Snapshot?
     private let frameInterval: Int
     private var peakFootprintBytes: UInt64
 
-    init(exporter: String, frameCount: Int) {
+    init(exporter: String, frameCount: Int, logPrefix: String = "export:") {
         self.exporter = exporter
+        self.logPrefix = logPrefix
         // Aim for roughly 10-20 samples during a normal export, capped at every
         // 10 frames so short exports still show where a sudden jump occurred.
         frameInterval = max(1, min(10, frameCount / 12))
@@ -32,7 +34,7 @@ struct ExportMemoryDiagnostics {
 
     mutating func log(_ stage: String, frame: Int? = nil, totalFrames: Int? = nil) {
         guard let snapshot = Self.snapshot() else {
-            LogStore.log("export.memory exporter=\(exporter) stage=\(stage) unavailable")
+            LogStore.log("\(logPrefix)memory exporter=\(exporter) stage=\(stage) unavailable")
             return
         }
         peakFootprintBytes = max(peakFootprintBytes, snapshot.footprintBytes)
@@ -45,7 +47,7 @@ struct ExportMemoryDiagnostics {
         }
         let availableText = snapshot.availableBytes.map { " available=\(Self.mib($0))MB" } ?? ""
         LogStore.log(
-            "export.memory exporter=\(exporter) stage=\(stage)\(frameText) "
+            "\(logPrefix)memory exporter=\(exporter) stage=\(stage)\(frameText) "
                 + "footprint=\(Self.mib(snapshot.footprintBytes))MB "
                 + "delta=\(Self.signedMib(delta))MB "
                 + "peakSample=\(Self.mib(peakFootprintBytes))MB "
@@ -55,6 +57,13 @@ struct ExportMemoryDiagnostics {
                 + "compressed=\(Self.mib(snapshot.compressedBytes))MB"
                 + availableText
         )
+    }
+
+    /// Returns the current physical footprint without producing a log entry.
+    /// Segmentation uses this to defer expensive Core Image cache clearing until
+    /// memory has grown materially since the previous flush.
+    func currentFootprintBytes() -> UInt64? {
+        Self.snapshot()?.footprintBytes
     }
 
     func shouldLog(frame index: Int, totalFrames: Int) -> Bool {

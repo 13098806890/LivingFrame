@@ -43,10 +43,12 @@ struct AssetPickerView: View {
 
         var id: String { rawValue }
 
-        var title: LocalizedStringKey {
+        var title: String {
             switch self {
-            case .person: "剪影素材"
-            case .background: "相册"
+            case .person:
+                NSLocalizedString("剪影素材", comment: "Cutout asset picker tab")
+            case .background:
+                NSLocalizedString("相册", comment: "Photo library picker tab")
             }
         }
     }
@@ -160,7 +162,7 @@ struct AssetPickerView: View {
     private var sourceTabs: some View {
         Picker("素材来源", selection: $pickerMode) {
             ForEach(PickerMode.allCases) { mode in
-                Text(mode.title).tag(mode)
+                Text(verbatim: mode.title).tag(mode)
             }
         }
         .pickerStyle(.segmented)
@@ -476,9 +478,25 @@ struct AnimatedClipPreview: View {
     let clip: SegmentedClip
     let maxPixelSize: CGFloat
     @Binding var isPlaying: Bool
+    @Binding var isPreparingPlayback: Bool
     @State private var framePosition = 0
-    /// 点击播放后一次性加载的小尺寸帧；播放期间只切换内存中的 CGImage，避免每帧重复解码。
-    @State private var decodedFrames: [CGImage] = []
+    /// 播放窗口内已经解码的小尺寸帧；不再一次性持有整段素材。
+    @State private var decodedFrames: [Int: CGImage] = [:]
+
+    private let initialPreloadCount = 6
+    private let playbackPreloadWindow = 10
+
+    init(
+        clip: SegmentedClip,
+        maxPixelSize: CGFloat,
+        isPlaying: Binding<Bool>,
+        isPreparingPlayback: Binding<Bool> = .constant(false)
+    ) {
+        self.clip = clip
+        self.maxPixelSize = maxPixelSize
+        _isPlaying = isPlaying
+        _isPreparingPlayback = isPreparingPlayback
+    }
 
     private var playbackFrames: [Int] {
         clip.playbackFrameIndices
@@ -496,8 +514,7 @@ struct AnimatedClipPreview: View {
     }
 
     private var decodedFrame: CGImage? {
-        guard decodedFrames.indices.contains(framePosition) else { return nil }
-        return decodedFrames[framePosition]
+        decodedFrames[framePosition]
     }
 
     var body: some View {
@@ -508,7 +525,16 @@ struct AnimatedClipPreview: View {
             } else {
                 ClipThumbnailView(clip: clip, index: previewFrame, maxPixelSize: maxPixelSize)
             }
+            if isPreparingPlayback {
+                ClipPreviewLoadingIndicator()
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
         }
+        .animation(
+            .timingCurve(0.23, 1, 0.32, 1, duration: 0.18),
+            value: isPreparingPlayback
+        )
         .task(id: "\(isPlaying)-\(clip.cropCacheKey)") {
             await playOnceIfNeeded()
         }
@@ -517,65 +543,179 @@ struct AnimatedClipPreview: View {
         .onDisappear {
             // 离开滚动区域时取消播放任务，避免不可见素材继续解码和刷新。
             isPlaying = false
+            isPreparingPlayback = false
             decodedFrames.removeAll(keepingCapacity: false)
         }
         .onChange(of: clip.id) { _, _ in
             framePosition = 0
             isPlaying = false
+            isPreparingPlayback = false
             decodedFrames.removeAll(keepingCapacity: false)
         }
         .onChange(of: clip.cropCacheKey) { _, _ in
             framePosition = 0
+            isPreparingPlayback = false
             decodedFrames.removeAll(keepingCapacity: false)
         }
         .onChange(of: isPlaying) { _, playing in
             if !playing {
                 framePosition = 0
+                isPreparingPlayback = false
             }
         }
     }
 
     private func playOnceIfNeeded() async {
-        guard isPlaying, isDynamic else { return }
+        guard isPlaying, isDynamic else {
+            isPreparingPlayback = false
+            return
+        }
+        let preparationStartedAt = Date()
         framePosition = 0
+        isPreparingPlayback = true
+        decodedFrames.removeAll(keepingCapacity: true)
 
-        if decodedFrames.isEmpty {
-            let clipValue = clip
-            let indices = playbackFrames
-            let pixelSize = maxPixelSize
-            let loaded = await Task.detached(priority: .userInitiated) {
-                indices.compactMap { index in
-                    FrameCache.shared.cachedThumbnail(
-                        for: clipValue,
-                        index: index,
-                        maxPixelSize: pixelSize
-                    )
-                }
-            }.value
-            guard !Task.isCancelled, isPlaying else { return }
-            decodedFrames = loaded
+        let indices = playbackFrames
+        let clipValue = clip
+        let pixelSize = maxPixelSize
+        let initialIndices = Array(indices.prefix(min(initialPreloadCount, indices.count)))
+        var prefetchTask: Task<[Int: CGImage], Never>?
+        var nextPrefetchStart = initialIndices.count
+        let preloadLead = max(playbackPreloadWindow / 2, 1)
+        defer { prefetchTask?.cancel() }
+
+        decodedFrames = await loadPreviewFrames(
+            initialIndices,
+            clip: clipValue,
+            maxPixelSize: pixelSize
+        )
+        guard !Task.isCancelled, isPlaying else {
+            isPreparingPlayback = false
+            return
         }
 
-        guard decodedFrames.count > 1 else {
+        let minimumIndicatorDuration: TimeInterval = 0.16
+        let remainingIndicatorDuration = minimumIndicatorDuration - Date().timeIntervalSince(preparationStartedAt)
+        if remainingIndicatorDuration > 0 {
+            do {
+                try await Task.sleep(nanoseconds: UInt64(remainingIndicatorDuration * 1_000_000_000))
+            } catch {
+                isPreparingPlayback = false
+                return
+            }
+            guard !Task.isCancelled, isPlaying else {
+                isPreparingPlayback = false
+                return
+            }
+        }
+        isPreparingPlayback = false
+
+        guard indices.count > 1, decodedFrames.count > 1 else {
             isPlaying = false
             framePosition = 0
             return
         }
 
         let frameInterval = max(1.0 / max(clip.fps, 1), 0.04)
-        for nextPosition in 1..<decodedFrames.count {
+        for nextPosition in 0..<indices.count {
+            guard !Task.isCancelled, isPlaying else { return }
+
+            if decodedFrames[nextPosition] == nil {
+                if let task = prefetchTask {
+                    let loaded = await task.value
+                    decodedFrames.merge(loaded) { _, new in new }
+                    prefetchTask = nil
+                }
+                if decodedFrames[nextPosition] == nil {
+                    let loaded = await loadPreviewFrames(
+                        [nextPosition],
+                        clip: clipValue,
+                        maxPixelSize: pixelSize
+                    )
+                    decodedFrames.merge(loaded) { _, new in new }
+                }
+            }
+
+            guard decodedFrames[nextPosition] != nil else { continue }
+            framePosition = nextPosition
+
+            if prefetchTask == nil,
+               nextPrefetchStart < indices.count,
+               nextPosition + preloadLead >= nextPrefetchStart {
+                let end = min(nextPrefetchStart + playbackPreloadWindow, indices.count)
+                let window = Array(nextPrefetchStart..<end)
+                nextPrefetchStart = end
+                prefetchTask = Task.detached(priority: .userInitiated) {
+                    var loaded: [Int: CGImage] = [:]
+                    for position in window {
+                        guard !Task.isCancelled,
+                              indices.indices.contains(position) else { continue }
+                        if let image = FrameCache.shared.cachedThumbnail(
+                            for: clipValue,
+                            index: indices[position],
+                            maxPixelSize: pixelSize
+                        ) {
+                            loaded[position] = image
+                        }
+                    }
+                    return loaded
+                }
+            }
+
             do {
                 try await Task.sleep(nanoseconds: UInt64(frameInterval * 1_000_000_000))
             } catch {
                 return
             }
-            guard !Task.isCancelled, isPlaying else { return }
-            framePosition = nextPosition
+
+            // 只保留当前播放点附近的窗口，避免缩略图缓存和组件状态重复持有整段素材。
+            let minimumRetainedPosition = max(nextPosition - 2, 0)
+            let maximumRetainedPosition = min(nextPosition + playbackPreloadWindow, indices.count - 1)
+            decodedFrames = decodedFrames.filter { position, _ in
+                (minimumRetainedPosition...maximumRetainedPosition).contains(position)
+            }
         }
 
         guard !Task.isCancelled else { return }
         isPlaying = false
         framePosition = 0
+    }
+
+    private func loadPreviewFrames(
+        _ positions: [Int],
+        clip: SegmentedClip,
+        maxPixelSize: CGFloat
+    ) async -> [Int: CGImage] {
+        let sourceIndices = clip.playbackFrameIndices
+        return await Task.detached(priority: .userInitiated) {
+            var loaded: [Int: CGImage] = [:]
+            for position in positions {
+                guard !Task.isCancelled,
+                      sourceIndices.indices.contains(position),
+                      let image = FrameCache.shared.cachedThumbnail(
+                          for: clip,
+                          index: sourceIndices[position],
+                          maxPixelSize: maxPixelSize
+                      ) else { continue }
+                loaded[position] = image
+            }
+            return loaded
+        }.value
+    }
+}
+
+/// 素材缩略图正在准备播放帧时的明确反馈。
+struct ClipPreviewLoadingIndicator: View {
+    var body: some View {
+        ProgressView()
+            .controlSize(.small)
+            .tint(.white)
+            .padding(9)
+            .background(.black.opacity(0.56), in: Circle())
+            .accessibilityLabel(NSLocalizedString(
+                "准备中…",
+                comment: "Clip preview preparation accessibility label"
+            ))
     }
 }
 
@@ -598,14 +738,31 @@ struct ClipPreviewBadgeIcon: View {
 struct ClipPreviewPlayButton: View {
     let clip: SegmentedClip
     @Binding var isPlaying: Bool
+    @Binding var isPreparingPlayback: Bool
+
+    init(
+        clip: SegmentedClip,
+        isPlaying: Binding<Bool>,
+        isPreparingPlayback: Binding<Bool> = .constant(false)
+    ) {
+        self.clip = clip
+        _isPlaying = isPlaying
+        _isPreparingPlayback = isPreparingPlayback
+    }
 
     var body: some View {
         if clip.frameCount > 1 {
             // 预览卡片外层可能还有“打开详情/选择素材”的 tap gesture。
             // 使用高优先级手势让左下角播放入口始终优先响应，不再被外层点击抢走。
-            ClipPreviewBadgeIcon(
-                systemName: isPlaying ? "pause.fill" : "play.fill"
-            )
+            Group {
+                if isPreparingPlayback {
+                    ClipPreviewLoadingIndicator()
+                } else {
+                    ClipPreviewBadgeIcon(
+                        systemName: isPlaying ? "pause.fill" : "play.fill"
+                    )
+                }
+            }
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
             .highPriorityGesture(
@@ -619,7 +776,7 @@ struct ClipPreviewPlayButton: View {
                 isPlaying.toggle()
             }
             .accessibilityLabel(NSLocalizedString(
-                isPlaying ? "暂停动态素材" : "播放动态素材",
+                isPreparingPlayback ? "准备中…" : (isPlaying ? "暂停动态素材" : "播放动态素材"),
                 comment: "Animated media playback state"
             ))
         }

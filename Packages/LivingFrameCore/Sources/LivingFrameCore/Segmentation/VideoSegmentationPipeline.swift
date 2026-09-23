@@ -136,7 +136,13 @@ public struct VideoSegmentationPipeline {
             && abs(transform.d - 1) < 0.001
     }
 
-    private let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
+    private let context = CIContext(options: [
+        .workingColorSpace: NSNull(),
+        .outputColorSpace: NSNull(),
+        // Video extraction renders a new full-frame image on every iteration.
+        // Do not retain intermediate textures across frames.
+        .cacheIntermediates: false
+    ])
 
     public init() {}
 
@@ -490,6 +496,17 @@ public struct VideoSegmentationPipeline {
         let totalFrames = max(1, Int((duration.seconds * outputFPS).rounded(.up)))
 
         let segmenter = VisionPersonSegmenter()
+        // 诊断分割阶段的内存是否随帧数持续增长。日志只按采样间隔输出，
+        // 避免诊断本身成为逐帧处理的额外负担。
+        var memory = ExportMemoryDiagnostics(
+            exporter: "Segmentation",
+            frameCount: totalFrames,
+            logPrefix: "xdz.segmentation:"
+        )
+        memory.log("start", frame: 0, totalFrames: totalFrames)
+        let cacheFlushThresholdBytes: UInt64 = 300 * 1_048_576
+        var lastCacheFlushFootprint = memory.currentFootprintBytes() ?? 0
+        var framesSinceCacheCheck = 0
         // Algorithm entry points:
         // - .foreground: original class-agnostic foreground extraction.
         // - .visionPerson: existing Vision person-instance analysis/selection.
@@ -525,6 +542,7 @@ public struct VideoSegmentationPipeline {
         while let sample = output.copyNextSampleBuffer() {
             if isCancelled() || Task.isCancelled {
                 reader.cancelReading()
+                memory.log("cancelled", frame: index, totalFrames: totalFrames)
                 LogStore.log("segmentVideo: user cancelled")
                 throw SegmentationError.cancelled
             }
@@ -537,28 +555,33 @@ public struct VideoSegmentationPipeline {
                 skippedNoImage += 1
                 continue
             }
-            let source = CIImage(cvPixelBuffer: pixelBuffer)
-            // 方向修正：优先用视频轨旋转元数据；若变换不含旋转（identity、仅平移或浮点误差导致
-            // 推导为 up/down），则以静态图 EXIF 方向为准——Live Photo 的静态图与视频来自同一次
-            // 拍摄，方向一致；普通视频不传 stillOrientation（.up）不受影响
-            let derived = Self.orientation(from: preferredTransform)
-            let oriented: CIImage
-            if Self.usesStillOrientation(for: preferredTransform) {
-                oriented = stillOrientation == .up
-                    ? source
-                    : source.oriented(stillOrientation)
-            } else {
-                oriented = source.oriented(derived)
+            let shouldLogMemory = memory.shouldLog(frame: index, totalFrames: totalFrames)
+            if shouldLogMemory {
+                memory.log("before-frame", frame: index, totalFrames: totalFrames)
             }
-            // 逐帧日志开销大（1~3 分钟抠图会写几千行），只抽样记录
-            if index % 30 == 0 {
-                LogStore.log("segmentVideo: frame \(index) derived=\(derived.rawValue) still=\(stillOrientation.rawValue) using=\(oriented.extent.width)x\(oriented.extent.height)")
-            }
-            let scale = min(1.0, maxDimension / max(oriented.extent.width, oriented.extent.height))
-            let input = scale < 1.0
-                ? oriented.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-                : oriented
-            guard let cgImage = context.createCGImage(input, from: input.extent.integral) else { continue }
+            autoreleasepool {
+                let source = CIImage(cvPixelBuffer: pixelBuffer)
+                // 方向修正：优先用视频轨旋转元数据；若变换不含旋转（identity、仅平移或浮点误差导致
+                // 推导为 up/down），则以静态图 EXIF 方向为准——Live Photo 的静态图与视频来自同一次
+                // 拍摄，方向一致；普通视频不传 stillOrientation（.up）不受影响
+                let derived = Self.orientation(from: preferredTransform)
+                let oriented: CIImage
+                if Self.usesStillOrientation(for: preferredTransform) {
+                    oriented = stillOrientation == .up
+                        ? source
+                        : source.oriented(stillOrientation)
+                } else {
+                    oriented = source.oriented(derived)
+                }
+                // 逐帧日志开销大（1~3 分钟抠图会写几千行），只抽样记录
+                if index % 30 == 0 {
+                    LogStore.log("segmentVideo: frame \(index) derived=\(derived.rawValue) still=\(stillOrientation.rawValue) using=\(oriented.extent.width)x\(oriented.extent.height)")
+                }
+                let scale = min(1.0, maxDimension / max(oriented.extent.width, oriented.extent.height))
+                let input = scale < 1.0
+                    ? oriented.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                    : oriented
+                guard let cgImage = context.createCGImage(input, from: input.extent.integral) else { return }
 
             // 先追踪上一帧主体的大致位置。人物实例掩码随后负责精确轮廓，
             // 追踪结果用于阻止大动作时实例编号突然切换。
@@ -623,11 +646,13 @@ public struct VideoSegmentationPipeline {
                             LogStore.log("xdz.subject.render.frame=\(index) personMask=clear")
                         }
                     } else {
-                        let personCGImage = try segmenter.segmentedImage(
-                            from: cgImage,
-                            source: .person,
-                            selectedInstances: selectedInstances
-                        )
+                        let personCGImage = try autoreleasepool {
+                            try segmenter.segmentedImage(
+                                from: cgImage,
+                                source: .person,
+                                selectedInstances: selectedInstances
+                            )
+                        }
                         if let candidateBounds = normalizedVisibleBounds(in: personCGImage),
                            AlphaSubjectBounds.visiblePixelBounds(in: personCGImage) != nil {
                             let isAbruptChange = previousRefinedBounds.map {
@@ -721,11 +746,13 @@ public struct VideoSegmentationPipeline {
                     let source: VisionMaskSource = algorithm == .foreground
                         ? .foreground
                         : .person
-                    let foreground = try segmenter.segmentedImage(
-                        from: cgImage,
-                        source: source,
-                        selectedInstances: nil
-                    )
+                    let foreground = try autoreleasepool {
+                        try segmenter.segmentedImage(
+                            from: cgImage,
+                            source: source,
+                            selectedInstances: nil
+                        )
+                    }
                     if AlphaSubjectBounds.visiblePixelBounds(in: foreground) != nil {
                         current = CIImage(cgImage: foreground)
                     } else if let previous = prevMaskedImage {
@@ -755,11 +782,17 @@ public struct VideoSegmentationPipeline {
                 if currentHasVisibleSubject {
                     prevMaskedImage = current
                 }
-                guard let outCG = context.createCGImage(output, from: output.extent.integral) else { continue }
                 let frameURL = folder.appendingPathComponent(String(format: "%05d.png", index))
-                guard writePNG(outCG, to: frameURL) else { continue }
+                let outputSize = autoreleasepool { () -> (width: Int, height: Int)? in
+                    guard let outCG = context.createCGImage(output, from: output.extent.integral),
+                          writePNG(outCG, to: frameURL) else {
+                        return nil
+                    }
+                    return (outCG.width, outCG.height)
+                }
+                guard let outputSize else { return }
                 if firstSize == nil {
-                    firstSize = (outCG.width, outCG.height)
+                    firstSize = outputSize
                 }
                 index += 1
                 progress?(ProgressInfo(
@@ -769,13 +802,19 @@ public struct VideoSegmentationPipeline {
                 ))
             } catch {
                 // 人物暂时出画或被遮挡时保留上一帧，避免把时间轴压短造成跳帧感。
-                if let prev = prevMaskedImage,
-                   let fallback = context.createCGImage(prev, from: prev.extent.integral) {
+                if let prev = prevMaskedImage {
                     let frameURL = folder.appendingPathComponent(String(format: "%05d.png", index))
-                    if writePNG(fallback, to: frameURL) {
+                    let fallbackSize = autoreleasepool { () -> (width: Int, height: Int)? in
+                        guard let fallback = context.createCGImage(prev, from: prev.extent.integral),
+                              writePNG(fallback, to: frameURL) else {
+                            return nil
+                        }
+                        return (fallback.width, fallback.height)
+                    }
+                    if let fallbackSize {
                         LogStore.log("xdz.subject.render.frame=\(index) visionFailed=true fallback=previous-mask")
                         if firstSize == nil {
-                            firstSize = (fallback.width, fallback.height)
+                            firstSize = fallbackSize
                         }
                         index += 1
                         progress?(ProgressInfo(
@@ -783,15 +822,34 @@ public struct VideoSegmentationPipeline {
                             frameIndex: index,
                             totalFrames: totalFrames
                         ))
-                        continue
+                        return
                     }
                 }
                 skippedNoSubject += 1
                 LogStore.log("xdz.subject.render.frame=\(index) visionFailed=true fallback=none")
             }
         }
+        if shouldLogMemory {
+            memory.log("after-frame", frame: index, totalFrames: totalFrames)
+        }
+        framesSinceCacheCheck += 1
+        if framesSinceCacheCheck >= 6 {
+            framesSinceCacheCheck = 0
+            if let footprint = memory.currentFootprintBytes(),
+               footprint >= lastCacheFlushFootprint + cacheFlushThresholdBytes {
+                // Cache clearing is intentionally threshold-based rather than
+                // per-frame. The frame autorelease scope protects temporary
+                // objects; this slower operation only runs after a material
+                // memory increase.
+                context.clearCaches()
+                lastCacheFlushFootprint = memory.currentFootprintBytes() ?? footprint
+                memory.log("cache-flush", frame: index, totalFrames: totalFrames)
+            }
+        }
+        }
 
         reader.cancelReading()
+        memory.log("reader-finished", frame: index, totalFrames: totalFrames)
 
         if isCancelled() || Task.isCancelled {
             throw SegmentationError.cancelled

@@ -675,6 +675,7 @@
 
 /* i18n completion */
 "正在分析主体…" = "Analyzing subjects…";
+"剪影素材 · %@" = "Cutout asset · %@";
 "剪影素材 · %@ · %@ · %@ fps" = "Cutout asset · %@ · %@ · %@ fps";
 "emoji" = "Emoji";
 "原始前景提取" = "Original foreground extraction";

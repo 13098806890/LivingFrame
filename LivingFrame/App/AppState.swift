@@ -164,6 +164,11 @@ final class AppState: ObservableObject {
 
     @Published var currentTime: Double = 0
     @Published var isPlaying = false
+    /// 播放已开启但首帧合成尚未完成。由画布在第一帧渲染结束后清除。
+    @Published private(set) var isPreparingPlayback = false
+    private var playbackPreparationTask: Task<Void, Never>?
+    private var playbackPreparationStartedAt: Date?
+    private let minimumPlaybackPreparationDuration: TimeInterval = 0.24
     /// 倒序播放
     @Published var isReversed = false
     // MARK: - 导出
@@ -213,7 +218,8 @@ final class AppState: ObservableObject {
             UserDefaults.standard.set(exportFPS, forKey: settingExportFPSKey)
         }
     }
-    @Published var maxDimension: Double = 1280 {
+    /// 默认以 1080p 处理；用户手动选择后通过 UserDefaults 持久化。
+    @Published var maxDimension: Double = 1920 {
         didSet {
             guard !isUIAuditFixtureLaunch else { return }
             UserDefaults.standard.set(maxDimension, forKey: settingMaxDimensionKey)
@@ -3000,13 +3006,45 @@ final class AppState: ObservableObject {
         } else if currentTime >= comp.duration {
             currentTime = 0
         }
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = nil
+        playbackPreparationStartedAt = Date()
+        isPreparingPlayback = true
         isPlaying = true
         audioEngine.play(from: currentTime)
     }
 
     func pause() {
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = nil
+        playbackPreparationStartedAt = nil
+        isPreparingPlayback = false
         isPlaying = false
         audioEngine.stop()
+    }
+
+    /// 画布完成播放后的第一帧合成后调用，让播放按钮和预览层退出准备状态。
+    func finishPlaybackPreparation() {
+        guard isPlaying else { return }
+        let elapsed = playbackPreparationStartedAt.map { Date().timeIntervalSince($0) } ?? .greatestFiniteMagnitude
+        let remaining = minimumPlaybackPreparationDuration - max(elapsed, 0)
+        guard remaining > 0 else {
+            playbackPreparationStartedAt = nil
+            isPreparingPlayback = false
+            return
+        }
+        playbackPreparationTask?.cancel()
+        playbackPreparationTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+            } catch {
+                return
+            }
+            guard let self, self.isPlaying else { return }
+            self.playbackPreparationStartedAt = nil
+            self.playbackPreparationTask = nil
+            self.isPreparingPlayback = false
+        }
     }
 
     func seek(to time: Double) {
@@ -3024,6 +3062,10 @@ final class AppState: ObservableObject {
             let next = currentTime - step
             if next <= 0 {
                 currentTime = 0
+                playbackPreparationTask?.cancel()
+                playbackPreparationTask = nil
+                playbackPreparationStartedAt = nil
+                isPreparingPlayback = false
                 isPlaying = false
                 audioEngine.stop()
             } else {
@@ -3034,6 +3076,10 @@ final class AppState: ObservableObject {
             if next >= comp.duration {
                 // 播放完成后回到第一帧，方便用户立即再次预览或继续编辑。
                 currentTime = 0
+                playbackPreparationTask?.cancel()
+                playbackPreparationTask = nil
+                playbackPreparationStartedAt = nil
+                isPreparingPlayback = false
                 isPlaying = false
                 audioEngine.stop()
             } else {
@@ -3270,30 +3316,38 @@ final class AppState: ObservableObject {
     func estimateClipGIFPresets(
         _ clipID: String,
         resolutions: [ExportResolution],
-        fpsOptions: [Double]
+        fpsOptions: [Double],
+        watermark: ExportWatermark? = nil
     ) async throws -> [GIFExportPreset] {
         guard let clip = clips.first(where: { $0.id == clipID }) else {
             throw AppStateError.clipNotFound
         }
         FrameCache.shared.registerInMemory(clip)
-        let jobs = resolutions.flatMap { resolution in
+        let jobs: [(resolution: ExportResolution, request: GIFSizeEstimateRequest)] = resolutions.flatMap { resolution in
             fpsOptions.map { fps in
-                (resolution: resolution, fps: fps, composition: clipGIFComposition(for: clip, fps: fps))
+                (
+                    resolution: resolution,
+                    request: GIFSizeEstimateRequest(
+                        fps: fps,
+                        maxPixelSize: resolution.maxPixelSize
+                    )
+                )
             }
         }
+        let composition = clipGIFComposition(for: clip, fps: 15)
         return await Task.detached(priority: .utility) {
-            jobs.compactMap { job -> GIFExportPreset? in
-                guard let bytes = try? GIFExporter().estimateSize(
-                    job.composition,
-                    fps: job.fps,
-                    maxPixelSize: job.resolution.maxPixelSize,
-                    sampleFrameCount: 6,
-                    appliesClipEffects: false
-                ) else { return nil }
+            guard let bytes = try? GIFExporter().estimateSizes(
+                composition,
+                requests: jobs.map { $0.request },
+                sampleFrameCount: 6,
+                appliesClipEffects: false,
+                watermark: watermark
+            ) else { return [] }
+            return zip(jobs, bytes).map { job, size in
                 return GIFExportPreset(
                     resolution: job.resolution,
-                    fps: job.fps,
-                    estimatedBytes: bytes
+                    fps: job.request.fps,
+                    estimatedBytes: size
                 )
             }
         }.value

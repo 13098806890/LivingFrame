@@ -672,6 +672,7 @@
 
 /* i18n completion */
 "正在分析主体…" = "Analizzando i soggetti...";
+"剪影素材 · %@" = "Asset ritagliato · %@";
 "剪影素材 · %@ · %@ · %@ fps" = "Asset ritagliato · %@ · %@ · %@ fps";
 "emoji" = "Emoji";
 "原始前景提取" = "Estrazione del primo piano originale";

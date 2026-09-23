@@ -224,7 +224,8 @@ struct ExportView: View {
                     fps: fps,
                     chatSticker: format == .gif && chatSticker,
                     chatGIFPixelSize: weChatGIFPreset.pixelSize,
-                    resolution: resolution
+                    resolution: resolution,
+                    watermark: format == .gif ? previewWatermark : nil
                 )
                 guard !Task.isCancelled, requestKey == exportEstimateKey else { return }
                 estimatedSizeBytes = bytes
@@ -240,15 +241,22 @@ struct ExportView: View {
 
     private var exportEstimateKey: String {
         let composition = appState.composition
-        return [
-            composition?.id.uuidString ?? "none",
-            String(composition?.duration ?? 0),
-            format.rawValue,
-            String(fps),
-            resolution.rawValue,
-            String(chatSticker),
-            weChatGIFPreset.rawValue
-        ].joined(separator: "|")
+        let compositionID = composition?.id.uuidString ?? "none"
+        let duration = String(composition?.duration ?? 0)
+        let watermarkID = previewWatermark?.decorationID ?? "no-watermark"
+        let watermarkOpacity = String(Double(previewWatermark?.opacity ?? 0))
+        var components: [String] = []
+        components.reserveCapacity(9)
+        components.append(compositionID)
+        components.append(duration)
+        components.append(format.rawValue)
+        components.append(String(fps))
+        components.append(resolution.rawValue)
+        components.append(String(chatSticker))
+        components.append(weChatGIFPreset.rawValue)
+        components.append(watermarkID)
+        components.append(watermarkOpacity)
+        return components.joined(separator: "|")
     }
 
     private var exportProgressBanner: some View {

@@ -132,7 +132,16 @@ struct CanvasView: View {
                         backgroundInteractionOverlay
                     }
                 }
+                if drivesPlayback, appState.isPreparingPlayback {
+                    PlaybackPreparationIndicator()
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
             }
+            .animation(
+                .timingCurve(0.23, 1, 0.32, 1, duration: 0.18),
+                value: appState.isPreparingPlayback
+            )
             .background {
                 if appState.composition?.background.kind == .clear {
                     CheckerboardView()
@@ -213,10 +222,11 @@ struct CanvasView: View {
         .onChange(of: appState.currentTime) { _, _ in
             render()
         }
-        .onChange(of: appState.isPlaying) { _, playing in
-            if playing {
-                render()
-            }
+        .onChange(of: appState.isPlaying) { _, _ in
+            // 播放期间优先保证时钟和画面响应；暂停后恢复高质量/精确预览。
+            // 这只影响编辑器预览，不改变导出分辨率或素材本身。
+            refreshRendererScale()
+            render()
         }
         .onChange(of: appState.isReversed) { _, _ in
             refreshRendererScale()
@@ -1142,19 +1152,23 @@ struct CanvasView: View {
     /// 视口尺寸变化时重建预览渲染器（按屏幕像素渲染，预览清晰度足够且不浪费）
     private func refreshRendererScale() {
         let requiresExactOutput = needsExactBackgroundPreview
-        usesExactBackgroundPreview = requiresExactOutput
+        // 分区背景在暂停时需要像素级对齐；播放时使用轻量预览，避免每帧
+        // 读取全分辨率 PNG 并重新合成，暂停后仍恢复精确路径。
+        let useExactOutput = requiresExactOutput && !appState.isPlaying
+        usesExactBackgroundPreview = useExactOutput
         let pixelScale = UIScreen.main.scale
         // 编辑预览不需要按 Retina 全分辨率渲染；多素材同时播放时，
         // 把中间合成限制在 900px 内，避免渲染队列长期追不上播放时钟。
         let viewportMax = max(viewportSize.width, viewportSize.height)
+        let previewPixelLimit: CGFloat = appState.isPlaying ? 640 : 900
         let maxPixel = viewportMax > 0
-            ? min(viewportMax * pixelScale * 1.1, isCanvasManipulating ? 480 : 900)
-            : 900
+            ? min(viewportMax * pixelScale * 1.1, isCanvasManipulating ? 480 : previewPixelLimit)
+            : previewPixelLimit
         renderer = CompositionRenderer(
             // 多张背景元素在画布中以透明遮罩相互拼接。预览若再对整图做 CI 仿射
             // 降采样，边缘会因透明像素混合而显示到错误分区；导出不走该分支。
             // 这里改为与导出相同的最终 CGImage 输出，确保所见即所得。
-            frameMaxPixelSize: requiresExactOutput ? nil : maxPixel,
+            frameMaxPixelSize: useExactOutput ? nil : maxPixel,
             isPlaybackReversed: appState.isReversed
         )
     }
@@ -1201,6 +1215,10 @@ struct CanvasView: View {
                     self.previewImage = nil
                 }
 
+                if isCurrentVersion, self.drivesPlayback {
+                    self.appState.finishPlaybackPreparation()
+                }
+
                 if isCurrentVersion, self.clearInteractivePreviewAfterRender {
                     self.clearInteractiveDragPreview()
                 }
@@ -1228,6 +1246,27 @@ struct CanvasView: View {
             guard self.appState.isPlaying else { return }
             self.appState.tick(delta: delta)
         }
+    }
+}
+
+/// 播放等待首帧合成时的轻量反馈，不遮挡画面，也不参与画布交互。
+private struct PlaybackPreparationIndicator: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(.white)
+            Text(NSLocalizedString("准备中…", comment: "Playback preparation label"))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(.black.opacity(0.5), in: Capsule())
+        .accessibilityLabel(NSLocalizedString(
+            "准备中…",
+            comment: "Playback preparation accessibility label"
+        ))
     }
 }
 

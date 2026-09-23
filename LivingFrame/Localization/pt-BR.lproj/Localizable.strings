@@ -672,6 +672,7 @@
 
 /* i18n completion */
 "正在分析主体…" = "Analisando assuntos…";
+"剪影素材 · %@" = "Recurso de recorte · %@";
 "剪影素材 · %@ · %@ · %@ fps" = "Recurso de recorte · %@ · %@ · %@ fps";
 "emoji" = "Emoji";
 "原始前景提取" = "Extração de primeiro plano original";

@@ -672,6 +672,7 @@
 
 /* i18n completion */
 "正在分析主体…" = "Konular analiz ediliyor…";
+"剪影素材 · %@" = "Kesme varlığı · %@";
 "剪影素材 · %@ · %@ · %@ fps" = "Kesme varlığı · %@ · %@ · %@ fps";
 "emoji" = "Emoji";
 "原始前景提取" = "Orijinal ön plan çıkarma";

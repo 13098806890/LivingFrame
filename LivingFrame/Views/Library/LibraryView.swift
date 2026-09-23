@@ -271,41 +271,6 @@ struct LibraryView: View {
                     .accessibilityIdentifier("library-extraction-kind-static")
                 }
 
-                Section("人物算法") {
-                    ForEach(visibleSegmentationAlgorithms) { algorithm in
-                        Button {
-                            appState.segmentationAlgorithm = algorithm
-                        } label: {
-                            Label {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(algorithm.title)
-                                    Text(algorithm.subtitle)
-                                        .font(.caption)
-                                        .foregroundStyle(LF.textSecondary)
-                                }
-                            } icon: {
-                                Image(systemName: appState.segmentationAlgorithm == algorithm
-                                      ? "checkmark.circle.fill"
-                                      : algorithm.systemImage)
-                            }
-                        }
-                        .accessibilityIdentifier("library-segmentation-algorithm-\(algorithm.rawValue)")
-                    }
-                }
-
-                Section("提取帧率") {
-                    ForEach(AppState.processingFPSOptions, id: \.self) { option in
-                        Button {
-                            appState.processingFPS = option
-                        } label: {
-                            Label(
-                                "\(fpsTitle(option)) fps",
-                                systemImage: abs(appState.processingFPS - option) < 0.01 ? "checkmark" : "circle"
-                            )
-                        }
-                        .accessibilityIdentifier("library-extraction-fps-\(fpsTitle(option))")
-                    }
-                }
             } label: {
                 Label(
                     extractionSettingsLabel,
@@ -445,26 +410,13 @@ struct LibraryView: View {
         }
     }
 
-    private func fpsTitle(_ fps: Double) -> String {
-        if abs(fps.rounded() - fps) < 0.01 { return String(Int(fps.rounded())) }
-        return String(format: "%.1f", fps)
-    }
-
-    /// Keep the Vision multi-person route available in code for a later
-    /// re-enable, but expose only the original extractor in the current UI.
-    private var visibleSegmentationAlgorithms: [SegmentationAlgorithm] {
-        [.foreground]
-    }
-
     private var extractionSettingsLabel: String {
         let kind = defaultExtractKind == .live
             ? NSLocalizedString("动态剪影", comment: "Animated cutout asset")
             : NSLocalizedString("静态剪影", comment: "Still cutout asset")
         return String.localizedStringWithFormat(
-            NSLocalizedString("剪影素材 · %@ · %@ · %@ fps", comment: "Cutout asset extraction summary"),
-            kind,
-            appState.segmentationAlgorithm.title,
-            fpsTitle(appState.processingFPS) as NSString
+            NSLocalizedString("剪影素材 · %@", comment: "Cutout asset extraction summary"),
+            kind
         )
     }
 
@@ -2740,6 +2692,7 @@ struct ClipCell: View {
     let deleteAccessibilityLabel: String
     let deleteAccessibilityIdentifier: String
     @State private var isPlaying = false
+    @State private var isPreparingPlayback = false
 
     init(
         clip: SegmentedClip,
@@ -2761,7 +2714,8 @@ struct ClipCell: View {
                 AnimatedClipPreview(
                     clip: clip,
                     maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
-                    isPlaying: $isPlaying
+                    isPlaying: $isPlaying,
+                    isPreparingPlayback: $isPreparingPlayback
                 )
             }
             .frame(height: 120)
@@ -2785,11 +2739,17 @@ struct ClipCell: View {
                 if clip.frameCount > 1 {
                     // 这里只负责显示，真正的点击分流由预览区的 SpatialTapGesture 处理，
                     // 避免外层详情点击手势再次抢走播放入口。
-                    ClipPreviewBadgeIcon(
-                        systemName: isPlaying ? "pause.fill" : "play.fill",
-                        foregroundStyle: LF.actionPrimary,
-                        backgroundStyle: LF.actionPrimary.opacity(0.16)
-                    )
+                    Group {
+                        if isPreparingPlayback {
+                            ClipPreviewLoadingIndicator()
+                        } else {
+                            ClipPreviewBadgeIcon(
+                                systemName: isPlaying ? "pause.fill" : "play.fill",
+                                foregroundStyle: LF.actionPrimary,
+                                backgroundStyle: LF.actionPrimary.opacity(0.16)
+                            )
+                        }
+                    }
                     .frame(width: 44, height: 44)
                 }
             }
@@ -2872,6 +2832,7 @@ private struct ClipDetailPreview: View {
     let onRotateCounterclockwise: () -> Void
     let onRotateClockwise: () -> Void
     @State private var watermarkFrame: CGImage?
+    @State private var isPreparingPlayback = false
 
     /// 详情页只负责检查原始素材，不在这里模拟编辑器/导出的边缘效果。
     private var unstyledClip: SegmentedClip {
@@ -2889,7 +2850,8 @@ private struct ClipDetailPreview: View {
             AnimatedClipPreview(
                 clip: unstyledClip,
                 maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
-                isPlaying: $isPlaying
+                isPlaying: $isPlaying,
+                isPreparingPlayback: $isPreparingPlayback
             )
                 .aspectRatio(aspectRatio, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -2912,7 +2874,11 @@ private struct ClipDetailPreview: View {
                 }
 
             if clip.frameCount > 1 {
-                ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
+                ClipPreviewPlayButton(
+                    clip: clip,
+                    isPlaying: $isPlaying,
+                    isPreparingPlayback: $isPreparingPlayback
+                )
                     .padding(4)
             }
 
@@ -2981,6 +2947,7 @@ private struct ClipCropEditorView: View {
     let onFinish: (CGRect?) -> Void
     @State private var draftRect: CGRect
     @State private var isPlaying = false
+    @State private var isPreparingPlayback = false
 
     init(
         clip: SegmentedClip,
@@ -3041,7 +3008,8 @@ private struct ClipCropEditorView: View {
                     AnimatedClipPreview(
                         clip: previewClip,
                         maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
-                        isPlaying: $isPlaying
+                        isPlaying: $isPlaying,
+                        isPreparingPlayback: $isPreparingPlayback
                     )
                     CropOverlayView(
                         contentRect: contentRect,
@@ -3214,7 +3182,7 @@ struct ClipMenuView: View {
         .onDisappear {
             exportGIFTask?.cancel()
         }
-        .task(id: "\(currentClip.id)-\(currentClip.rotationQuarterTurns)-\(currentClip.cropCacheKey)") {
+        .task(id: "\(currentClip.id)-\(currentClip.rotationQuarterTurns)-\(currentClip.cropCacheKey)-\(previewWatermarkID)") {
             await loadGIFPresets()
         }
         .fullScreenCover(isPresented: $isCroppingClip) {
@@ -3410,6 +3378,10 @@ struct ClipMenuView: View {
         gifPresets.first { $0.resolution == gifResolution && abs($0.fps - gifFPS) < 0.01 }
     }
 
+    private var previewWatermarkID: String {
+        previewWatermark?.decorationID ?? "no-watermark"
+    }
+
     private func loadGIFPresets() async {
         let resolutionOptions = gifResolutionOptions
         let fpsOptions = gifFPSOptions
@@ -3425,7 +3397,8 @@ struct ClipMenuView: View {
             let presets = try await appState.estimateClipGIFPresets(
                 clip.id,
                 resolutions: resolutionOptions,
-                fpsOptions: fpsOptions
+                fpsOptions: fpsOptions,
+                watermark: purchaseManager.hasPro ? nil : previewWatermark
             )
             guard !Task.isCancelled, !presets.isEmpty else { return }
             gifPresets = presets

@@ -672,6 +672,7 @@
 
 /* i18n completion */
 "正在分析主体…" = "Menganalisis subjek…";
+"剪影素材 · %@" = "Aset potongan · %@";
 "剪影素材 · %@ · %@ · %@ fps" = "Aset potongan · %@ · %@ · %@ fps";
 "emoji" = "emoji";
 "原始前景提取" = "Ekstraksi latar depan asli";

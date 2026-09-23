@@ -66,18 +66,24 @@ struct AssetCell: View {
     let clip: SegmentedClip
     let onSelect: () -> Void
     @State private var isPlaying = false
+    @State private var isPreparingPlayback = false
 
     var body: some View {
         VStack(spacing: 4) {
              AnimatedClipPreview(
                  clip: clip,
                  maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
-                 isPlaying: $isPlaying
+                 isPlaying: $isPlaying,
+                 isPreparingPlayback: $isPreparingPlayback
              )
                 .frame(height: 90)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(alignment: .bottomLeading) {
-                    ClipPreviewPlayButton(clip: clip, isPlaying: $isPlaying)
+                    ClipPreviewPlayButton(
+                        clip: clip,
+                        isPlaying: $isPlaying,
+                        isPreparingPlayback: $isPreparingPlayback
+                    )
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {

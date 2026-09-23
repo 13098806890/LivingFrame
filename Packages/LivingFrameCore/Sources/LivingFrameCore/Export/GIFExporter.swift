@@ -23,6 +23,20 @@ public struct ChatStickerExportResult: Sendable, Equatable {
     public var usedFrameSampling: Bool { fps < 15 }
 }
 
+/// 用于一次性估算多个 GIF 规格。多个规格共享同一批最终画面采样，
+/// 避免分辨率/帧率选项分别重新执行合成渲染。
+public struct GIFSizeEstimateRequest: Sendable {
+    public let fps: Double
+    public let maxPixelSize: CGFloat?
+    public let outputSize: CGSize?
+
+    public init(fps: Double, maxPixelSize: CGFloat?, outputSize: CGSize? = nil) {
+        self.fps = fps
+        self.maxPixelSize = maxPixelSize
+        self.outputSize = outputSize
+    }
+}
+
 /// GIF 导出（ImageIO）：alpha 为 1-bit，适合硬边风格
 public struct GIFExporter {
     public init() {}
@@ -214,6 +228,91 @@ public struct GIFExporter {
         )
     }
 
+    /// 批量估算多个规格：最终合成帧只渲染一次，之后按规格缩放并编码采样。
+    /// 这适合素材详情页的“分辨率 × 帧率”候选列表；单规格导出页仍使用 estimateSize。
+    public func estimateSizes(
+        _ composition: Composition,
+        requests: [GIFSizeEstimateRequest],
+        sampleFrameCount: Int = 6,
+        appliesClipEffects: Bool = true,
+        watermark: ExportWatermark? = nil,
+        isCancelled: () -> Bool = { Task.isCancelled }
+    ) throws -> [Int64] {
+        guard !requests.isEmpty else { return [] }
+        let safeRequests = requests.map { request in
+            GIFSizeEstimateRequest(
+                fps: max(request.fps.isFinite ? request.fps : 1, 1),
+                maxPixelSize: request.maxPixelSize.map {
+                    max($0.isFinite ? $0 : 1, 1)
+                },
+                outputSize: request.outputSize
+            )
+        }
+        let largestPixelSize = safeRequests.contains { $0.maxPixelSize == nil }
+            ? nil
+            : safeRequests.compactMap(\.maxPixelSize).max()
+        let maximumFPS = safeRequests.map(\.fps).max() ?? 1
+        let totalFrames = max(
+            1,
+            Int((max(composition.duration, 1 / maximumFPS) * maximumFPS).rounded(.up))
+        )
+        let sampleCount = min(max(sampleFrameCount, 1), totalFrames)
+        let temporaryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LF-gif-estimate-batch-\(UUID().uuidString).gif")
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+
+        let renderer = CompositionRenderer(
+            frameMaxPixelSize: largestPixelSize,
+            appliesClipEffects: appliesClipEffects,
+            exportWatermark: watermark
+        )
+        var sampledImages: [CGImage] = []
+        sampledImages.reserveCapacity(sampleCount)
+        for sampleIndex in 0..<sampleCount {
+            if isCancelled() || Task.isCancelled { throw ExportError.cancelled }
+            let fraction = sampleCount == 1
+                ? 0
+                : Double(sampleIndex) / Double(sampleCount - 1)
+            let time = max(composition.duration, 0) * fraction
+            if let image = renderer.render(composition, at: time) {
+                sampledImages.append(image)
+            }
+        }
+        guard !sampledImages.isEmpty else { throw ExportError.renderFailed }
+
+        return try safeRequests.map { request in
+            if isCancelled() || Task.isCancelled { throw ExportError.cancelled }
+            let images = sampledImages.compactMap { image in
+                let resized = resizedImage(image, maxPixelSize: request.maxPixelSize) ?? image
+                return request.outputSize.map { gifCanvasFrame(resized, outputSize: $0) } ?? resized
+            }
+            guard !images.isEmpty else { throw ExportError.renderFailed }
+            let url = temporaryURL.deletingLastPathComponent()
+                .appendingPathComponent("LF-gif-estimate-batch-\(UUID().uuidString).gif")
+            defer { try? FileManager.default.removeItem(at: url) }
+            let sampleBytes = try encodedGIFSize(for: images, fps: request.fps, at: url)
+            let baselineURL = temporaryURL.deletingLastPathComponent()
+                .appendingPathComponent("LF-gif-estimate-baseline-\(UUID().uuidString).gif")
+            defer { try? FileManager.default.removeItem(at: baselineURL) }
+            guard let baselineImage = onePixelImage() else { throw ExportError.renderFailed }
+            let baselineBytes = try encodedGIFSize(
+                for: [baselineImage],
+                fps: request.fps,
+                at: baselineURL
+            )
+            let totalFrames = max(
+                1,
+                Int((max(composition.duration, 1 / request.fps) * request.fps).rounded(.up))
+            )
+            let sampledFrameBytes = max(sampleBytes - baselineBytes, 1)
+            let averageFrameBytes = Double(sampledFrameBytes) / Double(images.count)
+            return max(
+                1,
+                Int64((Double(baselineBytes) + averageFrameBytes * Double(totalFrames)).rounded())
+            )
+        }
+    }
+
     private func encodedGIFSize(
         for images: [CGImage],
         fps: Double,
@@ -254,6 +353,28 @@ public struct GIFExporter {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
         context.clear(CGRect(x: 0, y: 0, width: 1, height: 1))
+        return context.makeImage()
+    }
+
+    private func resizedImage(_ image: CGImage, maxPixelSize: CGFloat?) -> CGImage? {
+        guard let maxPixelSize,
+              maxPixelSize < CGFloat(max(image.width, image.height)) else {
+            return image
+        }
+        let scale = maxPixelSize / CGFloat(max(image.width, image.height))
+        let width = max(Int((CGFloat(image.width) * scale).rounded()), 1)
+        let height = max(Int((CGFloat(image.height) * scale).rounded()), 1)
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         return context.makeImage()
     }
 

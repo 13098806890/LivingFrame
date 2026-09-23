@@ -246,7 +246,7 @@ final class LivingFrameUITests: XCTestCase {
         app.terminate()
     }
 
-    /// 高级提取设置是用户可回归的配置入口；不要依赖动态菜单文案定位。
+    /// 提取入口只提供本次任务的动态/静态选择；处理帧率、分辨率和时长统一在设置页维护。
     @MainActor
     func testExtractionSettingsHaveStableIdentifiers() throws {
         launch(Self.simplifiedChinese)
@@ -263,14 +263,6 @@ final class LivingFrameUITests: XCTestCase {
         XCTAssertTrue(
             app.buttons["library-extraction-kind-static"].exists,
             "Still extraction option identifier is missing"
-        )
-        XCTAssertTrue(
-            app.buttons["library-extraction-fps-10"].exists,
-            "10 fps option identifier is missing"
-        )
-        XCTAssertTrue(
-            app.buttons["library-extraction-fps-60"].exists,
-            "60 fps option identifier is missing"
         )
         app.terminate()
     }
