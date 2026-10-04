@@ -98,27 +98,28 @@ enum PhotoLibraryMediaImporter {
                 ? await stillImageURL(for: asset, progress: progress)
                 : nil
 
-            // 优先让 Photos 返回已解码的视频 URL；如果 iCloud 返回的是
-            // AVComposition 或暂时没有可用 URL，则直接请求 pairedVideo 资源。
-            if let url = await requestVideoURL(for: asset, progress: progress),
-               let copy = await copyToTemporaryFile(url) {
-                let name = resources.first?.originalFilename ?? copy.lastPathComponent
-                LogStore.log("xdz.import.livePhoto.assetPath success id=\(identifier) url=\(url.path)")
-                LogStore.log("xdz.import.livePhoto.assetPath ready temp=\(copy.path) bytes=\((try? FileManager.default.attributesOfItem(atPath: copy.path)[.size] as? Int) ?? 0) still=\(stillURL != nil)")
-                return ExtractionVideo(
-                    url: copy,
-                    name: name,
-                    stillOrientation: stillOrientation,
-                    stillURL: stillURL
-                )
-            }
-
+            // 先通过 PHAssetResourceManager 请求 pairedVideo。它明确支持
+            // isNetworkAccessAllowed，可以确保 iCloud Live Photo 的原始视频已经
+            // 下载到本地临时文件后再进入转换器；requestAVAsset 作为兼容性回退。
             if let videoResource = resources.first(where: { $0.type == .pairedVideo }),
                let destination = await writeResource(videoResource, progress: progress) {
                 LogStore.log("xdz.import.livePhoto.assetPath pairedVideoReady id=\(identifier) temp=\(destination.path)")
                 return ExtractionVideo(
                     url: destination,
                     name: videoResource.originalFilename,
+                    stillOrientation: stillOrientation,
+                    stillURL: stillURL
+                )
+            }
+
+            if let url = await requestVideoURL(for: asset, progress: progress),
+               let copy = await copyToTemporaryFile(url) {
+                let name = resources.first?.originalFilename ?? copy.lastPathComponent
+                LogStore.log("xdz.import.livePhoto.assetPath requestAVAssetFallback id=\(identifier) url=\(url.path)")
+                LogStore.log("xdz.import.livePhoto.assetPath ready temp=\(copy.path) bytes=\((try? FileManager.default.attributesOfItem(atPath: copy.path)[.size] as? Int) ?? 0) still=\(stillURL != nil)")
+                return ExtractionVideo(
+                    url: copy,
+                    name: name,
                     stillOrientation: stillOrientation,
                     stillURL: stillURL
                 )

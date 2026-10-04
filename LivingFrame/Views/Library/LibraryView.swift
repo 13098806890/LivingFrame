@@ -746,16 +746,10 @@ struct LibraryView: View {
                 LogStore.log("xdz.convert.source.branch gif target=video")
                 return await loadGIFConversionSource(item)
             }
-            // playbackStyle(.imageAnimated) 也可能返回 APNG/动态 HEIC 等非 GIF 图片。
-            // 这类素材没有 Live Photo 的 asset 标识，不能继续走 Live Photo 下载链路。
-            guard types.contains(where: { $0.conforms(to: .movie) })
-                || item.itemIdentifier != nil else {
-                LogStore.log("xdz.convert.source.reject target=video reason=notLivePhotoOrGIF")
-                return nil
-            }
             // PhotosPicker 的 Live Photo 在不同系统版本、iCloud 状态下可能只返回
-            // image/movie 或泛化的动态图片类型。入口已经完成筛选，这里直接尝试
-            // 读取 Live Photo，避免因 supportedContentTypes 二次判断过严而提前失败。
+            // image/movie 或泛化的动态图片类型，甚至没有 itemIdentifier。入口已经
+            // 用 .livePhotos 做了筛选，这里必须直接尝试读取 Live Photo，让导入器
+            // 通过 PHLivePhoto 的 Transferable 兜底并触发配对视频的 iCloud 下载。
             LogStore.log("xdz.convert.source.branch livePhoto target=video")
             guard let source = await loadLivePhoto(item: item, includingStillImage: false) else {
                 LogStore.log("xdz.convert.source.fail target=video reason=loadLivePhoto types=\(types.map(\.identifier))")
