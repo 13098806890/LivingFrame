@@ -78,16 +78,23 @@ public struct VideoExporter {
         let exportFPS = fps.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? composition.fps
         let frameCount = max(1, Int((composition.duration * exportFPS).rounded(.up)))
         let hasAudio = !composition.audioClips.isEmpty
+        LogStore.log("xdz.videoExporter.begin codec=\(format.rawValue) size=\(width)x\(height) frames=\(frameCount) audio=\(hasAudio) url=\(url.path)")
         LogStore.log("VideoExporter: start codec=\(format.rawValue) size=\(width)x\(height) frames=\(frameCount) audio=\(hasAudio) url=\(url.path)")
 
         // 1. 视频轨（进度 0~0.95）
-        try await writeVideoTrack(
-            composition, format: format, to: url,
-            fps: exportFPS, frameCount: frameCount, renderSize: renderSize,
-            watermark: watermark,
-            progress: progress, isCancelled: isCancelled
-        )
+        do {
+            try await writeVideoTrack(
+                composition, format: format, to: url,
+                fps: exportFPS, frameCount: frameCount, renderSize: renderSize,
+                watermark: watermark,
+                progress: progress, isCancelled: isCancelled
+            )
+        } catch {
+            LogStore.log("xdz.videoExporter.videoTrack.fail error=\(error)")
+            throw error
+        }
         LogStore.log("VideoExporter: video track done elapsed=\(Int(Date().timeIntervalSince(start)))s")
+        LogStore.log("xdz.videoExporter.videoTrack.done elapsed=\(Int(Date().timeIntervalSince(start)))s")
 
         // 2. 混音 + 合并音轨（进度 0.95~1.0），失败不阻断视频导出
         if hasAudio {
@@ -106,6 +113,7 @@ public struct VideoExporter {
                 LogStore.log("VideoExporter: remux done")
             } catch {
                 // 音频失败不阻断视频导出
+                LogStore.log("xdz.videoExporter.audio.fail error=\(error)")
                 LogStore.log("VideoExporter: audio mix/remux failed (keeping silent video) error=\(error)")
             }
             try? FileManager.default.removeItem(at: mixedURL)
@@ -114,6 +122,7 @@ public struct VideoExporter {
 
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         LogStore.log("VideoExporter: done elapsed=\(Int(Date().timeIntervalSince(start)))s size=\(size) bytes")
+        LogStore.log("xdz.videoExporter.done elapsed=\(Int(Date().timeIntervalSince(start)))s size=\(size) bytes")
         logAlphaStatus(of: url, tag: "VideoExporter")
     }
 

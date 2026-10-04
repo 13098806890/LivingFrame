@@ -80,7 +80,7 @@ struct ElementInspectorView: View {
                 } label: {
                     Image(systemName: "trash")
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
             }
             Text("画布上拖动可一起移动，双指缩放/旋转作用于全部选中素材")
                 .font(.caption)
@@ -415,8 +415,8 @@ struct ElementInspectorView: View {
                     appState.setClipStickerStyle(clip.id, style)
                 }
             }
-            // 自定义描边和漫画风格都支持三档粗细；颜色仅对自定义描边生效。
-            if clip.stickerStyle == .customOutline || clip.stickerStyle == .comic {
+            // 漫画风格支持三档粗细。
+            if clip.stickerStyle == .comic {
                 HStack(spacing: 8) {
                     ForEach(EdgeThickness.allCases) { thickness in
                         EditorOptionChip(
@@ -427,50 +427,10 @@ struct ElementInspectorView: View {
                         }
                     }
                 }
-                if clip.stickerStyle == .customOutline {
-                    let customColorBinding = Binding<Color>(
-                        get: { Color(hex: clip.edgeColorHex) },
-                        set: { appState.setClipEdgeColor(clip.id, $0.hexRGB) }
-                    )
-                    HStack(spacing: 4) {
-                        ForEach(edgeColors, id: \.hex) { color in
-                            let isSelected = clip.edgeColorHex.uppercased() == color.hex
-                            Button {
-                                appState.setClipEdgeColor(clip.id, color.hex)
-                            } label: {
-                                Circle()
-                                    .fill(Color(hex: color.hex))
-                                    .frame(width: 24, height: 24)
-                                    .overlay {
-                                        Circle().strokeBorder(
-                                            isSelected ? LF.selectionStroke : LF.surface2,
-                                            lineWidth: isSelected ? 2.5 : 1
-                                        )
-                                    }
-                                    .frame(width: 40, height: 40)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(NSLocalizedString(color.name, comment: "Outline color name"))
-                            .accessibilityAddTraits(isSelected ? .isSelected : [])
-                        }
-                        CompactCustomColorPicker(
-                            selection: customColorBinding,
-                            accessibilityLabel: "更多描边颜色"
-                        )
-                    }
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    /// 描边可选颜色
-    private let edgeColors: [(name: String, hex: String)] = [
-        ("白", "FFFFFF"), ("黑", "000000"), ("灰", "B8BDC9"), ("金", "E8C05C"),
-        ("红", "E74C3C"), ("粉", "FF9FF3"), ("蓝", "54A0FF"),
-        ("绿", "1DD1A1"), ("紫", "8B7CF6")
-    ]
 
     // MARK: - 播放倍速
 
@@ -513,7 +473,7 @@ struct ElementInspectorView: View {
                 Button(role: .destructive) { appState.deleteAudio(clip.id) } label: {
                     Image(systemName: "trash")
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
             }
 
             HStack(spacing: 16) {

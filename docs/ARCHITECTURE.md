@@ -10,9 +10,9 @@
 - 核心链路：视频/Live Photo → 抠出人物 → 多元素合成 + 音轨 → 导出动图/视频 → Widget 展示
 
 ### 平台与版本
-- 首发：iOS 17+（iPhone / iPad）
+- 首发：iOS 18+（iPhone / iPad）
 - 架构预留：macOS 14+（Vision/原始前景可复用）
-- App 最低系统版本：iOS 17+
+- App 最低系统版本：iOS 18+
 
 ### 硬性约束
 - Core 层不 import `UIKit` / `AppKit` / `SwiftUI`（跨平台 + 可单测）

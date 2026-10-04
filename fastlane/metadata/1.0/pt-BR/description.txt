@@ -1,7 +1,7 @@
 Transforme vídeos e Live Photos em recortes animados para criar GIFs e stickers personalizados, e compartilhe pelo WhatsApp e outros aplicativos.
 
 Crie seu projeto em uma única tela:
-• Recorte pessoas de vídeos e Live Photos diretamente no dispositivo (iOS 17 ou posterior)
+• Recorte pessoas de vídeos e Live Photos diretamente no dispositivo (iOS 18 ou posterior)
 • Sobreponha vários recortes e ajuste posição, tamanho, rotação, ordem e duração
 • Adicione figurinhas, texto, planos de fundo, molduras e efeitos visuais
 • Exporte como GIF, vídeo HEVC com transparência ou vídeo H.264

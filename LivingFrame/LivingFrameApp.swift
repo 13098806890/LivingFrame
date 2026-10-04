@@ -15,7 +15,6 @@ struct LivingFrameApp: App {
             MainTabView()
                 .environmentObject(appState)
                 .environmentObject(purchaseManager)
-                .preferredColorScheme(.light)
                 .tint(LF.gold)
                 .task {
                     appState.cleanupStaleTemporaryFiles()

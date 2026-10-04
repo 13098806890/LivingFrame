@@ -62,7 +62,7 @@ struct CanvasAppearanceEditor: View {
                                 }
                                 .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                             }
-                            .buttonStyle(.plain)
+                            .lfAnimatedPlainButtonStyle()
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
                         }
                     }
@@ -78,7 +78,7 @@ struct CanvasAppearanceEditor: View {
                                 CheckerboardView()
                             }
                         }
-                        .buttonStyle(.plain)
+                        .lfAnimatedPlainButtonStyle()
                         .accessibilityLabel("透明背景")
 
                         ForEach(colors, id: \.hex) { color in
@@ -90,7 +90,7 @@ struct CanvasAppearanceEditor: View {
                                     Color(hex: color.hex)
                                 }
                             }
-                            .buttonStyle(.plain)
+                            .lfAnimatedPlainButtonStyle()
                         }
 
                         CustomColorPickerTile(
@@ -134,7 +134,7 @@ struct CanvasAppearanceEditor: View {
                             }
                             .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                         }
-                        .buttonStyle(.plain)
+                        .lfAnimatedPlainButtonStyle()
                         .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
                 }
@@ -287,7 +287,7 @@ struct EditorOptionChip: View {
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .lfAnimatedPlainButtonStyle()
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

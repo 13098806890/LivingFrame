@@ -1,7 +1,7 @@
 Biến video và Live Photo thành phần cắt chuyển động để tạo GIF và sticker của riêng bạn, rồi chia sẻ qua Zalo và các ứng dụng khác.
 
 Tạo dự án trên cùng một khung hình:
-• Tách người khỏi video và Live Photo ngay trên thiết bị (yêu cầu iOS 17 trở lên)
+• Tách người khỏi video và Live Photo ngay trên thiết bị (yêu cầu iOS 18 trở lên)
 • Xếp nhiều phần cắt thành lớp; chỉnh vị trí, kích thước, góc xoay, thứ tự và thời gian xuất hiện
 • Thêm nhãn dán, văn bản, nền, khung và hiệu ứng hình ảnh
 • Xuất dưới dạng GIF, video HEVC trong suốt hoặc video H.264

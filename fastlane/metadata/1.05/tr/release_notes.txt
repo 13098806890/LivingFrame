@@ -1,0 +1,4 @@
+GIFBloom 1.05’te yenilikler:
+• GIF ve videoları Live Photo’ya dönüştürün veya Live Photo ve GIF’leri standart video olarak dışa aktarın.
+• Uzun videolardan Live Photo oluştururken 3 saniyelik bir bölüm seçin; varsa ses korunur.
+• Hareketli kesitler, statik çıkartmalar, çizgi roman kenarlıkları, oynatma performansı, iCloud indirmeleri, Koyu Mod ve yerelleştirme iyileştirildi.

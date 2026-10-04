@@ -5,6 +5,7 @@
 "拼接素材" = "Collage media";
 "拼接" = "Collage";
 "素材库" = "Library";
+"转换" = "Convert";
 "编辑" = "Edit";
 "作品" = "Works";
 "设置" = "Settings";
@@ -190,7 +191,32 @@
 "粗" = "Thick";
 
 /* Cutout terminology */
+"动态剪影" = "Animated Cutout";
+"静态贴纸" = "Static Sticker";
+"提取可播放的透明人物素材" = "Create a playable transparent cutout";
+"截取首帧生成透明人物贴纸" = "Create a transparent sticker from the first frame";
 "生成剪影" = "Create Cutout";
+"从视频、Live Photo 或照片提取透明剪影" = "Extract transparent cutouts from videos, Live Photos, or photos";
+"转为 Live Photo" = "Convert to Live Photo";
+"从 GIF 或视频生成可长按播放的 Live Photo" = "Create Live Photos from GIFs or videos";
+"转为视频" = "Convert to Video";
+"从 Live Photo 导出普通视频" = "Export a standard video from a Live Photo";
+"转换失败" = "Conversion Failed";
+"转换完成" = "Conversion Complete";
+"正在转换为 Live Photo" = "Converting to Live Photo";
+"正在转换为视频" = "Converting to Video";
+"正在处理第 %1$lld/%2$lld 个素材" = "Processing item %1$lld of %2$lld";
+"正在准备转换" = "Preparing conversion";
+"取消转换" = "Cancel Conversion";
+"这个素材格式不支持当前转换。请选择 GIF、视频或 Live Photo。" = "This media format is not supported for this conversion. Choose a GIF, video, or Live Photo.";
+"转换素材暂时无法读取，请重新选择后重试。" = "The media could not be read. Choose it again and retry.";
+"没有获得保存到照片的权限，请在系统设置中允许后重试。" = "Photo access is required to save the result. Allow it in Settings and retry.";
+"转为 Live Photo 只支持 GIF 和视频；普通照片不会被处理。" = "Convert to Live Photo accepts GIFs and videos only; still photos are not processed.";
+"转为视频只支持 Live Photo 和 GIF，请重新选择动态素材。" = "Convert to Video accepts Live Photos and GIFs. Choose dynamic media and try again.";
+"成功转换 %1$lld 项，%2$lld 项失败。%@" = "%1$lld converted successfully; %2$lld failed. %@";
+"请重新选择素材后重试。" = "Choose media again and retry.";
+"已转换并保存 %1$lld 项素材到照片。" = "Converted and saved %1$lld item(s) to Photos.";
+"转换时无法保留源音频，已继续保存无声视频。" = "The source audio could not be retained, so the silent video was saved.";
 "剪影" = "Cutouts";
 "剪影素材" = "Cutout Assets";
 "相册" = "Photos";
@@ -201,7 +227,6 @@
 "自动识别人物，生成透明剪影素材，全程在设备端处理" = "Automatically detect people and create transparent cutouts. Everything is processed on your device.";
 "动态剪影（默认）" = "Animated Cutout (Default)";
 "静态剪影（只取首帧）" = "Still Cutout (First Frame Only)";
-"动态剪影" = "Animated Cutout";
 "静态剪影" = "Still Cutout";
 "剪影生成设置" = "Cutout Generation Settings";
 "剪影生成失败" = "Cutout Creation Failed";
@@ -673,6 +698,14 @@
 "试试其他名称或筛选条件" = "Try another name or filter";
 "%1$lld items" = "%1$lld items";
 
+"选择视频、Live Photo 或照片" = "Select a video, Live Photo, or photo";
+"选择照片、Live Photo 或视频的首帧" = "Select a photo, Live Photo, or the first frame of a video";
+"相册中只处理 GIF 和视频" = "Only GIFs and videos are processed from Photos";
+"从相册选择 Live Photo 或 GIF" = "Choose a Live Photo or GIF from Photos";
+"保存贴纸失败" = "Could not save sticker";
+"贴纸效果" = "Sticker Effect";
+"贴纸已保存到相册。" = "Sticker saved to Photos.";
+"视频" = "Video";
 /* i18n completion */
 "正在分析主体…" = "Analyzing subjects…";
 "剪影素材 · %@" = "Cutout asset · %@";

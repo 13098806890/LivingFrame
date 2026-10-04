@@ -37,6 +37,25 @@ public struct LivePhotoExporter {
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws -> Output {
+        try await export(
+            composition,
+            to: url,
+            audioURL: nil,
+            watermark: watermark,
+            progress: progress,
+            isCancelled: isCancelled
+        )
+    }
+
+    /// 导出带有原始音轨的 Live Photo。audioURL 应与 composition 的画面区间一致。
+    public func export(
+        _ composition: Composition,
+        to url: URL,
+        audioURL: URL?,
+        watermark: ExportWatermark? = nil,
+        progress: @escaping (Double) -> Void = { _ in },
+        isCancelled: @escaping () -> Bool = { Task.isCancelled }
+    ) async throws -> Output {
         let renderSize = composition.renderRect.size
         let width = max(2, Int(renderSize.width))
         let height = max(2, Int(renderSize.height))
@@ -63,6 +82,52 @@ public struct LivePhotoExporter {
             throw ExportError.renderFailed
         }
         writer.add(videoInput)
+
+        // 转换入口传入的是已按画面区间裁好的音频文件。直接 passthrough 写入
+        // 压缩音频，避免重新编码造成延迟或音画不同步。
+        var audioInput: AVAssetWriterInput?
+        var audioSamples: [CMSampleBuffer] = []
+        if let audioURL {
+            do {
+                let audioAsset = AVURLAsset(url: audioURL)
+                if let audioTrack = try await audioAsset.loadTracks(withMediaType: .audio).first {
+                    let reader = try AVAssetReader(asset: audioAsset)
+                    let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
+                    output.alwaysCopiesSampleData = false
+                    guard reader.canAdd(output) else { throw ExportError.renderFailed }
+                    reader.add(output)
+                    guard reader.startReading() else { throw ExportError.renderFailed }
+                    while let sample = output.copyNextSampleBuffer() {
+                        audioSamples.append(sample)
+                    }
+                    guard reader.status == .completed else {
+                        throw ExportError.renderFailed
+                    }
+
+                    let formatDescriptions = try await audioTrack.load(.formatDescriptions)
+                    guard let formatHint = formatDescriptions.first else {
+                        throw ExportError.renderFailed
+                    }
+                    let input = AVAssetWriterInput(
+                        mediaType: .audio,
+                        outputSettings: nil,
+                        sourceFormatHint: formatHint
+                    )
+                    input.expectsMediaDataInRealTime = false
+                    guard writer.canAdd(input) else { throw ExportError.renderFailed }
+                    writer.add(input)
+                    audioInput = input
+                }
+            } catch {
+                // 音频损坏或系统无法 passthrough 时仍然导出画面，避免转换整体失败。
+                LogStore.log(
+                    "xdz.livephoto.exporter audio unavailable, continue silent "
+                        + "error=\(error)"
+                )
+                audioSamples.removeAll(keepingCapacity: false)
+                audioInput = nil
+            }
+        }
 
         // 配对标识：文件级 QuickTime 元数据（moov 层，无需 adaptor）。
         // 必须同时设置 keySpace、key 和 dataType，Photos 才能稳定识别。
@@ -112,6 +177,29 @@ public struct LivePhotoExporter {
             throw ExportError.renderFailed
         }
         writer.startSession(atSourceTime: .zero)
+
+        if let audioInput {
+            for sample in audioSamples {
+                while !audioInput.isReadyForMoreMediaData {
+                    if isCancelled() || Task.isCancelled {
+                        audioInput.markAsFinished()
+                        await writer.finishWriting()
+                        throw ExportError.cancelled
+                    }
+                    try await Task.sleep(nanoseconds: 3_000_000)
+                }
+                guard audioInput.append(sample) else {
+                    LogStore.log(
+                        "xdz.livephoto.exporter audio append failed "
+                            + "error=\(String(describing: writer.error))"
+                    )
+                    audioInput.markAsFinished()
+                    await writer.finishWriting()
+                    throw ExportError.renderFailed
+                }
+            }
+            audioInput.markAsFinished()
+        }
 
         let stillImageTimeItem = AVMutableMetadataItem()
         stillImageTimeItem.key = "com.apple.quicktime.still-image-time" as NSString

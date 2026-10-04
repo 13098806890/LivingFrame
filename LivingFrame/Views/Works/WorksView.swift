@@ -73,7 +73,7 @@ struct WorksView: View {
                                         .foregroundStyle(LF.actionPrimary)
                                         .fixedSize()
                                     }
-                                    .buttonStyle(.plain)
+                                    .lfAnimatedPlainButtonStyle()
                                 }
                             }
                             LazyVGrid(columns: columns, spacing: 12) {
@@ -99,6 +99,7 @@ struct WorksView: View {
                             .font(.headline.weight(.semibold))
                     }
                     .tint(LF.actionPrimary)
+                    .lfAnimatedPlainButtonStyle()
                     .accessibilityLabel("新建")
                     .accessibilityIdentifier("works-create-project")
                 }

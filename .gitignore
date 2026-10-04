@@ -35,3 +35,14 @@ Artifacts/UIAudit/
 
 # Local device diagnostics and test evidence
 Artifacts/DeviceDiagnostics/
+
+# Local build/test outputs (keep workflow reports and curated screenshots)
+Artifacts/**/*DerivedData/
+Artifacts/**/*BuildData/
+Artifacts/*BuildData*/
+Artifacts/**/*TestData/
+Artifacts/**/*.xcresult/
+Artifacts/**/*.log
+Artifacts/TestiPhone/
+Artifacts/TestiPhone-*.xcresult/
+.design/

@@ -4,6 +4,14 @@ import XCTest
 @testable import LivingFrameCore
 
 final class CompositionRendererClipEffectsTests: XCTestCase {
+    func testLegacyCustomOutlineDecodesAsOutline() throws {
+        let data = Data("\"customOutline\"".utf8)
+        let style = try JSONDecoder().decode(StickerStyle.self, from: data)
+
+        XCTAssertEqual(style, .outline)
+        XCTAssertEqual(StickerStyle(rawValue: "customOutline"), .outline)
+    }
+
     func testSharedSubjectBoundsIgnoreTransparentMarginsAndFaintResidue() throws {
         let frame = try XCTUnwrap(makeSubjectFrame())
 
@@ -63,6 +71,55 @@ final class CompositionRendererClipEffectsTests: XCTestCase {
         XCTAssertGreaterThan(alpha(in: styled, x: 0, y: 0), 0)
     }
 
+    func testClipEffectsPreserveBorderWhenSubjectTouchesSourceEdges() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clip-effect-padding-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let frame = try XCTUnwrap(makeEdgeSubjectFrame())
+        XCTAssertTrue(writePNG(frame, to: folder.appendingPathComponent("00000.png")))
+
+        let clip = SegmentedClip(
+            id: "clip-effect-padding",
+            name: "edge subject",
+            fps: 1,
+            frameCount: 1,
+            width: 100,
+            height: 100,
+            folderURL: folder,
+            edgeThickness: .thin,
+            stickerStyle: .comic
+        )
+        FrameCache.shared.registerInMemory(clip)
+
+        let composition = Composition(
+            name: "clip effect padding",
+            canvas: CanvasSpec(width: 220, height: 220),
+            duration: 1,
+            fps: 1,
+            elements: [CompositionElement(
+                kind: .clip(clipID: clip.id),
+                name: clip.name,
+                transform: ElementTransform(position: CGPoint(x: 110, y: 110)),
+                endTime: 1,
+                sourceEndTime: 1
+            )],
+            background: .clear
+        )
+
+        let plain = try XCTUnwrap(CompositionRenderer(appliesClipEffects: false).render(composition, at: 0))
+        let styled = try XCTUnwrap(CompositionRenderer(appliesClipEffects: true).render(composition, at: 0))
+        let plainBounds = try XCTUnwrap(visibleAlphaBounds(in: plain))
+        let styledBounds = try XCTUnwrap(visibleAlphaBounds(in: styled))
+
+        XCTAssertLessThan(styledBounds.minX, plainBounds.minX)
+        XCTAssertLessThan(styledBounds.minY, plainBounds.minY)
+        XCTAssertGreaterThan(styledBounds.maxX, plainBounds.maxX)
+        XCTAssertGreaterThan(styledBounds.maxY, plainBounds.maxY)
+        XCTAssertEqual(styledBounds.midX, plainBounds.midX, accuracy: 1)
+        XCTAssertEqual(styledBounds.midY, plainBounds.midY, accuracy: 1)
+    }
+
     func testStickerStyleThumbnailRendersEveryAvailableStyle() throws {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("sticker-style-preview-\(UUID().uuidString)", isDirectory: true)
@@ -91,6 +148,42 @@ final class CompositionRendererClipEffectsTests: XCTestCase {
             XCTAssertGreaterThan(thumbnail.width, 0)
             XCTAssertGreaterThan(thumbnail.height, 0)
         }
+    }
+
+    func testComicStickerThumbnailKeepsVisibleWhiteBorder() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("comic-sticker-border-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let frame = try XCTUnwrap(makeEdgeSubjectFrame())
+        XCTAssertTrue(writePNG(frame, to: folder.appendingPathComponent("00000.png")))
+
+        let clip = SegmentedClip(
+            id: "comic-sticker-border",
+            name: "comic border",
+            fps: 1,
+            frameCount: 1,
+            width: frame.width,
+            height: frame.height,
+            folderURL: folder,
+            edgeThickness: .medium
+        )
+        FrameCache.shared.registerInMemory(clip)
+
+        let renderer = CompositionRenderer(frameMaxPixelSize: 144)
+        let plain = try XCTUnwrap(
+            renderer.stickerStyleThumbnail(for: clip, frameIndex: 0, style: .none)
+        )
+        let comic = try XCTUnwrap(
+            renderer.stickerStyleThumbnail(for: clip, frameIndex: 0, style: .comic)
+        )
+        let plainBounds = try XCTUnwrap(visibleAlphaBounds(in: plain))
+        let comicBounds = try XCTUnwrap(visibleAlphaBounds(in: comic))
+
+        XCTAssertLessThan(comicBounds.minX, plainBounds.minX)
+        XCTAssertLessThan(comicBounds.minY, plainBounds.minY)
+        XCTAssertGreaterThan(comicBounds.maxX, plainBounds.maxX)
+        XCTAssertGreaterThan(comicBounds.maxY, plainBounds.maxY)
     }
 
     func testStickerStyleThumbnailsUseSharedCanvasAndNormalizeSubjectZoom() throws {
@@ -293,6 +386,23 @@ final class CompositionRendererClipEffectsTests: XCTestCase {
         context.clear(CGRect(x: 0, y: 0, width: 16, height: 16))
         context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         context.fill(CGRect(x: 7, y: 7, width: 2, height: 2))
+        return context.makeImage()
+    }
+
+    private func makeEdgeSubjectFrame() -> CGImage? {
+        let size = CGSize(width: 100, height: 100)
+        guard let context = CGContext(
+            data: nil,
+            width: Int(size.width),
+            height: Int(size.height),
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.clear(CGRect(origin: .zero, size: size))
+        context.setFillColor(CGColor(red: 0.2, green: 0.65, blue: 0.9, alpha: 1))
+        context.fill(CGRect(origin: .zero, size: size))
         return context.makeImage()
     }
 

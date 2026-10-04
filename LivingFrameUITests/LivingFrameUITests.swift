@@ -201,9 +201,7 @@ final class LivingFrameUITests: XCTestCase {
         waitForUIToSettle()
         attachScreenshot(named: "extraction--01-library-entry")
 
-        let pickerEntry = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", "选择视频")
-        ).firstMatch
+        let pickerEntry = app.buttons["library-extraction-entry"]
         XCTAssertTrue(pickerEntry.waitForExistence(timeout: 10), "Extraction picker entry did not appear")
         XCTAssertTrue(pickerEntry.isHittable, "Extraction picker entry is not hittable")
         pickerEntry.tap()
@@ -246,24 +244,38 @@ final class LivingFrameUITests: XCTestCase {
         app.terminate()
     }
 
-    /// 提取入口只提供本次任务的动态/静态选择；处理帧率、分辨率和时长统一在设置页维护。
+    /// 动态剪影和静态贴纸分别提供独立入口，不再隐藏在设置菜单中。
     @MainActor
-    func testExtractionSettingsHaveStableIdentifiers() throws {
+    func testExtractionModesHaveStableIdentifiers() throws {
         launch(Self.simplifiedChinese)
         tapTab(index: 0)
 
-        let settings = app.buttons["library-extraction-settings"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 10), "Extraction settings identifier is missing")
-        settings.tap()
+        XCTAssertTrue(
+            app.buttons["library-extraction-entry"].waitForExistence(timeout: 10),
+            "Animated cutout entry identifier is missing"
+        )
+        XCTAssertTrue(
+            app.buttons["library-static-cutout-entry"].waitForExistence(timeout: 5),
+            "Static sticker entry identifier is missing"
+        )
+        app.terminate()
+    }
 
-        XCTAssertTrue(
-            app.buttons["library-extraction-kind-live"].waitForExistence(timeout: 5),
-            "Animated extraction option identifier is missing"
-        )
-        XCTAssertTrue(
-            app.buttons["library-extraction-kind-static"].exists,
-            "Still extraction option identifier is missing"
-        )
+    /// 四个转换入口必须保持独立可达。
+    @MainActor
+    func testExtractionConversionEntriesHaveStableIdentifiers() throws {
+        launch(Self.simplifiedChinese)
+        tapTab(index: 0)
+
+        let cutout = app.buttons["library-extraction-entry"]
+        let live = app.buttons["library-convert-live-entry"]
+        let video = app.buttons["library-convert-video-entry"]
+
+        XCTAssertTrue(cutout.waitForExistence(timeout: 10), "Cutout entry is missing")
+        XCTAssertTrue(live.waitForExistence(timeout: 10), "Live Photo conversion entry is missing")
+        XCTAssertTrue(video.waitForExistence(timeout: 10), "Video conversion entry is missing")
+        XCTAssertTrue(live.label.localizedCaseInsensitiveContains("Live Photo"))
+        XCTAssertTrue(video.label.localizedCaseInsensitiveContains("视频"))
         app.terminate()
     }
 

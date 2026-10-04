@@ -1,0 +1,1 @@
+GIF ve videoları Live Photo’ya dönüştür, Live Photo ve GIF’leri video olarak dışa aktar; kesitleri ve statik çıkartmaları cihazında oluştur.

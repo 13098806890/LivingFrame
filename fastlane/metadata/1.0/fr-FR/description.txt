@@ -1,7 +1,7 @@
 Transformez des vidéos et des Live Photos en détourages animés pour créer des GIF et stickers personnalisés, puis partagez-les via WhatsApp et d'autres applications.
 
 Créez un projet sur une même toile :
-• Détourez des personnes à partir de vidéos et de Live Photos sur votre appareil (iOS 17 ou version ultérieure)
+• Détourez des personnes à partir de vidéos et de Live Photos sur votre appareil (iOS 18 ou version ultérieure)
 • Superposez plusieurs éléments et réglez leur position, taille, rotation, ordre et durée d’apparition
 • Ajoutez des autocollants, du texte, des arrière-plans, des cadres et des effets visuels
 • Exportez en GIF, en vidéo HEVC avec transparence ou en vidéo H.264

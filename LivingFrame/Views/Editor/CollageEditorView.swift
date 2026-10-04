@@ -43,10 +43,17 @@ struct CollageEditorView: View {
             .magicBackground()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("取消")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") {
+                    Button {
                         if elementIDs.isEmpty {
                             if isNewCollageSession, let sessionSnapshot {
                                 appState.restoreCollageSession(sessionSnapshot)
@@ -60,9 +67,13 @@ struct CollageEditorView: View {
                         }
                         didFinish = true
                         dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
                     }
-                    .fontWeight(.semibold)
+                    .lfAnimatedPlainButtonStyle()
                     .foregroundStyle(LF.actionPrimary)
+                    .accessibilityLabel("完成")
                 }
             }
         }
@@ -1340,7 +1351,7 @@ struct BackgroundDividerControls: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 5)
                             }
-                            .buttonStyle(.plain)
+                    .lfAnimatedPlainButtonStyle()
                             .foregroundStyle(settings.resolvedAssignedPartitions.contains(partition)
                                 ? LF.selectionText
                                 : LF.textPrimary)
@@ -1449,7 +1460,7 @@ private struct CollageSourceChip: View {
                 }
                 .padding(.top, 4)
             }
-            .buttonStyle(.plain)
+            .lfAnimatedPlainButtonStyle()
             .foregroundStyle(LF.textPrimary)
             .accessibilityIdentifier("collage-source-\(item.id)")
             .accessibilityValue(String.localizedStringWithFormat(
@@ -1481,7 +1492,7 @@ private struct CollageSourceChip: View {
                         .frame(width: 22, height: 22)
                         .background(LF.selectionFill, in: Capsule())
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .foregroundStyle(LF.selectionText)
                 .accessibilityLabel("选择图层")
 
@@ -1490,7 +1501,7 @@ private struct CollageSourceChip: View {
                         .font(.system(size: 10, weight: .bold))
                         .frame(width: 20, height: 22)
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .disabled(layerIndex == 1)
                 .accessibilityLabel("上移图层")
 
@@ -1499,7 +1510,7 @@ private struct CollageSourceChip: View {
                         .font(.system(size: 10, weight: .bold))
                         .frame(width: 20, height: 22)
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .disabled(layerIndex == layerOptions.count)
                 .accessibilityLabel("下移图层")
 
@@ -1508,7 +1519,7 @@ private struct CollageSourceChip: View {
                         .font(.system(size: 12, weight: .semibold))
                         .frame(width: 20, height: 22)
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .disabled(!canDuplicate)
                 .accessibilityLabel("创建此素材的独立实例")
 
@@ -1517,7 +1528,7 @@ private struct CollageSourceChip: View {
                         .font(.system(size: 11, weight: .semibold))
                         .frame(width: 20, height: 22)
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .foregroundStyle(LF.destructive)
                 .accessibilityLabel("删除拼接素材")
             }

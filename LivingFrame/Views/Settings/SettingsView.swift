@@ -107,7 +107,7 @@ struct SettingsView: View {
                                 Text("保留原始帧率和分辨率")
                                     .foregroundStyle(LF.textPrimary)
                             }
-                            .buttonStyle(.plain)
+                            .lfAnimatedPlainButtonStyle()
 
                             Spacer(minLength: 8)
 
@@ -196,7 +196,7 @@ struct SettingsView: View {
                                 } label: {
                                     Label("管理订阅", systemImage: "arrow.up.right.square")
                                 }
-                                .buttonStyle(.plain)
+                                .lfAnimatedPlainButtonStyle()
                                 .foregroundStyle(LF.actionPrimary)
                             }
                         }

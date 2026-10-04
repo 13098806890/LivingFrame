@@ -1,0 +1,4 @@
+Yang baru di GIFBloom 1.05:
+• Ubah GIF dan video menjadi Live Photo, atau ekspor Live Photo dan GIF sebagai video biasa.
+• Pilih bagian berdurasi 3 detik dari video panjang saat membuat Live Photo; audio dipertahankan jika tersedia.
+• Peningkatan pada potongan animasi, stiker statis, garis tepi komik, performa pemutaran, unduhan iCloud, Mode Gelap, dan pelokalan.

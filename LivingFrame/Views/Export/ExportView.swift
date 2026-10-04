@@ -424,7 +424,7 @@ struct ExportView: View {
                     )
             }
         }
-        .buttonStyle(.plain)
+        .lfAnimatedPlainButtonStyle()
     }
 
     private func exportContext(_ comp: Composition) -> some View {

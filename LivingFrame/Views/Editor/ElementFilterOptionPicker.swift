@@ -120,7 +120,7 @@ struct ElementFilterOptionPicker: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .lfAnimatedPlainButtonStyle()
         .accessibilityLabel(filter.title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

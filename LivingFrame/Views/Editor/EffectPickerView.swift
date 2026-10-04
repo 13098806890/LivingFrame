@@ -39,7 +39,7 @@ struct EffectPickerView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
             }
             .lfNavigationTitle("魔法特效")
             .navigationBarTitleDisplayMode(.inline)
@@ -47,8 +47,15 @@ struct EffectPickerView: View {
             .magicBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
-                        .foregroundStyle(LF.gold)
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .foregroundStyle(LF.gold)
+                    .accessibilityLabel("完成")
                 }
             }
         }

@@ -1,0 +1,1 @@
+GIFやビデオをLive Photosに変換し、Live PhotosやGIFをビデオとして書き出し、切り抜きや静的ステッカーをデバイス上で作成。

@@ -130,13 +130,25 @@ private struct ElementSourceRangeEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("取消")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") {
+                    Button {
                         appState.setElementSourceRange(element.id, start: start, end: end)
                         dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
                     }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("完成")
                 }
             }
         }
@@ -403,7 +415,7 @@ struct ElementPlaybackControls: View {
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .lfAnimatedPlainButtonStyle()
 
             HStack(spacing: 8) {
                 Label("循环次数", systemImage: "repeat")

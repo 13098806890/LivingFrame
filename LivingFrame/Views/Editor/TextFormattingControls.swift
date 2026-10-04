@@ -58,7 +58,7 @@ struct TextFormattingControls: View {
                                         .padding(.vertical, 5)
                                         .background(LF.selectionFill, in: Capsule())
                                 }
-                                .buttonStyle(.plain)
+                                .lfAnimatedPlainButtonStyle()
                                 .accessibilityLabel("收起键盘")
                             }
                         }
@@ -126,7 +126,7 @@ struct TextFormattingControls: View {
                                         )
                                 }
                             }
-                            .buttonStyle(.plain)
+                            .lfAnimatedPlainButtonStyle()
                             .accessibilityLabel(String.localizedStringWithFormat(
                                 NSLocalizedString("选择字体%1$@", comment: "Font accessibility label"),
                                 NSLocalizedString(font.name, comment: "Font name") as NSString
@@ -175,7 +175,7 @@ struct TextFormattingControls: View {
                                         )
                                     }
                             }
-                            .buttonStyle(.plain)
+                            .lfAnimatedPlainButtonStyle()
                             .accessibilityLabel(String.localizedStringWithFormat(
                                 NSLocalizedString("文字颜色%1$@", comment: "Text color accessibility label"),
                                 NSLocalizedString(color.name, comment: "Color name") as NSString
@@ -227,7 +227,7 @@ struct TextFormattingControls: View {
     }
 }
 
-/// 文字和自定义描边共用的紧凑颜色选择器。
+/// 文字和颜色参数共用的紧凑颜色选择器。
 /// 使用圆形彩虹色块和加号，不显示依赖语言的“自定义”文字。
 struct CompactCustomColorPicker: View {
     let selection: Binding<Color>

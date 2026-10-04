@@ -32,6 +32,7 @@ struct StickerStyleOptionPicker: View {
 
     private var thumbnailSetKey: String {
         [
+            "comic-border-v2",
             clip.id,
             String(frameIndex),
             clip.cropCacheKey,
@@ -87,7 +88,7 @@ struct StickerStyleOptionPicker: View {
                             .foregroundStyle(LF.textSecondary)
                     }
                 }
-                .frame(width: 66, height: 54)
+                .frame(width: 76, height: 66)
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -100,10 +101,10 @@ struct StickerStyleOptionPicker: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.82)
-                    .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
+                    .frame(maxWidth: .infinity, minHeight: 30, maxHeight: 30)
             }
             .padding(7)
-            .frame(width: 82, height: 104)
+            .frame(width: 94, height: 116)
             .background(
                 isSelected ? LF.selectionFill : LF.surface2.opacity(0.4),
                 in: RoundedRectangle(cornerRadius: 13, style: .continuous)
@@ -117,7 +118,7 @@ struct StickerStyleOptionPicker: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .lfAnimatedPlainButtonStyle()
         .accessibilityLabel(style.title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

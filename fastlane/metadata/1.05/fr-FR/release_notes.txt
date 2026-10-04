@@ -1,0 +1,4 @@
+Nouveautés de GIFBloom 1.05 :
+• Convertissez des GIF et des vidéos en Live Photos, ou exportez des Live Photos et des GIF en vidéos classiques.
+• Choisissez un extrait de 3 secondes dans les longues vidéos lors de la création d’une Live Photo ; le son est conservé lorsqu’il est disponible.
+• Améliorations des détourages animés, autocollants statiques, contours style BD, performances de lecture, téléchargements iCloud, mode sombre et localisation.

@@ -169,7 +169,7 @@ struct BackgroundPatternEditor: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .lfAnimatedPlainButtonStyle()
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -210,7 +210,7 @@ struct BackgroundPatternEditor: View {
                             }
                             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .lfAnimatedPlainButtonStyle()
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
@@ -249,7 +249,7 @@ struct BackgroundPatternEditor: View {
                                 .frame(width: 40, height: 40)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .lfAnimatedPlainButtonStyle()
                         .accessibilityLabel(Text("图案颜色"))
                         .accessibilityValue(Text(hex))
                         .accessibilityAddTraits(isSelected ? .isSelected : [])

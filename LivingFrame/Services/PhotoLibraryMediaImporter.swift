@@ -34,10 +34,15 @@ enum PhotoLibraryMediaImporter {
 
     static func loadExtractionVideo(
         from item: PhotosPickerItem,
-        progress: @escaping @Sendable (Double) -> Void
+        progress: @escaping @Sendable (Double) -> Void,
+        includingStillImage: Bool = true
     ) async -> ExtractionVideo? {
         LogStore.log("xdz.import extraction begin item=\(item.itemIdentifier ?? "nil")")
-        if let result = await loadLivePhotoVideo(from: item, progress: progress) {
+        if let result = await loadLivePhotoVideo(
+            from: item,
+            progress: progress,
+            includingStillImage: includingStillImage
+        ) {
             LogStore.log("xdz.import extraction video ready name=\(result.name)")
             return result
         }
@@ -76,44 +81,73 @@ enum PhotoLibraryMediaImporter {
 
     private static func loadLivePhotoVideo(
         from item: PhotosPickerItem,
-        progress: @escaping @Sendable (Double) -> Void
+        progress: @escaping @Sendable (Double) -> Void,
+        includingStillImage: Bool
     ) async -> ExtractionVideo? {
+        LogStore.log("xdz.import.livePhoto.begin item=\(item.itemIdentifier ?? "nil") types=\(item.supportedContentTypes.map(\.identifier))")
         if let identifier = item.itemIdentifier,
            let status = await requestReadWriteAuthorization(),
            (status == .authorized || status == .limited),
            let asset = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject,
-           asset.mediaSubtypes.contains(.photoLive),
-           let url = await requestVideoURL(for: asset, progress: progress) {
+            asset.mediaSubtypes.contains(.photoLive) {
             let resources = PHAssetResource.assetResources(for: asset)
-            let copy = await copyToTemporaryFile(url)
-            guard let copy else { return nil }
-            let stillOrientation = await stillOrientation(for: asset, progress: progress)
-            let stillURL = await stillImageURL(for: asset, progress: progress)
-            let name = resources.first?.originalFilename ?? copy.lastPathComponent
-            return ExtractionVideo(
-                url: copy,
-                name: name,
-                stillOrientation: stillOrientation,
-                stillURL: stillURL
-            )
+            let stillOrientation = includingStillImage
+                ? await stillOrientation(for: asset, progress: progress)
+                : .up
+            let stillURL = includingStillImage
+                ? await stillImageURL(for: asset, progress: progress)
+                : nil
+
+            // 优先让 Photos 返回已解码的视频 URL；如果 iCloud 返回的是
+            // AVComposition 或暂时没有可用 URL，则直接请求 pairedVideo 资源。
+            if let url = await requestVideoURL(for: asset, progress: progress),
+               let copy = await copyToTemporaryFile(url) {
+                let name = resources.first?.originalFilename ?? copy.lastPathComponent
+                LogStore.log("xdz.import.livePhoto.assetPath success id=\(identifier) url=\(url.path)")
+                LogStore.log("xdz.import.livePhoto.assetPath ready temp=\(copy.path) bytes=\((try? FileManager.default.attributesOfItem(atPath: copy.path)[.size] as? Int) ?? 0) still=\(stillURL != nil)")
+                return ExtractionVideo(
+                    url: copy,
+                    name: name,
+                    stillOrientation: stillOrientation,
+                    stillURL: stillURL
+                )
+            }
+
+            if let videoResource = resources.first(where: { $0.type == .pairedVideo }),
+               let destination = await writeResource(videoResource, progress: progress) {
+                LogStore.log("xdz.import.livePhoto.assetPath pairedVideoReady id=\(identifier) temp=\(destination.path)")
+                return ExtractionVideo(
+                    url: destination,
+                    name: videoResource.originalFilename,
+                    stillOrientation: stillOrientation,
+                    stillURL: stillURL
+                )
+            }
+            LogStore.log("xdz.import.livePhoto.assetPath failed id=\(identifier) reason=pairedVideoDownload")
+        } else {
+            LogStore.log("xdz.import.livePhoto.assetPath unavailable item=\(item.itemIdentifier ?? "nil")")
         }
 
         let livePhoto: PHLivePhoto?
         do {
             livePhoto = try await item.loadTransferable(type: PHLivePhoto.self)
         } catch {
+            LogStore.log("xdz.import.livePhoto.transferable fail error=\(error)")
             livePhoto = nil
         }
         guard let livePhoto,
               let resources = pairedResources(for: livePhoto),
               let videoResource = resources.video,
               let destination = await writeResource(videoResource, progress: progress) else {
+            LogStore.log("xdz.import.livePhoto.transferable fail reason=missingPairedVideoOrDownload")
             return nil
         }
+        LogStore.log("xdz.import.livePhoto.transferable videoReady temp=\(destination.path) bytes=\((try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int) ?? 0)")
 
         var stillOrientation = CGImagePropertyOrientation.up
         var stillURL: URL?
-        if let photoResource = resources.photo,
+        if includingStillImage,
+           let photoResource = resources.photo,
            let photoDestination = await writeResource(photoResource, progress: progress, fileExtension: "jpg") {
             stillURL = photoDestination
             stillOrientation = exifOrientation(of: photoDestination) ?? .up
@@ -187,12 +221,14 @@ enum PhotoLibraryMediaImporter {
         for asset: PHAsset,
         progress: @escaping @Sendable (Double) -> Void
     ) async -> URL? {
+        LogStore.log("xdz.import.livePhoto.requestAVAsset begin id=\(asset.localIdentifier) duration=\(asset.duration)")
         let options = PHVideoRequestOptions()
         options.deliveryMode = .highQualityFormat
         options.isNetworkAccessAllowed = true
         options.progressHandler = { value, _, _, _ in progress(value) }
         return await withCheckedContinuation { continuation in
-            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, info in
+                LogStore.log("xdz.import.livePhoto.requestAVAsset result type=\(String(describing: avAsset.map { type(of: $0) })) url=\(String(describing: (avAsset as? AVURLAsset)?.url.path)) info=\(String(describing: info))")
                 continuation.resume(returning: (avAsset as? AVURLAsset)?.url)
             }
         }
@@ -256,15 +292,26 @@ enum PhotoLibraryMediaImporter {
         let options = PHAssetResourceRequestOptions()
         options.isNetworkAccessAllowed = true
         options.progressHandler = progress
+        let resourceName = resource.originalFilename
+        let resourceType = resource.type.rawValue
         let error: Error? = await withCheckedContinuation { continuation in
             PHAssetResourceManager.default().writeData(for: resource, toFile: destination, options: options) {
+                LogStore.log("xdz.import.resource.write result name=\(resourceName) type=\(resourceType) error=\(String(describing: $0))")
                 continuation.resume(returning: $0)
             }
         }
         guard error == nil else {
+            LogStore.log("xdz.import.resource.fail destination=\(destination.path) error=\(String(describing: error))")
             try? FileManager.default.removeItem(at: destination)
             return nil
         }
+        let byteCount = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int) ?? 0
+        guard byteCount > 0 else {
+            LogStore.log("xdz.import.resource.fail destination=\(destination.path) reason=emptyFile")
+            try? FileManager.default.removeItem(at: destination)
+            return nil
+        }
+        LogStore.log("xdz.import.resource.ready destination=\(destination.path) bytes=\(byteCount)")
         return destination
     }
 

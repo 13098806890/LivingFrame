@@ -5,12 +5,24 @@ import CoreImage
 import LivingFrameCore
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var purchaseManager: PurchaseManager
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var isShowingExtractionPicker = false
+    @State private var liveConversionPickerItems: [PhotosPickerItem] = []
+    @State private var isShowingLiveConversionPicker = false
+    @State private var videoConversionPickerItems: [PhotosPickerItem] = []
+    @State private var isShowingVideoConversionPicker = false
+    @State private var conversionTask: Task<Void, Never>?
+    @State private var isConverting = false
+    @State private var conversionProgress: Double = 0
+    @State private var conversionTarget: MediaConversionService.Target = .livePhoto
+    @State private var conversionTitle = ""
+    @State private var conversionErrorMessage: String?
+    @State private var conversionResultMessage: String?
     @State private var loadError: String?
     /// iCloud 素材下载进度（nil 表示进度未知）
     @State private var isDownloading = false
@@ -22,8 +34,12 @@ struct LibraryView: View {
     /// 单击素材打开的详情页（nil = 不显示）
     @State private var menuClip: SegmentedClip?
     @State private var clipDeletionAlert: ClipDeletionAlert?
-    /// 普通路径默认提取动态素材；静态首帧作为高级选项。
-    @State private var defaultExtractKind: ExtractKind = .live
+    /// 记录当前打开相册选择器的剪影类型，动态剪影与静态贴纸分别从独立入口进入。
+    @State private var pendingExtractKind: ExtractKind = .live
+    @State private var dynamicCutoutSymbolAnimation = 0
+    @State private var staticStickerSymbolAnimation = 0
+    @State private var liveConversionSymbolAnimation = 0
+    @State private var videoConversionSymbolAnimation = 0
     /// 超过单个素材最长时长的视频，在动态提取前选择源视频范围。
     @State private var pendingVideoRange: PendingVideoRange?
     /// 动态素材完成主体分析后，等待用户选择需要保留的主体。
@@ -48,7 +64,24 @@ struct LibraryView: View {
         let name: String
         let duration: TimeInterval
         let maxDuration: TimeInterval
+        let confirmTitle: LocalizedStringKey
         var resume: (ClosedRange<TimeInterval>?) -> Void
+
+        init(
+            url: URL,
+            name: String,
+            duration: TimeInterval,
+            maxDuration: TimeInterval,
+            confirmTitle: LocalizedStringKey = "生成剪影",
+            resume: @escaping (ClosedRange<TimeInterval>?) -> Void
+        ) {
+            self.url = url
+            self.name = name
+            self.duration = duration
+            self.maxDuration = maxDuration
+            self.confirmTitle = confirmTitle
+            self.resume = resume
+        }
     }
 
     private struct PendingSubjectSelection: Identifiable {
@@ -92,6 +125,10 @@ struct LibraryView: View {
                         segmentationCard
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
+                    if isConverting {
+                        conversionCard
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                     pickerSection
                     foldersSection
                     clipsSection
@@ -108,7 +145,8 @@ struct LibraryView: View {
             .scrollDismissesKeyboard(.interactively)
             .animation(.easeInOut(duration: 0.22), value: isDownloading)
             .animation(.easeInOut(duration: 0.22), value: isExtractionActive)
-            .navigationTitle("素材库")
+            .animation(.easeInOut(duration: 0.22), value: isConverting)
+            .navigationTitle("转换")
             .navigationBarTitleDisplayMode(.large)
             .magicBackground()
             .alert("新建文件夹", isPresented: $showNewFolderAlert) {
@@ -147,6 +185,32 @@ struct LibraryView: View {
             } message: {
                 Text(loadErrorMessage ?? "")
             }
+            .alert(
+                NSLocalizedString("转换失败", comment: "Media conversion failure title"),
+                isPresented: Binding(
+                    get: { conversionErrorMessage != nil },
+                    set: { if !$0 { conversionErrorMessage = nil } }
+                )
+            ) {
+                Button(NSLocalizedString("知道了", comment: "Dismiss conversion error"), role: .cancel) {
+                    conversionErrorMessage = nil
+                }
+            } message: {
+                Text(conversionErrorMessage ?? "")
+            }
+            .alert(
+                NSLocalizedString("转换完成", comment: "Media conversion success title"),
+                isPresented: Binding(
+                    get: { conversionResultMessage != nil },
+                    set: { if !$0 { conversionResultMessage = nil } }
+                )
+            ) {
+                Button(NSLocalizedString("知道了", comment: "Dismiss conversion success"), role: .cancel) {
+                    conversionResultMessage = nil
+                }
+            } message: {
+                Text(conversionResultMessage ?? "")
+            }
             .sheet(item: $pendingVideoRange, onDismiss: {
                 pendingVideoRange?.resume(nil)
                 pendingVideoRange = nil
@@ -156,6 +220,7 @@ struct LibraryView: View {
                     name: request.name,
                     duration: request.duration,
                     maxDuration: request.maxDuration,
+                    confirmTitle: request.confirmTitle,
                     onCancel: {
                         request.resume(nil)
                         pendingVideoRange = nil
@@ -244,6 +309,7 @@ struct LibraryView: View {
             }
             .onDisappear {
                 importTask?.cancel()
+                conversionTask?.cancel()
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -252,36 +318,17 @@ struct LibraryView: View {
     // MARK: - 素材入口
 
     private var pickerSection: some View {
-        VStack(spacing: 8) {
-            extractionPickerControl
-
-            Menu {
-                Section("提取方式") {
-                    Button {
-                        defaultExtractKind = .live
-                    } label: {
-                        Label("动态剪影（默认）", systemImage: defaultExtractKind == .live ? "checkmark" : "sparkles")
-                    }
-                    .accessibilityIdentifier("library-extraction-kind-live")
-                    Button {
-                        defaultExtractKind = .static
-                    } label: {
-                        Label("静态剪影（只取首帧）", systemImage: defaultExtractKind == .static ? "checkmark" : "photo")
-                    }
-                    .accessibilityIdentifier("library-extraction-kind-static")
-                }
-
-            } label: {
-                Label(
-                    extractionSettingsLabel,
-                    systemImage: "slider.horizontal.3"
-                )
-                .font(.caption.weight(.medium))
-                .foregroundStyle(LF.textSecondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .accessibilityLabel("剪影生成设置")
-            .accessibilityIdentifier("library-extraction-settings")
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: 12),
+                GridItem(.flexible(), spacing: 12)
+            ],
+            spacing: 12
+        ) {
+            extractionPickerControl(kind: .live)
+            extractionPickerControl(kind: .static)
+            liveConversionPickerControl
+            videoConversionPickerControl
         }
         .onChange(of: isShowingExtractionPicker) { wasPresented, isPresented in
             guard wasPresented, !isPresented else { return }
@@ -292,48 +339,52 @@ struct LibraryView: View {
                 handleExtractionSelection(pickerItems)
             }
         }
+        .onChange(of: isShowingLiveConversionPicker) { wasPresented, isPresented in
+            guard wasPresented, !isPresented else { return }
+            Task { @MainActor in
+                await Task.yield()
+                handleConversionSelection(
+                    liveConversionPickerItems,
+                    target: .livePhoto
+                )
+            }
+        }
+        .onChange(of: isShowingVideoConversionPicker) { wasPresented, isPresented in
+            guard wasPresented, !isPresented else { return }
+            Task { @MainActor in
+                await Task.yield()
+                handleConversionSelection(
+                    videoConversionPickerItems,
+                    target: .video
+                )
+            }
+        }
     }
 
     @ViewBuilder
-    private var extractionPickerControl: some View {
+    private func extractionPickerControl(kind: ExtractKind) -> some View {
+        let isDynamic = kind == .live
+        let title: LocalizedStringKey = isDynamic ? "动态剪影" : "静态贴纸"
         let button = Button {
+            pendingExtractKind = kind
+            if isDynamic {
+                dynamicCutoutSymbolAnimation += 1
+            } else {
+                staticStickerSymbolAnimation += 1
+            }
             isShowingExtractionPicker = true
         } label: {
-            SectionCard(title: nil) {
-                VStack(spacing: 10) {
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: "film.stack")
-                            .font(.system(size: 34))
-                            .foregroundStyle(LF.gold)
-
-                        Image(systemName: "plus")
-                            .font(.system(size: 9, weight: .heavy))
-                            .foregroundStyle(.white)
-                            .frame(width: 18, height: 18)
-                            .background(LF.gold, in: Circle())
-                            .overlay {
-                                Circle().stroke(LF.surface, lineWidth: 1.5)
-                            }
-                            .offset(x: 5, y: -4)
-                    }
-                    .frame(width: 40, height: 40)
-
-                    Text("选择视频 / Live Photo / 照片")
-                        .font(.headline)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("自动识别人物，生成透明剪影素材，全程在设备端处理")
-                        .font(.caption)
-                        .foregroundStyle(LF.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
-            }
+            conversionActionCard(
+                title: title,
+                subtitle: nil,
+                systemImage: isDynamic ? "scissors" : "wand.and.outline",
+                compact: true,
+                symbolAnimation: isDynamic
+                    ? dynamicCutoutSymbolAnimation
+                    : staticStickerSymbolAnimation
+            )
         }
-        .buttonStyle(.plain)
+        .lfAnimatedPlainButtonStyle()
         .photosPicker(
             isPresented: $isShowingExtractionPicker,
             selection: $pickerItems,
@@ -341,13 +392,120 @@ struct LibraryView: View {
             selectionBehavior: .ordered,
             matching: .any(of: [.videos, .livePhotos, .images])
         )
-        .disabled(isDownloading || isExtractionActive)
-        .accessibilityIdentifier("library-extraction-entry")
-        .accessibilityLabel("添加素材")
-        .accessibilityHint("选择视频 / Live Photo / 照片")
-        .accessibilityFocused($extractionEntryFocused)
+        .disabled(isMediaBusy)
+        .accessibilityIdentifier(isDynamic ? "library-extraction-entry" : "library-static-cutout-entry")
+        .accessibilityLabel(title)
+        .accessibilityHint(isDynamic ? "选择视频、Live Photo 或照片" : "选择照片、Live Photo 或视频的首帧")
 
-        button
+        if isDynamic {
+            button.accessibilityFocused($extractionEntryFocused)
+        } else {
+            button
+        }
+    }
+
+    private var liveConversionPickerControl: some View {
+        Button {
+            liveConversionSymbolAnimation += 1
+            isShowingLiveConversionPicker = true
+        } label: {
+            conversionActionCard(
+                title: "转为 Live Photo",
+                subtitle: nil,
+                systemImage: "livephoto",
+                compact: true,
+                symbolAnimation: liveConversionSymbolAnimation
+            )
+        }
+        .lfAnimatedPlainButtonStyle()
+        .photosPicker(
+            isPresented: $isShowingLiveConversionPicker,
+            selection: $liveConversionPickerItems,
+            maxSelectionCount: 5,
+            selectionBehavior: .ordered,
+            matching: .any(of: [
+                .videos,
+                .playbackStyle(.imageAnimated)
+            ])
+        )
+        .disabled(isMediaBusy)
+        .accessibilityIdentifier("library-convert-live-entry")
+        .accessibilityLabel("转为 Live Photo")
+        .accessibilityHint("相册中只处理 GIF 和视频")
+    }
+
+    private var videoConversionPickerControl: some View {
+        Button {
+            videoConversionSymbolAnimation += 1
+            isShowingVideoConversionPicker = true
+        } label: {
+            conversionActionCard(
+                title: "转为视频",
+                subtitle: nil,
+                systemImage: "video",
+                compact: true,
+                symbolAnimation: videoConversionSymbolAnimation
+            )
+        }
+        .lfAnimatedPlainButtonStyle()
+        .photosPicker(
+            isPresented: $isShowingVideoConversionPicker,
+            selection: $videoConversionPickerItems,
+            maxSelectionCount: 5,
+            selectionBehavior: .ordered,
+            matching: .any(of: [
+                .livePhotos,
+                .playbackStyle(.imageAnimated)
+            ])
+        )
+        .disabled(isMediaBusy)
+        .accessibilityIdentifier("library-convert-video-entry")
+        .accessibilityLabel("转为视频")
+        .accessibilityHint("从相册选择 Live Photo 或 GIF")
+    }
+
+    private func conversionActionCard(
+        title: LocalizedStringKey,
+        subtitle: LocalizedStringKey?,
+        systemImage: String,
+        compact: Bool = false,
+        symbolAnimation: Int = 0
+    ) -> some View {
+        SectionCard(title: nil) {
+            HStack(spacing: compact ? 10 : 14) {
+                Image(systemName: systemImage)
+                    .font(.system(size: compact ? 22 : 28, weight: .semibold))
+                    .symbolEffect(.bounce, value: symbolAnimation)
+                    .foregroundStyle(LF.gold)
+                    .frame(width: compact ? 34 : 42, height: compact ? 34 : 42)
+                    .background(LF.gold.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(compact ? .subheadline.weight(.semibold) : .headline)
+                        .lineLimit(compact ? 2 : nil)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(LF.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(compact ? 2 : nil)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LF.textSecondary)
+            }
+            .padding(.vertical, compact ? 0 : 2)
+            .frame(maxWidth: .infinity, minHeight: compact ? 64 : 0, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+    }
+
+    private var isMediaBusy: Bool {
+        isDownloading || isExtractionActive || isConverting
     }
 
     private func handleExtractionSelection(_ items: [PhotosPickerItem]) {
@@ -399,8 +557,9 @@ struct LibraryView: View {
                 return
             }
 
-            // 2. 视频默认直接按动态素材提取；需要静态首帧时再从高级选项进入。
-            let kinds = sources.map { isVideoSource($0) ? defaultExtractKind : .static }
+            // 2. 视频按用户点击的独立入口提取为动态剪影或静态贴纸。
+            let selectedKind = pendingExtractKind
+            let kinds = sources.map { isVideoSource($0) ? selectedKind : .static }
             startExtraction(
                 sources: sources,
                 kinds: kinds,
@@ -410,13 +569,251 @@ struct LibraryView: View {
         }
     }
 
-    private var extractionSettingsLabel: String {
-        let kind = defaultExtractKind == .live
-            ? NSLocalizedString("动态剪影", comment: "Animated cutout asset")
-            : NSLocalizedString("静态剪影", comment: "Still cutout asset")
-        return String.localizedStringWithFormat(
-            NSLocalizedString("剪影素材 · %@", comment: "Cutout asset extraction summary"),
-            kind
+    private func handleConversionSelection(
+        _ items: [PhotosPickerItem],
+        target: MediaConversionService.Target
+    ) {
+        guard !items.isEmpty else { return }
+        let itemSummaries = items.map { item in
+            let types = item.supportedContentTypes.map(\.identifier).joined(separator: ",")
+            return "\(item.itemIdentifier ?? "nil"): \(types)"
+        }
+        LogStore.log(
+            "xdz.convert.selection target=\(target) count=\(items.count) items=\(itemSummaries.joined(separator: " | "))"
+        )
+        switch target {
+        case .livePhoto:
+            liveConversionPickerItems.removeAll()
+        case .video:
+            videoConversionPickerItems.removeAll()
+        }
+
+        conversionTask?.cancel()
+        conversionErrorMessage = nil
+        conversionResultMessage = nil
+        conversionProgress = 0
+        conversionTarget = target
+        conversionTitle = target == .livePhoto ? "正在转换为 Live Photo" : "正在转换为视频"
+        isConverting = true
+        // PhotosPickerItem.loadTransferable 可能需要先从 iCloud 取回动图，
+        // 但它不提供可观察的百分比进度；统一显示下载卡片，未知进度时使用转圈。
+        isDownloading = true
+        downloadProgress = nil
+
+        conversionTask = Task { @MainActor in
+            var successCount = 0
+            var failureCount = 0
+            var firstFailure: String?
+            var firstWarning: String?
+
+            for (index, item) in items.enumerated() {
+                guard !Task.isCancelled else { break }
+                conversionTitle = String.localizedStringWithFormat(
+                    NSLocalizedString("正在处理第 %1$lld/%2$lld 个素材", comment: "Conversion queue progress"),
+                    Int64(index + 1),
+                    Int64(items.count)
+                )
+                conversionProgress = 0
+                isDownloading = true
+                downloadProgress = nil
+
+                guard let source = await loadConversionSource(item, target: target) else {
+                    isDownloading = false
+                    failureCount += 1
+                    firstFailure = firstFailure ?? conversionInputFailureMessage(for: target)
+                    continue
+                }
+                isDownloading = false
+                downloadProgress = nil
+                defer { source.removeTemporaryFiles() }
+
+                do {
+                    let sourceRange: ClosedRange<TimeInterval>?
+                    if target == .livePhoto,
+                       isVideoConversionSource(source.fileExtension) {
+                        let duration = await videoDuration(of: source.url)
+                        if duration > MediaConversionService.livePhotoMaximumDuration {
+                            sourceRange = await withCheckedContinuation { continuation in
+                                pendingVideoRange = PendingVideoRange(
+                                    url: source.url,
+                                    name: source.name,
+                                    duration: duration,
+                                    maxDuration: MediaConversionService.livePhotoMaximumDuration,
+                                    confirmTitle: "转为 Live Photo"
+                                ) { selectedRange in
+                                    continuation.resume(returning: selectedRange)
+                                }
+                            }
+                            guard sourceRange != nil else { continue }
+                        } else {
+                            sourceRange = nil
+                        }
+                    } else {
+                        sourceRange = nil
+                    }
+
+                    try await MediaConversionService().convert(
+                        sourceURL: source.url,
+                        sourceName: source.name,
+                        sourceFileExtension: source.fileExtension,
+                        target: target,
+                        sourceRange: sourceRange,
+                        progress: { value in
+                            Task { @MainActor in
+                                self.conversionProgress = min(max(value, 0), 1)
+                            }
+                        },
+                        warning: { message in
+                            firstWarning = firstWarning ?? message
+                        }
+                    )
+                    successCount += 1
+                } catch {
+                    if Task.isCancelled { break }
+                    failureCount += 1
+                    firstFailure = firstFailure ?? (error as? LocalizedError)?.errorDescription
+                }
+            }
+
+            isConverting = false
+            isDownloading = false
+            downloadProgress = nil
+            conversionProgress = 0
+            guard !Task.isCancelled else { return }
+
+            if failureCount > 0 {
+                let failureDetail = [
+                    firstFailure ?? NSLocalizedString("请重新选择素材后重试。", comment: "Conversion retry suggestion"),
+                    firstWarning
+                ]
+                .compactMap { $0 }
+                .joined(separator: "\n")
+                conversionErrorMessage = String.localizedStringWithFormat(
+                    NSLocalizedString(
+                        "成功转换 %1$lld 项，%2$lld 项失败。%@",
+                        comment: "Mixed conversion result"
+                    ),
+                    Int64(successCount),
+                    Int64(failureCount),
+                    failureDetail
+                )
+            } else if successCount > 0 {
+                let successMessage = String.localizedStringWithFormat(
+                    NSLocalizedString(
+                        "已转换并保存 %1$lld 项素材到照片。",
+                        comment: "Conversion success result"
+                    ),
+                    Int64(successCount)
+                )
+                conversionResultMessage = [successMessage, firstWarning]
+                    .compactMap { $0 }
+                    .joined(separator: "\n")
+            }
+        }
+    }
+
+    private func loadConversionSource(
+        _ item: PhotosPickerItem,
+        target: MediaConversionService.Target
+    ) async -> ConversionSource? {
+        let types = item.supportedContentTypes
+        LogStore.log(
+            "xdz.convert.source.begin target=\(target) item=\(item.itemIdentifier ?? "nil") types=\(types.map(\.identifier))"
+        )
+        switch target {
+        case .livePhoto:
+            if types.contains(where: { $0.conforms(to: .gif) }) {
+                LogStore.log("xdz.convert.source.branch gif target=livePhoto")
+                return await loadGIFConversionSource(item)
+            }
+            guard types.contains(where: { $0.conforms(to: .movie) }) else {
+                LogStore.log("xdz.convert.source.reject target=livePhoto reason=notMovie")
+                return nil
+            }
+            guard let source = await loadMovie(item: item) else {
+                LogStore.log("xdz.convert.source.fail target=livePhoto reason=loadMovie")
+                return nil
+            }
+            guard let conversionSource = source.conversionSource else {
+                LogStore.log("xdz.convert.source.fail target=livePhoto reason=conversionSourceUnavailable")
+                return nil
+            }
+            LogStore.log("xdz.convert.source.ready target=livePhoto ext=\(conversionSource.fileExtension) url=\(conversionSource.url.path)")
+            return conversionSource
+
+        case .video:
+            if types.contains(where: { $0.conforms(to: .gif) }) {
+                LogStore.log("xdz.convert.source.branch gif target=video")
+                return await loadGIFConversionSource(item)
+            }
+            // playbackStyle(.imageAnimated) 也可能返回 APNG/动态 HEIC 等非 GIF 图片。
+            // 这类素材没有 Live Photo 的 asset 标识，不能继续走 Live Photo 下载链路。
+            guard types.contains(where: { $0.conforms(to: .movie) })
+                || item.itemIdentifier != nil else {
+                LogStore.log("xdz.convert.source.reject target=video reason=notLivePhotoOrGIF")
+                return nil
+            }
+            // PhotosPicker 的 Live Photo 在不同系统版本、iCloud 状态下可能只返回
+            // image/movie 或泛化的动态图片类型。入口已经完成筛选，这里直接尝试
+            // 读取 Live Photo，避免因 supportedContentTypes 二次判断过严而提前失败。
+            LogStore.log("xdz.convert.source.branch livePhoto target=video")
+            guard let source = await loadLivePhoto(item: item, includingStillImage: false) else {
+                LogStore.log("xdz.convert.source.fail target=video reason=loadLivePhoto types=\(types.map(\.identifier))")
+                return nil
+            }
+            guard let conversionSource = source.conversionSource else {
+                LogStore.log("xdz.convert.source.fail target=video reason=conversionSourceUnavailable")
+                return nil
+            }
+            LogStore.log("xdz.convert.source.ready target=video ext=\(conversionSource.fileExtension) url=\(conversionSource.url.path)")
+            return conversionSource
+        }
+    }
+
+    private func loadGIFConversionSource(_ item: PhotosPickerItem) async -> ConversionSource? {
+        LogStore.log("xdz.convert.gif.begin item=\(item.itemIdentifier ?? "nil")")
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
+            LogStore.log("xdz.convert.gif.fail reason=loadTransferable")
+            return nil
+        }
+        LogStore.log("xdz.convert.gif.loaded bytes=\(data.count)")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GIFBloom-import-\(UUID().uuidString).gif")
+        do {
+            try data.write(to: url, options: .atomic)
+            LogStore.log("xdz.convert.gif.ready url=\(url.path) bytes=\(data.count)")
+            return ConversionSource(
+                url: url,
+                name: NSLocalizedString("GIF", comment: "GIF conversion source"),
+                fileExtension: "gif",
+                temporaryFileURLs: [url]
+            )
+        } catch {
+            LogStore.log("xdz.convert.gif.fail reason=write error=\(error)")
+            return nil
+        }
+    }
+
+    private func conversionInputFailureMessage(
+        for target: MediaConversionService.Target
+    ) -> String {
+        switch target {
+        case .livePhoto:
+            return NSLocalizedString(
+                "转为 Live Photo 只支持 GIF 和视频；普通照片不会被处理。",
+                comment: "Live Photo conversion input restriction"
+            )
+        case .video:
+            return NSLocalizedString(
+                "转为视频只支持 Live Photo 和 GIF，请重新选择动态素材。",
+                comment: "Video conversion input restriction"
+            )
+        }
+    }
+
+    private func isVideoConversionSource(_ fileExtension: String) -> Bool {
+        ["mov", "mp4", "m4v"].contains(
+            fileExtension.trimmingCharacters(in: CharacterSet(charactersIn: ".")).lowercased()
         )
     }
 
@@ -584,7 +981,8 @@ struct LibraryView: View {
                                 url: url,
                                 name: name,
                                 duration: duration,
-                                maxDuration: min(maxExtractionDuration, max(duration, 0.1))
+                                maxDuration: min(maxExtractionDuration, max(duration, 0.1)),
+                                confirmTitle: "生成剪影"
                             ) { selectedRange in
                                 continuation.resume(returning: selectedRange)
                             }
@@ -786,9 +1184,32 @@ struct LibraryView: View {
 
     /// 下载完成的待生成剪影素材（下载与处理分离：下载并行，剪影生成串行）
     /// stillURL：Live Photo 的配套静态图（可选，非 Live 为 nil）
+    private struct ConversionSource {
+        let url: URL
+        let name: String
+        let fileExtension: String
+        let temporaryFileURLs: [URL]
+
+        func removeTemporaryFiles() {
+            for temporaryFileURL in temporaryFileURLs {
+                try? FileManager.default.removeItem(at: temporaryFileURL)
+            }
+        }
+    }
+
     private enum ImportSource {
         case video(url: URL, name: String, stillOrientation: CGImagePropertyOrientation, stillURL: URL?)
         case photo(cgImage: CGImage, name: String)
+
+        var conversionSource: ConversionSource? {
+            guard case .video(let url, let name, _, let stillURL) = self else { return nil }
+            return ConversionSource(
+                url: url,
+                name: name,
+                fileExtension: url.pathExtension.isEmpty ? "mov" : url.pathExtension,
+                temporaryFileURLs: [url] + (stillURL.map { [$0] } ?? [])
+            )
+        }
 
         var temporaryFileURLs: [URL] {
             guard case .video(let url, _, _, let stillURL) = self else { return [] }
@@ -824,13 +1245,17 @@ struct LibraryView: View {
         return .failure(message)
     }
 
-    private func loadLivePhoto(item: PhotosPickerItem) async -> ImportSource? {
+    private func loadLivePhoto(
+        item: PhotosPickerItem,
+        includingStillImage: Bool = true
+    ) async -> ImportSource? {
         let progressHandler: @Sendable (Double) -> Void = { value in
             Task { @MainActor in self.downloadProgress = value }
         }
         guard let video = await PhotoLibraryMediaImporter.loadExtractionVideo(
             from: item,
-            progress: progressHandler
+            progress: progressHandler,
+            includingStillImage: includingStillImage
         ) else { return nil }
         return .video(
             url: video.url,
@@ -926,7 +1351,7 @@ struct LibraryView: View {
                             }
                             .foregroundStyle(LF.textPrimary)
                     }
-                    .buttonStyle(.plain)
+                    .lfAnimatedPlainButtonStyle()
                     .accessibilityLabel("新建文件夹")
                     .accessibilityIdentifier("library-new-folder")
 
@@ -972,7 +1397,7 @@ struct LibraryView: View {
                                 }
                                 .foregroundStyle(LF.textPrimary)
                             }
-                            .buttonStyle(.plain)
+                            .lfAnimatedPlainButtonStyle()
                             .contextMenu {
                                 Button(role: .destructive) {
                                     appState.deleteFolder(folder)
@@ -1081,6 +1506,37 @@ struct LibraryView: View {
         .accessibilityIdentifier("library-extraction-progress")
     }
 
+    private var conversionCard: some View {
+        SectionCard(verbatimTitle: conversionTarget == .livePhoto
+            ? NSLocalizedString("正在转换为 Live Photo", comment: "Live Photo conversion progress title")
+            : NSLocalizedString("正在转换为视频", comment: "Video conversion progress title")) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    ProgressView(value: conversionProgress)
+                        .tint(LF.gold)
+                    Text(String(format: "%d%%", Int(conversionProgress * 100)))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(LF.textSecondary)
+                }
+                Text(
+                    conversionTitle.isEmpty
+                        ? NSLocalizedString("正在准备转换", comment: "Preparing media conversion")
+                        : conversionTitle
+                )
+                    .font(.caption)
+                    .foregroundStyle(LF.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(NSLocalizedString("取消转换", comment: "Cancel media conversion"), role: .cancel) {
+                    conversionTask?.cancel()
+                }
+                .lfActionButtonStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("library-conversion-progress-cancel")
+            }
+        }
+        .accessibilityIdentifier("library-conversion-progress")
+    }
+
     // MARK: - 素材概览
 
     private var clipsSection: some View {
@@ -1104,7 +1560,7 @@ struct LibraryView: View {
                                 .font(.caption2.weight(.semibold))
                         }
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(LF.brandTint)
+                        .foregroundStyle(LF.actionPrimary)
                     }
                     .accessibilityIdentifier("library-view-all-clips")
                 }
@@ -1450,24 +1906,32 @@ private struct SubjectSelectionView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") {
+                    Button {
                         onCancel()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
                     }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("取消")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("生成剪影") {
+                    Button {
                         onConfirm(selectedIDs, lassoPoints.isEmpty ? nil : lassoPoints)
                         dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
                     }
-                    .fontWeight(.semibold)
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("生成剪影")
                     .disabled(selectedIDs.isEmpty)
                 }
             }
             .magicBackground()
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(LF.background.opacity(0.94), for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .onAppear {
                 guard !initialLassoPoints.isEmpty else { return }
                 applyLasso(initialLassoPoints)
@@ -1537,7 +2001,7 @@ private struct SubjectSelectionView: View {
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .accessibilityLabel(String.localizedStringWithFormat(
                     NSLocalizedString("主体 %@", comment: "Subject accessibility label"),
                     subjectLabel(for: offset) as NSString
@@ -1799,7 +2263,7 @@ private struct SubjectFrameInspectorView: View {
                                                 .padding(4)
                                         }
                                 }
-                                .buttonStyle(.plain)
+                                .lfAnimatedPlainButtonStyle()
                                 .accessibilityLabel(String.localizedStringWithFormat(
                                     NSLocalizedString("第 %1$lld 帧", comment: "Frame accessibility label"),
                                     Int64(frame.id + 1)
@@ -1821,13 +2285,19 @@ private struct SubjectFrameInspectorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("完成")
                 }
             }
             .magicBackground()
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(LF.background.opacity(0.94), for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
@@ -2134,17 +2604,26 @@ private struct VisionInitialRegionPickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") {
+                    Button {
                         onCancel()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
                     }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("取消")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("开始分析") {
+                    Button {
                         onConfirm(lassoPoints)
                         dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
                     }
-                    .fontWeight(.semibold)
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("开始分析")
                 }
                 ToolbarItem(placement: .bottomBar) {
                     Button("跳过圈选") {
@@ -2156,7 +2635,6 @@ private struct VisionInitialRegionPickerView: View {
             .magicBackground()
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(LF.background.opacity(0.94), for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
@@ -2167,6 +2645,7 @@ private struct VideoRangePickerView: View {
     let name: String
     let duration: TimeInterval
     let maxDuration: TimeInterval
+    let confirmTitle: LocalizedStringKey
     let onCancel: () -> Void
     let onConfirm: (ClosedRange<TimeInterval>) -> Void
 
@@ -2182,6 +2661,7 @@ private struct VideoRangePickerView: View {
         name: String,
         duration: TimeInterval,
         maxDuration: TimeInterval,
+        confirmTitle: LocalizedStringKey = "生成剪影",
         onCancel: @escaping () -> Void,
         onConfirm: @escaping (ClosedRange<TimeInterval>) -> Void
     ) {
@@ -2191,6 +2671,7 @@ private struct VideoRangePickerView: View {
         self.name = name
         self.duration = safeDuration
         self.maxDuration = safeMaxDuration
+        self.confirmTitle = confirmTitle
         self.onCancel = onCancel
         self.onConfirm = onConfirm
         _startTime = State(initialValue: 0)
@@ -2270,23 +2751,31 @@ private struct VideoRangePickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") {
+                    Button {
                         onCancel()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
                     }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("取消")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("生成剪影") {
+                    Button {
                         onConfirm(startTime...endTime)
                         dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
                     }
-                    .fontWeight(.semibold)
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel(confirmTitle)
                 }
             }
             .magicBackground()
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(LF.background.opacity(0.94), for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
         }
         .presentationDetents([.medium, .large], selection: $selectedDetent)
         .onChange(of: startTime) { _, _ in
@@ -2665,14 +3154,23 @@ private struct VideoRangeTimeline: View {
             generator.requestedTimeToleranceBefore = .zero
             generator.requestedTimeToleranceAfter = .zero
             let count = 24
-            return (0..<count).compactMap { index -> CGImage? in
+            var images: [CGImage] = []
+            images.reserveCapacity(count)
+            for index in 0..<count {
                 let progress = Double(index) / Double(max(count - 1, 1))
                 let time = CMTime(
                     seconds: requestedDuration * progress,
                     preferredTimescale: 600
                 )
-                return try? generator.copyCGImage(at: time, actualTime: nil)
+                if let image = await withCheckedContinuation({ continuation in
+                    generator.generateCGImageAsynchronously(for: time) { image, _, _ in
+                        continuation.resume(returning: image)
+                    }
+                }) {
+                    images.append(image)
+                }
             }
+            return images
         }.value
 
         guard !Task.isCancelled else { return }
@@ -2826,6 +3324,7 @@ struct ClipCell: View {
 /// 素材详情页的预览按源素材比例展示，不复用素材库的固定高度卡片。
 private struct ClipDetailPreview: View {
     let clip: SegmentedClip
+    let stickerComposition: Composition
     @Binding var isPlaying: Bool
     let watermark: ExportWatermark?
     let onCrop: () -> Void
@@ -2851,7 +3350,9 @@ private struct ClipDetailPreview: View {
                 clip: unstyledClip,
                 maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
                 isPlaying: $isPlaying,
-                isPreparingPlayback: $isPreparingPlayback
+                isPreparingPlayback: $isPreparingPlayback,
+                usesCoreStickerStylePreview: true,
+                coreStickerStyleComposition: stickerComposition
             )
                 .aspectRatio(aspectRatio, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -2934,7 +3435,7 @@ private struct ClipPreviewActionButton: View {
                 .background(.black.opacity(0.55), in: Circle())
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .lfAnimatedPlainButtonStyle()
         .accessibilityLabel(accessibilityLabel)
     }
 }
@@ -3027,13 +3528,23 @@ private struct ClipCropEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消", action: onCancel)
+                    Button(action: onCancel) {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("取消")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") {
+                    Button {
                         let full = CGRect(x: 0, y: 0, width: 1, height: 1)
                         onFinish(draftRect == full ? nil : draftRect)
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
                     }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("完成")
                 }
             }
             .magicBackground()
@@ -3060,6 +3571,10 @@ struct ClipMenuView: View {
     @State private var isExportingGIF = false
     @State private var exportGIFError: String?
     @State private var exportGIFTask: Task<Void, Never>?
+    @State private var isSavingSticker = false
+    @State private var saveStickerError: String?
+    @State private var saveStickerTask: Task<Void, Never>?
+    @State private var didSaveSticker = false
     @State private var clipExportState = ClipExportState()
     @State private var gifPresets: [GIFExportPreset] = []
     @State private var gifResolution: ExportResolution = .p720
@@ -3092,6 +3607,43 @@ struct ClipMenuView: View {
 
     private var gifFPSOptions: [Double] {
         GIFExportPreset.fpsOptions(maxSourceFPS: currentClip.fps)
+    }
+
+    private var isStaticSticker: Bool {
+        currentClip.frameCount <= 1
+    }
+
+    /// 贴纸详情页没有编辑器里的真实元素，因此用当前素材构造一个最小预览工程，
+    /// 复用编辑器和导出共用的贴纸效果选择器与渲染管线。
+    private var stickerPreviewElement: CompositionElement {
+        let frameDuration = 1 / max(currentClip.fps, 1)
+        let duration = max(currentClip.effectiveDuration, frameDuration)
+        return CompositionElement(
+            kind: .clip(clipID: currentClip.id),
+            name: currentClip.name,
+            transform: ElementTransform(
+                position: CGPoint(
+                    x: CGFloat(max(currentClip.renderedWidth, 1)) / 2,
+                    y: CGFloat(max(currentClip.renderedHeight, 1)) / 2
+                )
+            ),
+            endTime: duration,
+            sourceEndTime: max(currentClip.duration, frameDuration)
+        )
+    }
+
+    private var stickerPreviewComposition: Composition {
+        Composition(
+            name: currentClip.name,
+            canvas: CanvasSpec(
+                width: CGFloat(max(currentClip.renderedWidth, 1)),
+                height: CGFloat(max(currentClip.renderedHeight, 1))
+            ),
+            duration: max(currentClip.effectiveDuration, 1 / max(currentClip.fps, 1)),
+            fps: max(currentClip.fps, 1),
+            elements: [stickerPreviewElement],
+            background: .clear
+        )
     }
 
     private func close() {
@@ -3179,10 +3731,20 @@ struct ClipMenuView: View {
         } message: {
             Text(exportGIFError ?? NSLocalizedString("请稍后重试。", comment: "Retry message"))
         }
+        .alert("保存贴纸失败", isPresented: Binding(
+            get: { saveStickerError != nil },
+            set: { if !$0 { saveStickerError = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(saveStickerError ?? NSLocalizedString("请稍后重试。", comment: "Retry message"))
+        }
         .onDisappear {
             exportGIFTask?.cancel()
+            saveStickerTask?.cancel()
         }
         .task(id: "\(currentClip.id)-\(currentClip.rotationQuarterTurns)-\(currentClip.cropCacheKey)-\(previewWatermarkID)") {
+            guard !isStaticSticker else { return }
             await loadGIFPresets()
         }
         .fullScreenCover(isPresented: $isCroppingClip) {
@@ -3205,6 +3767,7 @@ struct ClipMenuView: View {
                 clipIdentityHeader
                 ClipDetailPreview(
                     clip: currentClip,
+                    stickerComposition: stickerPreviewComposition,
                     isPlaying: $isPlayingPreview,
                     watermark: previewWatermark,
                     onCrop: beginClipCrop,
@@ -3216,11 +3779,52 @@ struct ClipMenuView: View {
                         showProStore = true
                     }
                 }
-                gifExportSection
+                stickerEffectSection
+                if !isStaticSticker {
+                    gifExportSection
+                } else {
+                    stickerSaveSection
+                }
                 // 帧选择入口暂时隐藏；保留 frameEditorButton、sheet 状态和 FrameGridView，后续可恢复。
                 // frameEditorButton
             }
             .padding(20)
+        }
+    }
+
+    private var stickerEffectSection: some View {
+        SectionCard(title: "贴纸效果") {
+            StickerStyleOptionPicker(
+                clip: currentClip,
+                element: stickerPreviewElement,
+                composition: stickerPreviewComposition,
+                currentTime: 0,
+                selectedStyle: currentClip.stickerStyle
+            ) { style in
+                appState.setClipStickerStyle(currentClip.id, style)
+            }
+        }
+    }
+
+    private var stickerSaveSection: some View {
+        SectionCard(title: "导出") {
+            Button {
+                saveStickerToPhotos()
+            } label: {
+                Label(
+                    isSavingSticker ? "保存中…" : "保存到相册",
+                    systemImage: isSavingSticker ? "hourglass" : "photo.badge.plus"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .lfActionButtonStyle(isSavingSticker ? .secondary : .primary)
+            .disabled(isSavingSticker)
+
+            if didSaveSticker {
+                Label("贴纸已保存到相册。", systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(LF.selectionText)
+            }
         }
     }
 
@@ -3369,6 +3973,30 @@ struct ClipMenuView: View {
         }
     }
 
+    private func saveStickerToPhotos() {
+        guard !isSavingSticker else { return }
+        saveStickerError = nil
+        didSaveSticker = false
+        isSavingSticker = true
+        let clipID = clip.id
+        let watermark = purchaseManager.hasPro ? nil : (previewWatermark ?? DecorationRenderer.randomLogoWatermark())
+        previewWatermark = watermark
+        saveStickerTask = Task { @MainActor in
+            defer {
+                isSavingSticker = false
+                saveStickerTask = nil
+            }
+            do {
+                try await appState.exportClipAsStickerPNG(clipID, watermark: watermark)
+                didSaveSticker = true
+            } catch is CancellationError {
+                // 用户离开详情页时主动取消，不显示错误。
+            } catch {
+                saveStickerError = error.localizedDescription
+            }
+        }
+    }
+
     private func beginClipCrop() {
         cropRect = currentClip.normalizedCropRect
         isCroppingClip = true
@@ -3435,7 +4063,7 @@ struct ClipMenuView: View {
                     .frame(width: 34, height: 34)
                     .background(LF.surface2, in: Circle())
             }
-            .buttonStyle(.plain)
+            .lfAnimatedPlainButtonStyle()
             .accessibilityLabel("编辑素材名称")
         }
     }
@@ -3481,7 +4109,7 @@ struct ClipMenuView: View {
             .padding(14)
             .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
         }
-        .buttonStyle(.plain)
+        .lfAnimatedPlainButtonStyle()
     }
 
     private func requestDeleteClip() {

@@ -124,7 +124,7 @@ public struct CompositionRenderer {
         }
 
         let fixScale = optionPreviewFixScale(clip: clip, preview: preview)
-        let styled = applyClipStyle(
+        let styled = applyClipStyleWithSafePadding(
             style,
             clip: clip,
             fixScale: fixScale,
@@ -132,7 +132,8 @@ public struct CompositionRenderer {
             to: preview.image
         )
         let outputRect = preview.image.extent.integral
-        guard let rendered = context.createCGImage(styled.cropped(to: outputRect), from: outputRect) else {
+        let fitted = fitPreviewImage(styled, into: outputRect)
+        guard let rendered = context.createCGImage(fitted.cropped(to: outputRect), from: outputRect) else {
             return nil
         }
         return rendered
@@ -221,7 +222,7 @@ public struct CompositionRenderer {
             // Then composite the element's current effects and apply the candidate
             // filter, so existing outlines cannot change the zoom estimate.
             let fixScale = optionPreviewFixScale(clip: clip, preview: preview)
-            let source = applyClipStyle(
+            let source = applyClipStyleWithSafePadding(
                 clip.stickerStyle,
                 clip: clip,
                 fixScale: fixScale,
@@ -230,7 +231,8 @@ public struct CompositionRenderer {
             )
             let filtered = applyingElementFilter(filter, to: source)
             let outputRect = preview.image.extent.integral
-            return context.createCGImage(filtered.cropped(to: outputRect), from: outputRect)
+            let fitted = fitPreviewImage(filtered, into: outputRect)
+            return context.createCGImage(fitted.cropped(to: outputRect), from: outputRect)
         }
 
         let fps = composition.fps.isFinite && composition.fps > 0 ? composition.fps : 30
@@ -312,10 +314,11 @@ public struct CompositionRenderer {
         preview: (sourceImage: CGImage, image: CIImage, sourceScale: CGFloat, subjectBounds: CGRect)
     ) -> CGFloat {
         let outputWidth = CGFloat(max(clip.renderedWidth, 1))
-        return max(
-            outputWidth / max(CGFloat(preview.sourceImage.width) * preview.sourceScale, 1),
-            4
-        )
+        // 预览效果作用在已经归一化到固定画布的 `preview.image` 上。
+        // 不能再乘 subjectScale，否则会把 fixScale 放大数倍，导致漫画白边
+        // 在 144px 风格缩略图里退化成几乎看不见的 1px 轮廓。
+        let previewWidth = max(preview.image.extent.width, 1)
+        return max(outputWidth / previewWidth, 1)
     }
 
     /// Fits the source subject into a shared thumbnail canvas before effects are
@@ -771,7 +774,7 @@ public struct CompositionRenderer {
                     ? targetWidth / frame.extent.width
                     : 1
                 let content = appliesClipEffects
-                    ? applyClipStyle(
+                    ? applyClipStyleWithSafePadding(
                         clip.stickerStyle,
                         clip: clip,
                         fixScale: fixScale,
@@ -1309,18 +1312,6 @@ public struct CompositionRenderer {
         subjectBounds: CGRect? = nil,
         to frame: CIImage
     ) -> CIImage {
-        if style == .customOutline {
-            // 自定义描边：线型×粗细×颜色参数直接渲染，不叠加旧边缘层。
-            return outlined(
-                frame,
-                radius: clip.edgeThickness.radius / max(fixScale, 0.001),
-                color: CIColor(hex: clip.edgeColorHex),
-                lineStyle: clip.edgeLineStyle,
-                fixScale: fixScale,
-                clipID: clip.id
-            )
-        }
-
         return applyStickerStyle(
             style,
             thickness: clip.edgeThickness,
@@ -1336,6 +1327,110 @@ public struct CompositionRenderer {
                 to: frame
             )
         )
+    }
+
+    /// Adds transparent safety space before applying clip effects. The source
+    /// frame remains centered, so the element's position and scale do not move
+    /// when a border, glow, or shadow extends beyond the original frame.
+    private func applyClipStyleWithSafePadding(
+        _ style: StickerStyle,
+        clip: SegmentedClip,
+        fixScale: CGFloat,
+        subjectBounds: CGRect?,
+        to image: CIImage
+    ) -> CIImage {
+        let padding = clipEffectPadding(
+            clip: clip,
+            fixScale: fixScale,
+            image: image,
+            subjectBounds: subjectBounds
+        )
+        let padded = imageWithTransparentPadding(image, padding: padding)
+        return applyClipStyle(
+            style,
+            clip: clip,
+            fixScale: fixScale,
+            subjectBounds: subjectBounds,
+            to: padded
+        )
+    }
+
+    private func clipEffectPadding(
+        clip: SegmentedClip,
+        fixScale: CGFloat,
+        image: CIImage,
+        subjectBounds: CGRect?
+    ) -> CGFloat {
+        let scale = max(fixScale, 0.001)
+        var padding: CGFloat = 0
+
+        switch clip.edgeStyle {
+        case .none:
+            break
+        case .outline:
+            padding = max(padding, clip.edgeThickness.radius / scale)
+        case .glow:
+            // 形态学膨胀 10/s，模糊半径 16/s，按约 3σ 留出透明安全区。
+            padding = max(padding, (10 + 48) / scale)
+        case .shadow:
+            // 投影偏移 14/s，模糊半径 10/s，按约 3σ 覆盖偏移后的外缘。
+            padding = max(padding, (14 + 30) / scale)
+        case .comic:
+            let whiteRadius = max(1, clip.edgeThickness.radius * 2 / scale)
+            let offset = max(3, whiteRadius * 0.28)
+            let blur = max(4, whiteRadius * 0.42)
+            padding = max(padding, whiteRadius + offset + blur * 2)
+        }
+
+        let subjectBase = AlphaSubjectBounds.subjectBase(
+            in: image.extent,
+            bounds: subjectBounds
+        )
+        switch clip.stickerStyle {
+        case .none, .smooth:
+            break
+        case .outline:
+            let targetRadius = max(6, min(subjectBase * scale * 0.03, 24))
+            let radius = max(1, targetRadius / scale)
+            padding = max(padding, radius + max(1, radius * 0.25) * 2)
+        case .comic:
+            let whiteRadius = max(1, clip.edgeThickness.radius * 2.7 / scale)
+            let offset = max(0.8, whiteRadius * 0.06)
+            let blur = max(1.2, whiteRadius * 0.16)
+            padding = max(padding, whiteRadius + offset + blur * 2)
+        }
+
+        guard padding.isFinite, padding > 0 else { return 0 }
+        return ceil(padding * 10) / 10
+    }
+
+    private func imageWithTransparentPadding(_ image: CIImage, padding: CGFloat) -> CIImage {
+        let extent = image.extent.standardized
+        guard padding.isFinite, padding > 0 else { return image }
+        let expanded = extent.insetBy(dx: -padding, dy: -padding)
+        guard expanded.width > 0, expanded.height > 0 else { return image }
+        return image
+            .composited(over: CIImage.clear.cropped(to: expanded))
+            .cropped(to: expanded)
+    }
+
+    private func fitPreviewImage(_ image: CIImage, into canvas: CGRect) -> CIImage {
+        let source = image.extent.standardized
+        guard source.width > 0, source.height > 0,
+              canvas.width > 0, canvas.height > 0 else {
+            return image
+        }
+        let scale = min(canvas.width / source.width, canvas.height / source.height)
+        guard scale.isFinite, scale > 0 else { return image }
+        let centered = image.transformed(by: CGAffineTransform(
+            translationX: -source.midX,
+            y: -source.midY
+        ))
+        let scaled = centered.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        return scaled.transformed(by: CGAffineTransform(
+            translationX: canvas.midX,
+            y: canvas.midY
+        ))
     }
 
     private func applyStickerStyle(
@@ -1365,22 +1460,31 @@ public struct CompositionRenderer {
                 .cropped(to: image.extent)
             return image.composited(over: soft)
         case .comic:
-            // 贴纸效果：白色外圈 + 右下方柔和阴影。
-            // 不改变人物本身的颜色和细节，也不再使用黑色漫画线条。
+            // Apple 风格的 Comic：白色贴纸边缘外再留一圈很细的浅灰色轮廓。
+            // 主画布可能落在白色或浅色背景上，单靠低透明度柔和阴影会让白边
+            // 看起来像没有渲染；用独立的浅灰外圈保证预览中也能辨认白边。
             let scale = max(fixScale, 0.001)
             let extent = image.extent
-            // 漫画贴纸的白色外圈统一比原三档基准厚一倍：细 18px、中 36px、粗 60px
-            // （再按预览缩放因子换算），阴影跟随新的贴纸轮廓同步扩大。
-            let whiteRadius = max(1, thickness.radius * 2 / scale)
+            // Comic 比 Outline 明显更厚，保持人物本身颜色和细节不变。
+            let whiteRadius = max(1, thickness.radius * 2.7 / scale)
             let white = outlineLayer(image, radius: whiteRadius, color: CIColor(hex: "FFFFFF"), lineStyle: .solid)
                 .cropped(to: extent)
+            let contour = outlineLayer(
+                image,
+                radius: whiteRadius + max(1.2, whiteRadius * 0.14),
+                color: CIColor(red: 0.46, green: 0.49, blue: 0.54, alpha: 0.32),
+                lineStyle: .solid
+            )
+            .cropped(to: extent)
             let shadow = stickerShadowLayer(
                 white,
-                offset: CGSize(width: max(3, whiteRadius * 0.38), height: -max(3, whiteRadius * 0.38)),
-                blurRadius: max(4, whiteRadius * 0.55),
-                opacity: 0.28
+                offset: CGSize(width: 0, height: -max(0.8, whiteRadius * 0.06)),
+                blurRadius: max(1.0, whiteRadius * 0.12),
+                opacity: 0.16
             )
-            return image.composited(over: white.composited(over: shadow)).cropped(to: extent)
+            return image
+                .composited(over: white.composited(over: contour.composited(over: shadow)))
+                .cropped(to: extent)
         case .smooth:
             // 平滑贴纸：仅羽化边缘（边缘带变半透明过渡，内部保持清晰不模糊）。
             // 用模糊后的 alpha 作掩码：内部 alpha≈1 → 原图；边缘 0<alpha<1 → 半透明；外部 → 透明
@@ -1395,9 +1499,6 @@ public struct CompositionRenderer {
                 kCIInputMaskImageKey: blurred,
                 kCIInputBackgroundImageKey: clear
             ])
-        case .customOutline:
-            // 自定义描边在主渲染循环直接调用 outlined()（需要边缘参数），此处不会执行
-            return image
         }
     }
 

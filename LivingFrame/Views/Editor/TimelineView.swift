@@ -408,7 +408,7 @@ struct TimelineView: View {
                         .font(.caption.weight(.bold))
                         .frame(width: 26, height: 26)
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .foregroundStyle(LF.textSecondary)
 
                 Text("\(Int(zoom * 100))%")
@@ -424,7 +424,7 @@ struct TimelineView: View {
                         .font(.caption.weight(.bold))
                         .frame(width: 26, height: 26)
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .foregroundStyle(LF.textSecondary)
             }
             .background(Color.white.opacity(0.72), in: Capsule())
@@ -448,7 +448,7 @@ struct TimelineView: View {
                         in: Circle()
                     )
             }
-            .buttonStyle(.plain)
+            .lfAnimatedPlainButtonStyle()
                 .foregroundStyle(appState.isReversed ? Color.black : LF.textSecondary)
             .accessibilityLabel("倒放")
         }
@@ -979,7 +979,7 @@ struct TimelineView: View {
                 } label: {
                     LoopCountBadge(count: repeatCount)
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .offset(x: metrics.activeOffset + 6)
                 .zIndex(21)
                 .accessibilityLabel(String.localizedStringWithFormat(

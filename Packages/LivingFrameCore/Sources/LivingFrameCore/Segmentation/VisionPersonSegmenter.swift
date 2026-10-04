@@ -45,7 +45,7 @@ public enum VisionMaskSource: String, Sendable {
     case foreground
 }
 
-/// 单帧人物抠图（iOS 17+ / macOS 14+）。
+/// 单帧人物抠图（iOS 18+ / macOS 14+）。
 /// 使用 Vision 的 VNGeneratePersonInstanceMaskRequest，优先保证遮挡场景中的
 /// 多人物拆分；它比通用前景实例请求更适合本应用的“人物剪影”素材。
 public struct VisionPersonSegmenter {

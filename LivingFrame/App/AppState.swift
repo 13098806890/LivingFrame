@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import ImageIO
 import LivingFrameCore
 import Photos
 import SwiftUI
@@ -3340,7 +3341,9 @@ final class AppState: ObservableObject {
                 composition,
                 requests: jobs.map { $0.request },
                 sampleFrameCount: 6,
-                appliesClipEffects: false,
+                // 规格预估必须和实际保存到相册的 GIF 使用同一条渲染路径，
+                // 否则漫画/描边等效果会导致预估大小与最终文件不一致。
+                appliesClipEffects: true,
                 watermark: watermark
             ) else { return [] }
             return zip(jobs, bytes).map { job, size in
@@ -3388,7 +3391,8 @@ final class AppState: ObservableObject {
                     fps: fps,
                     maxPixelSize: resolution.maxPixelSize,
                     loops: true,
-                    appliesClipEffects: false,
+                    // 动态剪影保存到相册时必须保留当前选中的边缘与贴纸风格。
+                    appliesClipEffects: true,
                     watermark: watermark,
                     progress: { [weak self] value in
                     Task { @MainActor in self?.exportProgress = value }
@@ -3417,6 +3421,68 @@ final class AppState: ObservableObject {
         }
         exportedURL = url
         return url
+    }
+
+    /// 将单帧贴纸按当前边缘/贴纸效果渲染为 PNG，并保存到系统相册。
+    func exportClipAsStickerPNG(
+        _ clipID: String,
+        watermark: ExportWatermark? = nil
+    ) async throws {
+        guard let clip = clips.first(where: { $0.id == clipID }) else {
+            throw AppStateError.clipNotFound
+        }
+
+        FrameCache.shared.registerInMemory(clip)
+        let composition = clipGIFComposition(
+            for: clip,
+            fps: max(clip.fps, 1)
+        )
+        let renderedImage = await Task.detached(priority: .userInitiated) {
+            let renderer = CompositionRenderer(
+                exportWatermark: watermark,
+                backgroundMediaProvider: BackgroundStore.shared
+            )
+            return renderer.render(composition, at: 0)
+        }.value
+        guard let renderedImage else {
+            throw ExportError.renderFailed
+        }
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(exportFileBaseName(clip.name))-sticker-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        guard let destination = CGImageDestinationCreateWithURL(
+            url as CFURL,
+            UTType.png.identifier as CFString,
+            1,
+            nil
+        ) else {
+            throw ExportError.destinationFailed
+        }
+        CGImageDestinationAddImage(destination, renderedImage, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            try? FileManager.default.removeItem(at: url)
+            throw ExportError.destinationFailed
+        }
+
+        let authorized = await requestAddOnlyAuthorization()
+        guard authorized else {
+            try? FileManager.default.removeItem(at: url)
+            throw AppStateError.photoLibraryDenied
+        }
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                let request = PHAssetCreationRequest.forAsset()
+                let options = PHAssetResourceCreationOptions()
+                options.uniformTypeIdentifier = UTType.png.identifier
+                options.originalFilename = url.lastPathComponent
+                request.addResource(with: .photo, fileURL: url, options: options)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
+
     }
 
     private func clipGIFComposition(for clip: SegmentedClip, fps: Double) -> Composition {

@@ -1,0 +1,1 @@
+GIF와 비디오를 Live Photo로 변환하고, Live Photo와 GIF를 비디오로 내보내며, 기기에서 컷아웃과 정적 스티커를 만드세요.

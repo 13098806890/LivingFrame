@@ -25,6 +25,25 @@ extension Color {
         self.init(red: r, green: g, blue: b)
     }
 
+    /// 保留 App 图标配色的色相，同时让语义色跟随系统外观切换。
+    /// 使用动态 UIColor，避免每个页面都需要重复读取 colorScheme。
+    static func adaptive(lightHex: String, darkHex: String) -> Color {
+        Color(uiColor: UIColor { traits in
+            let hex = traits.userInterfaceStyle == .dark ? darkHex : lightHex
+            var value: UInt64 = 0
+            let normalized = hex.replacingOccurrences(of: "#", with: "")
+            guard normalized.count == 6, Scanner(string: normalized).scanHexInt64(&value) else {
+                return UIColor.systemGray
+            }
+            return UIColor(
+                red: CGFloat((value >> 16) & 0xFF) / 255,
+                green: CGFloat((value >> 8) & 0xFF) / 255,
+                blue: CGFloat(value & 0xFF) / 255,
+                alpha: 1
+            )
+        })
+    }
+
     /// 将系统取色器返回的颜色转成工程使用的 6 位 RGB。
     var hexRGB: String {
         let uiColor = UIColor(self)
@@ -189,24 +208,24 @@ enum AppTheme: String, CaseIterable, Identifiable {
             )
         case .appIcon:
             return ThemePalette(
-                background: Color(hex: "F0F8FF"),
-                surface: Color(hex: "FFF8EF"),
-                surface2: Color(hex: "FBEBD7"),
-                actionPrimary: Color(hex: "0875D1"),
-                actionDeep: Color(hex: "1357AC"),
-                brandTint: Color(hex: "99CFF0"),
-                selectionSurface: Color(hex: "DDF0FC"),
-                folderIcon: Color(hex: "DE6332"),
-                accent: Color(hex: "DE6332"),
-                destructive: Color(hex: "C0393D"),
-                textPrimary: Color(hex: "18354E"),
-                textSecondary: Color(hex: "576C7C"),
-                timelineClip: Color(hex: "0875D1"),
-                timelineBackground: Color(hex: "99CFF0"),
-                timelineSticker: Color(hex: "DE6332"),
-                timelineEffect: Color(hex: "DE6332"),
-                timelineAudio: Color(hex: "0875D1"),
-                timelineText: Color(hex: "DE6332")
+                background: .adaptive(lightHex: "F0F8FF", darkHex: "0D1722"),
+                surface: .adaptive(lightHex: "FFF8EF", darkHex: "1B2733"),
+                surface2: .adaptive(lightHex: "FBEBD7", darkHex: "2B3A48"),
+                actionPrimary: .adaptive(lightHex: "0875D1", darkHex: "55B7F2"),
+                actionDeep: .adaptive(lightHex: "1357AC", darkHex: "BFE7FF"),
+                brandTint: .adaptive(lightHex: "99CFF0", darkHex: "24506B"),
+                selectionSurface: .adaptive(lightHex: "DDF0FC", darkHex: "173E58"),
+                folderIcon: .adaptive(lightHex: "DE6332", darkHex: "FF9A70"),
+                accent: .adaptive(lightHex: "DE6332", darkHex: "FF9A70"),
+                destructive: .adaptive(lightHex: "C0393D", darkHex: "FF7B7B"),
+                textPrimary: .adaptive(lightHex: "18354E", darkHex: "F3F8FC"),
+                textSecondary: .adaptive(lightHex: "576C7C", darkHex: "B5C6D2"),
+                timelineClip: .adaptive(lightHex: "0875D1", darkHex: "55B7F2"),
+                timelineBackground: .adaptive(lightHex: "99CFF0", darkHex: "24506B"),
+                timelineSticker: .adaptive(lightHex: "DE6332", darkHex: "FF9A70"),
+                timelineEffect: .adaptive(lightHex: "DE6332", darkHex: "FF9A70"),
+                timelineAudio: .adaptive(lightHex: "0875D1", darkHex: "55B7F2"),
+                timelineText: .adaptive(lightHex: "DE6332", darkHex: "FFB08E")
             )
         }
     }
@@ -301,6 +320,7 @@ struct LFActionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .lfSymbolTapEffect(isActive: configuration.isPressed && !reduceMotion)
             .font((isCompact ? Font.caption : Font.subheadline).weight(.semibold))
             .foregroundStyle(foregroundColor)
             .padding(.horizontal, isCompact ? 12 : 16)
@@ -345,6 +365,7 @@ struct LFCircleIconButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .lfSymbolTapEffect(isActive: configuration.isPressed && !reduceMotion)
             .font(.system(size: iconSize, weight: .semibold))
             .foregroundStyle(foregroundColor ?? LF.selectionText)
             .frame(width: diameter, height: diameter)
@@ -370,6 +391,7 @@ struct LFTranslucentActionButtonStyle: ButtonStyle {
         let shape = RoundedRectangle(cornerRadius: compact ? 13 : 12, style: .continuous)
 
         configuration.label
+            .lfSymbolTapEffect(isActive: configuration.isPressed && !reduceMotion)
             .font(compact ? .system(size: 17, weight: .semibold) : .subheadline.weight(.semibold))
             .foregroundStyle(LF.selectionText)
             .padding(.horizontal, compact ? 0 : 16)
@@ -396,6 +418,7 @@ struct LFTextPillButtonStyle: ButtonStyle {
         let shape = Capsule()
 
         configuration.label
+            .lfSymbolTapEffect(isActive: configuration.isPressed && !reduceMotion)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(LF.selectionText)
             .padding(.horizontal, 14)
@@ -414,7 +437,21 @@ struct LFTextPillButtonStyle: ButtonStyle {
     }
 }
 
+/// plain 按钮保留原有布局，只为其中的 SF Symbol 增加统一的点击反馈。
+struct LFAnimatedPlainButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .lfSymbolTapEffect(isActive: configuration.isPressed && !reduceMotion)
+    }
+}
+
 extension View {
+    fileprivate func lfSymbolTapEffect(isActive: Bool) -> some View {
+        symbolEffect(.bounce, options: .speed(1.15), isActive: isActive)
+    }
+
     func lfActionButtonStyle(_ kind: LFActionButtonKind) -> some View {
         buttonStyle(LFActionButtonStyle(kind: kind))
     }
@@ -439,6 +476,10 @@ extension View {
 
     func lfTextPillButtonStyle() -> some View {
         buttonStyle(LFTextPillButtonStyle())
+    }
+
+    func lfAnimatedPlainButtonStyle() -> some View {
+        buttonStyle(LFAnimatedPlainButtonStyle())
     }
 }
 
@@ -605,7 +646,6 @@ struct MagicBackground: ViewModifier {
             }
             // 导航栏和 Tab 栏都直接使用页面背景，不绘制系统材质边界线。
             .toolbarBackground(.hidden, for: .navigationBar, .tabBar)
-            .toolbarColorScheme(.light, for: .navigationBar, .tabBar)
     }
 }
 

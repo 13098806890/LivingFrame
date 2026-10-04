@@ -37,6 +37,7 @@ struct FolderDetailView: View {
                 } label: {
                     Image(systemName: "folder.badge.plus")
                 }
+                .lfAnimatedPlainButtonStyle()
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
@@ -44,6 +45,7 @@ struct FolderDetailView: View {
                 } label: {
                     Image(systemName: "minus")
                 }
+                .lfAnimatedPlainButtonStyle()
                 .disabled(folderClips.isEmpty)
                 .accessibilityLabel("从文件夹移除素材")
 
@@ -52,11 +54,13 @@ struct FolderDetailView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .lfAnimatedPlainButtonStyle()
                 Button(role: .destructive) {
                     showDeleteFolderConfirm = true
                 } label: {
                     Image(systemName: "trash")
                 }
+                .lfAnimatedPlainButtonStyle()
             }
         }
         .confirmationDialog(
@@ -136,7 +140,7 @@ struct FolderDetailView: View {
                                 .background(LF.surface2, in: Capsule())
                                 .foregroundStyle(LF.textPrimary)
                             }
-                            .buttonStyle(.plain)
+                            .lfAnimatedPlainButtonStyle()
                             .contextMenu {
                                 Button(role: .destructive) {
                                     appState.deleteFolder(child)

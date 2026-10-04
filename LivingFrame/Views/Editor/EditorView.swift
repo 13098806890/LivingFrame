@@ -219,9 +219,15 @@ struct EditorView: View {
                             .disabled(appState.selectedElementIDs.isEmpty && appState.selectedAudioID == nil)
                         }
                         ToolbarItem(placement: .confirmationAction) {
-                            Button("完成") { showInspectorSheet = false }
-                                .fontWeight(.semibold)
-                                .foregroundStyle(LF.actionPrimary)
+                            Button {
+                                showInspectorSheet = false
+                            } label: {
+                                Image(systemName: "checkmark")
+                                    .font(.headline.weight(.semibold))
+                            }
+                            .lfAnimatedPlainButtonStyle()
+                            .foregroundStyle(LF.actionPrimary)
+                            .accessibilityLabel("完成")
                         }
                         ToolbarItemGroup(placement: .keyboard) {
                             Spacer()
@@ -290,7 +296,7 @@ struct EditorView: View {
                         .frame(width: 38, height: 38)
                         .background(.black.opacity(0.45), in: Circle())
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .padding(.top, 14)
                 .padding(.trailing, 14)
                 .accessibilityLabel("关闭全屏预览")
@@ -312,8 +318,14 @@ struct EditorView: View {
                         .magicBackground()
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
-                                Button("完成") { toolSheet = nil }
-                                    .fontWeight(.semibold)
+                                Button {
+                                    toolSheet = nil
+                                } label: {
+                                    Image(systemName: "checkmark")
+                                        .font(.headline.weight(.semibold))
+                                }
+                                .lfAnimatedPlainButtonStyle()
+                                .accessibilityLabel("完成")
                                 .foregroundStyle(LF.gold)
                             }
                             ToolbarItemGroup(placement: .keyboard) {
@@ -368,7 +380,7 @@ struct EditorView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel(String.localizedStringWithFormat(
                     NSLocalizedString("编辑作品名称，当前名称：%1$@", comment: "Edit work name accessibility label"),
@@ -496,7 +508,7 @@ struct EditorView: View {
                             .font(.subheadline.weight(.semibold))
                             .frame(width: 30, height: 30)
                     }
-                    .buttonStyle(.plain)
+                    .lfAnimatedPlainButtonStyle()
                     .foregroundStyle(appState.canUndo ? LF.textPrimary : LF.textSecondary.opacity(0.35))
                     .disabled(!appState.canUndo)
                     .accessibilityLabel("撤销")
@@ -508,7 +520,7 @@ struct EditorView: View {
                             .font(.subheadline.weight(.semibold))
                             .frame(width: 30, height: 30)
                     }
-                    .buttonStyle(.plain)
+                    .lfAnimatedPlainButtonStyle()
                     .foregroundStyle(appState.canRedo ? LF.textPrimary : LF.textSecondary.opacity(0.35))
                     .disabled(!appState.canRedo)
                     .accessibilityLabel("重做")
@@ -524,7 +536,7 @@ struct EditorView: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(width: 30, height: 30)
                 }
-                .buttonStyle(.plain)
+                .lfAnimatedPlainButtonStyle()
                 .foregroundStyle(LF.textPrimary)
                 .accessibilityLabel("全屏预览")
             }
@@ -544,7 +556,7 @@ struct EditorView: View {
                 }
                 .frame(width: 36, height: 36)
             }
-            .buttonStyle(.plain)
+            .lfAnimatedPlainButtonStyle()
             .foregroundStyle(LF.textPrimary)
             .accessibilityLabel(NSLocalizedString(
                 appState.isPlaying ? "暂停" : "播放",
@@ -688,7 +700,7 @@ struct EditorView: View {
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
         }
-        .buttonStyle(.plain)
+        .lfAnimatedPlainButtonStyle()
         .accessibilityValue(tool == .timeline
             ? NSLocalizedString(showTimeline ? "已显示" : "已隐藏", comment: "Timeline visibility")
             : "")
@@ -1085,8 +1097,8 @@ struct EditorView: View {
                 ) { style in
                     appState.setClipStickerStyle(clip.id, style)
                 }
-                // 自定义描边和漫画风格都支持三档粗细；颜色仅对自定义描边生效。
-                if clip.stickerStyle == .customOutline || clip.stickerStyle == .comic {
+                // 漫画风格支持三档粗细。
+                if clip.stickerStyle == .comic {
                     HStack(spacing: 8) {
                         ForEach(EdgeThickness.allCases) { thickness in
                             EditorOptionChip(
@@ -1149,7 +1161,7 @@ struct EditorView: View {
                                     }
                             }
                         }
-                        .buttonStyle(.plain)
+                        .lfAnimatedPlainButtonStyle()
                     }
                 }
             }
@@ -1202,12 +1214,21 @@ private struct WorkNameEditorSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消", action: cancelAndDismiss)
+                    Button(action: cancelAndDismiss) {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("取消")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存", action: saveAndDismiss)
-                        .fontWeight(.semibold)
-                        .disabled(trimmedName.isEmpty)
+                    Button(action: saveAndDismiss) {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("保存")
+                    .disabled(trimmedName.isEmpty)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -1443,7 +1464,7 @@ private struct FaceStickerTargetPickerSheet: View {
                                     }
                                     .contentShape(Rectangle())
                                 }
-                                .buttonStyle(.plain)
+                                .lfAnimatedPlainButtonStyle()
                                 .listRowBackground(LF.surface)
                             }
                         } header: {
@@ -1460,7 +1481,12 @@ private struct FaceStickerTargetPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消", action: onCancel)
+                    Button(action: onCancel) {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("取消")
                 }
             }
             .magicBackground()
@@ -1729,7 +1755,14 @@ private struct StickerPreviewSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("关闭")
                 }
             }
             .magicBackground()

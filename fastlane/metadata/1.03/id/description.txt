@@ -1,7 +1,7 @@
 Ubah video dan Live Photo menjadi potongan bergerak untuk membuat GIF dan stiker animasi Anda sendiri, lalu bagikan melalui WhatsApp dan aplikasi lain.
 
 Buat proyek di satu kanvas:
-• Potong subjek dari video dan Live Photo langsung di perangkat (iOS 17 atau lebih baru)
+• Potong subjek dari video dan Live Photo langsung di perangkat (iOS 18 atau lebih baru)
 • Susun beberapa potongan berlapis; atur posisi, ukuran, rotasi, urutan, dan waktunya
 • Tambahkan stiker, teks, latar, bingkai, dan efek visual
 • Ekspor sebagai GIF, video HEVC transparan, atau video H.264

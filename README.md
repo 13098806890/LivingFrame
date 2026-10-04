@@ -1,47 +1,55 @@
 # GIFBloom
 
-> 哈利波特风格的「动态照片」制作工具 —— 从视频 / Live Photo 抠出人物，多元素合成 + 音轨，导出动图 / 视频。
+GIFBloom 是一款面向 iPhone 的动态影像创作工具：从视频、Live Photo 或其他动态素材中提取人物，叠加背景、贴纸、文字和音轨，制作分层动态作品，并导出为 GIF、视频或 Live Photo。
 
-**纯本地工具类 App**：无联网、无账号、无素材下载，全部处理在设备端完成。
+项目内部工程名仍为 `LivingFrame`；面向用户的品牌名是 `GIFBloom`。
+
+## 产品状态
+
+- 平台：iOS 18+
+- 当前 Xcode App target：Marketing Version `1.05` / Build `10`
+- App Store Connect 草稿：当前发布快照为 `1.05` / Build `10`，提交前仍需确认 App Store Connect 版本与 Build 对齐
+- 主分类：Photo & Video
+- 处理方式：选中的媒体主要在设备端完成抠图、合成和导出；不需要账号，也没有应用自建后端、分析 SDK 或用户素材上传服务
+- 注意：Photos/iCloud 可能按照系统权限和用户选择下载原始媒体，这不等于应用拥有独立的云端素材服务
 
 ## 功能
 
-- 🪄 **人物抠图**：Vision 人物实例 / 原始前景两种算法（iOS 17+），视频 / Live Photo → 透明素材
-- 🎞️ **多元素合成**：多个素材同画布，位置 / 缩放 / 旋转 / 层级 / 出现时段
-- 🎵 **音轨**：自动提取视频音频，时间轴摆放、音量、淡入淡出
-- ✨ **魔法模板**：魔法画框 / 金角海报 / 魔杖辉光 / 纯净黑幕，一键套用
-- 📤 **导出**：GIF（通用） / HEVC-alpha（透明） / H.264（回退）
-- 🌍 **国际化**：简体中文 + 15 种语言（详见下）
+- **人物抠图**：将视频或 Live Photo 中的人物提取为动态透明素材；Core 层保留 Vision 人物实例与原始前景两条分割管线
+- **多层合成**：在同一画布叠加多个动态素材，调整位置、缩放、旋转、图层顺序和时间轴区间
+- **动态背景与素材**：支持照片、视频、Live Photo、GIF/APNG 等素材作为背景或画布内容
+- **贴纸与文字**：提供表情、涂鸦、图形、品牌 Logo、水果等贴纸，并支持文字排版；部分贴纸支持面部跟踪
+- **画布与效果**：支持画布背景、画框、视觉效果和拼接/分区创作
+- **音轨**：从视频提取音频，在时间轴中调整起止时间、音量和淡入淡出；导出时进行离线混音
+- **导出**：支持 GIF、透明 HEVC-alpha、普通 H.264 视频和 Live Photo；可预览规格与预计文件大小，并保存到 Photos 或分享
+- **Pro 能力**：当前商店草稿描述为去除导出水印、将最长提取时长从 5 秒扩展至 10 秒；周订阅、年订阅和永久买断的最终文案需以提交 Build 为准
 
-## 国际化
+## 本地化
 
-开发语言为简体中文（源码字符串即 key），随 App 打包 16 种语言：
+App 当前包含 17 个 App Store 本地化：
 
-| 语言 | 代码 | | 语言 | 代码 |
-|---|---|---|---|---|
-| 简体中文（源） | zh-Hans | | 葡萄牙语（巴西） | pt-BR |
-| 繁体中文 | zh-Hant | | 俄语 | ru |
-| 英语 | en | | 阿拉伯语 | ar |
-| 日语 | ja | | 泰语 | th |
-| 韩语 | ko | | 越南语 | vi |
-| 法语 | fr | | 印尼语 | id |
-| 德语 | de | | 土耳其语 | tr |
-| 西班牙语 | es | | 印地语 | hi |
-| 意大利语 | it | | | |
+| Locale | 语言 | Locale | 语言 |
+|---|---|---|---|
+| `zh-Hans` | 简体中文 | `zh-Hant` | 繁体中文 |
+| `en` | 英语 | `ja` | 日语 |
+| `ko` | 韩语 | `fr` | 法语 |
+| `de` | 德语 | `es` | 西班牙语 |
+| `it` | 意大利语 | `pt-BR` | 巴西葡萄牙语 |
+| `id` | 印尼语 | `ru` | 俄语 |
+| `th` | 泰语 | `tr` | 土耳其语 |
+| `vi` | 越南语 | `hi` | 印地语 |
+| `ar` | 阿拉伯语 |  |  |
 
-- 翻译文件：`LivingFrame/Localization/<lang>.lproj/{Localizable,InfoPlist}.strings`
-- App 的 `Localization/` 目录由 Xcode 16 同步组自动编入 target
-- fallback 规则：未覆盖语言回退到开发语言（zh-Hans，即源码中文）
-- App 显示名（CFBundleDisplayName）随语言切换
+本地化文件位于 `LivingFrame/Localization/<locale>.lproj/`，包括 `Localizable.strings` 和 `InfoPlist.strings`。未覆盖的系统语言回退到开发语言 `zh-Hans`。
 
 ## 架构
 
-```
+```text
 ┌─ UI 层（SwiftUI，iOS）────────────────────────────┐
-│  4 Tab：素材库 / 编辑 / 作品 / 设置 + 多个 Sheet    │
-├─ LivingFrameCore（SPM 包，双平台）─────────────────┤
-│  Models · Segmentation · Composition · Audio ·     │
-│  Export · Templates · Storage                      │
+│  素材库 / 编辑 / 作品 / 设置 + 多个 Sheet           │
+├─ LivingFrameCore（Swift Package，双平台）─────────┤
+│  Models · Segmentation · Composition · Audio       │
+│  Export · Templates · FaceTracking · Storage       │
 │  （不 import UIKit/AppKit，macOS 14+ 可复用）       │
 └───────────────────────────────────────────────────┘
 ```
@@ -50,45 +58,61 @@
 
 ## 工程结构
 
-```
+```text
 LivingFrame.xcodeproj        iOS 工程（App target）
-Packages/LivingFrameCore/    SPM 核心包（全部业务逻辑）
+Packages/LivingFrameCore/    Swift Package（核心业务逻辑）
   Sources/LivingFrameCore/
-    Models/                  数据模型（Codable）
-    Segmentation/            抠图管线 + 帧缓存
-    Composition/             CoreImage 统一渲染器
-    Audio/                   音频提取 / 实时预览 / 离线混音
-    Export/                  GIF / HEVC-alpha / H.264 导出
-    Templates/               内置模板 + 矢量装饰绘制
-    Storage/                 作品持久化 + 素材文件存储
-LivingFrame/                 SwiftUI 页面层
-  Localization/              16 语言 .strings（App 同步组）
+    Models/                  Codable 数据模型
+    Segmentation/            抠图管线与帧缓存
+    Composition/             Core Image 合成与渲染
+    Audio/                   音频提取、预览与离线混音
+    Export/                  GIF / HEVC-alpha / H.264 / Live Photo 导出
+    Templates/               贴纸、装饰与模板渲染
+    FaceTracking/            贴纸面部跟踪
+    Storage/                 作品持久化与素材文件存储
+LivingFrame/                 SwiftUI 页面与服务层
+  Localization/             17 个本地化目录
+LivingFrameUITests/          UI 审计和回归测试
 ```
 
-## 构建
+## 构建与测试
 
 ```bash
-# Core 包自测（macOS）
-cd Packages/LivingFrameCore && swift build
+# Core 包构建
+cd Packages/LivingFrameCore
+swift build
 
-# iOS 工程（模拟器）
+# Core 包测试（如果当前改动涉及 Core）
+swift test
+
+# iOS 模拟器构建
+cd ../..
 xcodebuild -project LivingFrame.xcodeproj \
   -scheme LivingFrame \
   -destination 'generic/platform=iOS Simulator' \
   -CODE_SIGNING_ALLOWED=NO build
 ```
 
-要求：Xcode 26+，iOS 17+ 部署目标。
+要求：Xcode 26+，iOS 18+ 部署目标。
 
-## 真机部署注意
+## 真机注意事项
 
-- 代码签名：需在 Xcode 中选择你自己的 Team（`DEVELOPMENT_TEAM`）
-- HEVC-alpha 编码器：模拟器不支持，导出透明视频必须真机验证
+- 代码签名：在 Xcode 中选择自己的 Team，并确认 Bundle ID 与签名配置
+- HEVC-alpha 导出：模拟器不支持，透明视频导出必须在真机验证
+- Photos/iCloud 媒体：系统权限、原始媒体下载和本地临时文件生命周期可能影响首次导入耗时
+- 真实商店截图：应使用代表性的演示项目，不要把空状态或测试占位内容作为 App Store 截图
 
-## 技术要点
+## App Store 与 ASO
 
-- 抠图：`SegmentationAlgorithm` 保留 `.visionPerson` 和 `.foreground` 两个实现；当前界面仅展示原始前景入口，Vision 人物实例入口暂时隐藏，便于后续恢复。
-- 渲染：`CompositionRenderer` 统一管线，预览与导出共用同一份代码（所见即所得）
-- 缓存：抠图结果落地为逐帧 PNG 序列（Caches），按需加载，支持清理
-- 音轨双路径：预览用 `AVAudioEngine` 实时播放（<200ms 误差），导出用 `AVMutableComposition` 离线精确混音
-- 本地化：SwiftUI `Text()` 自动按 LocalizedStringKey 查表；Core 层经 `NSLocalizedString`（Bundle.main）复用同一份资源
+Fastlane 目录包含本地化 metadata、截图和版本化 App Store Connect 快照：
+
+- `fastlane/metadata/<version>/<locale>/`：名称、副标题、关键词、描述、宣传文本和版本更新说明
+- `fastlane/screenshots/<version>/<locale>/`：商店截图
+- `fastlane/data/<version>/`：价格、可用地区、订阅和 App Store Connect 基线快照
+- `fastlane/APP_STORE_REVIEW.md`：当前发布阻塞项与待确认事项
+
+当前 ASO 工作重点是验证真实关键词搜索排名，而不是只检查字段长度。未上架前不能产生真实的 App Store 自然排名；可以先用竞品和关键词工具建立基线，上架后再用同一 storefront、locale、关键词集合和时间窗口追踪排名变化。
+
+## 隐私边界
+
+应用不要求账号，核心媒体处理在设备端完成。隐私声明、App Privacy 答案、年龄分级、内容权利和 App Review 联系信息仍需在提交前由负责人确认，详见 `fastlane/APP_STORE_REVIEW.md`。

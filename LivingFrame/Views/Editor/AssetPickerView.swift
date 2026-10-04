@@ -117,7 +117,14 @@ struct AssetPickerView: View {
             .magicBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("取消") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("取消")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -297,7 +304,7 @@ struct AssetPickerView: View {
             }
             .foregroundStyle(isSelected ? LF.selectionText : LF.textPrimary)
         }
-        .buttonStyle(.plain)
+        .lfAnimatedPlainButtonStyle()
     }
 
     private var scopedClips: [SegmentedClip] {
@@ -381,7 +388,7 @@ struct AssetPickerView: View {
                     .stroke(LF.header.opacity(0.35), lineWidth: 1)
                 }
             }
-            .buttonStyle(.plain)
+            .lfAnimatedPlainButtonStyle()
             .photosPicker(
                 isPresented: $isShowingBackgroundPicker,
                 selection: $photoItems,
@@ -434,7 +441,7 @@ struct AssetPickerView: View {
                                 )
                                 .foregroundStyle(backgroundFilter == filter ? .white : LF.textPrimary)
                         }
-                        .buttonStyle(.plain)
+                        .lfAnimatedPlainButtonStyle()
                     }
                 }
             }
@@ -477,23 +484,34 @@ struct AssetPickerView: View {
 struct AnimatedClipPreview: View {
     let clip: SegmentedClip
     let maxPixelSize: CGFloat
+    private let usesCoreStickerStylePreview: Bool
+    private let coreStickerStyleComposition: Composition?
     @Binding var isPlaying: Bool
     @Binding var isPreparingPlayback: Bool
     @State private var framePosition = 0
     /// 播放窗口内已经解码的小尺寸帧；不再一次性持有整段素材。
     @State private var decodedFrames: [Int: CGImage] = [:]
+    /// Detail 预览播放窗口内已经套用贴纸效果的帧，与编辑器渲染管线保持一致。
+    @State private var renderedStickerFrames: [Int: CGImage] = [:]
 
     private let initialPreloadCount = 6
     private let playbackPreloadWindow = 10
+    /// Core Image 贴纸效果比普通帧解码更重。播放时使用略低于静态预览的
+    /// 分辨率，避免预渲染耗时过长；播放阶段不再临时渲染样式。
+    private let styledPlaybackMaxPixelSize: CGFloat = 360
 
     init(
         clip: SegmentedClip,
         maxPixelSize: CGFloat,
         isPlaying: Binding<Bool>,
-        isPreparingPlayback: Binding<Bool> = .constant(false)
+        isPreparingPlayback: Binding<Bool> = .constant(false),
+        usesCoreStickerStylePreview: Bool = false,
+        coreStickerStyleComposition: Composition? = nil
     ) {
         self.clip = clip
         self.maxPixelSize = maxPixelSize
+        self.usesCoreStickerStylePreview = usesCoreStickerStylePreview
+        self.coreStickerStyleComposition = coreStickerStyleComposition
         _isPlaying = isPlaying
         _isPreparingPlayback = isPreparingPlayback
     }
@@ -517,10 +535,35 @@ struct AnimatedClipPreview: View {
         decodedFrames[framePosition]
     }
 
+    private var usesRenderedStickerPreview: Bool {
+        usesCoreStickerStylePreview && clip.stickerStyle != .none && coreStickerStyleComposition != nil
+    }
+
+    private var playbackPixelSize: CGFloat {
+        usesRenderedStickerPreview
+            ? min(maxPixelSize, styledPlaybackMaxPixelSize)
+            : maxPixelSize
+    }
+
     var body: some View {
         ZStack {
             CheckerboardView()
-            if let decodedFrame {
+            if usesRenderedStickerPreview {
+                if let renderedFrame = renderedStickerFrames[framePosition] {
+                    Image(decorative: renderedFrame, scale: 1)
+                        .resizable()
+                        .scaledToFit()
+                } else if let coreStickerStyleComposition {
+                    CoreStickerStylePreviewFrame(
+                        clip: clip,
+                        frameIndex: previewFrame,
+                        maxPixelSize: isPlaying ? playbackPixelSize : maxPixelSize,
+                        composition: coreStickerStyleComposition
+                    )
+                } else {
+                    ClipThumbnailView(clip: clip, index: previewFrame, maxPixelSize: maxPixelSize)
+                }
+            } else if let decodedFrame {
                 ClipPreviewImage(image: decodedFrame, clip: clip)
             } else {
                 ClipThumbnailView(clip: clip, index: previewFrame, maxPixelSize: maxPixelSize)
@@ -535,7 +578,7 @@ struct AnimatedClipPreview: View {
             .timingCurve(0.23, 1, 0.32, 1, duration: 0.18),
             value: isPreparingPlayback
         )
-        .task(id: "\(isPlaying)-\(clip.cropCacheKey)") {
+        .task(id: "\(isPlaying)-\(clip.cropCacheKey)-\(clip.stickerStyle.rawValue)") {
             await playOnceIfNeeded()
         }
         .onAppear {
@@ -545,17 +588,25 @@ struct AnimatedClipPreview: View {
             isPlaying = false
             isPreparingPlayback = false
             decodedFrames.removeAll(keepingCapacity: false)
+            renderedStickerFrames.removeAll(keepingCapacity: false)
         }
         .onChange(of: clip.id) { _, _ in
             framePosition = 0
             isPlaying = false
             isPreparingPlayback = false
             decodedFrames.removeAll(keepingCapacity: false)
+            renderedStickerFrames.removeAll(keepingCapacity: false)
         }
         .onChange(of: clip.cropCacheKey) { _, _ in
             framePosition = 0
             isPreparingPlayback = false
             decodedFrames.removeAll(keepingCapacity: false)
+            renderedStickerFrames.removeAll(keepingCapacity: false)
+        }
+        .onChange(of: clip.stickerStyle) { _, _ in
+            framePosition = 0
+            isPreparingPlayback = false
+            renderedStickerFrames.removeAll(keepingCapacity: false)
         }
         .onChange(of: isPlaying) { _, playing in
             if !playing {
@@ -574,18 +625,117 @@ struct AnimatedClipPreview: View {
         framePosition = 0
         isPreparingPlayback = true
         decodedFrames.removeAll(keepingCapacity: true)
+        renderedStickerFrames.removeAll(keepingCapacity: true)
 
         let indices = playbackFrames
         let clipValue = clip
-        let pixelSize = maxPixelSize
-        let initialIndices = Array(indices.prefix(min(initialPreloadCount, indices.count)))
+        let usesStyledRenderer = usesRenderedStickerPreview
+        let pixelSize = usesStyledRenderer ? playbackPixelSize : maxPixelSize
+        let compositionValue = coreStickerStyleComposition
+
+        if usesStyledRenderer, let compositionValue {
+            // 样式效果每帧都包含形态学膨胀、阴影和模糊。使用有限窗口预取，
+            // 让播放阶段只做 CGImage 切换，同时避免长视频一次持有整段帧的内存。
+            let initialPositions = Array(0..<min(initialPreloadCount, indices.count))
+            var prefetchTask: Task<[Int: CGImage], Never>?
+            var nextPrefetchStart = initialPositions.count
+            let preloadWindow = playbackPreloadWindow
+            let preloadLead = max(preloadWindow / 2, 1)
+            defer { prefetchTask?.cancel() }
+
+            renderedStickerFrames = await Self.loadRenderedStickerFrames(
+                initialPositions,
+                clip: clipValue,
+                composition: compositionValue,
+                maxPixelSize: pixelSize
+            )
+            guard !Task.isCancelled, isPlaying, renderedStickerFrames.count > 1 else {
+                isPreparingPlayback = false
+                return
+            }
+
+            let remainingIndicatorDuration = 0.16 - Date().timeIntervalSince(preparationStartedAt)
+            if remainingIndicatorDuration > 0 {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(remainingIndicatorDuration * 1_000_000_000))
+                } catch {
+                    isPreparingPlayback = false
+                    return
+                }
+                guard !Task.isCancelled, isPlaying else {
+                    isPreparingPlayback = false
+                    return
+                }
+            }
+            isPreparingPlayback = false
+
+            let frameInterval = max(1.0 / max(clip.fps, 1), 0.04)
+            for nextPosition in 0..<indices.count {
+                guard !Task.isCancelled, isPlaying else { return }
+
+                if renderedStickerFrames[nextPosition] == nil {
+                    if let task = prefetchTask {
+                        let loaded = await task.value
+                        renderedStickerFrames.merge(loaded) { _, new in new }
+                        prefetchTask = nil
+                    }
+                    if renderedStickerFrames[nextPosition] == nil {
+                        let loaded = await Self.loadRenderedStickerFrames(
+                            [nextPosition],
+                            clip: clipValue,
+                            composition: compositionValue,
+                            maxPixelSize: pixelSize
+                        )
+                        renderedStickerFrames.merge(loaded) { _, new in new }
+                    }
+                }
+
+                guard renderedStickerFrames[nextPosition] != nil else { continue }
+                framePosition = nextPosition
+
+                if prefetchTask == nil,
+                   nextPrefetchStart < indices.count,
+                   nextPosition + preloadLead >= nextPrefetchStart {
+                    let end = min(nextPrefetchStart + preloadWindow, indices.count)
+                    let window = Array(nextPrefetchStart..<end)
+                    nextPrefetchStart = end
+                    prefetchTask = Task.detached(priority: .userInitiated) {
+                        await Self.loadRenderedStickerFrames(
+                            window,
+                            clip: clipValue,
+                            composition: compositionValue,
+                            maxPixelSize: pixelSize
+                        )
+                    }
+                }
+
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(frameInterval * 1_000_000_000))
+                } catch {
+                    return
+                }
+
+                let minimumRetainedPosition = max(nextPosition - 2, 0)
+                let maximumRetainedPosition = min(nextPosition + preloadWindow, indices.count - 1)
+                renderedStickerFrames = renderedStickerFrames.filter { position, _ in
+                    (minimumRetainedPosition...maximumRetainedPosition).contains(position)
+                }
+            }
+            guard !Task.isCancelled else { return }
+            isPlaying = false
+            framePosition = 0
+            return
+        }
+
+        let initialPositions = Array(0..<min(initialPreloadCount, indices.count))
         var prefetchTask: Task<[Int: CGImage], Never>?
-        var nextPrefetchStart = initialIndices.count
-        let preloadLead = max(playbackPreloadWindow / 2, 1)
+        var nextPrefetchStart = initialPositions.count
+        let preloadWindow = playbackPreloadWindow
+        let preloadLead = max(preloadWindow / 2, 1)
         defer { prefetchTask?.cancel() }
 
         decodedFrames = await loadPreviewFrames(
-            initialIndices,
+            initialPositions,
             clip: clipValue,
             maxPixelSize: pixelSize
         )
@@ -610,7 +760,8 @@ struct AnimatedClipPreview: View {
         }
         isPreparingPlayback = false
 
-        guard indices.count > 1, decodedFrames.count > 1 else {
+        let loadedFrameCount = decodedFrames.count
+        guard indices.count > 1, loadedFrameCount > 1 else {
             isPlaying = false
             framePosition = 0
             return
@@ -642,7 +793,7 @@ struct AnimatedClipPreview: View {
             if prefetchTask == nil,
                nextPrefetchStart < indices.count,
                nextPosition + preloadLead >= nextPrefetchStart {
-                let end = min(nextPrefetchStart + playbackPreloadWindow, indices.count)
+                let end = min(nextPrefetchStart + preloadWindow, indices.count)
                 let window = Array(nextPrefetchStart..<end)
                 nextPrefetchStart = end
                 prefetchTask = Task.detached(priority: .userInitiated) {
@@ -670,7 +821,7 @@ struct AnimatedClipPreview: View {
 
             // 只保留当前播放点附近的窗口，避免缩略图缓存和组件状态重复持有整段素材。
             let minimumRetainedPosition = max(nextPosition - 2, 0)
-            let maximumRetainedPosition = min(nextPosition + playbackPreloadWindow, indices.count - 1)
+            let maximumRetainedPosition = min(nextPosition + preloadWindow, indices.count - 1)
             decodedFrames = decodedFrames.filter { position, _ in
                 (minimumRetainedPosition...maximumRetainedPosition).contains(position)
             }
@@ -701,6 +852,61 @@ struct AnimatedClipPreview: View {
             }
             return loaded
         }.value
+    }
+
+    private static func loadRenderedStickerFrames(
+        _ positions: [Int],
+        clip: SegmentedClip,
+        composition: Composition,
+        maxPixelSize: CGFloat
+    ) async -> [Int: CGImage] {
+        let sourceIndices = clip.playbackFrameIndices
+        let renderTask = Task.detached(priority: .userInitiated) {
+            let fps = max(clip.fps, 1)
+            var rendered: [Int: CGImage] = [:]
+            rendered.reserveCapacity(positions.count)
+            let batchSize = 4
+            for batchStart in stride(from: 0, to: positions.count, by: batchSize) {
+                guard !Task.isCancelled else { break }
+                let batchEnd = min(batchStart + batchSize, positions.count)
+                let batch = Array(positions[batchStart..<batchEnd])
+                let images = await withTaskGroup(
+                    of: (Int, CGImage?).self,
+                    returning: [(Int, CGImage?)].self
+                ) { group in
+                    for position in batch {
+                        group.addTask {
+                            guard !Task.isCancelled,
+                                  sourceIndices.indices.contains(position) else {
+                                return (position, nil)
+                            }
+                            let renderer = CompositionRenderer(frameMaxPixelSize: maxPixelSize)
+                            let image = renderer.render(
+                                composition,
+                                at: Double(sourceIndices[position]) / fps
+                            )
+                            return (position, image)
+                        }
+                    }
+
+                    var results: [(Int, CGImage?)] = []
+                    results.reserveCapacity(batch.count)
+                    for await result in group {
+                        results.append(result)
+                    }
+                    return results
+                }
+                for (position, image) in images {
+                    if let image { rendered[position] = image }
+                }
+            }
+            return rendered
+        }
+        return await withTaskCancellationHandler(operation: {
+            await renderTask.value
+        }, onCancel: {
+            renderTask.cancel()
+        })
     }
 }
 
@@ -814,9 +1020,63 @@ struct ClipThumbnailView: View {
     }
 }
 
-/// 在素材库和编辑页缩略图中复现已保存的边缘效果。
-/// 导出仍使用 CompositionRenderer 的完整轮廓算法；这里使用透明帧的柔化轮廓，
+/// Detail 预览使用与编辑器和风格缩略图相同的 Core Image 渲染管线，
+/// 保证漫画白边、描边留白和导出结果在大预览中保持一致。
+private struct CoreStickerStylePreviewFrame: View {
+    let clip: SegmentedClip
+    let frameIndex: Int
+    let maxPixelSize: CGFloat
+    let composition: Composition
+    @State private var renderedImage: CGImage?
+
+    var body: some View {
+        Group {
+            if let renderedImage {
+                Image(decorative: renderedImage, scale: 1)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                ClipThumbnailView(
+                    clip: clip,
+                    index: frameIndex,
+                    maxPixelSize: maxPixelSize
+                )
+            }
+        }
+        .task(id: renderKey) {
+            let clipValue = clip
+            let frameIndexValue = frameIndex
+            let pixelSize = maxPixelSize
+            let compositionValue = composition
+            let rendered = await Task.detached(priority: .userInitiated) {
+                let fps = max(clipValue.fps, 1)
+                return CompositionRenderer(frameMaxPixelSize: pixelSize).render(
+                    compositionValue,
+                    at: Double(frameIndexValue) / fps
+                )
+            }.value
+            guard !Task.isCancelled else { return }
+            renderedImage = rendered
+        }
+    }
+
+    private var renderKey: String {
+        [
+            clip.id,
+            String(frameIndex),
+            clip.cropCacheKey,
+            clip.stickerStyle.rawValue,
+            String(clip.normalizedRotationQuarterTurns),
+            String(Int(maxPixelSize.rounded()))
+        ].joined(separator: "|")
+    }
+}
+
+/// 在素材库和编辑页缩略图中复现已保存的边缘与贴纸效果。
+/// 导出仍使用 CompositionRenderer 的完整算法；这里使用透明帧的柔化轮廓，
 /// 让用户在浏览素材时能一眼看出素材是否已经设置过描边/漫画/柔光/投影。
+/// 模板渲染必须基于 alpha 着色，不能用 colorMultiply(.white)，否则白色轮廓
+/// 会继续保留源图颜色，在 Convert 详情页的大预览中看起来像没有效果。
 struct ClipPreviewImage: View {
     let image: CGImage
     let clip: SegmentedClip
@@ -827,6 +1087,10 @@ struct ClipPreviewImage: View {
 
     private var haloRadius: CGFloat {
         max(3, min(clip.edgeThickness.radius / 6, 16))
+    }
+
+    private var stickerHaloRadius: CGFloat {
+        max(3, min(clip.edgeThickness.radius / 5, 18))
     }
 
     var body: some View {
@@ -846,11 +1110,30 @@ struct ClipPreviewImage: View {
                 EmptyView()
             }
 
-            baseImage
+            switch clip.stickerStyle {
+            case .outline:
+                halo(color: .white, radius: stickerHaloRadius, opacity: 0.95)
+            case .comic:
+                halo(color: .black, radius: stickerHaloRadius * 2.52, opacity: 0.13)
+                    .offset(y: 1)
+                halo(color: .white, radius: stickerHaloRadius * 2.325, opacity: 0.98)
+            case .smooth:
+                halo(color: .white, radius: max(2, stickerHaloRadius * 0.55), opacity: 0.25)
+            case .none:
+                EmptyView()
+            }
+
+            baseImage()
         }
     }
 
-    private var baseImage: some View {
+    private func halo(color: Color, radius: CGFloat, opacity: Double) -> some View {
+        baseImage(tint: color)
+            .blur(radius: radius)
+            .opacity(opacity)
+    }
+
+    private func baseImage(tint: Color? = nil) -> some View {
         GeometryReader { proxy in
             let normalizedTurns = clip.normalizedRotationQuarterTurns
             let isQuarterTurn = normalizedTurns % 2 == 1
@@ -858,20 +1141,22 @@ struct ClipPreviewImage: View {
                 width: isQuarterTurn ? proxy.size.height : proxy.size.width,
                 height: isQuarterTurn ? proxy.size.width : proxy.size.height
             )
-            Image(decorative: image, scale: 1)
+            let imageView = Image(decorative: image, scale: 1)
+                .renderingMode(tint == nil ? .original : .template)
                 .resizable()
                 .scaledToFill()
-                .frame(width: imageSize.width, height: imageSize.height)
-                .rotationEffect(.degrees(clip.continuousRotationDegrees))
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipped()
-        }
-    }
 
-    private func halo(color: Color, radius: CGFloat, opacity: Double) -> some View {
-        baseImage
-            .colorMultiply(color)
-            .blur(radius: radius)
-            .opacity(opacity)
+            Group {
+                if let tint {
+                    imageView.foregroundStyle(tint)
+                } else {
+                    imageView
+                }
+            }
+            .frame(width: imageSize.width, height: imageSize.height)
+            .rotationEffect(.degrees(clip.continuousRotationDegrees))
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
     }
 }

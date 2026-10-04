@@ -1,0 +1,4 @@
+Tính năng mới trong GIFBloom 1.05:
+• Chuyển GIF và video thành Live Photo hoặc xuất Live Photo và GIF thành video thông thường.
+• Chọn đoạn 3 giây từ video dài khi tạo Live Photo; âm thanh sẽ được giữ lại khi có thể.
+• Cải thiện ảnh cắt chuyển động, sticker tĩnh, viền kiểu truyện tranh, hiệu năng phát, tải xuống từ iCloud, Chế độ tối và bản địa hóa.

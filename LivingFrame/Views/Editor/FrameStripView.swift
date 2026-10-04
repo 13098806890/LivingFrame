@@ -224,6 +224,8 @@ struct FrameGridView: View {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
                     }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel("关闭")
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
@@ -249,16 +251,20 @@ struct FrameGridView: View {
                     } label: {
                         FramePresetIcon(preset: preset)
                     }
-                    Button("完成") {
+                    Button {
                         if editsComposition {
                             appState.setExcludedCompositionFrames(excluded)
                         } else if let id = primaryClipID {
                             appState.setExcludedFrames(id, excluded)
                         }
                         dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
                     }
-                    .fontWeight(.semibold)
+                    .lfAnimatedPlainButtonStyle()
                     .foregroundStyle(LF.gold)
+                    .accessibilityLabel("完成")
                 }
             }
             .onAppear {
@@ -333,7 +339,7 @@ struct FrameGridView: View {
                             .background(.black.opacity(0.45), in: Circle())
                             .foregroundStyle(isSelected ? LF.gold : LF.textSecondary)
                     }
-                    .buttonStyle(.plain)
+                    .lfAnimatedPlainButtonStyle()
                     .padding(4)
                 }
             }
@@ -385,7 +391,7 @@ struct FrameDetailView: View {
                             .font(.title2)
                             .foregroundStyle(LF.textSecondary)
                     }
-                    .buttonStyle(.plain)
+                    .lfAnimatedPlainButtonStyle()
                     Spacer()
                     Text(String.localizedStringWithFormat(
                         NSLocalizedString("第 %1$lld 帧 / 共 %2$lld 帧", comment: "Frame preview position"),
@@ -439,7 +445,7 @@ struct FrameDetailView: View {
                                         }
                                     }
                                 }
-                                .buttonStyle(.plain)
+                                .lfAnimatedPlainButtonStyle()
                                 .id(index)
                             }
                         }

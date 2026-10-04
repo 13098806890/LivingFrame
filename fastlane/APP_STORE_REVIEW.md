@@ -12,7 +12,7 @@ The listing copy is a draft for review. In particular, please confirm that the p
 - Age rating and content-rights questionnaire answers.
 - Confirm the final Pro benefit wording against the submitted build: weekly/annual subscriptions and the lifetime purchase remove the export watermark and extend the maximum extraction duration from 5 to 10 seconds. The monthly App Store Connect product remains tracked but is not offered in the app interface, and AI stickers are not part of the current public feature set.
 - Real App Store screenshots. Existing UI audit images show empty smoke-test screens and are not suitable for the product page. Please provide representative project media or approve creating screenshots from a seeded demo project.
-- Release version alignment. The local Xcode project is now `1.0` / build `7`, matching the editable App Store Connect version. Existing uploaded builds remain `1.03` / builds `6` and `7`; a new `1.0` build must be generated and uploaded before submission.
+- Release version alignment. The local Xcode project is now `1.05` / build `10`. App Store Connect was not changed by this local update; its existing editable draft and uploaded-build history must be checked before upload.
 
 ## Still incomplete in App Store Connect
 
@@ -26,4 +26,4 @@ The listing copy is a draft for review. In particular, please confirm that the p
 - The app settings and App Store listing now link to the live privacy and support pages and the Apple Standard EULA.
 - No App Privacy response has been published. Review the data-collection declaration before publishing it.
 
-No build was run and nothing has been submitted for App Review. The local project now targets version `1.0`; a new build must be generated and uploaded before the app version can be added to the review submission.
+No App Store Connect upload or App Review submission was performed. The local project now targets version `1.05` / build `10`; a matching build must be generated and uploaded before the app version can be added to the review submission.

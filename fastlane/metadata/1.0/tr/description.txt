@@ -1,7 +1,7 @@
 Videoları ve Live Photo’ları hareketli kesitlere dönüştürerek GIF ve kişisel çıkartmalar oluştur, ardından WhatsApp ve diğer uygulamalarla paylaş.
 
 Tek bir tuvalde proje oluştur:
-• Videolardan ve Live Photo’lardan kişileri doğrudan cihazında ayır (iOS 17 veya üzeri gerekir)
+• Videolardan ve Live Photo’lardan kişileri doğrudan cihazında ayır (iOS 18 veya üzeri gerekir)
 • Birden fazla kesiti katmanla; konum, boyut, döndürme, sıra ve görünme süresini ayarla
 • Çıkartma, metin, arka plan, çerçeve ve görsel efekt ekle
 • GIF, şeffaf HEVC video veya H.264 video olarak dışa aktar

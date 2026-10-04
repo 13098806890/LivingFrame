@@ -7,7 +7,10 @@ public enum LogStore {
     public static func log(_ message: @autoclosure () -> String, file: String = #fileID, line: Int = #line) {
         #if DEBUG
         let message = message()
-        guard message.hasPrefix("xdz.") || message.hasPrefix("export:") else { return }
+        guard message.hasPrefix("xdz.")
+            || message.hasPrefix("export:")
+            || message.hasPrefix("VideoExporter:")
+            || message.hasPrefix("OfflineAudioMixer:") else { return }
 
         let tag = file.components(separatedBy: "/").last ?? file
         let stamp = formatter.string(from: Date())
