@@ -9,7 +9,8 @@ public extension CompositionRenderer {
         frameMaxPixelSize: CGFloat? = nil,
         isPlaybackReversed: Bool = false,
         appliesClipEffects: Bool = true,
-        exportWatermark: ExportWatermark? = nil
+        exportWatermark: ExportWatermark? = nil,
+        clipSnapshots: [String: SegmentedClip] = [:]
     ) {
         self.init(
             context: context,
@@ -17,7 +18,8 @@ public extension CompositionRenderer {
             isPlaybackReversed: isPlaybackReversed,
             appliesClipEffects: appliesClipEffects,
             exportWatermark: exportWatermark,
-            backgroundMediaProvider: BackgroundStore.shared
+            backgroundMediaProvider: BackgroundStore.shared,
+            clipSnapshots: clipSnapshots
         )
     }
 }

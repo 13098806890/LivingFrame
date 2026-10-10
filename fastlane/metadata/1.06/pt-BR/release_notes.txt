@@ -1,0 +1,4 @@
+• Adicionamos um botão para salvar o trabalho final; as edições continuam sendo salvas automaticamente como rascunhos.
+• Após exportar, veja seu trabalho ou continue editando. Se não conseguir salvar no Fotos, tente novamente.
+• A exportação de GIF mantém os mesmos efeitos durante todo o processo. Se o projeto tiver áudio, sugerimos usar vídeo.
+• Melhoramos o guia para começar a criar e o fluxo de exportação.

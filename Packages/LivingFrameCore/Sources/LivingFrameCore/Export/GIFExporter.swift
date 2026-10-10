@@ -48,6 +48,7 @@ public struct GIFExporter {
         to url: URL,
         pixelSize: CGFloat = 240,
         watermark: ExportWatermark? = nil,
+        clipSnapshots: [String: SegmentedClip] = [:],
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws -> ChatStickerExportResult {
@@ -65,6 +66,7 @@ public struct GIFExporter {
                 outputSize: CGSize(width: outputPixelSize, height: outputPixelSize),
                 loops: true,
                 watermark: watermark,
+                clipSnapshots: clipSnapshots,
                 progress: { fraction in
                     progress((Double(index) + fraction) / Double(candidates.count))
                 },
@@ -94,6 +96,7 @@ public struct GIFExporter {
         loops: Bool = false,
         appliesClipEffects: Bool = true,
         watermark: ExportWatermark? = nil,
+        clipSnapshots: [String: SegmentedClip] = [:],
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
     ) async throws {
@@ -121,7 +124,8 @@ public struct GIFExporter {
             context: renderContext,
             frameMaxPixelSize: maxPixelSize,
             appliesClipEffects: appliesClipEffects,
-            exportWatermark: watermark
+            exportWatermark: watermark,
+            clipSnapshots: clipSnapshots
         )
         defer { renderContext.clearCaches() }
         var skipped = 0
@@ -188,6 +192,7 @@ public struct GIFExporter {
         appliesClipEffects: Bool = true,
         outputSize: CGSize? = nil,
         watermark: ExportWatermark? = nil,
+        clipSnapshots: [String: SegmentedClip] = [:],
         isCancelled: () -> Bool = { Task.isCancelled }
     ) throws -> Int64 {
         let totalFrames = max(1, Int((composition.duration * fps).rounded(.up)))
@@ -199,7 +204,8 @@ public struct GIFExporter {
         let renderer = CompositionRenderer(
             frameMaxPixelSize: maxPixelSize,
             appliesClipEffects: appliesClipEffects,
-            exportWatermark: watermark
+            exportWatermark: watermark,
+            clipSnapshots: clipSnapshots
         )
         var sampledImages: [CGImage] = []
         sampledImages.reserveCapacity(sampleCount)
@@ -236,6 +242,7 @@ public struct GIFExporter {
         sampleFrameCount: Int = 6,
         appliesClipEffects: Bool = true,
         watermark: ExportWatermark? = nil,
+        clipSnapshots: [String: SegmentedClip] = [:],
         isCancelled: () -> Bool = { Task.isCancelled }
     ) throws -> [Int64] {
         guard !requests.isEmpty else { return [] }
@@ -264,7 +271,8 @@ public struct GIFExporter {
         let renderer = CompositionRenderer(
             frameMaxPixelSize: largestPixelSize,
             appliesClipEffects: appliesClipEffects,
-            exportWatermark: watermark
+            exportWatermark: watermark,
+            clipSnapshots: clipSnapshots
         )
         var sampledImages: [CGImage] = []
         sampledImages.reserveCapacity(sampleCount)

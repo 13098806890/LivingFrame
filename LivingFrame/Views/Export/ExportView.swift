@@ -71,6 +71,12 @@ struct ExportView: View {
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
 
+                        if let comp = appState.composition,
+                           exportedURL == nil,
+                           exportError == nil {
+                            exportNotes(comp)
+                        }
+
                         if format == .gif {
                         Toggle("微信 GIF 优化", isOn: $chatSticker)
                             .tint(LF.actionPrimary)
@@ -167,22 +173,30 @@ struct ExportView: View {
             .magicBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(NSLocalizedString(
-                        appState.isExporting || isSavingToLibrary || isPreparingExport ? "处理中…" : "取消",
-                        comment: "Export navigation action"
-                    )) {
+                    Button {
                         if appState.isExporting {
                             exportTask?.cancel()
                         } else if !isSavingToLibrary && !isPreparingExport {
                             dismiss()
                         }
+                    } label: {
+                        Image(systemName: "xmark")
                     }
+                    .accessibilityLabel(NSLocalizedString(
+                        appState.isExporting ? "取消导出" : (isSavingToLibrary || isPreparingExport ? "处理中…" : "取消"),
+                        comment: "Export navigation action"
+                    ))
+                    .accessibilityIdentifier("export-cancel")
                     .disabled(isSavingToLibrary || isPreparingExport)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("导出") {
+                    Button {
                         export()
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
                     }
+                    .accessibilityLabel("导出")
+                    .accessibilityIdentifier("export-start")
                     .tint(LF.actionPrimary)
                     .disabled(appState.isExporting || isSavingToLibrary || isPreparingExport || isEstimatingSize || appState.isSavingWork)
                 }
@@ -339,23 +353,61 @@ struct ExportView: View {
                     saveToLibrary(url: url)
                 } label: {
                     Label(
-                        NSLocalizedString(savedToLibrary ? "已存入相册" : "存到相册", comment: "Save to Photos action"),
+                        NSLocalizedString(
+                            savedToLibrary ? "已存入相册" : (librarySaveError == nil ? "存到相册" : "重试保存到相册"),
+                            comment: "Save to Photos action"
+                        ),
                         systemImage: savedToLibrary ? "checkmark" : "photo.badge.plus"
                     )
                     .frame(maxWidth: .infinity)
                 }
                 .lfActionButtonStyle(.secondary)
                 .disabled(savedToLibrary || isSavingToLibrary)
+
+                HStack(spacing: 10) {
+                    Button {
+                        appState.selectedTab = .works
+                        dismiss()
+                    } label: {
+                        Label("查看作品", systemImage: "photo.stack")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .lfActionButtonStyle(.primary)
+                    .accessibilityIdentifier("export-view-work")
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Label("继续编辑", systemImage: "pencil")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .lfActionButtonStyle(.secondary)
+                    .accessibilityIdentifier("export-continue-editing")
+                }
             }
         }
     }
 
     private func exportErrorBanner(message: String) -> some View {
         SectionCard(title: "导出失败") {
-            Label(message, systemImage: "exclamationmark.triangle.fill")
-                .font(.caption)
-                .foregroundStyle(LF.destructive)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 10) {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(LF.destructive)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 10) {
+                    Button("重试导出") {
+                        export()
+                    }
+                    .lfActionButtonStyle(.primary)
+                    .accessibilityIdentifier("export-retry")
+                    Button("返回编辑") {
+                        dismiss()
+                    }
+                    .lfActionButtonStyle(.secondary)
+                    .accessibilityIdentifier("export-return-to-editor")
+                }
+            }
         }
     }
 
@@ -445,6 +497,37 @@ struct ExportView: View {
             Spacer()
         }
         .padding(.horizontal, 4)
+    }
+
+    @ViewBuilder
+    private func exportNotes(_ comp: Composition) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("将先保存正式作品", systemImage: "checkmark.circle")
+                .font(.caption)
+                .foregroundStyle(LF.textSecondary)
+            Label("导出文件会自动尝试保存到系统相册", systemImage: "photo")
+                .font(.caption)
+                .foregroundStyle(LF.textSecondary)
+
+            if !comp.audioClips.isEmpty && format == .gif {
+                Label("当前作品含音轨；GIF 不包含声音", systemImage: "speaker.slash")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(LF.destructive)
+                Button {
+                    format = .h264
+                    showAdvancedFormats = true
+                } label: {
+                    Label("切换到视频", systemImage: "video")
+                        .frame(maxWidth: .infinity)
+                }
+                .lfActionButtonStyle(.secondary)
+                .accessibilityIdentifier("export-switch-to-video")
+            } else if !comp.audioClips.isEmpty && (format == .h264 || format == .hevcAlpha) {
+                Label("视频支持音轨，请检查导出文件中的声音", systemImage: "waveform")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(LF.header)
+            }
+        }
     }
 
     private func export() {

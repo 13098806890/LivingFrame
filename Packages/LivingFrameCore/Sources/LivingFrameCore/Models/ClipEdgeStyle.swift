@@ -1,7 +1,7 @@
 import Foundation
 
 /// 描边线条样式
-public enum EdgeLineStyle: String, Codable, CaseIterable, Identifiable {
+public enum EdgeLineStyle: String, Codable, CaseIterable, Identifiable, Equatable, Sendable {
     case solid
     case dashed
 
@@ -16,7 +16,7 @@ public enum EdgeLineStyle: String, Codable, CaseIterable, Identifiable {
 }
 
 /// 描边粗细
-public enum EdgeThickness: String, Codable, CaseIterable, Identifiable {
+public enum EdgeThickness: String, Codable, CaseIterable, Identifiable, Equatable, Sendable {
     case thin
     case medium
     case thick
@@ -44,7 +44,7 @@ public enum EdgeThickness: String, Codable, CaseIterable, Identifiable {
 
 /// 素材边缘效果（渲染时套在人物轮廓外）
 /// 描边为组合式：线条样式 × 粗细 × 颜色（分别存在 SegmentedClip 上）
-public enum ClipEdgeStyle: String, Codable, CaseIterable, Identifiable {
+public enum ClipEdgeStyle: String, Codable, CaseIterable, Identifiable, Equatable, Sendable {
     case none
     case outline
     case glow

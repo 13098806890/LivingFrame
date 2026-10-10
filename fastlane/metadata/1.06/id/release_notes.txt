@@ -1,0 +1,4 @@
+• Tombol Simpan Karya ditambahkan; perubahan tetap tersimpan otomatis sebagai draf.
+• Setelah ekspor, lihat karya atau lanjutkan mengedit. Coba lagi menyimpan ke Foto jika gagal.
+• Ekspor GIF menggunakan efek klip yang sama selama proses berlangsung. Jika proyek berisi audio, kami menyarankan format video.
+• Panduan mulai berkarya dan alur ekspor ditingkatkan.

@@ -820,3 +820,19 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Verwendet den Apple Color Emoji-Stil des Systems.";
+"开始创作" = "Erstellen starten";
+"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Erstelle aus einem Video oder Live Photo dein erstes animiertes Silhouettenmaterial.";
+"选择素材 → 编辑 → 导出" = "Material wählen → Bearbeiten → Exportieren";
+"先添加第一份素材" = "Erstes Material hinzufügen";
+"选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Wähle Silhouettenmaterial oder Inhalte aus der Mediathek und bearbeite und exportiere sie anschließend.";
+"在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Füge Material im Editor hinzu und tippe auf „Werk speichern“, um die finale Version hier zu speichern. Änderungen werden automatisch als Entwurf gespeichert.";
+"将先保存正式作品" = "Das finale Werk wird zuerst gespeichert";
+"导出文件会自动尝试保存到系统相册" = "Die App versucht, die exportierte Datei automatisch in der Fotomediathek zu speichern";
+"当前作品含音轨；GIF 不包含声音" = "Das aktuelle Werk enthält eine Audiospur; GIF enthält keinen Ton";
+"切换到视频" = "Zu Video wechseln";
+"视频支持音轨，请检查导出文件中的声音" = "Video unterstützt Audio; prüfe den Ton der exportierten Datei";
+"查看作品" = "Werk ansehen";
+"继续编辑" = "Weiter bearbeiten";
+"重试导出" = "Export erneut versuchen";
+"返回编辑" = "Zur Bearbeitung zurück";
+"重试保存到相册" = "Speichern in Fotos erneut versuchen";

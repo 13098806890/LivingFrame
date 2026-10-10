@@ -820,3 +820,19 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Sử dụng hệ thống phong cách Apple Color Emoji.";
+"开始创作" = "Bắt đầu sáng tạo";
+"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Tạo hình cắt động đầu tiên từ video hoặc Live Photo.";
+"选择素材 → 编辑 → 导出" = "Chọn phương tiện → Chỉnh sửa → Xuất";
+"先添加第一份素材" = "Thêm nội dung đầu tiên";
+"选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Chọn nội dung cắt hoặc thư viện ảnh, sau đó chỉnh sửa và xuất.";
+"在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Thêm nội dung trong trình chỉnh sửa và chạm vào “Lưu tác phẩm” để lưu phiên bản cuối tại đây. Các thay đổi được tự động lưu dưới dạng bản nháp.";
+"将先保存正式作品" = "Tác phẩm cuối sẽ được lưu trước";
+"导出文件会自动尝试保存到系统相册" = "Ứng dụng sẽ thử tự động lưu tệp đã xuất vào Ảnh";
+"当前作品含音轨；GIF 不包含声音" = "Tác phẩm này có bản âm thanh; GIF không có âm thanh";
+"切换到视频" = "Chuyển sang video";
+"视频支持音轨，请检查导出文件中的声音" = "Video hỗ trợ âm thanh; hãy kiểm tra âm thanh trong tệp đã xuất";
+"查看作品" = "Xem tác phẩm";
+"继续编辑" = "Tiếp tục chỉnh sửa";
+"重试导出" = "Thử xuất lại";
+"返回编辑" = "Quay lại trình chỉnh sửa";
+"重试保存到相册" = "Thử lưu vào Ảnh lại";

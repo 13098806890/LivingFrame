@@ -452,9 +452,9 @@ final class LivingFrameUITests: XCTestCase {
         waitForUIToSettle()
         attachScreenshot(named: "functional--01-seeded-editor")
 
-        tapButton(["Play", "播放"])
+        tapButtonIdentifier("editor-playback-toggle")
         attachScreenshot(named: "functional--02-playing")
-        tapButton(["Pause", "暂停"])
+        tapButtonIdentifier("editor-playback-toggle")
 
         tapButton(["Full-screen preview", "全屏预览"])
         XCTAssertTrue(
@@ -464,7 +464,7 @@ final class LivingFrameUITests: XCTestCase {
         attachScreenshot(named: "functional--03-fullscreen-preview")
         tapButton(["Close full-screen preview", "关闭全屏预览"])
 
-        tapButton(["Canvas", "画布"])
+        tapButtonIdentifier("editor-tool-canvas")
         XCTAssertTrue(matchingButton(["Transparent background", "透明背景"]).waitForExistence(timeout: 10))
         attachScreenshot(named: "functional--04-canvas-tool")
         tapButton(["Transparent background", "透明背景"])
@@ -472,7 +472,7 @@ final class LivingFrameUITests: XCTestCase {
         attachScreenshot(named: "functional--05-transparent-canvas")
         tapNavigationButton(["Done", "完成"])
 
-        tapButton(["Text", "文字"])
+        tapButtonIdentifier("editor-tool-text")
         let textField = app.textFields.firstMatch
         XCTAssertTrue(textField.waitForExistence(timeout: 10), "Text editor did not appear")
         textField.tap()
@@ -483,18 +483,16 @@ final class LivingFrameUITests: XCTestCase {
         }
         tapNavigationButton(["Done", "完成"])
 
-        tapButton(["Sticker", "贴纸"])
-        let firework = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", "烟花")
-        ).firstMatch
+        tapButtonIdentifier("editor-tool-sticker")
+        let firework = app.buttons["sticker-firework"]
         XCTAssertTrue(firework.waitForExistence(timeout: 10), "Sticker picker did not appear")
         attachScreenshot(named: "functional--07-sticker-picker")
         firework.tap()
         waitForUIToSettle()
         attachScreenshot(named: "functional--08-sticker-added")
 
-        tapButton(["Save Work", "保存作品"])
-        waitUntilButtonEnabled(["Save Work", "保存作品"], timeout: 20)
+        tapButtonIdentifier("editor-save-work")
+        waitUntilButtonIdentifierEnabled("editor-save-work", timeout: 20)
         tapTab(index: 2)
         XCTAssertTrue(
             app.staticTexts["UI Audit Project"].waitForExistence(timeout: 20),
@@ -506,7 +504,7 @@ final class LivingFrameUITests: XCTestCase {
         XCTAssertTrue(projectTitle.waitForExistence(timeout: 20), "Saved work did not reopen")
         attachScreenshot(named: "functional--10-reopened-editor")
 
-        tapButton(["Export", "导出"])
+        tapButtonIdentifier("editor-export")
         XCTAssertTrue(matchingNavigationButton(["Export", "导出"]).waitForExistence(timeout: 10))
         attachScreenshot(named: "functional--11-export-options")
         tapNavigationButton(["Export", "导出"])
@@ -626,7 +624,7 @@ final class LivingFrameUITests: XCTestCase {
 
         // The seeded background makes the collage editor available. Exercise
         // its layer menu and nested asset-picker sheet, but do not import media.
-        tapButton(["Collage", "拼接"])
+        tapButtonIdentifier("editor-tool-collage")
         let collageCanvas = app.descendants(matching: .any)
             .matching(identifier: "collage-canvas-preview").firstMatch
         XCTAssertTrue(collageCanvas.waitForExistence(timeout: 10), "Collage editor did not appear")
@@ -659,7 +657,7 @@ final class LivingFrameUITests: XCTestCase {
         tapNavigationButton(["Cancel", "取消"])
 
         // Canvas appearance sheet and its transparent-background option.
-        tapButton(["Canvas", "画布"])
+        tapButtonIdentifier("editor-tool-canvas")
         let transparent = matchingButton(["Transparent background", "透明背景"])
         XCTAssertTrue(transparent.waitForExistence(timeout: 5), "Canvas appearance sheet did not appear")
         attachEditorSurfaceEvidence(named: "editor-popover--08-canvas")
@@ -670,13 +668,18 @@ final class LivingFrameUITests: XCTestCase {
 
         // Export is captured as a sheet, but this pass deliberately stops
         // before rendering or sharing anything.
-        tapButton(["Export", "导出"])
+        tapButtonIdentifier("editor-export")
+        let exportCancel = app.buttons["export-cancel"]
+        let exportStart = app.buttons["export-start"]
         XCTAssertTrue(
-            matchingNavigationButton(["Cancel", "取消"]).waitForExistence(timeout: 5),
-            "Export sheet did not appear"
+            exportCancel.waitForExistence(timeout: 5),
+            "Export sheet cancel icon did not appear"
         )
+        XCTAssertTrue(exportCancel.isHittable, "Export sheet cancel icon is not hittable")
+        XCTAssertTrue(exportStart.waitForExistence(timeout: 5), "Export icon did not appear")
+        XCTAssertTrue(exportStart.isHittable, "Export icon is not hittable")
         attachEditorSurfaceEvidence(named: "editor-popover--09a-export")
-        tapNavigationButton(["Cancel", "取消"])
+        exportCancel.tap()
 
         // The fixture has no person/cutout clip. Capture the frame-editor route
         // and explicitly leave frame-cell operations as a data-availability gap.
@@ -695,7 +698,7 @@ final class LivingFrameUITests: XCTestCase {
 
         // Crop is an inline mode, not a popover. Verify its controls and cancel
         // so the fixture's canvas geometry remains unchanged.
-        tapButton(["Crop", "裁剪"])
+        tapButtonIdentifier("editor-tool-crop")
         XCTAssertTrue(matchingButton(["Reset", "重置"]).waitForExistence(timeout: 5), "Crop mode did not appear")
         XCTAssertTrue(matchingButton(["Done", "完成"]).exists, "Crop mode has no completion action")
         attachEditorSurfaceEvidence(named: "editor-popover--11-crop-mode")
@@ -703,7 +706,7 @@ final class LivingFrameUITests: XCTestCase {
 
         // Text sheet, followed by its selection inspector. The fixture only
         // edits generated content; it does not save over an existing work.
-        tapButton(["Text", "文字"])
+        tapButtonIdentifier("editor-tool-text")
         XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5), "Text panel did not appear")
         attachEditorSurfaceEvidence(named: "editor-popover--12-text")
         if matchingButton(["Dismiss Keyboard", "收起键盘"]).exists {
@@ -735,10 +738,8 @@ final class LivingFrameUITests: XCTestCase {
 
         // Long press exposes the secondary sticker preview sheet; close it,
         // then close the picker without adding a sticker in this audit.
-        tapButton(["Sticker", "贴纸"])
-        let firework = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", "烟花")
-        ).firstMatch
+        tapButtonIdentifier("editor-tool-sticker")
+        let firework = app.buttons["sticker-firework"]
         XCTAssertTrue(firework.waitForExistence(timeout: 10), "Sticker picker did not appear")
         attachEditorSurfaceEvidence(named: "editor-popover--14-sticker-picker")
         firework.press(forDuration: 0.8)
@@ -939,6 +940,15 @@ final class LivingFrameUITests: XCTestCase {
     }
 
     @discardableResult
+    private func tapButtonIdentifier(_ identifier: String, timeout: TimeInterval = 10) -> XCUIElement {
+        let element = app.buttons[identifier]
+        XCTAssertTrue(element.waitForExistence(timeout: timeout), "Missing button identifier: \(identifier)")
+        XCTAssertTrue(element.isHittable, "Button is not hittable: \(identifier)")
+        element.tap()
+        return element
+    }
+
+    @discardableResult
     private func tapNavigationButton(_ labels: [String], timeout: TimeInterval = 10) -> XCUIElement {
         let element = matchingNavigationButton(labels)
         XCTAssertTrue(element.waitForExistence(timeout: timeout), "Missing navigation button: \(labels)")
@@ -950,6 +960,14 @@ final class LivingFrameUITests: XCTestCase {
     private func waitUntilButtonEnabled(_ labels: [String], timeout: TimeInterval) {
         let element = matchingButton(labels)
         XCTAssertTrue(element.waitForExistence(timeout: timeout), "Missing button: \(labels)")
+        let enabled = NSPredicate(format: "enabled == true")
+        let expectation = XCTNSPredicateExpectation(predicate: enabled, object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: timeout), .completed)
+    }
+
+    private func waitUntilButtonIdentifierEnabled(_ identifier: String, timeout: TimeInterval) {
+        let element = app.buttons[identifier]
+        XCTAssertTrue(element.waitForExistence(timeout: timeout), "Missing button identifier: \(identifier)")
         let enabled = NSPredicate(format: "enabled == true")
         let expectation = XCTNSPredicateExpectation(predicate: enabled, object: element)
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: timeout), .completed)

@@ -3272,13 +3272,7 @@ final class AppState: ObservableObject {
 
         switch format {
         case .gif:
-            let referencedClipIDs = Set(composition.elements.compactMap { element -> String? in
-                guard case let .clip(clipID) = element.kind else { return nil }
-                return clipID
-            })
-            for clip in clips where referencedClipIDs.contains(clip.id) {
-                FrameCache.shared.registerInMemory(clip)
-            }
+            let clipSnapshots = clipSnapshots(for: composition)
 
             let outputFPS = chatSticker ? 15 : fps
             let maxPixelSize = chatSticker ? chatGIFPixelSize : resolution.maxPixelSize
@@ -3293,6 +3287,7 @@ final class AppState: ObservableObject {
                     sampleFrameCount: 6,
                     outputSize: outputSize,
                     watermark: watermark,
+                    clipSnapshots: clipSnapshots,
                     isCancelled: { Task.isCancelled }
                 )
             }
@@ -3344,7 +3339,8 @@ final class AppState: ObservableObject {
                 // 规格预估必须和实际保存到相册的 GIF 使用同一条渲染路径，
                 // 否则漫画/描边等效果会导致预估大小与最终文件不一致。
                 appliesClipEffects: true,
-                watermark: watermark
+                watermark: watermark,
+                clipSnapshots: [clip.id: clip]
             ) else { return [] }
             return zip(jobs, bytes).map { job, size in
                 return GIFExportPreset(
@@ -3361,9 +3357,11 @@ final class AppState: ObservableObject {
         _ clipID: String,
         resolution: ExportResolution = .p720,
         fps: Double = 15,
-        watermark: ExportWatermark? = nil
+        watermark: ExportWatermark? = nil,
+        clipSnapshot: SegmentedClip? = nil
     ) async throws -> URL {
-        guard let clip = clips.first(where: { $0.id == clipID }) else {
+        let clip = clipSnapshot ?? clips.first(where: { $0.id == clipID })
+        guard let clip, clip.id == clipID else {
             throw AppStateError.clipNotFound
         }
 
@@ -3394,6 +3392,7 @@ final class AppState: ObservableObject {
                     // 动态剪影保存到相册时必须保留当前选中的边缘与贴纸风格。
                     appliesClipEffects: true,
                     watermark: watermark,
+                    clipSnapshots: [clip.id: clip],
                     progress: { [weak self] value in
                     Task { @MainActor in self?.exportProgress = value }
                 }
@@ -3512,6 +3511,23 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// Captures the exact clip values used by a GIF estimate or export so later
+    /// edits in AppState/FrameCache cannot change frames halfway through rendering.
+    private func clipSnapshots(for composition: Composition) -> [String: SegmentedClip] {
+        let referencedIDs = Set(composition.elements.compactMap { element -> String? in
+            guard case let .clip(clipID) = element.kind else { return nil }
+            return clipID
+        })
+        let clipsByID = Dictionary(clips.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
+        var snapshots: [String: SegmentedClip] = [:]
+        for clipID in referencedIDs {
+            guard let clip = clipsByID[clipID] ?? FrameCache.shared.clip(id: clipID) else { continue }
+            snapshots[clipID] = clip
+            FrameCache.shared.registerInMemory(clip)
+        }
+        return snapshots
+    }
+
     func export(
         format: ExportFormat,
         fps: Double,
@@ -3538,12 +3554,14 @@ final class AppState: ObservableObject {
             )
         switch format {
         case .gif:
+            let clipSnapshots = clipSnapshots(for: composition)
             if chatSticker {
                 let result = try await GIFExporter().exportChatSticker(
                     composition,
                     to: url,
                     pixelSize: chatGIFPixelSize,
                     watermark: watermark,
+                    clipSnapshots: clipSnapshots,
                     progress: { [weak self] value in
                         Task { @MainActor in self?.exportProgress = value }
                     }
@@ -3560,7 +3578,8 @@ final class AppState: ObservableObject {
                     to: url,
                     fps: fps,
                     maxPixelSize: resolution.maxPixelSize,
-                    watermark: watermark
+                    watermark: watermark,
+                    clipSnapshots: clipSnapshots
                 ) { [weak self] value in
                     Task { @MainActor in self?.exportProgress = value }
                 }

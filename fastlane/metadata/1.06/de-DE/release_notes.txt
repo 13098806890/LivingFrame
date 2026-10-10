@@ -1,0 +1,4 @@
+• Neue Schaltfläche zum Speichern fertiger Werke; Änderungen werden weiterhin automatisch als Entwürfe gesichert.
+• Nach dem Export kannst du dein Werk ansehen oder weiterbearbeiten. Das Speichern in Fotos lässt sich bei Bedarf erneut versuchen.
+• GIF-Exporte verwenden während des gesamten Vorgangs dieselben Clip-Effekte. Bei Ton im Projekt empfehlen wir den Videoexport.
+• Der Einstieg ins Erstellen und der Exportablauf wurden verbessert.

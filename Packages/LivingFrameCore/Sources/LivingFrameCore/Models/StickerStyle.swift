@@ -1,7 +1,7 @@
 import Foundation
 
 /// 贴纸风格（参照 iOS 贴纸的 Outline、Comic 与柔化效果），与边缘效果可叠加。
-public enum StickerStyle: String, Codable, CaseIterable, Identifiable {
+public enum StickerStyle: String, Codable, CaseIterable, Identifiable, Equatable, Sendable {
     case none
     case outline
     case comic

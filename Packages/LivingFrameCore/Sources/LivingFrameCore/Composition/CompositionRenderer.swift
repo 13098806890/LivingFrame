@@ -16,6 +16,8 @@ public struct CompositionRenderer {
     private let appliesClipEffects: Bool
     /// 仅用于最终导出，编辑预览不传入该值。
     private let exportWatermark: ExportWatermark?
+    /// 导出时使用的不可变素材快照。命中后不会逐帧回读可变的 FrameCache 注册值。
+    private let clipSnapshots: [String: SegmentedClip]
     /// 背景素材的读取入口由调用方提供，避免渲染器把磁盘存储和渲染逻辑绑在一起。
     private let backgroundMediaProvider: any BackgroundMediaProviding
 
@@ -25,7 +27,8 @@ public struct CompositionRenderer {
         isPlaybackReversed: Bool = false,
         appliesClipEffects: Bool = true,
         exportWatermark: ExportWatermark? = nil,
-        backgroundMediaProvider: any BackgroundMediaProviding
+        backgroundMediaProvider: any BackgroundMediaProviding,
+        clipSnapshots: [String: SegmentedClip] = [:]
     ) {
         self.context = context
         self.frameMaxPixelSize = frameMaxPixelSize
@@ -33,6 +36,11 @@ public struct CompositionRenderer {
         self.appliesClipEffects = appliesClipEffects
         self.exportWatermark = exportWatermark
         self.backgroundMediaProvider = backgroundMediaProvider
+        self.clipSnapshots = clipSnapshots
+    }
+
+    private func clip(for id: String) -> SegmentedClip? {
+        clipSnapshots[id] ?? FrameCache.shared.clip(id: id)
     }
 
     static func clearSharedCaches() {
@@ -206,7 +214,7 @@ public struct CompositionRenderer {
         }
 
         if case .clip(let clipID) = element.kind,
-           let clip = FrameCache.shared.clip(id: clipID),
+           let clip = clip(for: clipID),
            let frameIndex = Self.optionPreviewFrameIndex(
                 for: element,
                 in: composition,
@@ -409,7 +417,7 @@ public struct CompositionRenderer {
         // 素材的选中框代表“素材画布”而不是当前帧的非透明像素范围。
         // 分割结果的透明边缘、描边和滤镜会随帧变化，不能让它们改变交互边界。
         if case .clip(let clipID) = element.kind,
-           let clip = FrameCache.shared.clip(id: clipID) {
+           let clip = clip(for: clipID) {
             return CGSize(
                 width: max(clip.renderedWidth, 1),
                 height: max(clip.renderedHeight, 1)
@@ -738,7 +746,7 @@ public struct CompositionRenderer {
                 composition: composition
             )
         case .clip(let clipID):
-            if let clip = FrameCache.shared.clip(id: clipID) {
+            if let clip = clip(for: clipID) {
                 // 素材内时间：从源素材入点起算，再按素材倍速折算播放位置。
                 // 时间轴上的 start/end 只表示当前播放区间，不能再决定素材从第几帧开始。
                 let sourceDuration = clip.playbackSourceDuration
@@ -907,7 +915,7 @@ public struct CompositionRenderer {
               let targetElement = composition.elements.first(where: { $0.id == tracking.targetClipElementID }),
               case .clip(let clipID) = targetElement.kind,
               clipID == tracking.clipID,
-              let clip = FrameCache.shared.clip(id: clipID),
+              let clip = clip(for: clipID),
               targetElement.isVisible(at: time) else {
             return nil
         }
@@ -961,7 +969,7 @@ public struct CompositionRenderer {
               targetElement.isVisible(at: time),
               case .clip(let clipID) = targetElement.kind,
               clipID == tracking.clipID,
-              let clip = FrameCache.shared.clip(id: clipID),
+              let clip = clip(for: clipID),
               let sourceFrameIndex = trackedSourceFrameIndex(for: targetElement, clip: clip, at: time) else {
             return nil
         }
@@ -1156,7 +1164,7 @@ public struct CompositionRenderer {
         sourceStart: TimeInterval = 0,
         sourceEnd: TimeInterval? = nil
     ) -> RenderedClipFrame? {
-        guard let clip = FrameCache.shared.clip(id: clipID) else { return nil }
+        guard let clip = clip(for: clipID) else { return nil }
         let playbackFrames = clip.playbackFrameIndices(reversed: isPlaybackReversed)
         guard !playbackFrames.isEmpty else { return nil }
         let fps = clip.fps

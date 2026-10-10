@@ -820,3 +820,19 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Menggunakan sistem gaya Apple Color Emoji.";
+"开始创作" = "Mulai membuat";
+"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Buat potongan animasi pertama dari video atau Live Photo.";
+"选择素材 → 编辑 → 导出" = "Pilih media → Edit → Ekspor";
+"先添加第一份素材" = "Tambahkan aset pertama";
+"选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Pilih potongan atau konten dari perpustakaan foto, lalu edit dan ekspor.";
+"在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Tambahkan media di editor dan ketuk “Simpan Karya” untuk menyimpan versi final di sini. Perubahan disimpan otomatis sebagai draf.";
+"将先保存正式作品" = "Karya final akan disimpan terlebih dahulu";
+"导出文件会自动尝试保存到系统相册" = "File yang diekspor akan dicoba disimpan otomatis ke Foto";
+"当前作品含音轨；GIF 不包含声音" = "Karya ini memiliki trek audio; GIF tidak menyertakan suara";
+"切换到视频" = "Beralih ke video";
+"视频支持音轨，请检查导出文件中的声音" = "Video mendukung audio; periksa suara pada file yang diekspor";
+"查看作品" = "Lihat karya";
+"继续编辑" = "Lanjutkan mengedit";
+"重试导出" = "Coba ekspor lagi";
+"返回编辑" = "Kembali ke editor";
+"重试保存到相册" = "Coba simpan ke Foto lagi";

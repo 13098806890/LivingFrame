@@ -1,0 +1,1 @@
+Save finished works, keep editing after export, and get clearer audio guidance. GIF exports now keep selected effects consistent.

@@ -824,3 +824,19 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Uses the system Apple Color Emoji style.";
+"开始创作" = "Start Creating";
+"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Create your first animated cutout from a video or Live Photo.";
+"选择素材 → 编辑 → 导出" = "Choose media → Edit → Export";
+"先添加第一份素材" = "Add your first asset";
+"选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Choose a cutout or photo library asset, then edit and export it.";
+"在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Add media in the editor and tap “Save Work” to save the final version here. Edits are saved automatically as drafts.";
+"将先保存正式作品" = "The final work will be saved first";
+"导出文件会自动尝试保存到系统相册" = "The app will try to save the exported file to Photos automatically";
+"当前作品含音轨；GIF 不包含声音" = "This work has an audio track; GIF does not include sound";
+"切换到视频" = "Switch to video";
+"视频支持音轨，请检查导出文件中的声音" = "Video supports audio; check the sound in the exported file";
+"查看作品" = "View Work";
+"继续编辑" = "Continue Editing";
+"重试导出" = "Retry Export";
+"返回编辑" = "Back to Editor";
+"重试保存到相册" = "Retry Saving to Photos";

@@ -82,6 +82,7 @@ struct EditorView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var purchaseManager: PurchaseManager
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showAssetPicker = false
     /// 双击已有背景元素时，直接复用拼接编辑器而不是进入通用检查器。
     @State private var collageEditorRequest: CollageEditorRequest?
@@ -123,47 +124,19 @@ struct EditorView: View {
                     .padding(.bottom, 6)
 
                 // ② 纵向工作区：画布 → 播放控制 → 时间轴，避免手机屏幕横向拥挤。
-                VStack(spacing: 0) {
-                    CanvasView(
-                        onRequestInspector: requestInspectorForSelection,
-                        onDeleteSelection: { showDeleteSelectionConfirmation = true }
-                    )
-                        .frame(width: canvasSize.width, height: canvasSize.height)
-                        .overlay(alignment: .topTrailing) {
-                            // 添加素材是编辑流程的高频入口，固定在画布右上角，避免用户
-                            // 需要先寻找底部工具栏才能开始编辑。圆形按钮只保留图标，
-                            // 半透明背景减少对画布内容的遮挡。
-                            if !appState.isCropping {
-                                canvasCornerActionButton(
-                                    systemName: "plus",
-                                    accessibilityLabel: "添加素材",
-                                    anchor: .topTrailing
-                                ) {
-                                    showAssetPicker = true
-                                }
-                            }
-                        }
-                        .animation(.snappy(duration: 0.22), value: appState.isCropping)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-
-                    // 播放控制贴着画布，不随时间轴内容滚动。
-                    transportBar
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 4)
-
-                    // 时间轴位于画布下方；轨道上下浏览只发生在时间轴内部。
-                    if showTimeline {
-                        timelineArea
-                            .padding(.horizontal, 12)
-                            .padding(.bottom, 8)
-                            .frame(maxHeight: .infinity)
-                            .layoutPriority(1)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                // XXXL 下改为独立滚动区，首素材卡不会覆盖播放区或底部工具栏。
+                if dynamicTypeSize.isAccessibilitySize {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        editorWorkspace(canvasSize: canvasSize, promptAboveCanvas: true)
+                            .padding(.bottom, 24)
                     }
+                    // Keep the scroll tail above the fixed tool bar with more than
+                    // the tool bar height plus a small visual gap.
+                    .safeAreaPadding(.bottom, dynamicTypeSize.isAccessibilitySize ? 144 : 96)
+                    .frame(maxHeight: .infinity)
+                } else {
+                    editorWorkspace(canvasSize: canvasSize, promptAboveCanvas: false)
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .layoutPriority(1)
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
@@ -350,65 +323,243 @@ struct EditorView: View {
         }
     }
 
-    /// 自定义顶部栏：左侧展示作品信息，右侧只保留导出。
-    /// 导出时会自动生成正式作品；编辑过程中的变更仍由草稿自动保存承接。
+    @ViewBuilder
+    private func editorWorkspace(canvasSize: CGSize, promptAboveCanvas: Bool) -> some View {
+        VStack(spacing: 0) {
+            if promptAboveCanvas && editorNeedsFirstAsset {
+                firstAssetPrompt
+            }
+
+            CanvasView(
+                onRequestInspector: requestInspectorForSelection,
+                onDeleteSelection: { showDeleteSelectionConfirmation = true }
+            )
+                .frame(width: canvasSize.width, height: canvasSize.height)
+                .overlay(alignment: .topTrailing) {
+                    // 添加素材是编辑流程的高频入口，固定在画布右上角，避免用户
+                    // 需要先寻找底部工具栏才能开始编辑。圆形按钮只保留图标，
+                    // 半透明背景减少对画布内容的遮挡。
+                    if !appState.isCropping {
+                        canvasCornerActionButton(
+                            systemName: "plus",
+                            accessibilityLabel: "添加素材",
+                            anchor: .topTrailing
+                        ) {
+                            showAssetPicker = true
+                        }
+                    }
+                }
+                .overlay {
+                    if !promptAboveCanvas && editorNeedsFirstAsset {
+                        firstAssetPrompt
+                    }
+                }
+                .animation(.snappy(duration: 0.22), value: appState.isCropping)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+
+            // 播放控制贴着画布，不随时间轴内容滚动。
+            transportBar
+                .padding(.horizontal, 14)
+                .padding(.bottom, 4)
+
+            // 时间轴位于画布下方；轨道上下浏览只发生在时间轴内部。
+            if showTimeline {
+                timelineArea
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .frame(maxHeight: promptAboveCanvas ? nil : .infinity)
+                    .layoutPriority(1)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .layoutPriority(1)
+    }
+
+    /// 自定义顶部栏：左侧展示作品信息，右侧提供保存和导出。
+    /// 导出时仍会自动生成正式作品；编辑过程中的变更由草稿自动保存承接。
     private var topBar: some View {
-        HStack(spacing: 8) {
+        Group {
             if let comp = appState.composition {
-                Button {
-                    beginWorkNameEditing(comp.name)
-                } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 5) {
-                            Text(comp.name)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Image(systemName: "pencil.line")
-                                .font(.caption2.weight(.semibold))
-                        }
-                        .foregroundStyle(LF.header)
-
-                        HStack(spacing: 5) {
-                            Text(frameInfoText(comp))
-                                .lineLimit(1)
-                            saveStatusView
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(LF.textSecondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .lfAnimatedPlainButtonStyle()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel(String.localizedStringWithFormat(
-                    NSLocalizedString("编辑作品名称，当前名称：%1$@", comment: "Edit work name accessibility label"),
-                    comp.name as NSString
-                ))
-                .contextMenu {
-                    if appState.currentWorkHasDraft {
-                        Button {
-                            showDiscardDraftConfirmation = true
-                        } label: {
-                            Label("恢复正式版", systemImage: "arrow.uturn.backward")
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 5) {
+                        workIdentityButton(comp)
+                        VStack(spacing: 8) {
+                            saveWorkButton
+                                .frame(maxWidth: .infinity)
+                            exportButton
+                                .frame(maxWidth: .infinity)
                         }
                     }
-                    Button(role: .destructive) {
-                        showClearConfirmation = true
-                    } label: {
-                        Label("清空编辑内容", systemImage: "trash")
+                } else {
+                    HStack(spacing: 8) {
+                        workIdentityButton(comp)
+                        saveWorkButton
+                        exportButton
                     }
                 }
-
-                Button("导出") {
-                    appState.showExportView = true
-                }
-                .lfTextPillButtonStyle()
-                .accessibilityIdentifier("editor-export")
             }
         }
         .padding(.horizontal, 4)
+    }
+
+    private func workIdentityButton(_ comp: Composition) -> some View {
+        Button {
+            beginWorkNameEditing(comp.name)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    Text(comp.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                        .truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
+                    Image(systemName: "pencil.line")
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(LF.header)
+
+                HStack(spacing: 5) {
+                    Text(frameInfoText(comp))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
+                    saveStatusView
+                }
+                .font(.caption2)
+                .foregroundStyle(LF.textSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .lfAnimatedPlainButtonStyle()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel(String.localizedStringWithFormat(
+            NSLocalizedString("编辑作品名称，当前名称：%1$@", comment: "Edit work name accessibility label"),
+            comp.name as NSString
+        ))
+        .contextMenu {
+            if appState.currentWorkHasDraft {
+                Button {
+                    showDiscardDraftConfirmation = true
+                } label: {
+                    Label("恢复正式版", systemImage: "arrow.uturn.backward")
+                }
+            }
+            Button(role: .destructive) {
+                showClearConfirmation = true
+            } label: {
+                Label("清空编辑内容", systemImage: "trash")
+            }
+        }
+    }
+
+    private var saveWorkButton: some View {
+        Button {
+            Task { @MainActor in
+                _ = await appState.saveCurrentToWorks()
+            }
+        } label: {
+            Label("保存", systemImage: "square.and.arrow.down")
+                .lineLimit(1)
+        }
+        .lfActionButtonStyle(.secondary)
+        .controlSize(.small)
+        .accessibilityLabel("保存作品")
+        .accessibilityIdentifier("editor-save-work")
+        .disabled(appState.isSavingWork || editorNeedsFirstAsset)
+    }
+
+    private var exportButton: some View {
+        Button("导出") {
+            appState.showExportView = true
+        }
+        .lfTextPillButtonStyle()
+        .accessibilityIdentifier("editor-export")
+    }
+
+    private var editorNeedsFirstAsset: Bool {
+        guard let composition = appState.composition else { return true }
+        let hasVisualElement = composition.elements.contains { element in
+            if case .canvasEdge = element.kind {
+                return composition.canvasEdgeStyle != .none
+            }
+            return true
+        }
+        let hasVisibleBackground = composition.background.kind != .solid
+            || composition.background.topColor.uppercased() != "FFFFFF"
+            || composition.background.bottomColor.uppercased() != "FFFFFF"
+            || composition.background.imageFileName != nil
+            || composition.background.patternStyle != nil
+            || composition.background.patternOverlay != nil
+        return !hasVisualElement && !hasVisibleBackground && composition.audioClips.isEmpty
+    }
+
+    @ViewBuilder
+    private var firstAssetPrompt: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: 10) {
+                Image(systemName: "sparkles.rectangle.stack")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(LF.gold)
+                Text("先添加第一份素材")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    showAssetPicker = true
+                } label: {
+                    Label("添加素材", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .lfActionButtonStyle(.primary)
+                .accessibilityIdentifier("editor-add-first-asset")
+                Text("选择剪影素材或相册内容，添加后就可以编辑和导出。")
+                    .font(.caption)
+                    .foregroundStyle(LF.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(18)
+            .frame(maxWidth: 360)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(LF.brandTint.opacity(0.24), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+            .padding(18)
+        } else {
+            VStack(spacing: 10) {
+                Image(systemName: "sparkles.rectangle.stack")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(LF.gold)
+                Text("先添加第一份素材")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(LF.textPrimary)
+                Text("选择剪影素材或相册内容，添加后就可以编辑和导出。")
+                    .font(.caption)
+                    .foregroundStyle(LF.textSecondary)
+                    .multilineTextAlignment(.center)
+                Button {
+                    showAssetPicker = true
+                } label: {
+                    Label("添加素材", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .lfActionButtonStyle(.primary)
+                .accessibilityIdentifier("editor-add-first-asset")
+            }
+            .padding(18)
+            .frame(maxWidth: 280)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(LF.brandTint.opacity(0.24), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+            .padding(18)
+        }
     }
 
     /// 画布两侧的圆形快捷入口共用一套尺寸、底色和按压状态。
@@ -562,6 +713,7 @@ struct EditorView: View {
                 appState.isPlaying ? "暂停" : "播放",
                 comment: "Playback accessibility label"
             ))
+            .accessibilityIdentifier("editor-playback-toggle")
         }
         .padding(.horizontal, 16)
         .frame(height: 38)
@@ -701,6 +853,7 @@ struct EditorView: View {
             )
         }
         .lfAnimatedPlainButtonStyle()
+        .accessibilityIdentifier("editor-tool-\(tool.id)")
         .accessibilityValue(tool == .timeline
             ? NSLocalizedString(showTimeline ? "已显示" : "已隐藏", comment: "Timeline visibility")
             : "")
@@ -1401,6 +1554,7 @@ private struct StickerPickerCell: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier(sticker.id)
         .accessibilityHint(NSLocalizedString(
             isLocked ? "AI 贴纸仅限 GIFBloom Pro 使用。" : "轻点添加，长按预览",
             comment: "Sticker access hint"

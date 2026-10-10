@@ -1,0 +1,4 @@
+• Añadimos un botón para guardar el trabajo final; las ediciones siguen guardándose automáticamente como borradores.
+• Después de exportar, puedes ver tu trabajo o seguir editando. Si falla el guardado en Fotos, puedes volver a intentarlo.
+• La exportación GIF mantiene los mismos efectos durante todo el proceso. Si el proyecto tiene audio, sugerimos exportarlo como vídeo.
+• Mejoramos la guía para empezar a crear y el flujo de exportación.

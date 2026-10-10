@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var purchaseManager: PurchaseManager
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var isShowingExtractionPicker = false
     @State private var liveConversionPickerItems: [PhotosPickerItem] = []
@@ -140,7 +141,7 @@ struct LibraryView: View {
             // The TabView bar stays visually overlaid on iPhone at XXXL. Keep
             // enough scrollable tail space for the last card/action to move
             // completely above it instead of relying on the device's inset.
-            .safeAreaPadding(.bottom, 96)
+            .safeAreaPadding(.bottom, dynamicTypeSize.isAccessibilitySize ? 144 : 96)
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .animation(.easeInOut(duration: 0.22), value: isDownloading)
@@ -318,18 +319,31 @@ struct LibraryView: View {
     // MARK: - 素材入口
 
     private var pickerSection: some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: 12),
-                GridItem(.flexible(), spacing: 12)
-            ],
-            spacing: 12
-        ) {
-            extractionPickerControl(kind: .live)
-            extractionPickerControl(kind: .static)
-            liveConversionPickerControl
-            videoConversionPickerControl
+        VStack(alignment: .leading, spacing: 12) {
+            if appState.clips.isEmpty && appState.backgroundMedia.isEmpty {
+                firstCreateGuide
+            }
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12)
+                ],
+                spacing: 12
+            ) {
+                extractionPickerControl(kind: .live)
+                extractionPickerControl(kind: .static)
+                liveConversionPickerControl
+                videoConversionPickerControl
+            }
         }
+        .photosPicker(
+            isPresented: $isShowingExtractionPicker,
+            selection: $pickerItems,
+            maxSelectionCount: 5,
+            selectionBehavior: .ordered,
+            matching: .any(of: [.videos, .livePhotos, .images])
+        )
         .onChange(of: isShowingExtractionPicker) { wasPresented, isPresented in
             guard wasPresented, !isPresented else { return }
             Task { @MainActor in
@@ -361,6 +375,33 @@ struct LibraryView: View {
         }
     }
 
+    private var firstCreateGuide: some View {
+        SectionCard(title: "开始创作") {
+            VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    pendingExtractKind = .live
+                    dynamicCutoutSymbolAnimation += 1
+                    isShowingExtractionPicker = true
+                } label: {
+                    Label("开始创作", systemImage: "sparkles")
+                        .frame(maxWidth: .infinity)
+                }
+                .lfActionButtonStyle(.primary)
+                .disabled(isMediaBusy)
+                .accessibilityIdentifier("library-start-creating")
+                .layoutPriority(1)
+
+                Text("从一段视频或 Live Photo 生成第一份动态剪影素材。")
+                    .font(.subheadline)
+                    .foregroundStyle(LF.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Label("选择素材 → 编辑 → 导出", systemImage: "arrow.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LF.header)
+            }
+        }
+    }
+
     @ViewBuilder
     private func extractionPickerControl(kind: ExtractKind) -> some View {
         let isDynamic = kind == .live
@@ -385,13 +426,6 @@ struct LibraryView: View {
             )
         }
         .lfAnimatedPlainButtonStyle()
-        .photosPicker(
-            isPresented: $isShowingExtractionPicker,
-            selection: $pickerItems,
-            maxSelectionCount: 5,
-            selectionBehavior: .ordered,
-            matching: .any(of: [.videos, .livePhotos, .images])
-        )
         .disabled(isMediaBusy)
         .accessibilityIdentifier(isDynamic ? "library-extraction-entry" : "library-static-cutout-entry")
         .accessibilityLabel(title)
@@ -3585,12 +3619,16 @@ struct ClipMenuView: View {
     }
 
     private var hasCurrentExport: Bool {
-        clipExportState.isCurrent(
+        guard clipExportState.isCurrent(
             for: currentClip.rotationQuarterTurns,
             cropKey: currentClip.cropCacheKey,
             resolution: gifResolution,
-            fps: gifFPS
-        )
+            fps: gifFPS,
+            effects: ClipGIFEffectSnapshot(clip: currentClip)
+        ) else {
+            return false
+        }
+        return true
     }
 
     private var gifResolutionOptions: [ExportResolution] {
@@ -3795,6 +3833,7 @@ struct ClipMenuView: View {
                 currentTime: 0,
                 selectedStyle: currentClip.stickerStyle
             ) { style in
+                guard style != currentClip.stickerStyle else { return }
                 appState.setClipStickerStyle(currentClip.id, style)
             }
         }
@@ -3935,7 +3974,11 @@ struct ClipMenuView: View {
     private func exportTransparentGIF() {
         exportGIFError = nil
         isExportingGIF = true
-        let clipID = clip.id
+        let exportedClip = currentClip
+        let clipID = exportedClip.id
+        let exportResolution = gifResolution
+        let exportFPS = gifFPS
+        let exportedEffects = ClipGIFEffectSnapshot(clip: exportedClip)
         let watermark = purchaseManager.hasPro ? nil : (previewWatermark ?? DecorationRenderer.randomLogoWatermark())
         previewWatermark = watermark
         exportGIFTask = Task(priority: .userInitiated) { @MainActor in
@@ -3946,16 +3989,17 @@ struct ClipMenuView: View {
             do {
                 _ = try await appState.exportClipAsTransparentGIF(
                     clipID,
-                    resolution: gifResolution,
-                    fps: gifFPS,
-                    watermark: watermark
+                    resolution: exportResolution,
+                    fps: exportFPS,
+                    watermark: watermark,
+                    clipSnapshot: exportedClip
                 )
-                let exportedClip = appState.clips.first(where: { $0.id == clipID }) ?? clip
                 clipExportState.markExported(
                     for: exportedClip.rotationQuarterTurns,
                     cropKey: exportedClip.cropCacheKey,
-                    resolution: gifResolution,
-                    fps: gifFPS
+                    resolution: exportResolution,
+                    fps: exportFPS,
+                    effects: exportedEffects
                 )
             } catch is CancellationError {
                 // 用户主动取消，不显示错误。

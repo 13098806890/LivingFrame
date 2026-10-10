@@ -71,6 +71,136 @@ final class CompositionRendererClipEffectsTests: XCTestCase {
         XCTAssertGreaterThan(alpha(in: styled, x: 0, y: 0), 0)
     }
 
+    func testRendererKeepsGIFClipSnapshotWhenFrameCacheChangesBetweenFrames() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clip-export-snapshot-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let frame = try XCTUnwrap(makeEdgeSubjectFrame())
+        XCTAssertTrue(writePNG(frame, to: folder.appendingPathComponent("00000.png")))
+
+        let clipID = "clip-export-snapshot"
+        let exportedClip = SegmentedClip(
+            id: clipID,
+            name: "export snapshot",
+            fps: 1,
+            frameCount: 1,
+            width: 100,
+            height: 100,
+            folderURL: folder,
+            edgeStyle: .outline,
+            edgeThickness: .thin,
+            stickerStyle: .comic
+        )
+        var changedClip = exportedClip
+        changedClip.edgeStyle = .none
+        changedClip.stickerStyle = .none
+
+        let composition = Composition(
+            name: "export snapshot",
+            canvas: CanvasSpec(width: 220, height: 220),
+            duration: 1,
+            fps: 1,
+            elements: [CompositionElement(
+                kind: .clip(clipID: clipID),
+                name: exportedClip.name,
+                transform: ElementTransform(position: CGPoint(x: 110, y: 110)),
+                endTime: 1,
+                sourceEndTime: 1
+            )],
+            background: .clear
+        )
+
+        FrameCache.shared.registerInMemory(exportedClip)
+        let renderer = CompositionRenderer(clipSnapshots: [clipID: exportedClip])
+        let beforeMutation = try XCTUnwrap(renderer.render(composition, at: 0))
+
+        // Simulate an effect edit arriving while a later GIF frame is rendered.
+        FrameCache.shared.registerInMemory(changedClip)
+        let afterMutation = try XCTUnwrap(renderer.render(composition, at: 0))
+        let liveCacheRenderer = CompositionRenderer()
+        let liveCacheImage = try XCTUnwrap(liveCacheRenderer.render(composition, at: 0))
+        let beforePixels = try XCTUnwrap(CGImageTestSupport.rgbaPixels(in: beforeMutation))
+        let afterPixels = try XCTUnwrap(CGImageTestSupport.rgbaPixels(in: afterMutation))
+        let liveCachePixels = try XCTUnwrap(CGImageTestSupport.rgbaPixels(in: liveCacheImage))
+
+        XCTAssertEqual(
+            visibleAlphaBounds(in: beforeMutation),
+            visibleAlphaBounds(in: afterMutation),
+            "GIF frames must keep the clip effects captured at export start"
+        )
+        XCTAssertTrue(
+            beforePixels == afterPixels,
+            "Every rendered pixel must come from the captured clip snapshot"
+        )
+        XCTAssertTrue(
+            afterPixels != liveCachePixels,
+            "A renderer without a snapshot should observe the changed cache value"
+        )
+    }
+
+    func testEachClipEffectPropertyChangesRenderedPixels() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clip-effect-fields-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let frame = try XCTUnwrap(makeSubjectFrame())
+        XCTAssertTrue(writePNG(frame, to: folder.appendingPathComponent("00000.png")))
+
+        let baseline = SegmentedClip(
+            id: "clip-effect-fields",
+            name: "effect fields",
+            fps: 1,
+            frameCount: 1,
+            width: frame.width,
+            height: frame.height,
+            folderURL: folder,
+            edgeStyle: .outline,
+            edgeLineStyle: .solid,
+            edgeThickness: .thin,
+            edgeColorHex: "FF0000",
+            stickerStyle: .none
+        )
+        let composition = Composition(
+            name: "effect fields",
+            canvas: CanvasSpec(width: 220, height: 220),
+            duration: 1,
+            fps: 1,
+            elements: [CompositionElement(
+                kind: .clip(clipID: baseline.id),
+                name: baseline.name,
+                transform: ElementTransform(position: CGPoint(x: 110, y: 110)),
+                endTime: 1,
+                sourceEndTime: 1
+            )],
+            background: .clear
+        )
+
+        FrameCache.shared.registerInMemory(baseline)
+        let baselineRendered = try XCTUnwrap(
+            CompositionRenderer(clipSnapshots: [baseline.id: baseline])
+                .render(composition, at: 0)
+        )
+        let expectedPixels = try XCTUnwrap(CGImageTestSupport.rgbaPixels(in: baselineRendered))
+        let variants: [(String, (inout SegmentedClip) -> Void)] = [
+            ("edge style", { $0.edgeStyle = .glow }),
+            ("thickness", { $0.edgeThickness = .thick }),
+            ("color", { $0.edgeColorHex = "00FF00" }),
+            ("sticker style", { $0.stickerStyle = .comic })
+        ]
+        for (name, change) in variants {
+            var changed = baseline
+            change(&changed)
+            FrameCache.shared.registerInMemory(changed)
+            let rendered = try XCTUnwrap(CompositionRenderer()
+                .render(composition, at: 0))
+            XCTAssertTrue(
+                CGImageTestSupport.rgbaPixels(in: rendered) != expectedPixels,
+                "Changing \(name) should change rendered pixels"
+            )
+        }
+    }
+
     func testClipEffectsPreserveBorderWhenSubjectTouchesSourceEdges() throws {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("clip-effect-padding-\(UUID().uuidString)", isDirectory: true)

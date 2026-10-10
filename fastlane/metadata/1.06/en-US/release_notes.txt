@@ -1,0 +1,4 @@
+• Added a clear Save Work action while edits continue to autosave as drafts.
+• After export, view your work or continue editing; retry saving to Photos if needed.
+• GIF exports keep one consistent snapshot of clip effects. If your project has audio, we’ll suggest video instead.
+• Improved the first-creation guide and export flow.

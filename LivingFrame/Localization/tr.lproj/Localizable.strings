@@ -820,3 +820,19 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Sistemin Apple Color Emoji stilini kullanır.";
+"开始创作" = "Oluşturmaya başla";
+"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Bir video veya Live Photo'dan ilk hareketli kesitinizi oluşturun.";
+"选择素材 → 编辑 → 导出" = "Medya seç → Düzenle → Dışa aktar";
+"先添加第一份素材" = "İlk varlığınızı ekleyin";
+"选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Bir kesit veya Fotoğraflar arşivi içeriği seçin, ardından düzenleyip dışa aktarın.";
+"在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Düzenleyicide medya ekleyip son sürümü buraya kaydetmek için “Çalışmayı Kaydet”e dokunun. Düzenlemeler otomatik olarak taslak şeklinde kaydedilir.";
+"将先保存正式作品" = "Son çalışma önce kaydedilecek";
+"导出文件会自动尝试保存到系统相册" = "Dışa aktarılan dosya otomatik olarak Fotoğraflar'a kaydedilmeye çalışılacak";
+"当前作品含音轨；GIF 不包含声音" = "Bu çalışmada ses parçası var; GIF ses içermez";
+"切换到视频" = "Videoya geç";
+"视频支持音轨，请检查导出文件中的声音" = "Video sesi destekler; dışa aktarılan dosyadaki sesi kontrol edin";
+"查看作品" = "Çalışmayı görüntüle";
+"继续编辑" = "Düzenlemeye devam et";
+"重试导出" = "Dışa aktarmayı yeniden dene";
+"返回编辑" = "Düzenleyiciye dön";
+"重试保存到相册" = "Fotoğraflar'a kaydetmeyi yeniden dene";

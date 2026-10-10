@@ -19,7 +19,7 @@ struct WorksView: View {
                     EmptyStateView(
                         icon: "photo.stack",
                         title: "还没有作品",
-                        message: "在编辑页编辑内容，点击保存后作品会显示在这里"
+                        message: "在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。"
                     )
                     .padding(.top, 80)
                 } else {
@@ -216,7 +216,7 @@ private struct SavedWorksView: View {
                         icon: searchText.isEmpty ? "photo.stack" : "magnifyingglass",
                         title: searchText.isEmpty ? "还没有作品" : "没有匹配的作品",
                         message: searchText.isEmpty
-                            ? "在编辑页编辑内容，点击保存后作品会显示在这里"
+                            ? "在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。"
                             : "尝试其他关键词"
                     )
                     .padding(.top, 32)

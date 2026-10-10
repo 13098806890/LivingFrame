@@ -1,0 +1,4 @@
+• Çalışmayı Kaydet düğmesi eklendi; düzenlemeler taslak olarak otomatik kaydedilmeye devam ediyor.
+• Dışa aktardıktan sonra çalışmanızı görüntüleyebilir veya düzenlemeyi sürdürebilirsiniz. Fotoğraflar’a kaydetme başarısız olursa yeniden deneyin.
+• GIF dışa aktarımı boyunca klip efektleri aynı kalır. Projede ses varsa video biçimini öneriyoruz.
+• İlk oluşturma kılavuzu ve dışa aktarma akışı iyileştirildi.
