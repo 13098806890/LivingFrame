@@ -2,5 +2,5 @@
 • Após exportar, veja seu trabalho ou continue editando. Se não conseguir salvar no Fotos, tente novamente.
 • A exportação de GIF mantém os mesmos efeitos durante todo o processo. Se o projeto tiver áudio, sugerimos usar vídeo.
 • Melhoramos o guia para começar a criar e o fluxo de exportação.
-• Confira vários resultados de recortes, figurinhas, Live Photos e vídeos em uma única prévia. Deslize ou toque nos pontos para alternar entre os itens.
-• Edite e salve em Fotos apenas o item selecionado quando quiser. Fechar a prévia não salva os outros itens automaticamente.
+• Processe um item por vez nas quatro ferramentas de mídia. O seletor de recortes dinâmicos agora mostra apenas Live Photos e vídeos.
+• Visualize e recorte cada conversão e salve no Fotos quando quiser. Fechar a prévia não salva automaticamente.

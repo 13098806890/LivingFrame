@@ -2,5 +2,5 @@
 • Después de exportar, puedes ver tu trabajo o seguir editando. Si falla el guardado en Fotos, puedes volver a intentarlo.
 • La exportación GIF mantiene los mismos efectos durante todo el proceso. Si el proyecto tiene audio, sugerimos exportarlo como vídeo.
 • Mejoramos la guía para empezar a crear y el flujo de exportación.
-• Revisa varios resultados de recortes, stickers, Live Photos y vídeos en una sola vista previa; desliza o toca los puntos para cambiar de elemento.
-• Edita y guarda en Fotos solo el elemento seleccionado cuando quieras. Al cerrar la vista previa, los demás no se guardan automáticamente.
+• Procesa un elemento cada vez en las cuatro herramientas multimedia. El selector de recortes dinámicos solo muestra Live Photos y vídeos.
+• Previsualiza y recorta cada conversión, y guárdala en Fotos cuando quieras. Al cerrar la vista previa, no se guarda automáticamente.

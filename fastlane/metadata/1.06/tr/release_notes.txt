@@ -2,5 +2,5 @@
 • Dışa aktardıktan sonra çalışmanızı görüntüleyebilir veya düzenlemeyi sürdürebilirsiniz. Fotoğraflar’a kaydetme başarısız olursa yeniden deneyin.
 • GIF dışa aktarımı boyunca klip efektleri aynı kalır. Projede ses varsa video biçimini öneriyoruz.
 • İlk oluşturma kılavuzu ve dışa aktarma akışı iyileştirildi.
-• Birden fazla kesit, çıkartma, Live Photo ve video sonucunu tek önizlemede inceleyin; kaydırarak veya noktalara dokunarak öğeler arasında geçiş yapın.
-• Yalnızca seçili öğeyi düzenleyip istediğinizde Fotoğraflar’a kaydedin. Önizlemeyi kapatmak diğer öğeleri otomatik olarak kaydetmez.
+• Dört medya aracının her birinde aynı anda tek bir öğe işleyin. Dinamik kesit seçicisinde artık yalnızca Live Photo ve videolar görünür.
+• Her dönüşümü önizleyip kırpın, hazır olduğunuzda Fotoğraflar’a kaydedin. Önizlemeyi kapatmak otomatik kaydetmez.

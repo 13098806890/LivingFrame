@@ -2,5 +2,5 @@
 • After export, view your work or continue editing; retry saving to Photos if needed.
 • GIF exports keep one consistent snapshot of clip effects. If your project has audio, we’ll suggest video instead.
 • Improved the first-creation guide and export flow.
-• Review multiple cutout, sticker, Live Photo, and video results in one preview. Swipe or tap the dots to move between items.
-• Edit and save the selected item to Photos when you choose. Closing the preview does not save the remaining items automatically.
+• Process one item at a time in all four media tools. The Dynamic Cutout picker now shows only Live Photos and videos.
+• Preview and crop each conversion, then save it to Photos when ready. Closing the preview does not save automatically.

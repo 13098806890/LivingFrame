@@ -473,9 +473,11 @@ struct LibraryView: View {
         .photosPicker(
             isPresented: $isShowingExtractionPicker,
             selection: $pickerItems,
-            maxSelectionCount: 5,
+            maxSelectionCount: 1,
             selectionBehavior: .ordered,
-            matching: .any(of: [.videos, .livePhotos, .images])
+            matching: pendingExtractKind == .live
+                ? .any(of: [.videos, .livePhotos])
+                : .any(of: [.videos, .livePhotos, .images])
         )
         .onChange(of: isShowingExtractionPicker) { wasPresented, isPresented in
             guard wasPresented, !isPresented else { return }
@@ -535,7 +537,7 @@ struct LibraryView: View {
         .disabled(isMediaBusy)
         .accessibilityIdentifier(isDynamic ? "library-extraction-entry" : "library-static-cutout-entry")
         .accessibilityLabel(title)
-        .accessibilityHint(isDynamic ? "选择视频、Live Photo 或照片" : "选择照片、Live Photo 或视频的首帧")
+        .accessibilityHint(isDynamic ? "选择视频或 Live Photo" : "选择照片、Live Photo 或视频的首帧")
 
         if isDynamic {
             button.accessibilityFocused($extractionEntryFocused)
@@ -561,7 +563,7 @@ struct LibraryView: View {
         .photosPicker(
             isPresented: $isShowingLiveConversionPicker,
             selection: $liveConversionPickerItems,
-            maxSelectionCount: 5,
+            maxSelectionCount: 1,
             selectionBehavior: .ordered,
             matching: .any(of: [
                 .videos,
@@ -591,7 +593,7 @@ struct LibraryView: View {
         .photosPicker(
             isPresented: $isShowingVideoConversionPicker,
             selection: $videoConversionPickerItems,
-            maxSelectionCount: 5,
+            maxSelectionCount: 1,
             selectionBehavior: .ordered,
             matching: .any(of: [
                 .livePhotos,

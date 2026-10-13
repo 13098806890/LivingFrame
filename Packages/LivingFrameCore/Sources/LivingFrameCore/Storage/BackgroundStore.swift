@@ -57,6 +57,25 @@ public struct BackgroundStore {
     public static let userMediaRetentionLimit = 20
 
     private final class VideoFrameSource: NSObject {
+        private final class GeneratedFrameBox: @unchecked Sendable {
+            private let lock = NSLock()
+            let semaphore = DispatchSemaphore(value: 0)
+            private var image: CGImage?
+
+            func set(_ image: CGImage?) {
+                lock.lock()
+                self.image = image
+                lock.unlock()
+                semaphore.signal()
+            }
+
+            func get() -> CGImage? {
+                lock.lock()
+                defer { lock.unlock() }
+                return image
+            }
+        }
+
         let generator: AVAssetImageGenerator
         private let lock = NSLock()
 
@@ -72,7 +91,12 @@ public struct BackgroundStore {
         func copyFrame(at time: CMTime) -> CGImage? {
             lock.lock()
             defer { lock.unlock() }
-            return try? generator.copyCGImage(at: time, actualTime: nil)
+            let result = GeneratedFrameBox()
+            generator.generateCGImageAsynchronously(for: time) { image, _, _ in
+                result.set(image)
+            }
+            result.semaphore.wait()
+            return result.get()
         }
     }
 

@@ -3,32 +3,6 @@ import CoreImage
 import Foundation
 @preconcurrency import Dispatch
 
-private final class ExportSessionBox: @unchecked Sendable {
-    let value: AVAssetExportSession
-
-    init(_ value: AVAssetExportSession) {
-        self.value = value
-    }
-}
-
-private final class CompletionGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var didComplete = false
-
-    func take() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !didComplete else { return false }
-        didComplete = true
-        return true
-    }
-}
-
-private enum RemuxWaitResult {
-    case completed
-    case timedOut
-}
-
 /// 视频导出：HEVC-alpha（带透明，首选）/ H.264 回退，可混入音轨
 ///
 /// 实现：AVAssetWriter 只写视频轨（单输入），音频用 OfflineAudioMixer 混音后，
@@ -354,43 +328,27 @@ public struct VideoExporter {
         }
         let tempURL = outputURL.deletingPathExtension().appendingPathExtension("remux.mov")
         try? FileManager.default.removeItem(at: tempURL)
-        session.outputURL = tempURL
-        session.outputFileType = .mov
         session.shouldOptimizeForNetworkUse = false
 
-        let sessionBox = ExportSessionBox(session)
-        let result: RemuxWaitResult = await withCheckedContinuation { continuation in
-            let gate = CompletionGate()
-            let timeoutTask = Task { [sessionBox, gate] in
-                do {
-                    try await Task.sleep(nanoseconds: 60_000_000_000)
-                } catch {
-                    return
-                }
-                guard gate.take() else { return }
-                sessionBox.value.cancelExport()
-                continuation.resume(returning: .timedOut)
-            }
-
-            sessionBox.value.exportAsynchronously {
-                timeoutTask.cancel()
-                guard gate.take() else { return }
-                continuation.resume(returning: .completed)
+        let timeoutTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 60_000_000_000)
+                session.cancelExport()
+            } catch {
+                // The export finished before the timeout.
             }
         }
-        switch result {
-        case .timedOut:
-            throw ExportError.renderFailed
-        case .completed:
-            switch sessionBox.value.status {
-            case .completed:
-                break
-            case .cancelled:
+        defer { timeoutTask.cancel() }
+        do {
+            try await session.export(to: tempURL, as: .mov)
+        } catch is CancellationError {
+            if Task.isCancelled {
                 throw CancellationError()
-            default:
-                LogStore.log("VideoExporter: remux failed status=\(sessionBox.value.status.rawValue) error=\(String(describing: sessionBox.value.error))")
-                throw ExportError.renderFailed
             }
+            throw ExportError.renderFailed
+        } catch {
+            LogStore.log("VideoExporter: remux failed error=\(error)")
+            throw ExportError.renderFailed
         }
 
         try? FileManager.default.removeItem(at: outputURL)
