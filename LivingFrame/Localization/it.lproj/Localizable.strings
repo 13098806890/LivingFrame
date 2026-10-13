@@ -820,9 +820,6 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Utilizza lo stile Apple Color Emoji del sistema.";
-"开始创作" = "Inizia a creare";
-"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Crea il tuo primo ritaglio animato da un video o da una Live Photo.";
-"选择素材 → 编辑 → 导出" = "Scegli media → Modifica → Esporta";
 "先添加第一份素材" = "Aggiungi il primo elemento";
 "选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Scegli un ritaglio o un contenuto della libreria foto, poi modificalo ed esportalo.";
 "在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Aggiungi media nell’editor e tocca “Salva lavoro” per salvare qui la versione finale. Le modifiche vengono salvate automaticamente come bozza.";
@@ -836,3 +833,58 @@
 "重试导出" = "Riprova esportazione";
 "返回编辑" = "Torna all’editor";
 "重试保存到相册" = "Riprova a salvare in Foto";
+
+/* Conversion result preview */
+"已保存 %1$lld 项，未保存 %2$lld 项。" = "%1$lld salvato/i, %2$lld non salvato/i.";
+"未知" = "Sconosciuto";
+"拖动边框调整保存画面" = "Trascina i bordi per regolare l’inquadratura";
+"类型" = "Tipo";
+"Live Photo 预览" = "Anteprima Live Photo";
+"视频预览" = "Anteprima video";
+"时长" = "Durata";
+"画面尺寸" = "Dimensioni fotogramma";
+"文件大小" = "Dimensione file";
+"声音" = "Audio";
+"无音频" = "Senza audio";
+"包含音频" = "Audio incluso";
+"完成裁剪" = "Fine";
+"调整裁剪" = "Ritaglia";
+"恢复原始画面" = "Reimposta ritaglio";
+"正在保存…" = "Salvataggio…";
+"保存到照片" = "Salva in Foto";
+"跳过此项" = "Salta questo elemento";
+"取消本批次" = "Annulla gruppo";
+"保存失败，请重试。" = "Salvataggio non riuscito. Riprova.";
+"取消裁剪" = "Annulla ritaglio";
+
+/* Conversion crop preview accessibility and formatting */
+"无法预览裁剪结果，请重试。" = "Impossibile visualizzare l’anteprima del ritaglio. Riprova.";
+"%1$d.%2$03d 秒" = "%1$d.%2$03d secondi";
+"裁剪框左上角" = "Maniglia ritaglio in alto a sinistra";
+"裁剪框上边缘" = "Bordo superiore del ritaglio";
+"裁剪框右上角" = "Maniglia ritaglio in alto a destra";
+"裁剪框左边缘" = "Bordo sinistro del ritaglio";
+"裁剪框右边缘" = "Bordo destro del ritaglio";
+"裁剪框左下角" = "Maniglia ritaglio in basso a sinistra";
+"裁剪框下边缘" = "Bordo inferiore del ritaglio";
+"裁剪框右下角" = "Maniglia ritaglio in basso a destra";
+"裁剪范围，%1$d × %2$d" = "Area ritaglio, %1$d × %2$d";
+"未设置裁剪范围" = "Nessuna area di ritaglio impostata";
+
+/* Conversion preview status and rendering feedback */
+"转换结果已准备，尚未保存到照片" = "Il risultato è pronto e non è ancora stato salvato in Foto";
+"正在生成裁剪预览…" = "Creazione dell’anteprima ritagliata…";
+"转换时无法保留源音频，预览不会包含声音。" = "Impossibile mantenere l’audio originale. L’anteprima sarà senza audio.";
+
+/* Conversion preview loading */
+"正在准备预览…" = "Preparazione dell’anteprima…";
+
+"播放预览" = "Riproduci anteprima";
+"暂停预览" = "Metti in pausa anteprima";
+
+"打开预览声音" = "Attiva audio anteprima";
+"关闭预览声音" = "Disattiva audio anteprima";
+"第 %1$lld 项，共 %2$lld 项" = "Elemento %1$lld di %2$lld";
+"上一项" = "Elemento precedente";
+"下一项" = "Elemento successivo";
+"已保存到照片。" = "Salvato in Foto.";

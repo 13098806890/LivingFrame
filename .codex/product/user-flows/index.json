@@ -1,4 +1,20 @@
 {
   "version": 1,
-  "flows": []
+  "flows": [
+    {
+      "id": "flow.library.batch-preview",
+      "name": "浏览并逐项保存批量转换结果",
+      "feature_ids": ["library.batch-preview"],
+      "preconditions": ["同一入口选择至少两项支持的素材", "素材可读取且转换完成"],
+      "variants": ["动态剪影", "静态贴纸", "转为 Live Photo", "转为视频"],
+      "steps": [
+        {"action": "等待准备完成", "expect": "同一个预览页显示第一项和当前项/总数；部分失败有反馈"},
+        {"action": "编辑并保存当前项", "expect": "仅当前项保存到照片；页面保留并显示已保存反馈"},
+        {"action": "向左滑动或点击下一项", "expect": "显示下一项，上一项停止播放且保留编辑记录"},
+        {"action": "返回上一项", "expect": "裁剪、导出规格和保存状态保持；转换预览可恢复原画面"},
+        {"action": "关闭预览", "expect": "退出整批，转换临时文件清理；已有素材库结果仍可打开"}
+      ],
+      "evidence": ["screenshot", "app-log", "saved-file"]
+    }
+  ]
 }

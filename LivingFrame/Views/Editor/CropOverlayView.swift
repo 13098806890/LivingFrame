@@ -45,6 +45,12 @@ struct CropOverlayView: View {
                         handleView(handle)
                             .position(handlePoint(handle, in: frame))
                             .gesture(handleGesture(handle: handle, geometry: geometry))
+                            .accessibilityElement()
+                            .accessibilityLabel(Text(handle.accessibilityLabel))
+                            .accessibilityValue(Text(cropAccessibilityValue))
+                            .accessibilityAdjustableAction { direction in
+                                adjustHandle(handle, direction: direction)
+                            }
                     }
                 }
             }
@@ -158,6 +164,50 @@ struct CropOverlayView: View {
             }
             .onEnded { _ in gestureStartRect = nil }
     }
+
+    private var cropAccessibilityValue: String {
+        guard let cropRect else { return NSLocalizedString("未设置裁剪范围", comment: "Crop accessibility value") }
+        return String.localizedStringWithFormat(
+            NSLocalizedString("裁剪范围，%1$d × %2$d", comment: "Crop accessibility dimensions"),
+            Int(cropRect.width.rounded()),
+            Int(cropRect.height.rounded())
+        )
+    }
+
+    private func adjustHandle(
+        _ handle: CropHandle,
+        direction: AccessibilityAdjustmentDirection
+    ) {
+        guard let rect = cropRect else { return }
+        let delta = max(minimumCropSize * 0.05, 1) * (direction == .increment ? 1 : -1)
+        var minX = rect.minX
+        var minY = rect.minY
+        var maxX = rect.maxX
+        var maxY = rect.maxY
+        switch handle {
+        case .topLeading:
+            minX -= delta; maxY += delta
+        case .top:
+            maxY += delta
+        case .topTrailing:
+            maxX += delta; maxY += delta
+        case .leading:
+            minX -= delta
+        case .trailing:
+            maxX += delta
+        case .bottomLeading:
+            minX -= delta; minY -= delta
+        case .bottom:
+            minY -= delta
+        case .bottomTrailing:
+            maxX += delta; minY -= delta
+        }
+        minX = min(max(minX, contentRect.minX), maxX - minimumCropSize)
+        minY = min(max(minY, contentRect.minY), maxY - minimumCropSize)
+        maxX = max(min(maxX, contentRect.maxX), minX + minimumCropSize)
+        maxY = max(min(maxY, contentRect.maxY), minY + minimumCropSize)
+        cropRect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
 }
 
 private struct CropOverlayGeometry {
@@ -210,4 +260,19 @@ private enum CropHandle: CaseIterable, Hashable {
 
     var touchWidth: CGFloat { isVertical ? 24 : 44 }
     var touchHeight: CGFloat { isHorizontal ? 24 : 44 }
+
+    var accessibilityLabel: String {
+        let key: String
+        switch self {
+        case .topLeading: key = "裁剪框左上角"
+        case .top: key = "裁剪框上边缘"
+        case .topTrailing: key = "裁剪框右上角"
+        case .leading: key = "裁剪框左边缘"
+        case .trailing: key = "裁剪框右边缘"
+        case .bottomLeading: key = "裁剪框左下角"
+        case .bottom: key = "裁剪框下边缘"
+        case .bottomTrailing: key = "裁剪框右下角"
+        }
+        return NSLocalizedString(key, comment: "Crop handle VoiceOver label")
+    }
 }

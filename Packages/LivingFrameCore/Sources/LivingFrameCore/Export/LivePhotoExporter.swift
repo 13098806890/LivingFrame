@@ -218,8 +218,9 @@ public struct LivePhotoExporter {
         stillImageTimeInput.markAsFinished()
 
         let renderer = CompositionRenderer(context: context, exportWatermark: watermark)
-        let rect = composition.canvasRect
-        let white = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 1)).cropped(to: rect)
+        let renderRect = composition.renderRect
+        let outputRect = CGRect(origin: .zero, size: renderRect.size)
+        let white = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 1)).cropped(to: outputRect)
         var coverData: Data?
         var memory = ExportMemoryDiagnostics(exporter: "LivePhoto", frameCount: frameCount)
         memory.log("start-video-track")
@@ -263,9 +264,17 @@ public struct LivePhotoExporter {
                 }
                 // Live Photo 无透明通道：clear 背景填充为白色，保证不透明
                 let source = renderer.renderCIImage(composition, at: Double(index) / composition.fps)
-                    ?? CIImage.clear.cropped(to: rect)
-                let ci = source.composited(over: white)
-                context.render(ci, to: buffer, bounds: rect, colorSpace: nil)
+                    ?? CIImage.clear.cropped(to: renderRect)
+                // CIImage keeps its original canvas coordinates after cropping. The
+                // writer buffers use the cropped output dimensions, so translate the
+                // selected area to a zero-origin output before rendering both frames
+                // and the paired Live Photo cover.
+                let normalized = source.cropped(to: renderRect).transformed(by: CGAffineTransform(
+                    translationX: -renderRect.minX,
+                    y: -renderRect.minY
+                ))
+                let ci = normalized.composited(over: white)
+                context.render(ci, to: buffer, bounds: outputRect, colorSpace: nil)
                 let firstFrameCover = index == 0 ? jpegData(from: ci, assetID: assetID) : nil
                 let time = CMTime(value: CMTimeValue(index), timescale: CMTimeScale(composition.fps))
                 guard adaptor.append(buffer, withPresentationTime: time) else {

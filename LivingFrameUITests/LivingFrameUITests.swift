@@ -572,6 +572,90 @@ final class LivingFrameUITests: XCTestCase {
         app.terminate()
     }
 
+    @MainActor
+    func testConversionPreviewOpensWithoutStuckLoading() throws {
+        launch(Self.simplifiedChinese, extraArguments: ["-UIAuditConversionPreview"])
+
+        let saveButton = app.buttons["保存到照片"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 120), "Conversion preview did not open")
+        XCTAssertFalse(app.staticTexts["正在准备预览…"].exists, "Initial preview is stuck loading")
+        XCTAssertTrue(app.buttons["播放预览"].exists || app.buttons["暂停预览"].exists)
+        XCTAssertFalse(app.buttons["conversion-preview-audio-toggle"].exists, "Silent GIF preview must not show audio control")
+
+        let cropButton = app.buttons["裁剪素材"]
+        XCTAssertTrue(cropButton.waitForExistence(timeout: 5))
+        cropButton.tap()
+        let finishCropButton = app.buttons["完成裁剪"]
+        XCTAssertTrue(finishCropButton.waitForExistence(timeout: 10))
+        let bottomTrailingHandle = app.descendants(matching: .any)["裁剪框右下角"].firstMatch
+        XCTAssertTrue(bottomTrailingHandle.waitForExistence(timeout: 5), "Crop handle is not discoverable")
+        let handleFrame = bottomTrailingHandle.frame
+        let start = bottomTrailingHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(
+            dx: max(0.05, (handleFrame.midX - 48) / max(app.frame.width, 1)),
+            dy: max(0.05, (handleFrame.midY - 48) / max(app.frame.height, 1))
+        ))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        XCTAssertTrue(finishCropButton.isEnabled, "Crop confirmation must remain available")
+        finishCropButton.tap()
+        XCTAssertFalse(app.staticTexts["正在准备预览…"].exists, "Crop preview must not enter a render wait state")
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Save action disappeared after crop preview")
+        XCTAssertTrue(app.buttons["恢复原始画面"].waitForExistence(timeout: 5), "Changed crop was not retained")
+        XCTAssertFalse(app.buttons["顺时针旋转90度"].exists)
+    }
+
+    @MainActor
+    func testConversionPreviewPagesQueuedResultsInOneSheet() throws {
+        launch(Self.simplifiedChinese, extraArguments: ["-UIAuditConversionPreviewQueue"])
+
+        let saveButton = app.buttons["保存到照片"]
+        let cancelButton = app.buttons["取消本批次"]
+        let firstName = app.staticTexts["UI Queue First"]
+        let secondName = app.staticTexts["UI Queue Second"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 120), "First conversion preview did not open")
+        XCTAssertTrue(firstName.waitForExistence(timeout: 5))
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: 5))
+        let firstPageDot = app.buttons["batch-preview-dot-0"]
+        let secondPageDot = app.buttons["batch-preview-dot-1"]
+        XCTAssertTrue(firstPageDot.waitForExistence(timeout: 5))
+        XCTAssertTrue(secondPageDot.exists)
+        XCTAssertTrue(firstPageDot.value as? String == "已选中")
+        saveButton.tap()
+        XCTAssertTrue(app.staticTexts["已保存到照片。"].waitForExistence(timeout: 10))
+        secondPageDot.tap()
+        XCTAssertTrue(secondName.waitForExistence(timeout: 10), "Second queued conversion preview did not open")
+        XCTAssertTrue(secondPageDot.value as? String == "已选中")
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: 5))
+        cancelButton.tap()
+        XCTAssertTrue(secondName.waitForNonExistence(timeout: 10), "Second queued conversion preview did not dismiss")
+        XCTAssertTrue(app.alerts["转换完成"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["已保存 1 项，未保存 1 项。"].exists)
+    }
+
+    @MainActor
+    func testConversionPreviewCancelsPendingReplay() throws {
+        launch(Self.simplifiedChinese, extraArguments: ["-UIAuditConversionPreview"])
+
+        let saveButton = app.buttons["保存到照片"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 120), "Conversion preview did not open")
+        let playButton = app.buttons["播放预览"]
+        XCTAssertTrue(playButton.waitForExistence(timeout: 10), "Short preview did not reach replay state")
+        playButton.tap()
+
+        let cropButton = app.buttons["裁剪素材"]
+        XCTAssertTrue(cropButton.waitForExistence(timeout: 5))
+        cropButton.tap()
+        XCTAssertTrue(app.buttons["播放预览"].waitForExistence(timeout: 5), "Entering crop should cancel a pending replay")
+
+        let cancelButton = app.buttons["取消本批次"]
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: 5))
+        XCTAssertFalse(cancelButton.isEnabled, "Batch navigation and dismissal must stay locked during crop editing")
+        app.buttons["完成裁剪"].tap()
+        XCTAssertTrue(cancelButton.isEnabled, "Batch dismissal should unlock after crop editing ends")
+        cancelButton.tap()
+        XCTAssertTrue(saveButton.waitForNonExistence(timeout: 10), "Preview did not close after cancelling a pending replay")
+    }
+
     /// Capture the editor's sheet/menu/confirmation entry points with the
     /// deterministic in-app fixture. This complements the end-to-end workflow
     /// audit without relying on Photos, imported user media, or saved user work.

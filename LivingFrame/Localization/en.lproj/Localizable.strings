@@ -216,7 +216,7 @@
 "成功转换 %1$lld 项，%2$lld 项失败。%@" = "%1$lld converted successfully; %2$lld failed. %@";
 "请重新选择素材后重试。" = "Choose media again and retry.";
 "已转换并保存 %1$lld 项素材到照片。" = "Converted and saved %1$lld item(s) to Photos.";
-"转换时无法保留源音频，已继续保存无声视频。" = "The source audio could not be retained, so the silent video was saved.";
+"转换时无法保留源音频，预览不会包含声音。" = "The source audio couldn't be retained. The preview will be silent.";
 "剪影" = "Cutouts";
 "剪影素材" = "Cutout Assets";
 "相册" = "Photos";
@@ -824,9 +824,6 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Uses the system Apple Color Emoji style.";
-"开始创作" = "Start Creating";
-"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Create your first animated cutout from a video or Live Photo.";
-"选择素材 → 编辑 → 导出" = "Choose media → Edit → Export";
 "先添加第一份素材" = "Add your first asset";
 "选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Choose a cutout or photo library asset, then edit and export it.";
 "在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Add media in the editor and tap “Save Work” to save the final version here. Edits are saved automatically as drafts.";
@@ -840,3 +837,57 @@
 "重试导出" = "Retry Export";
 "返回编辑" = "Back to Editor";
 "重试保存到相册" = "Retry Saving to Photos";
+
+/* Conversion result preview */
+"已保存 %1$lld 项，未保存 %2$lld 项。" = "Saved %1$lld item(s), %2$lld not saved.";
+"未知" = "Unknown";
+"拖动边框调整保存画面" = "Drag the edges to adjust the saved frame";
+"类型" = "Type";
+"Live Photo 预览" = "Live Photo Preview";
+"视频预览" = "Video Preview";
+"时长" = "Duration";
+"画面尺寸" = "Frame size";
+"文件大小" = "File size";
+"声音" = "Audio";
+"无音频" = "No audio";
+"包含音频" = "Audio included";
+"完成裁剪" = "Done";
+"调整裁剪" = "Crop";
+"恢复原始画面" = "Reset crop";
+"正在保存…" = "Saving…";
+"保存到照片" = "Save to Photos";
+"跳过此项" = "Skip this item";
+"取消本批次" = "Cancel batch";
+"保存失败，请重试。" = "Save failed. Try again.";
+"取消裁剪" = "Cancel crop";
+
+/* Conversion crop preview accessibility and formatting */
+"无法预览裁剪结果，请重试。" = "Couldn't preview the crop. Try again.";
+"%1$d.%2$03d 秒" = "%1$d.%2$03d seconds";
+"裁剪框左上角" = "Top-left crop handle";
+"裁剪框上边缘" = "Top crop edge";
+"裁剪框右上角" = "Top-right crop handle";
+"裁剪框左边缘" = "Left crop edge";
+"裁剪框右边缘" = "Right crop edge";
+"裁剪框左下角" = "Bottom-left crop handle";
+"裁剪框下边缘" = "Bottom crop edge";
+"裁剪框右下角" = "Bottom-right crop handle";
+"裁剪范围，%1$d × %2$d" = "Crop area, %1$d × %2$d";
+"未设置裁剪范围" = "No crop area set";
+
+/* Conversion preview status and rendering feedback */
+"转换结果已准备，尚未保存到照片" = "The result is ready and hasn't been saved to Photos";
+"正在生成裁剪预览…" = "Generating cropped preview…";
+
+/* Conversion preview loading */
+"正在准备预览…" = "Preparing preview…";
+
+"播放预览" = "Play preview";
+"暂停预览" = "Pause preview";
+
+"打开预览声音" = "Turn on preview sound";
+"关闭预览声音" = "Turn off preview sound";
+"第 %1$lld 项，共 %2$lld 项" = "Item %1$lld of %2$lld";
+"上一项" = "Previous item";
+"下一项" = "Next item";
+"已保存到照片。" = "Saved to Photos.";

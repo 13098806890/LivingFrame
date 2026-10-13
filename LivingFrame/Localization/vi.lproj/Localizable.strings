@@ -820,9 +820,6 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Sử dụng hệ thống phong cách Apple Color Emoji.";
-"开始创作" = "Bắt đầu sáng tạo";
-"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Tạo hình cắt động đầu tiên từ video hoặc Live Photo.";
-"选择素材 → 编辑 → 导出" = "Chọn phương tiện → Chỉnh sửa → Xuất";
 "先添加第一份素材" = "Thêm nội dung đầu tiên";
 "选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Chọn nội dung cắt hoặc thư viện ảnh, sau đó chỉnh sửa và xuất.";
 "在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Thêm nội dung trong trình chỉnh sửa và chạm vào “Lưu tác phẩm” để lưu phiên bản cuối tại đây. Các thay đổi được tự động lưu dưới dạng bản nháp.";
@@ -836,3 +833,58 @@
 "重试导出" = "Thử xuất lại";
 "返回编辑" = "Quay lại trình chỉnh sửa";
 "重试保存到相册" = "Thử lưu vào Ảnh lại";
+
+/* Conversion result preview */
+"已保存 %1$lld 项，未保存 %2$lld 项。" = "Đã lưu %1$lld mục, chưa lưu %2$lld mục.";
+"未知" = "Không rõ";
+"拖动边框调整保存画面" = "Kéo viền để điều chỉnh khung hình lưu";
+"类型" = "Loại";
+"Live Photo 预览" = "Xem trước Live Photo";
+"视频预览" = "Xem trước video";
+"时长" = "Thời lượng";
+"画面尺寸" = "Kích thước khung hình";
+"文件大小" = "Kích thước tệp";
+"声音" = "Âm thanh";
+"无音频" = "Không có âm thanh";
+"包含音频" = "Có âm thanh";
+"完成裁剪" = "Xong";
+"调整裁剪" = "Cắt khung hình";
+"恢复原始画面" = "Đặt lại vùng cắt";
+"正在保存…" = "Đang lưu…";
+"保存到照片" = "Lưu vào Ảnh";
+"跳过此项" = "Bỏ qua mục này";
+"取消本批次" = "Hủy loạt này";
+"保存失败，请重试。" = "Lưu thất bại. Hãy thử lại.";
+"取消裁剪" = "Hủy cắt khung hình";
+
+/* Conversion crop preview accessibility and formatting */
+"无法预览裁剪结果，请重试。" = "Không thể xem trước phần cắt. Hãy thử lại.";
+"%1$d.%2$03d 秒" = "%1$d.%2$03d giây";
+"裁剪框左上角" = "Nút cắt trên bên trái";
+"裁剪框上边缘" = "Cạnh cắt phía trên";
+"裁剪框右上角" = "Nút cắt trên bên phải";
+"裁剪框左边缘" = "Cạnh cắt bên trái";
+"裁剪框右边缘" = "Cạnh cắt bên phải";
+"裁剪框左下角" = "Nút cắt dưới bên trái";
+"裁剪框下边缘" = "Cạnh cắt phía dưới";
+"裁剪框右下角" = "Nút cắt dưới bên phải";
+"裁剪范围，%1$d × %2$d" = "Vùng cắt, %1$d × %2$d";
+"未设置裁剪范围" = "Chưa đặt vùng cắt";
+
+/* Conversion preview status and rendering feedback */
+"转换结果已准备，尚未保存到照片" = "Kết quả đã sẵn sàng và chưa được lưu vào Ảnh";
+"正在生成裁剪预览…" = "Đang tạo bản xem trước đã cắt…";
+"转换时无法保留源音频，预览不会包含声音。" = "Không thể giữ âm thanh gốc. Bản xem trước sẽ không có tiếng.";
+
+/* Conversion preview loading */
+"正在准备预览…" = "Đang chuẩn bị bản xem trước…";
+
+"播放预览" = "Phát bản xem trước";
+"暂停预览" = "Tạm dừng bản xem trước";
+
+"打开预览声音" = "Bật âm thanh bản xem trước";
+"关闭预览声音" = "Tắt âm thanh bản xem trước";
+"第 %1$lld 项，共 %2$lld 项" = "Mục %1$lld trên %2$lld";
+"上一项" = "Mục trước";
+"下一项" = "Mục tiếp theo";
+"已保存到照片。" = "Đã lưu vào Ảnh.";

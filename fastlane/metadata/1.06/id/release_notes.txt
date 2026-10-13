@@ -2,3 +2,5 @@
 • Setelah ekspor, lihat karya atau lanjutkan mengedit. Coba lagi menyimpan ke Foto jika gagal.
 • Ekspor GIF menggunakan efek klip yang sama selama proses berlangsung. Jika proyek berisi audio, kami menyarankan format video.
 • Panduan mulai berkarya dan alur ekspor ditingkatkan.
+• Tinjau beberapa hasil cutout, stiker, Live Photo, dan video dalam satu pratinjau. Geser atau ketuk titik untuk berpindah item.
+• Edit dan simpan item yang dipilih ke Foto sesuai keinginan. Menutup pratinjau tidak otomatis menyimpan item lainnya.

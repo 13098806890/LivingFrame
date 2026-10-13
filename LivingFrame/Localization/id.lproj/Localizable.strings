@@ -820,9 +820,6 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Menggunakan sistem gaya Apple Color Emoji.";
-"开始创作" = "Mulai membuat";
-"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Buat potongan animasi pertama dari video atau Live Photo.";
-"选择素材 → 编辑 → 导出" = "Pilih media → Edit → Ekspor";
 "先添加第一份素材" = "Tambahkan aset pertama";
 "选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Pilih potongan atau konten dari perpustakaan foto, lalu edit dan ekspor.";
 "在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Tambahkan media di editor dan ketuk “Simpan Karya” untuk menyimpan versi final di sini. Perubahan disimpan otomatis sebagai draf.";
@@ -836,3 +833,58 @@
 "重试导出" = "Coba ekspor lagi";
 "返回编辑" = "Kembali ke editor";
 "重试保存到相册" = "Coba simpan ke Foto lagi";
+
+/* Conversion result preview */
+"已保存 %1$lld 项，未保存 %2$lld 项。" = "%1$lld item disimpan, %2$lld belum disimpan.";
+"未知" = "Tidak diketahui";
+"拖动边框调整保存画面" = "Seret tepi untuk mengatur bingkai yang disimpan";
+"类型" = "Jenis";
+"Live Photo 预览" = "Pratinjau Live Photo";
+"视频预览" = "Pratinjau video";
+"时长" = "Durasi";
+"画面尺寸" = "Ukuran bingkai";
+"文件大小" = "Ukuran file";
+"声音" = "Audio";
+"无音频" = "Tanpa audio";
+"包含音频" = "Audio disertakan";
+"完成裁剪" = "Selesai";
+"调整裁剪" = "Pangkas";
+"恢复原始画面" = "Atur ulang pangkasan";
+"正在保存…" = "Menyimpan…";
+"保存到照片" = "Simpan ke Foto";
+"跳过此项" = "Lewati item ini";
+"取消本批次" = "Batalkan batch";
+"保存失败，请重试。" = "Gagal menyimpan. Coba lagi.";
+"取消裁剪" = "Batalkan pangkasan";
+
+/* Conversion crop preview accessibility and formatting */
+"无法预览裁剪结果，请重试。" = "Pratinjau hasil pangkas tidak tersedia. Coba lagi.";
+"%1$d.%2$03d 秒" = "%1$d.%2$03d detik";
+"裁剪框左上角" = "Pegangan pangkas kiri atas";
+"裁剪框上边缘" = "Tepi pangkas atas";
+"裁剪框右上角" = "Pegangan pangkas kanan atas";
+"裁剪框左边缘" = "Tepi pangkas kiri";
+"裁剪框右边缘" = "Tepi pangkas kanan";
+"裁剪框左下角" = "Pegangan pangkas kiri bawah";
+"裁剪框下边缘" = "Tepi pangkas bawah";
+"裁剪框右下角" = "Pegangan pangkas kanan bawah";
+"裁剪范围，%1$d × %2$d" = "Area pangkas, %1$d × %2$d";
+"未设置裁剪范围" = "Area pangkas belum diatur";
+
+/* Conversion preview status and rendering feedback */
+"转换结果已准备，尚未保存到照片" = "Hasil siap dan belum disimpan ke Foto";
+"正在生成裁剪预览…" = "Membuat pratinjau hasil pangkas…";
+"转换时无法保留源音频，预览不会包含声音。" = "Audio sumber tidak dapat dipertahankan. Pratinjau tidak akan bersuara.";
+
+/* Conversion preview loading */
+"正在准备预览…" = "Menyiapkan pratinjau…";
+
+"播放预览" = "Putar pratinjau";
+"暂停预览" = "Jeda pratinjau";
+
+"打开预览声音" = "Nyalakan suara pratinjau";
+"关闭预览声音" = "Matikan suara pratinjau";
+"第 %1$lld 项，共 %2$lld 项" = "Item %1$lld dari %2$lld";
+"上一项" = "Item sebelumnya";
+"下一项" = "Item berikutnya";
+"已保存到照片。" = "Disimpan ke Foto.";

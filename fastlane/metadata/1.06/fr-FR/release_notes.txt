@@ -2,3 +2,5 @@
 • Après l’exportation, consultez votre création ou reprenez le montage. Vous pouvez réessayer l’enregistrement dans Photos en cas d’échec.
 • Les GIF utilisent les mêmes effets de clip pendant toute l’exportation. Si le projet contient du son, nous conseillons la vidéo.
 • Amélioration du guide de première création et du parcours d’exportation.
+• Consultez plusieurs résultats de découpes, autocollants, Live Photos et vidéos dans un même aperçu. Balayez ou touchez les points pour passer d’un élément à l’autre.
+• Modifiez et enregistrez dans Photos l’élément sélectionné quand vous le souhaitez. La fermeture de l’aperçu n’enregistre pas automatiquement les autres éléments.

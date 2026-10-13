@@ -2,3 +2,5 @@
 • Nach dem Export kannst du dein Werk ansehen oder weiterbearbeiten. Das Speichern in Fotos lässt sich bei Bedarf erneut versuchen.
 • GIF-Exporte verwenden während des gesamten Vorgangs dieselben Clip-Effekte. Bei Ton im Projekt empfehlen wir den Videoexport.
 • Der Einstieg ins Erstellen und der Exportablauf wurden verbessert.
+• Prüfe mehrere Ergebnisse für Cutouts, Sticker, Live Photos und Videos in einer Vorschau und wechsle per Wischen oder Punkten zwischen ihnen.
+• Bearbeite und sichere nur das ausgewählte Element in „Fotos“. Beim Schließen werden die übrigen Elemente nicht automatisch gesichert.

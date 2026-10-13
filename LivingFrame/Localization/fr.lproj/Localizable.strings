@@ -820,9 +820,6 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Utilise le style système Apple Color Emoji.";
-"开始创作" = "Commencer à créer";
-"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Créez votre premier élément animé à partir d’une vidéo ou d’une Live Photo.";
-"选择素材 → 编辑 → 导出" = "Choisir un média → Modifier → Exporter";
 "先添加第一份素材" = "Ajouter votre premier élément";
 "选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Choisissez un élément détouré ou un contenu de Photos, puis modifiez-le et exportez-le.";
 "在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Ajoutez un média dans l’éditeur et touchez « Enregistrer l’œuvre » pour enregistrer la version finale ici. Les modifications sont enregistrées automatiquement comme brouillon.";
@@ -836,3 +833,58 @@
 "重试导出" = "Réessayer l’exportation";
 "返回编辑" = "Retourner à l’éditeur";
 "重试保存到相册" = "Réessayer l’enregistrement dans Photos";
+
+/* Conversion result preview */
+"已保存 %1$lld 项，未保存 %2$lld 项。" = "%1$lld élément(s) enregistré(s), %2$lld non enregistré(s).";
+"未知" = "Inconnu";
+"拖动边框调整保存画面" = "Faites glisser les bords pour ajuster le cadrage";
+"类型" = "Type";
+"Live Photo 预览" = "Aperçu Live Photo";
+"视频预览" = "Aperçu vidéo";
+"时长" = "Durée";
+"画面尺寸" = "Dimensions";
+"文件大小" = "Taille du fichier";
+"声音" = "Audio";
+"无音频" = "Sans audio";
+"包含音频" = "Audio inclus";
+"完成裁剪" = "Terminé";
+"调整裁剪" = "Recadrer";
+"恢复原始画面" = "Réinitialiser le cadrage";
+"正在保存…" = "Enregistrement…";
+"保存到照片" = "Enregistrer dans Photos";
+"跳过此项" = "Ignorer cet élément";
+"取消本批次" = "Annuler le lot";
+"保存失败，请重试。" = "Échec de l’enregistrement. Réessayez.";
+"取消裁剪" = "Annuler le recadrage";
+
+/* Conversion crop preview accessibility and formatting */
+"无法预览裁剪结果，请重试。" = "Impossible d’afficher l’aperçu du recadrage. Réessayez.";
+"%1$d.%2$03d 秒" = "%1$d.%2$03d secondes";
+"裁剪框左上角" = "Poignée de recadrage en haut à gauche";
+"裁剪框上边缘" = "Bord supérieur du recadrage";
+"裁剪框右上角" = "Poignée de recadrage en haut à droite";
+"裁剪框左边缘" = "Bord gauche du recadrage";
+"裁剪框右边缘" = "Bord droit du recadrage";
+"裁剪框左下角" = "Poignée de recadrage en bas à gauche";
+"裁剪框下边缘" = "Bord inférieur du recadrage";
+"裁剪框右下角" = "Poignée de recadrage en bas à droite";
+"裁剪范围，%1$d × %2$d" = "Zone de recadrage, %1$d × %2$d";
+"未设置裁剪范围" = "Aucune zone de recadrage définie";
+
+/* Conversion preview status and rendering feedback */
+"转换结果已准备，尚未保存到照片" = "Le résultat est prêt et n’a pas encore été enregistré dans Photos";
+"正在生成裁剪预览…" = "Création de l’aperçu recadré…";
+"转换时无法保留源音频，预览不会包含声音。" = "L’audio d’origine n’a pas pu être conservé. L’aperçu sera muet.";
+
+/* Conversion preview loading */
+"正在准备预览…" = "Préparation de l’aperçu…";
+
+"播放预览" = "Lire l’aperçu";
+"暂停预览" = "Mettre l’aperçu en pause";
+
+"打开预览声音" = "Activer le son de l’aperçu";
+"关闭预览声音" = "Désactiver le son de l’aperçu";
+"第 %1$lld 项，共 %2$lld 项" = "Élément %1$lld sur %2$lld";
+"上一项" = "Élément précédent";
+"下一项" = "Élément suivant";
+"已保存到照片。" = "Enregistré dans Photos.";

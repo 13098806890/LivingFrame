@@ -1,4 +1,32 @@
 {
   "version": 1,
-  "test_cases": []
+  "test_cases": [
+    {
+      "id": "TC-BATCH-PREVIEW-001",
+      "feature_ids": ["library.batch-preview"],
+      "flow_id": "flow.library.batch-preview",
+      "type": "regression",
+      "priority": "P1",
+      "assertions": ["四种入口均可在同一预览切换", "当前项/总数与所浏览结果匹配", "保存不关闭预览且只保存当前项", "返回第一项保留裁剪和保存记录"],
+      "evidence": ["screenshot", "saved-file"]
+    },
+    {
+      "id": "TC-BATCH-PREVIEW-002",
+      "feature_ids": ["library.batch-preview"],
+      "flow_id": "flow.library.batch-preview",
+      "type": "boundary",
+      "priority": "P1",
+      "assertions": ["裁剪或保存期间翻页被禁用", "保存期间关闭删除和编辑不会触发竞争", "切换时上一项停止播放", "转换裁剪保存后返回仍基于原始画面预览和再编辑", "关闭时整批转换临时文件释放"],
+      "evidence": ["app-log", "screenshot", "saved-file"]
+    },
+    {
+      "id": "TC-BATCH-PREVIEW-003",
+      "feature_ids": ["library.batch-preview"],
+      "flow_id": "flow.library.batch-preview",
+      "type": "compatibility",
+      "priority": "P1",
+      "assertions": ["单项转换预览可以播放裁剪保存", "素材库和文件夹的原有详情页可操作", "保存失败留页可重试", "底部分页不会遮住保存控件", "新增文案有本地化且格式占位符完整"],
+      "evidence": ["screenshot", "app-log"]
+    }
+  ]
 }

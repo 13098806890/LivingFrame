@@ -2,3 +2,5 @@
 • Dopo l’esportazione, puoi vedere il lavoro o continuare a modificarlo. Se il salvataggio in Foto non riesce, puoi riprovare.
 • I GIF mantengono gli stessi effetti delle clip durante tutta l’esportazione. Se il progetto contiene audio, consigliamo il video.
 • Migliorate la guida iniziale e l’esperienza di esportazione.
+• Visualizza più risultati di ritagli, adesivi, Live Photo e video in un’unica anteprima. Scorri o tocca i punti per cambiare elemento.
+• Modifica e salva in Foto solo l’elemento selezionato quando vuoi. Chiudendo l’anteprima, gli altri elementi non vengono salvati automaticamente.

@@ -820,9 +820,6 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Usa o estilo Apple Color Emoji do sistema.";
-"开始创作" = "Começar a criar";
-"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Crie seu primeiro recorte animado a partir de um vídeo ou Live Photo.";
-"选择素材 → 编辑 → 导出" = "Escolher mídia → Editar → Exportar";
 "先添加第一份素材" = "Adicione seu primeiro recurso";
 "选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Escolha um recorte ou conteúdo da fototeca e depois edite e exporte.";
 "在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Adicione mídia no editor e toque em “Salvar trabalho” para salvar a versão final aqui. As alterações são salvas automaticamente como rascunho.";
@@ -836,3 +833,58 @@
 "重试导出" = "Tentar exportar novamente";
 "返回编辑" = "Voltar ao editor";
 "重试保存到相册" = "Tentar salvar no Fotos novamente";
+
+/* Conversion result preview */
+"已保存 %1$lld 项，未保存 %2$lld 项。" = "%1$lld salvo(s), %2$lld não salvo(s).";
+"未知" = "Desconhecido";
+"拖动边框调整保存画面" = "Arraste as bordas para ajustar o enquadramento";
+"类型" = "Tipo";
+"Live Photo 预览" = "Prévia do Live Photo";
+"视频预览" = "Prévia do vídeo";
+"时长" = "Duração";
+"画面尺寸" = "Tamanho do quadro";
+"文件大小" = "Tamanho do arquivo";
+"声音" = "Áudio";
+"无音频" = "Sem áudio";
+"包含音频" = "Com áudio";
+"完成裁剪" = "Concluir";
+"调整裁剪" = "Recortar";
+"恢复原始画面" = "Redefinir recorte";
+"正在保存…" = "Salvando…";
+"保存到照片" = "Salvar em Fotos";
+"跳过此项" = "Pular este item";
+"取消本批次" = "Cancelar lote";
+"保存失败，请重试。" = "Falha ao salvar. Tente novamente.";
+"取消裁剪" = "Cancelar recorte";
+
+/* Conversion crop preview accessibility and formatting */
+"无法预览裁剪结果，请重试。" = "Não foi possível pré-visualizar o corte. Tente novamente.";
+"%1$d.%2$03d 秒" = "%1$d.%2$03d segundos";
+"裁剪框左上角" = "Alça de corte superior esquerda";
+"裁剪框上边缘" = "Borda superior do corte";
+"裁剪框右上角" = "Alça de corte superior direita";
+"裁剪框左边缘" = "Borda esquerda do corte";
+"裁剪框右边缘" = "Borda direita do corte";
+"裁剪框左下角" = "Alça de corte inferior esquerda";
+"裁剪框下边缘" = "Borda inferior do corte";
+"裁剪框右下角" = "Alça de corte inferior direita";
+"裁剪范围，%1$d × %2$d" = "Área de corte, %1$d × %2$d";
+"未设置裁剪范围" = "Nenhuma área de corte definida";
+
+/* Conversion preview status and rendering feedback */
+"转换结果已准备，尚未保存到照片" = "O resultado está pronto e ainda não foi salvo em Fotos";
+"正在生成裁剪预览…" = "Gerando prévia cortada…";
+"转换时无法保留源音频，预览不会包含声音。" = "Não foi possível manter o áudio original. A prévia ficará sem som.";
+
+/* Conversion preview loading */
+"正在准备预览…" = "Preparando a prévia…";
+
+"播放预览" = "Reproduzir prévia";
+"暂停预览" = "Pausar prévia";
+
+"打开预览声音" = "Ativar som da prévia";
+"关闭预览声音" = "Desativar som da prévia";
+"第 %1$lld 项，共 %2$lld 项" = "Item %1$lld de %2$lld";
+"上一项" = "Item anterior";
+"下一项" = "Próximo item";
+"已保存到照片。" = "Salvo no Fotos.";

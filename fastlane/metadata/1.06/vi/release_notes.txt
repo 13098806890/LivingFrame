@@ -2,3 +2,5 @@
 • Sau khi xuất, hãy xem tác phẩm hoặc tiếp tục chỉnh sửa. Nếu lưu vào Ảnh thất bại, bạn có thể thử lại.
 • GIF giữ nguyên hiệu ứng clip trong suốt quá trình xuất. Nếu dự án có âm thanh, ứng dụng sẽ gợi ý xuất video.
 • Cải thiện hướng dẫn tạo tác phẩm lần đầu và quy trình xuất.
+• Xem nhiều kết quả hình cắt, nhãn dán, Live Photo và video trong cùng một bản xem trước. Vuốt hoặc chạm vào các chấm để chuyển mục.
+• Chỉnh sửa và lưu vào Ảnh chỉ mục đang chọn khi bạn muốn. Đóng bản xem trước sẽ không tự động lưu các mục còn lại.

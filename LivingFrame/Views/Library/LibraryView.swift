@@ -24,6 +24,9 @@ struct LibraryView: View {
     @State private var conversionTitle = ""
     @State private var conversionErrorMessage: String?
     @State private var conversionResultMessage: String?
+    @State private var pendingConversionPreview: PendingConversionPreview?
+    @State private var activeConversionPreview: PendingConversionPreview?
+    @State private var pendingClipBatchPreview: PendingClipBatchPreview?
     @State private var loadError: String?
     /// iCloud 素材下载进度（nil 表示进度未知）
     @State private var isDownloading = false
@@ -58,6 +61,9 @@ struct LibraryView: View {
     @State private var batchFailureTitle: String?
     @State private var importTask: Task<Void, Never>?
     @AccessibilityFocusState private var extractionEntryFocused: Bool
+#if DEBUG
+    @State private var didInjectConversionPreviewFixture = false
+#endif
 
     private struct PendingVideoRange: Identifiable {
         let id = UUID()
@@ -82,6 +88,45 @@ struct LibraryView: View {
             self.maxDuration = maxDuration
             self.confirmTitle = confirmTitle
             self.resume = resume
+        }
+    }
+
+    private final class PendingConversionPreview: Identifiable {
+        let id = UUID()
+        let prepared: [MediaConversionService.PreparedConversion]
+        private var completion: ((Set<UUID>, Bool) -> Void)?
+        private(set) var requestedCancellation = false
+        private(set) var savedIDs: Set<UUID> = []
+
+        init(
+            prepared: [MediaConversionService.PreparedConversion],
+            completion: @escaping (Set<UUID>, Bool) -> Void
+        ) {
+            self.prepared = prepared
+            self.completion = completion
+        }
+
+        func markSaved(_ prepared: MediaConversionService.PreparedConversion) {
+            savedIDs.insert(prepared.id)
+        }
+
+        func requestDismissal() {
+            requestedCancellation = true
+        }
+
+        func finish() {
+            guard let completion else { return }
+            self.completion = nil
+            completion(savedIDs, requestedCancellation)
+        }
+    }
+
+    private final class PendingClipBatchPreview: Identifiable {
+        let id = UUID()
+        let clips: [SegmentedClip]
+
+        init(clips: [SegmentedClip]) {
+            self.clips = clips
         }
     }
 
@@ -280,8 +325,98 @@ struct LibraryView: View {
                 )
                 .environmentObject(appState)
             }
+            .fullScreenCover(item: $pendingClipBatchPreview, onDismiss: {
+                pendingClipBatchPreview = nil
+            }) { request in
+                ClipBatchPreviewView(
+                    clips: request.clips,
+                    onClose: { pendingClipBatchPreview = nil }
+                )
+                .environmentObject(appState)
+                .environmentObject(purchaseManager)
+            }
+            .fullScreenCover(item: $pendingConversionPreview, onDismiss: {
+                guard let request = activeConversionPreview else { return }
+                request.requestDismissal()
+                request.prepared.forEach { MediaConversionService().discard($0) }
+                activeConversionPreview = nil
+                pendingConversionPreview = nil
+                request.finish()
+            }) { request in
+                ConversionBatchPreviewView(
+                    prepared: request.prepared,
+                    onSave: { prepared, cropRect in
+#if DEBUG
+                        if ProcessInfo.processInfo.arguments.contains("-UIAuditConversionPreviewQueue") {
+                            request.markSaved(prepared)
+                            return
+                        }
+#endif
+                        try await MediaConversionService().save(prepared, cropRect: cropRect)
+                        request.markSaved(prepared)
+                    },
+                    onCancel: {
+                        requestConversionPreviewDismissal(request)
+                    }
+                )
+            }
             .onAppear {
 #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-UIAuditConversionPreviewQueue"),
+                   !didInjectConversionPreviewFixture {
+                    didInjectConversionPreviewFixture = true
+                    Task { @MainActor in
+                        guard let url = Bundle.main.url(forResource: "gifbloom-doodle", withExtension: "gif") else {
+                            conversionErrorMessage = "Missing conversion preview fixture"
+                            return
+                        }
+                        do {
+                            let preparePreview: (String) async throws -> MediaConversionService.PreparedConversion = { sourceName in
+                                try await MediaConversionService().prepare(
+                                    sourceURL: url,
+                                    sourceName: sourceName,
+                                    sourceFileExtension: "gif",
+                                    target: .video,
+                                    progress: { _ in }
+                                )
+                            }
+                            let prepared = try await preparePreview("UI Queue First")
+                            let second = try await preparePreview("UI Queue Second")
+                            _ = await withCheckedContinuation { (continuation: CheckedContinuation<(Set<UUID>, Bool), Never>) in
+                                let preview = PendingConversionPreview(prepared: [prepared, second]) { savedIDs, cancelled in
+                                    continuation.resume(returning: (savedIDs, cancelled))
+                                }
+                                activeConversionPreview = preview
+                                pendingConversionPreview = preview
+                            }
+                        } catch {
+                            conversionErrorMessage = "Conversion preview fixture failed: \(error)"
+                        }
+                    }
+                } else if ProcessInfo.processInfo.arguments.contains("-UIAuditConversionPreview"),
+                   !didInjectConversionPreviewFixture {
+                    didInjectConversionPreviewFixture = true
+                    Task { @MainActor in
+                        guard let url = Bundle.main.url(forResource: "gifbloom-doodle", withExtension: "gif") else {
+                            conversionErrorMessage = "Missing conversion preview fixture"
+                            return
+                        }
+                        do {
+                            let prepared = try await MediaConversionService().prepare(
+                                sourceURL: url,
+                                sourceName: "UI Conversion Preview",
+                                sourceFileExtension: "gif",
+                                target: .video,
+                                progress: { _ in }
+                            )
+                            let preview = PendingConversionPreview(prepared: [prepared]) { _, _ in }
+                            activeConversionPreview = preview
+                            pendingConversionPreview = preview
+                        } catch {
+                            conversionErrorMessage = "Conversion preview fixture failed: \(error)"
+                        }
+                    }
+                }
                 // Deterministic UI-only fixture for the import failure alert;
                 // production builds never inject this state.
                 if ProcessInfo.processInfo.arguments.contains("-UIAuditInjectImportFailure") {
@@ -310,7 +445,9 @@ struct LibraryView: View {
             }
             .onDisappear {
                 importTask?.cancel()
-                conversionTask?.cancel()
+                if activeConversionPreview == nil {
+                    conversionTask?.cancel()
+                }
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -320,10 +457,6 @@ struct LibraryView: View {
 
     private var pickerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if appState.clips.isEmpty && appState.backgroundMedia.isEmpty {
-                firstCreateGuide
-            }
-
             LazyVGrid(
                 columns: [
                     GridItem(.flexible(), spacing: 12),
@@ -371,33 +504,6 @@ struct LibraryView: View {
                     videoConversionPickerItems,
                     target: .video
                 )
-            }
-        }
-    }
-
-    private var firstCreateGuide: some View {
-        SectionCard(title: "开始创作") {
-            VStack(alignment: .leading, spacing: 10) {
-                Button {
-                    pendingExtractKind = .live
-                    dynamicCutoutSymbolAnimation += 1
-                    isShowingExtractionPicker = true
-                } label: {
-                    Label("开始创作", systemImage: "sparkles")
-                        .frame(maxWidth: .infinity)
-                }
-                .lfActionButtonStyle(.primary)
-                .disabled(isMediaBusy)
-                .accessibilityIdentifier("library-start-creating")
-                .layoutPriority(1)
-
-                Text("从一段视频或 Live Photo 生成第一份动态剪影素材。")
-                    .font(.subheadline)
-                    .foregroundStyle(LF.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Label("选择素材 → 编辑 → 导出", systemImage: "arrow.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(LF.header)
             }
         }
     }
@@ -635,10 +741,11 @@ struct LibraryView: View {
         downloadProgress = nil
 
         conversionTask = Task { @MainActor in
-            var successCount = 0
+            var skippedCount = 0
             var failureCount = 0
             var firstFailure: String?
             var firstWarning: String?
+            var preparedResults: [MediaConversionService.PreparedConversion] = []
 
             for (index, item) in items.enumerated() {
                 guard !Task.isCancelled else { break }
@@ -657,10 +764,11 @@ struct LibraryView: View {
                     firstFailure = firstFailure ?? conversionInputFailureMessage(for: target)
                     continue
                 }
+                // Every source owns temporary PhotosPicker/iCloud files until this
+                // item has either been prepared, skipped, or failed.
+                defer { source.removeTemporaryFiles() }
                 isDownloading = false
                 downloadProgress = nil
-                defer { source.removeTemporaryFiles() }
-
                 do {
                     let sourceRange: ClosedRange<TimeInterval>?
                     if target == .livePhoto,
@@ -678,7 +786,10 @@ struct LibraryView: View {
                                     continuation.resume(returning: selectedRange)
                                 }
                             }
-                            guard sourceRange != nil else { continue }
+                            guard sourceRange != nil else {
+                                skippedCount += 1
+                                continue
+                            }
                         } else {
                             sourceRange = nil
                         }
@@ -686,7 +797,7 @@ struct LibraryView: View {
                         sourceRange = nil
                     }
 
-                    try await MediaConversionService().convert(
+                    let prepared = try await MediaConversionService().prepare(
                         sourceURL: source.url,
                         sourceName: source.name,
                         sourceFileExtension: source.fileExtension,
@@ -701,7 +812,7 @@ struct LibraryView: View {
                             firstWarning = firstWarning ?? message
                         }
                     )
-                    successCount += 1
+                    preparedResults.append(prepared)
                 } catch {
                     if Task.isCancelled { break }
                     failureCount += 1
@@ -709,13 +820,98 @@ struct LibraryView: View {
                 }
             }
 
+            guard !Task.isCancelled else {
+                preparedResults.forEach { MediaConversionService().discard($0) }
+                isConverting = false
+                isDownloading = false
+                downloadProgress = nil
+                conversionProgress = 0
+                return
+            }
+
+            guard !preparedResults.isEmpty else {
+                isConverting = false
+                isDownloading = false
+                downloadProgress = nil
+                conversionProgress = 0
+                if failureCount > 0 {
+                    let failureDetail = [
+                        firstFailure ?? NSLocalizedString("请重新选择素材后重试。", comment: "Conversion retry suggestion"),
+                        firstWarning
+                    ]
+                    .compactMap { $0 }
+                    .joined(separator: "\n")
+                    conversionErrorMessage = String.localizedStringWithFormat(
+                        NSLocalizedString(
+                            "成功转换 %1$lld 项，%2$lld 项失败。%@",
+                            comment: "Mixed conversion result"
+                        ),
+                        Int64(0),
+                        Int64(failureCount),
+                        failureDetail
+                    )
+                }
+                return
+            }
+
+            let batchResult = await withTaskCancellationHandler {
+                await withCheckedContinuation { (continuation: CheckedContinuation<(Set<UUID>, Bool), Never>) in
+                    guard !Task.isCancelled else {
+                        continuation.resume(returning: ([], true))
+                        return
+                    }
+                    let preview = PendingConversionPreview(prepared: preparedResults) { savedIDs, cancelled in
+                        continuation.resume(returning: (savedIDs, cancelled))
+                    }
+                    activeConversionPreview = preview
+                    pendingConversionPreview = preview
+                }
+            } onCancel: {
+                Task { @MainActor in
+                    guard let preview = activeConversionPreview else { return }
+                    preview.requestDismissal()
+                    pendingConversionPreview = nil
+                }
+            }
+
+            // onDismiss normally owns this cleanup. The idempotent discard also
+            // covers cancellation that arrives before the cover is presented.
+            preparedResults.forEach { MediaConversionService().discard($0) }
+
             isConverting = false
             isDownloading = false
             downloadProgress = nil
             conversionProgress = 0
-            guard !Task.isCancelled else { return }
+            let successCount = batchResult.0.count
+            let cancelled = batchResult.1
+            let unprocessedCount = max(preparedResults.count - successCount, 0)
 
-            if failureCount > 0 {
+            if cancelled {
+                if successCount > 0 || skippedCount > 0 || unprocessedCount > 0 {
+                    conversionResultMessage = String.localizedStringWithFormat(
+                        NSLocalizedString("已保存 %1$lld 项，未保存 %2$lld 项。", comment: "Conversion batch closed with unsaved results"),
+                        Int64(successCount),
+                        Int64(unprocessedCount + skippedCount + failureCount)
+                    )
+                }
+                if failureCount > 0 {
+                    let failureDetail = [
+                        firstFailure ?? NSLocalizedString("请重新选择素材后重试。", comment: "Conversion retry suggestion"),
+                        firstWarning
+                    ]
+                    .compactMap { $0 }
+                    .joined(separator: "\n")
+                    conversionErrorMessage = String.localizedStringWithFormat(
+                        NSLocalizedString(
+                            "成功转换 %1$lld 项，%2$lld 项失败。%@",
+                            comment: "Mixed conversion result"
+                        ),
+                        Int64(successCount),
+                        Int64(failureCount),
+                        failureDetail
+                    )
+                }
+            } else if failureCount > 0 {
                 let failureDetail = [
                     firstFailure ?? NSLocalizedString("请重新选择素材后重试。", comment: "Conversion retry suggestion"),
                     firstWarning
@@ -734,16 +930,24 @@ struct LibraryView: View {
             } else if successCount > 0 {
                 let successMessage = String.localizedStringWithFormat(
                     NSLocalizedString(
-                        "已转换并保存 %1$lld 项素材到照片。",
-                        comment: "Conversion success result"
+                        "已保存 %1$lld 项，未保存 %2$lld 项。",
+                        comment: "Conversion batch result with unsaved results"
                     ),
-                    Int64(successCount)
+                    Int64(successCount),
+                    Int64(unprocessedCount + skippedCount + failureCount)
                 )
                 conversionResultMessage = [successMessage, firstWarning]
                     .compactMap { $0 }
                     .joined(separator: "\n")
             }
         }
+    }
+
+    private func requestConversionPreviewDismissal(_ request: PendingConversionPreview) {
+        guard activeConversionPreview?.id == request.id else { return }
+        request.requestDismissal()
+        guard pendingConversionPreview?.id == request.id else { return }
+        pendingConversionPreview = nil
     }
 
     private func loadConversionSource(
@@ -984,7 +1188,7 @@ struct LibraryView: View {
         extractionQueueTotal = sources.count
         extractionQueuePosition = nil
         importTask = Task { @MainActor in
-            var lastExtractedClip: SegmentedClip?
+            var extractedClips: [SegmentedClip] = []
             var extractedCount = 0
             var extractionFailures = importFailures
             var failedSources: [ImportSource] = []
@@ -1026,7 +1230,7 @@ struct LibraryView: View {
                         )
                         if let extractedClip {
                             extractedCount += 1
-                            lastExtractedClip = extractedClip
+                            extractedClips.append(extractedClip)
                         } else {
                             extractionFailures.append(appState.segmentationError ?? "video extraction failed")
                             failedSources.append(source)
@@ -1037,7 +1241,7 @@ struct LibraryView: View {
                             let extractedClip = await extractPhotoSource(cgImage: cgImage, name: name)
                             if let extractedClip {
                                 extractedCount += 1
-                                lastExtractedClip = extractedClip
+                                extractedClips.append(extractedClip)
                             } else {
                                 extractionFailures.append(appState.segmentationError ?? "photo extraction failed")
                                 failedSources.append(source)
@@ -1053,7 +1257,7 @@ struct LibraryView: View {
                     let extractedClip = await extractPhotoSource(cgImage: cgImage, name: name)
                     if let extractedClip {
                         extractedCount += 1
-                        lastExtractedClip = extractedClip
+                        extractedClips.append(extractedClip)
                     } else {
                         extractionFailures.append(appState.segmentationError ?? "photo extraction failed")
                         failedSources.append(source)
@@ -1076,8 +1280,8 @@ struct LibraryView: View {
                 lastImportedSources.removeAll()
                 lastImportedKinds.removeAll()
             }
-            if !Task.isCancelled, let lastExtractedClip {
-                menuClip = lastExtractedClip
+            if !Task.isCancelled, !extractedClips.isEmpty {
+                pendingClipBatchPreview = PendingClipBatchPreview(clips: extractedClips)
             }
             if !Task.isCancelled, !extractionFailures.isEmpty {
                 let extractionFailureCount = max(extractionFailures.count - importFailureCount, 0)
@@ -3350,11 +3554,63 @@ struct ClipCell: View {
 }
 
 /// 素材详情页的预览按源素材比例展示，不复用素材库的固定高度卡片。
+struct BatchPagePosition {
+    let currentIndex: Int
+    let total: Int
+    let onSelect: (Int) -> Void
+}
+
+private struct BatchPageDots: View {
+    let position: BatchPagePosition
+    let isInteractionLocked: Bool
+    private let maximumVisibleDots = 5
+
+    private var visibleIndexes: Range<Int> {
+        guard position.total > maximumVisibleDots else { return 0..<position.total }
+        let start = min(max(position.currentIndex - maximumVisibleDots / 2, 0), position.total - maximumVisibleDots)
+        return start..<(start + maximumVisibleDots)
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(visibleIndexes, id: \.self) { index in
+                Button {
+                    position.onSelect(index)
+                } label: {
+                    Capsule()
+                        .fill(index == position.currentIndex ? Color.white : Color.white.opacity(0.52))
+                        .frame(width: index == position.currentIndex ? 18 : 7, height: 7)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isInteractionLocked)
+                .accessibilityLabel(String.localizedStringWithFormat(
+                    NSLocalizedString("第 %1$lld 项，共 %2$lld 项", comment: "Batch preview page dot"),
+                    Int64(index + 1),
+                    Int64(position.total)
+                ))
+                .accessibilityValue(index == position.currentIndex
+                    ? NSLocalizedString("已选中", comment: "Current batch preview page")
+                    : NSLocalizedString("未选中", comment: "Inactive batch preview page"))
+                .accessibilityIdentifier("batch-preview-dot-\(index)")
+            }
+        }
+        .padding(.horizontal, 8)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.24), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("batch-preview-indicator")
+    }
+}
+
 private struct ClipDetailPreview: View {
     let clip: SegmentedClip
     let stickerComposition: Composition
     @Binding var isPlaying: Bool
     let watermark: ExportWatermark?
+    let isInteractionLocked: Bool
+    let pagePosition: BatchPagePosition?
     let onCrop: () -> Void
     let onRotateCounterclockwise: () -> Void
     let onRotateClockwise: () -> Void
@@ -3425,6 +3681,7 @@ private struct ClipDetailPreview: View {
             }
             .padding(8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .disabled(isInteractionLocked)
 
             ClipPreviewActionButton(
                 systemName: "crop",
@@ -3433,6 +3690,13 @@ private struct ClipDetailPreview: View {
             )
             .padding(8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .disabled(isInteractionLocked)
+
+            if let pagePosition {
+                BatchPageDots(position: pagePosition, isInteractionLocked: isInteractionLocked)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 12)
+            }
         }
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -3588,6 +3852,11 @@ struct ClipMenuView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let clip: SegmentedClip
     let onClose: () -> Void
+    let isActive: Bool
+    let pagePosition: BatchPagePosition?
+    let itemState: ClipBatchItemState
+    let onDelete: ((String) -> Void)?
+    let onInteractionChanged: (Bool) -> Void
     @State private var showFrameEditor = false
     @State private var isPlayingPreview = false
     @State private var deleteAlert: DeleteAlert?
@@ -3610,8 +3879,33 @@ struct ClipMenuView: View {
     @State private var isEstimatingGIF = false
     @State private var previewWatermark: ExportWatermark?
     @State private var isCroppingClip = false
+    @State private var isCropInteractionLockHeld = false
     @State private var cropRect: CGRect?
     @State private var didManuallySelectGIFPreset = false
+
+    init(
+        clip: SegmentedClip,
+        onClose: @escaping () -> Void,
+        isActive: Bool = true,
+        pagePosition: BatchPagePosition? = nil,
+        itemState: ClipBatchItemState? = nil,
+        onDelete: ((String) -> Void)? = nil,
+        onInteractionChanged: @escaping (Bool) -> Void = { _ in }
+    ) {
+        self.clip = clip
+        self.onClose = onClose
+        self.isActive = isActive
+        self.pagePosition = pagePosition
+        self.itemState = itemState ?? ClipBatchItemState()
+        self.onDelete = onDelete
+        self.onInteractionChanged = onInteractionChanged
+        _gifResolution = State(initialValue: self.itemState.gifResolution)
+        _gifFPS = State(initialValue: self.itemState.gifFPS)
+        _didManuallySelectGIFPreset = State(initialValue: self.itemState.didManuallySelectGIFPreset)
+        _didSaveSticker = State(initialValue: self.itemState.didSaveSticker)
+        _clipExportState = State(initialValue: self.itemState.clipExportState)
+        _cropRect = State(initialValue: self.itemState.cropRect)
+    }
 
     /// 读取最新值，避免详情页打开后修改样式仍显示旧状态。
     private var currentClip: SegmentedClip {
@@ -3643,6 +3937,27 @@ struct ClipMenuView: View {
 
     private var isStaticSticker: Bool {
         currentClip.frameCount <= 1
+    }
+
+    private var isInteractionBusy: Bool {
+        isExportingGIF || isSavingSticker || isCroppingClip || isDeletingClip
+    }
+
+    private var stickerOutputSignature: String {
+        let effects = ClipGIFEffectSnapshot(clip: currentClip)
+        return [
+            String(currentClip.rotationQuarterTurns),
+            currentClip.cropCacheKey,
+            effects.edgeStyle,
+            effects.edgeLineStyle,
+            effects.edgeThickness,
+            effects.edgeColorHex,
+            effects.stickerStyle
+        ].joined(separator: "|")
+    }
+
+    private var hasCurrentStickerSave: Bool {
+        didSaveSticker && itemState.savedStickerSignature == stickerOutputSignature
     }
 
     /// 贴纸详情页没有编辑器里的真实元素，因此用当前素材构造一个最小预览工程，
@@ -3695,7 +4010,7 @@ struct ClipMenuView: View {
                     } label: {
                         Image(systemName: isDeletingClip ? "hourglass" : "trash")
                     }
-                    .disabled(isDeletingClip)
+                    .disabled(isDeletingClip || isInteractionBusy)
                     .accessibilityLabel("删除素材")
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -3706,6 +4021,7 @@ struct ClipMenuView: View {
                             .font(.headline.weight(.semibold))
                     }
                     .accessibilityLabel("完成")
+                    .disabled(isInteractionBusy)
                 }
             }
             .magicBackground()
@@ -3730,10 +4046,14 @@ struct ClipMenuView: View {
                     title: Text("删除素材？"),
                     message: Text("删除后无法恢复，但不会影响素材库中的其他内容。"),
                     primaryButton: .destructive(Text("删除")) {
-                        guard !isDeletingClip else { return }
+                        guard !isDeletingClip, !isInteractionBusy else { return }
                         isDeletingClip = true
                         appState.deleteClip(clip.id)
-                        close()
+                        if let onDelete {
+                            onDelete(clip.id)
+                        } else {
+                            close()
+                        }
                     },
                     secondaryButton: .cancel(Text("取消"))
                 )
@@ -3775,19 +4095,57 @@ struct ClipMenuView: View {
             exportGIFTask?.cancel()
             saveStickerTask?.cancel()
         }
+        .interactiveDismissDisabled(isInteractionBusy)
+        .onChange(of: isActive) { _, active in
+            if !active {
+                isPlayingPreview = false
+            }
+        }
+        .onChange(of: gifResolution) { _, value in
+            itemState.gifResolution = value
+        }
+        .onChange(of: gifFPS) { _, value in
+            itemState.gifFPS = value
+        }
+        .onChange(of: didManuallySelectGIFPreset) { _, value in
+            itemState.didManuallySelectGIFPreset = value
+        }
+        .onChange(of: didSaveSticker) { _, value in
+            itemState.didSaveSticker = value
+        }
+        .onChange(of: stickerOutputSignature) { _, _ in
+            didSaveSticker = false
+            itemState.didSaveSticker = false
+            itemState.savedStickerSignature = nil
+        }
+        .onChange(of: cropRect) { _, value in
+            itemState.cropRect = value
+        }
+        .onChange(of: clipExportState) { _, value in
+            itemState.clipExportState = value
+        }
         .task(id: "\(currentClip.id)-\(currentClip.rotationQuarterTurns)-\(currentClip.cropCacheKey)-\(previewWatermarkID)") {
             guard !isStaticSticker else { return }
             await loadGIFPresets()
         }
-        .fullScreenCover(isPresented: $isCroppingClip) {
+        .fullScreenCover(isPresented: $isCroppingClip, onDismiss: {
+            releaseCropInteractionLock()
+        }) {
             ClipCropEditorView(
                 clip: currentClip,
                 initialRect: cropRect ?? currentClip.normalizedCropRect,
-                onCancel: { isCroppingClip = false },
+                onCancel: {
+                    isCroppingClip = false
+                    releaseCropInteractionLock()
+                },
                 onFinish: { rect in
                     appState.setClipCrop(clip.id, rect)
+                    cropRect = rect
+                    itemState.cropRect = rect
                     clipExportState = ClipExportState()
+                    itemState.clipExportState = clipExportState
                     isCroppingClip = false
+                    releaseCropInteractionLock()
                 }
             )
         }
@@ -3802,9 +4160,17 @@ struct ClipMenuView: View {
                     stickerComposition: stickerPreviewComposition,
                     isPlaying: $isPlayingPreview,
                     watermark: previewWatermark,
+                    isInteractionLocked: isInteractionBusy,
+                    pagePosition: pagePosition,
                     onCrop: beginClipCrop,
-                    onRotateCounterclockwise: { rotateClip(clockwise: false) },
-                    onRotateClockwise: { rotateClip(clockwise: true) }
+                    onRotateCounterclockwise: {
+                        guard !isInteractionBusy else { return }
+                        rotateClip(clockwise: false)
+                    },
+                    onRotateClockwise: {
+                        guard !isInteractionBusy else { return }
+                        rotateClip(clockwise: true)
+                    }
                 )
                 if !purchaseManager.hasPro {
                     WatermarkNoticeCard {
@@ -3833,9 +4199,10 @@ struct ClipMenuView: View {
                 currentTime: 0,
                 selectedStyle: currentClip.stickerStyle
             ) { style in
-                guard style != currentClip.stickerStyle else { return }
+                guard !isInteractionBusy, style != currentClip.stickerStyle else { return }
                 appState.setClipStickerStyle(currentClip.id, style)
             }
+            .disabled(isInteractionBusy)
         }
     }
 
@@ -3851,9 +4218,9 @@ struct ClipMenuView: View {
                 .frame(maxWidth: .infinity)
             }
             .lfActionButtonStyle(isSavingSticker ? .secondary : .primary)
-            .disabled(isSavingSticker)
+            .disabled(isInteractionBusy)
 
-            if didSaveSticker {
+            if hasCurrentStickerSave {
                 Label("贴纸已保存到相册。", systemImage: "checkmark.circle.fill")
                     .font(.caption)
                     .foregroundStyle(LF.selectionText)
@@ -3884,8 +4251,11 @@ struct ClipMenuView: View {
                 Picker("尺寸", selection: Binding(
                     get: { gifResolution },
                     set: {
+                        guard !isInteractionBusy else { return }
                         gifResolution = $0
+                        itemState.gifResolution = $0
                         didManuallySelectGIFPreset = true
+                        itemState.didManuallySelectGIFPreset = true
                     }
                 )) {
                     ForEach(gifResolutionOptions) { resolution in
@@ -3898,8 +4268,11 @@ struct ClipMenuView: View {
                 Picker("帧率", selection: Binding(
                     get: { gifFPS },
                     set: {
+                        guard !isInteractionBusy else { return }
                         gifFPS = $0
+                        itemState.gifFPS = $0
                         didManuallySelectGIFPreset = true
+                        itemState.didManuallySelectGIFPreset = true
                     }
                 )) {
                     ForEach(gifFPSOptions, id: \.self) { fps in
@@ -3923,6 +4296,7 @@ struct ClipMenuView: View {
                 }
             }
             .font(.caption.weight(.medium))
+            .disabled(isInteractionBusy)
 
             Text("默认选择最接近 10 MB 的规格，实际大小以导出结果为准")
                 .font(.caption2)
@@ -3957,7 +4331,7 @@ struct ClipMenuView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .lfActionButtonStyle(isExportingGIF ? .secondary : .primary)
-                    .disabled(isEstimatingGIF && !isExportingGIF)
+                    .disabled((isInteractionBusy && !isExportingGIF) || (isEstimatingGIF && !isExportingGIF))
                 }
             }
 
@@ -3972,8 +4346,10 @@ struct ClipMenuView: View {
     }
 
     private func exportTransparentGIF() {
+        guard !isExportingGIF, !isSavingSticker, !isCroppingClip, !isDeletingClip else { return }
         exportGIFError = nil
         isExportingGIF = true
+        onInteractionChanged(true)
         let exportedClip = currentClip
         let clipID = exportedClip.id
         let exportResolution = gifResolution
@@ -3985,6 +4361,7 @@ struct ClipMenuView: View {
             defer {
                 isExportingGIF = false
                 exportGIFTask = nil
+                onInteractionChanged(false)
             }
             do {
                 _ = try await appState.exportClipAsTransparentGIF(
@@ -4001,6 +4378,7 @@ struct ClipMenuView: View {
                     fps: exportFPS,
                     effects: exportedEffects
                 )
+                itemState.clipExportState = clipExportState
             } catch is CancellationError {
                 // 用户主动取消，不显示错误。
             } catch ExportError.cancelled {
@@ -4012,21 +4390,27 @@ struct ClipMenuView: View {
     }
 
     private func saveStickerToPhotos() {
-        guard !isSavingSticker else { return }
+        guard !isSavingSticker, !isExportingGIF, !isCroppingClip, !isDeletingClip else { return }
         saveStickerError = nil
         didSaveSticker = false
+        itemState.savedStickerSignature = nil
         isSavingSticker = true
+        onInteractionChanged(true)
         let clipID = clip.id
+        let outputSignature = stickerOutputSignature
         let watermark = purchaseManager.hasPro ? nil : (previewWatermark ?? DecorationRenderer.randomLogoWatermark())
         previewWatermark = watermark
         saveStickerTask = Task { @MainActor in
             defer {
                 isSavingSticker = false
                 saveStickerTask = nil
+                onInteractionChanged(false)
             }
             do {
                 try await appState.exportClipAsStickerPNG(clipID, watermark: watermark)
+                guard outputSignature == stickerOutputSignature else { return }
                 didSaveSticker = true
+                itemState.savedStickerSignature = outputSignature
             } catch is CancellationError {
                 // 用户离开详情页时主动取消，不显示错误。
             } catch {
@@ -4036,8 +4420,18 @@ struct ClipMenuView: View {
     }
 
     private func beginClipCrop() {
+        guard !isInteractionBusy else { return }
         cropRect = currentClip.normalizedCropRect
+        itemState.cropRect = cropRect
+        isCropInteractionLockHeld = true
+        onInteractionChanged(true)
         isCroppingClip = true
+    }
+
+    private func releaseCropInteractionLock() {
+        guard isCropInteractionLockHeld else { return }
+        isCropInteractionLockHeld = false
+        onInteractionChanged(false)
     }
 
     private var selectedPreset: GIFExportPreset? {
@@ -4107,6 +4501,7 @@ struct ClipMenuView: View {
     }
 
     private func rotateClip(clockwise: Bool) {
+        guard !isInteractionBusy else { return }
         if reduceMotion {
             applyClipRotation(clockwise: clockwise)
         } else {
@@ -4117,6 +4512,7 @@ struct ClipMenuView: View {
     }
 
     private func applyClipRotation(clockwise: Bool) {
+        guard !isInteractionBusy else { return }
         if clockwise {
             appState.rotateClip(clip.id)
         } else {
@@ -4196,5 +4592,677 @@ private extension UIImage {
             draw(in: CGRect(origin: .zero, size: size))
         }
         return fixed.cgImage
+    }
+}
+
+private final class ConversionPreviewItemState: ObservableObject {
+    @Published var cropRect: CGRect?
+    @Published var isMuted: Bool
+    @Published var didSave: Bool
+
+    init(prepared: MediaConversionService.PreparedConversion) {
+        cropRect = CGRect(origin: .zero, size: prepared.sourceSize)
+        isMuted = true
+        didSave = false
+    }
+}
+
+private struct ConversionPreviewSheet: View {
+    let prepared: MediaConversionService.PreparedConversion
+    let isActive: Bool
+    let pagePosition: BatchPagePosition?
+    let itemState: ConversionPreviewItemState
+    let onSave: (CGRect?) async throws -> Void
+    let onCancel: () -> Void
+    let onSavingChanged: (Bool) -> Void
+
+    @State private var player: AVPlayer
+    @State private var cropRect: CGRect?
+    @State private var cropStartRect: CGRect?
+    @State private var isPlaying = false
+    @State private var isMuted = true
+    @State private var didFinishPlayback = false
+    @State private var isPreviewVisible = false
+    @State private var wantsPlayback = false
+    @State private var playbackToken = 0
+    @State private var pendingSeekToken: Int?
+    @State private var isCropping = false
+    @State private var isSaving = false
+    @State private var saveError: String?
+    @State private var didSave = false
+    private let initialPreviewURL: URL
+
+    init(
+        prepared: MediaConversionService.PreparedConversion,
+        isActive: Bool = true,
+        pagePosition: BatchPagePosition? = nil,
+        itemState: ConversionPreviewItemState? = nil,
+        onSave: @escaping (CGRect?) async throws -> Void,
+        onCancel: @escaping () -> Void,
+        onSavingChanged: @escaping (Bool) -> Void = { _ in }
+    ) {
+        self.prepared = prepared
+        self.isActive = isActive
+        self.pagePosition = pagePosition
+        self.itemState = itemState ?? ConversionPreviewItemState(prepared: prepared)
+        self.onSave = onSave
+        self.onCancel = onCancel
+        self.onSavingChanged = onSavingChanged
+        self.initialPreviewURL = prepared.initialPreviewURL
+        let previewPlayer = AVPlayer(url: prepared.initialPreviewURL)
+        previewPlayer.isMuted = true
+        _player = State(initialValue: previewPlayer)
+        _cropRect = State(initialValue: self.itemState.cropRect)
+        _isMuted = State(initialValue: self.itemState.isMuted)
+        _didSave = State(initialValue: self.itemState.didSave)
+    }
+
+    private var canvasRect: CGRect {
+        CGRect(origin: .zero, size: prepared.sourceSize)
+    }
+
+    private var visibleCrop: CGRect {
+        cropRect ?? canvasRect
+    }
+
+    private var outputSize: CGSize {
+        CGSize(width: visibleCrop.width, height: visibleCrop.height)
+    }
+
+    private var fileSizeText: String {
+        guard visibleCrop == canvasRect else {
+            return NSLocalizedString("未知", comment: "Cropped output file size is not rendered until save")
+        }
+        let bytes = (try? FileManager.default.attributesOfItem(atPath: prepared.initialPreviewURL.path)[.size]) as? Int64
+        guard let bytes else { return NSLocalizedString("未知", comment: "Unknown file size") }
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    previewPlayer
+                        .padding(.horizontal)
+
+                        Text(didSave
+                            ? NSLocalizedString("已保存到照片。", comment: "Conversion item saved feedback")
+                            : NSLocalizedString("转换结果已准备，尚未保存到照片", comment: "Conversion preview not yet saved"))
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(LF.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+
+                    if isCropping {
+                        Text("拖动边框调整保存画面")
+                            .font(.subheadline)
+                            .foregroundStyle(LF.textSecondary)
+                    }
+
+                    informationCard
+                        .padding(.horizontal)
+
+                    if let saveError {
+                        Text(saveError)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                    }
+
+                    actionButtons
+                        .padding(.horizontal)
+                        .padding(.bottom, 24)
+                }
+                .padding(.top, 12)
+            }
+            .background(LF.background.ignoresSafeArea())
+            .navigationTitle(prepared.target == .livePhoto ? "Live Photo 预览" : "视频预览")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: cancelPreview) {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .accessibilityLabel(NSLocalizedString("取消本批次", comment: "Cancel conversion batch"))
+                    .disabled(isSaving || isCropping)
+                }
+            }
+            .onAppear {
+                isPreviewVisible = true
+                player.isMuted = isMuted
+                requestPlayback()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { notification in
+                guard let endedItem = notification.object as? AVPlayerItem,
+                      endedItem === player.currentItem else { return }
+                playbackToken &+= 1
+                cancelPendingSeeks()
+                wantsPlayback = false
+                isPlaying = false
+                didFinishPlayback = true
+            }
+            .onDisappear {
+                isPreviewVisible = false
+                stopPlayback()
+            }
+            .onChange(of: isActive) { _, active in
+                if !active {
+                    stopPlayback()
+                }
+            }
+            .onChange(of: cropRect) { _, _ in
+                itemState.cropRect = cropRect
+            }
+            .onChange(of: isMuted) { _, muted in
+                itemState.isMuted = muted
+            }
+        .interactiveDismissDisabled(isSaving || isCropping)
+        }
+    }
+
+    private var previewPlayer: some View {
+        let displaySize = isCropping ? prepared.sourceSize : outputSize
+        let aspect = max(displaySize.width, 1) / max(displaySize.height, 1)
+        let contentRect = canvasRect
+        return ZStack {
+            GeometryReader { geometry in
+                let viewport = geometry.size
+                let crop = isCropping ? canvasRect : visibleCrop
+                let scale = max(
+                    viewport.width / max(crop.width, 1),
+                    viewport.height / max(crop.height, 1)
+                )
+                let videoSize = CGSize(
+                    width: prepared.sourceSize.width * scale,
+                    height: prepared.sourceSize.height * scale
+                )
+                VideoPlayer(player: player)
+                    .aspectRatio(
+                        max(prepared.sourceSize.width, 1) / max(prepared.sourceSize.height, 1),
+                        contentMode: .fit
+                    )
+                    .frame(width: videoSize.width, height: videoSize.height)
+                    .offset(
+                        x: -(crop.midX - contentRect.midX) * scale,
+                        y: (crop.midY - contentRect.midY) * scale
+                    )
+                    .frame(width: viewport.width, height: viewport.height)
+            }
+            CropOverlayView(
+                contentRect: contentRect,
+                minimumCropSize: min(prepared.sourceSize.width, prepared.sourceSize.height) * 0.08,
+                cropRect: Binding(
+                    get: { cropRect },
+                    set: {
+                        cropRect = $0
+                        itemState.cropRect = $0
+                    }
+                )
+            )
+            .opacity(isCropping ? 1 : 0)
+            .allowsHitTesting(isCropping)
+            .accessibilityHidden(!isCropping)
+        }
+        .aspectRatio(aspect, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 8) {
+                if prepared.hasOutputAudio {
+                    ClipPreviewActionButton(
+                        systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                        accessibilityLabel: NSLocalizedString(
+                            isMuted ? "打开预览声音" : "关闭预览声音",
+                            comment: "Conversion preview audio toggle"
+                        ),
+                        action: toggleMute
+                    )
+                    .accessibilityIdentifier("conversion-preview-audio-toggle")
+                }
+
+                ClipPreviewActionButton(
+                    systemName: isCropping ? "checkmark" : "crop",
+                    accessibilityLabel: NSLocalizedString(
+                        isCropping ? "完成裁剪" : "裁剪素材",
+                        comment: "Conversion preview crop action"
+                    ),
+                    action: {
+                        if isCropping {
+                            commitCrop()
+                        } else {
+                            beginCrop()
+                        }
+                    }
+                )
+            }
+            .padding(8)
+            .disabled(isSaving)
+        }
+        .overlay(alignment: .bottomLeading) {
+            Button(action: togglePlayback) {
+                ClipPreviewBadgeIcon(
+                    systemName: isPlaying ? "pause.fill" : "play.fill",
+                    backgroundStyle: .black.opacity(0.56)
+                )
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+            }
+            .lfAnimatedPlainButtonStyle()
+            .accessibilityLabel(NSLocalizedString(
+                isPlaying ? "暂停预览" : "播放预览",
+                comment: "Conversion preview playback action"
+            ))
+            .padding(4)
+            .disabled(isSaving)
+        }
+        .overlay(alignment: .bottom) {
+            if let pagePosition {
+                BatchPageDots(position: pagePosition, isInteractionLocked: isSaving || isCropping)
+                    .padding(.bottom, 12)
+            }
+        }
+    }
+
+    private var informationCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            infoRow(NSLocalizedString("素材", comment: "Conversion preview source name"), value: prepared.sourceName)
+            infoRow(NSLocalizedString("类型", comment: "Conversion preview output type"), value: prepared.target == .livePhoto
+                ? "Live Photo"
+                : NSLocalizedString("视频", comment: "Video conversion output type"))
+            infoRow(NSLocalizedString("时长", comment: "Conversion preview duration"), value: formattedDuration(prepared.duration))
+            infoRow(NSLocalizedString("画面尺寸", comment: "Conversion preview dimensions"), value: "\(Int(outputSize.width)) × \(Int(outputSize.height))")
+            infoRow(NSLocalizedString("文件大小", comment: "Conversion preview file size"), value: fileSizeText)
+            infoRow(
+                NSLocalizedString("声音", comment: "Conversion preview audio status"),
+                value: prepared.audioWarningMessage ?? NSLocalizedString(
+                    prepared.hasOutputAudio ? "包含音频" : "无音频",
+                    comment: "Conversion output audio status"
+                )
+            )
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LF.surface, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var actionButtons: some View {
+        VStack(spacing: 10) {
+            if isCropping {
+                Button("取消裁剪") {
+                    cropRect = cropStartRect ?? canvasRect
+                    cancelCrop()
+                }
+                .font(.footnote.weight(.semibold))
+                .disabled(isSaving)
+            }
+
+            if !isCropping, visibleCrop != canvasRect {
+                Button("恢复原始画面") {
+                    cropRect = canvasRect
+                    didSave = false
+                    itemState.didSave = false
+                    saveError = nil
+                    resumePreview()
+                }
+                .font(.footnote.weight(.semibold))
+                .disabled(isSaving)
+            }
+
+            Button {
+                isSaving = true
+                onSavingChanged(true)
+                Task {
+                    defer {
+                        isSaving = false
+                        onSavingChanged(false)
+                    }
+                    saveError = nil
+                    stopPlayback()
+                    let requestedCrop = visibleCrop == canvasRect ? nil : visibleCrop
+                    do {
+                        try await onSave(requestedCrop)
+                        didSave = true
+                        itemState.didSave = true
+                    } catch {
+                        saveError = (error as? LocalizedError)?.errorDescription
+                            ?? NSLocalizedString("保存失败，请重试。", comment: "Conversion save failure")
+                        player.replaceCurrentItem(with: AVPlayerItem(url: initialPreviewURL))
+                        player.isMuted = isMuted
+                        didFinishPlayback = false
+                        requestPlayback()
+                    }
+                }
+            } label: {
+                HStack {
+                    if isSaving { ProgressView().tint(.white) }
+                    Text(isSaving ? "正在保存…" : "保存到照片")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .lfActionButtonStyle(.primary)
+            .disabled(isSaving || isCropping || didSave)
+
+            if didSave {
+                Label(
+                    NSLocalizedString("已保存到照片。", comment: "Conversion item saved feedback"),
+                    systemImage: "checkmark.circle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(LF.selectionText)
+            }
+        }
+    }
+
+    private func togglePlayback() {
+        guard !isSaving else { return }
+        if isPlaying || wantsPlayback {
+            stopPlayback()
+        } else {
+            requestPlayback()
+        }
+    }
+
+    private func toggleMute() {
+        guard !isSaving else { return }
+        isMuted.toggle()
+        itemState.isMuted = isMuted
+        player.isMuted = isMuted
+    }
+
+    private func infoRow(_ title: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).foregroundStyle(LF.textSecondary)
+            Spacer(minLength: 16)
+            Text(value).multilineTextAlignment(.trailing)
+        }
+        .font(.subheadline)
+    }
+
+    private func beginCrop() {
+        guard !isSaving else { return }
+        cropStartRect = cropRect
+        stopPlayback()
+        isCropping = true
+        onSavingChanged(true)
+    }
+
+    private func commitCrop() {
+        let cropChanged = cropRect != cropStartRect
+        cropStartRect = nil
+        isCropping = false
+        if cropChanged {
+            didSave = false
+            itemState.didSave = false
+        }
+        saveError = nil
+        onSavingChanged(false)
+        resumePreview()
+    }
+
+    private func cancelCrop() {
+        cropRect = cropStartRect ?? canvasRect
+        cropStartRect = nil
+        isCropping = false
+        saveError = nil
+        onSavingChanged(false)
+        resumePreview()
+    }
+
+    private func resumePreview() {
+        requestPlayback()
+    }
+
+    private func cancelPreview() {
+        isPreviewVisible = false
+        stopPlayback()
+        onCancel()
+    }
+
+    private func stopPlayback() {
+        playbackToken &+= 1
+        cancelPendingSeeks()
+        wantsPlayback = false
+        player.pause()
+        isPlaying = false
+    }
+
+    private func cancelPendingSeeks() {
+        player.currentItem?.cancelPendingSeeks()
+        pendingSeekToken = nil
+    }
+
+    private func requestPlayback() {
+        guard isActive, !isSaving, isPreviewVisible else { return }
+        wantsPlayback = true
+
+        guard didFinishPlayback else {
+            cancelPendingSeeks()
+            playbackToken &+= 1
+            player.isMuted = isMuted
+            player.play()
+            isPlaying = true
+            return
+        }
+
+        guard let expectedItem = player.currentItem else {
+            wantsPlayback = false
+            return
+        }
+        cancelPendingSeeks()
+        playbackToken &+= 1
+        let token = playbackToken
+        pendingSeekToken = token
+        player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { finished in
+            Task { @MainActor in
+                guard self.pendingSeekToken == token,
+                      self.playbackToken == token,
+                      expectedItem === self.player.currentItem else { return }
+                guard finished,
+                      self.isPreviewVisible,
+                      self.wantsPlayback,
+                      !self.isSaving else {
+                    self.pendingSeekToken = nil
+                    self.wantsPlayback = false
+                    self.isPlaying = false
+                    return
+                }
+                self.pendingSeekToken = nil
+                self.didFinishPlayback = false
+                self.player.isMuted = self.isMuted
+                self.player.play()
+                self.isPlaying = true
+            }
+        }
+    }
+
+    private func formattedDuration(_ duration: TimeInterval) -> String {
+        let totalMilliseconds = Int((duration * 1000).rounded())
+        let seconds = totalMilliseconds / 1000
+        let milliseconds = totalMilliseconds % 1000
+        return String.localizedStringWithFormat(
+            NSLocalizedString("%1$d.%2$03d 秒", comment: "Conversion preview duration with milliseconds"),
+            seconds,
+            milliseconds
+        )
+    }
+}
+
+final class ClipBatchItemState {
+    var gifResolution: ExportResolution = .p720
+    var gifFPS = 15.0
+    var didManuallySelectGIFPreset = false
+    var didSaveSticker = false
+    var savedStickerSignature: String?
+    var clipExportState = ClipExportState()
+    var cropRect: CGRect?
+}
+
+private struct ClipBatchPreviewView: View {
+    @Environment(
+        \.accessibilityReduceMotion
+    ) private var reduceMotion
+    let clips: [SegmentedClip]
+    let onClose: () -> Void
+    @State private var visibleClips: [SegmentedClip]
+    @State private var currentIndex = 0
+    @State private var itemStates: [String: ClipBatchItemState]
+    @State private var interactionDepth = 0
+
+    private var isInteractionLocked: Bool {
+        interactionDepth > 0
+    }
+
+    init(clips: [SegmentedClip], onClose: @escaping () -> Void) {
+        self.clips = clips
+        self.onClose = onClose
+        _visibleClips = State(initialValue: clips)
+        _itemStates = State(initialValue: Dictionary(
+            uniqueKeysWithValues: clips.map { ($0.id, ClipBatchItemState()) }
+        ))
+    }
+
+    var body: some View {
+        Group {
+            if !visibleClips.isEmpty {
+                ClipMenuView(
+                    clip: visibleClips[currentIndex],
+                    onClose: onClose,
+                    isActive: true,
+                    pagePosition: visibleClips.count > 1
+                        ? BatchPagePosition(currentIndex: currentIndex, total: visibleClips.count, onSelect: selectPage)
+                        : nil,
+                    itemState: itemStates[visibleClips[currentIndex].id] ?? ClipBatchItemState(),
+                    onDelete: deleteClip,
+                    onInteractionChanged: { isLocked in
+                        interactionDepth = max(0, interactionDepth + (isLocked ? 1 : -1))
+                    }
+                )
+                .id(visibleClips[currentIndex].id)
+                .simultaneousGesture(swipeGesture)
+            }
+        }
+        .onChange(of: visibleClips.count) { _, count in
+            if count == 0 {
+                onClose()
+            } else {
+                currentIndex = min(currentIndex, count - 1)
+            }
+        }
+    }
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 32)
+            .onEnded { value in
+                guard !isInteractionLocked,
+                      abs(value.translation.width) > abs(value.translation.height) else { return }
+                if value.translation.width < 0 {
+                    move(by: 1)
+                } else {
+                    move(by: -1)
+                }
+            }
+    }
+
+    private func move(by offset: Int) {
+        guard !isInteractionLocked, !visibleClips.isEmpty else { return }
+        let target = min(max(currentIndex + offset, 0), visibleClips.count - 1)
+        guard target != currentIndex else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+            currentIndex = target
+        }
+    }
+
+    private func selectPage(_ index: Int) {
+        guard !isInteractionLocked, visibleClips.indices.contains(index) else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { currentIndex = index }
+    }
+
+    private func deleteClip(_ id: String) {
+        guard let index = visibleClips.firstIndex(where: { $0.id == id }) else { return }
+        visibleClips.remove(at: index)
+        if currentIndex >= visibleClips.count {
+            currentIndex = max(visibleClips.count - 1, 0)
+        }
+    }
+}
+
+private struct ConversionBatchPreviewView: View {
+    let prepared: [MediaConversionService.PreparedConversion]
+    let onSave: (MediaConversionService.PreparedConversion, CGRect?) async throws -> Void
+    let onCancel: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var currentIndex = 0
+    @State private var interactionDepth = 0
+    @State private var itemStates: [UUID: ConversionPreviewItemState]
+
+    private var isInteractionLocked: Bool {
+        interactionDepth > 0
+    }
+
+    init(
+        prepared: [MediaConversionService.PreparedConversion],
+        onSave: @escaping (MediaConversionService.PreparedConversion, CGRect?) async throws -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        self.prepared = prepared
+        self.onSave = onSave
+        self.onCancel = onCancel
+        _itemStates = State(initialValue: Dictionary(
+            uniqueKeysWithValues: prepared.map { ($0.id, ConversionPreviewItemState(prepared: $0)) }
+        ))
+    }
+
+    var body: some View {
+        Group {
+            if !prepared.isEmpty {
+                let currentPrepared = prepared[currentIndex]
+                ConversionPreviewSheet(
+                    prepared: currentPrepared,
+                    isActive: true,
+                    pagePosition: prepared.count > 1
+                        ? BatchPagePosition(currentIndex: currentIndex, total: prepared.count, onSelect: selectPage)
+                        : nil,
+                    itemState: itemStates[currentPrepared.id] ?? ConversionPreviewItemState(prepared: currentPrepared),
+                    onSave: { cropRect in
+                        try await onSave(currentPrepared, cropRect)
+                    },
+                    onCancel: onCancel,
+                    onSavingChanged: { isLocked in
+                        interactionDepth = max(0, interactionDepth + (isLocked ? 1 : -1))
+                    }
+                )
+                .id(prepared[currentIndex].id)
+                .simultaneousGesture(swipeGesture)
+            }
+        }
+    }
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 32)
+            .onEnded { value in
+                guard !isInteractionLocked,
+                      abs(value.translation.width) > abs(value.translation.height) else { return }
+                if value.translation.width < 0 {
+                    move(by: 1)
+                } else {
+                    move(by: -1)
+                }
+            }
+    }
+
+    private func move(by offset: Int) {
+        let target = min(max(currentIndex + offset, 0), prepared.count - 1)
+        guard !isInteractionLocked, target != currentIndex else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+            currentIndex = target
+        }
+    }
+
+    private func selectPage(_ index: Int) {
+        guard !isInteractionLocked, prepared.indices.contains(index) else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { currentIndex = index }
     }
 }

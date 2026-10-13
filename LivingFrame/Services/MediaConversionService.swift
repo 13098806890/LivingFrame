@@ -18,6 +18,79 @@ struct MediaConversionService {
         case video
     }
 
+    /// Holds generated files until the user saves or dismisses the preview.
+    /// A class keeps file ownership stable while SwiftUI copies view state.
+    final class PreparedConversion: Identifiable {
+        let id = UUID()
+        let target: Target
+        let sourceName: String
+        let duration: TimeInterval
+        let sourceSize: CGSize
+        private(set) var hasOutputAudio: Bool
+        private(set) var audioWarningMessage: String?
+        let sourceMediaID: String
+        let sourceFileExtension: String
+        let audioURL: URL?
+        let baseComposition: Composition
+        private(set) var previewURL: URL
+        /// The first rendered preview remains available while the batch is open,
+        /// so a later page can crop or save the same item again after switching.
+        let initialPreviewURL: URL
+        private(set) var livePhotoOutput: LivePhotoExporter.Output?
+        private(set) var renderedCrop: CGRect?
+        fileprivate(set) var isDiscarded = false
+
+        init(
+            target: Target,
+            sourceName: String,
+            duration: TimeInterval,
+            sourceSize: CGSize,
+            hasOutputAudio: Bool,
+            audioWarningMessage: String?,
+            sourceMediaID: String,
+            sourceFileExtension: String,
+            audioURL: URL?,
+            baseComposition: Composition,
+            previewURL: URL,
+            livePhotoOutput: LivePhotoExporter.Output?
+        ) {
+            self.target = target
+            self.sourceName = sourceName
+            self.duration = duration
+            self.sourceSize = sourceSize
+            self.hasOutputAudio = hasOutputAudio
+            self.audioWarningMessage = audioWarningMessage
+            self.sourceMediaID = sourceMediaID
+            self.sourceFileExtension = sourceFileExtension
+            self.audioURL = audioURL
+            self.baseComposition = baseComposition
+            self.previewURL = previewURL
+            self.initialPreviewURL = previewURL
+            self.livePhotoOutput = livePhotoOutput
+        }
+
+        func updateRenderedOutput(
+            url: URL,
+            livePhotoOutput: LivePhotoExporter.Output?,
+            crop: CGRect?
+        ) {
+            let oldURL = previewURL
+            previewURL = url
+            self.livePhotoOutput = livePhotoOutput
+            renderedCrop = crop
+            if oldURL != url, oldURL != initialPreviewURL {
+                try? FileManager.default.removeItem(at: oldURL)
+            }
+        }
+
+        func updateAudioStatus(hasOutputAudio: Bool, warningMessage: String?) {
+            self.hasOutputAudio = hasOutputAudio
+            audioWarningMessage = warningMessage
+        }
+
+        func markDiscarded() { isDiscarded = true }
+    }
+
     enum ConversionError: LocalizedError {
         case unsupportedInput
         case mediaUnavailable
@@ -44,6 +117,7 @@ struct MediaConversionService {
         }
     }
 
+    /// Compatibility wrapper for the original immediate-save behavior.
     func convert(
         sourceURL: URL,
         sourceName: String,
@@ -53,6 +127,28 @@ struct MediaConversionService {
         progress: @escaping (Double) -> Void,
         warning: @escaping (String) -> Void = { _ in }
     ) async throws {
+        let prepared = try await prepare(
+            sourceURL: sourceURL,
+            sourceName: sourceName,
+            sourceFileExtension: sourceFileExtension,
+            target: target,
+            sourceRange: sourceRange,
+            progress: progress,
+            warning: warning
+        )
+        defer { discard(prepared) }
+        try await save(prepared, cropRect: nil)
+    }
+
+    func prepare(
+        sourceURL: URL,
+        sourceName: String,
+        sourceFileExtension: String,
+        target: Target,
+        sourceRange: ClosedRange<TimeInterval>? = nil,
+        progress: @escaping (Double) -> Void,
+        warning: @escaping (String) -> Void = { _ in }
+    ) async throws -> PreparedConversion {
         try Task.checkCancellation()
         LogStore.log("xdz.convert.begin target=\(target) name=\(sourceName) ext=\(sourceFileExtension) url=\(sourceURL.path)")
         let extensionName = sourceFileExtension
@@ -93,12 +189,17 @@ struct MediaConversionService {
             throw ConversionError.mediaUnavailable
         }
         LogStore.log("xdz.convert.background.saved id=\(mediaID) ext=\(extensionName)")
+        var temporaryAudioURL: URL?
+        var generatedPreviewURL: URL?
+        var retainedForPreview = false
         defer {
-            let storedURL = backgroundStore.mediaURL(named: mediaID)
-            try? FileManager.default.removeItem(at: storedURL)
-            backgroundStore.purgeDecodedMedia()
+            if !retainedForPreview {
+                if let generatedPreviewURL { try? FileManager.default.removeItem(at: generatedPreviewURL) }
+                if let temporaryAudioURL { try? FileManager.default.removeItem(at: temporaryAudioURL) }
+                try? FileManager.default.removeItem(at: backgroundStore.mediaURL(named: mediaID))
+                backgroundStore.purgeDecodedMedia()
+            }
         }
-
         progress(0.04)
         let media = await backgroundStore.allUserMedia().first { $0.id == mediaID }
         guard let media, media.width > 0, media.height > 0 else {
@@ -131,12 +232,12 @@ struct MediaConversionService {
         // 与画面区间一致的音频源：整段转换时直接复用原文件，需要截取区间时
         // 生成临时 m4a，避免所选画面与声音错位。GIF 没有 AVAsset 音轨，必须
         // 跳过音频探测，否则某些系统版本会在 GIF 转换前抛出资源读取错误。
-        var temporaryAudioURL: URL?
         let audioSourceURL: URL?
+        var audioWarningMessage: String?
         if ["mov", "mp4", "m4v"].contains(extensionName) {
             do {
                 audioSourceURL = try await makeAudioSourceURL(
-                    sourceURL: sourceURL,
+                    sourceURL: backgroundStore.mediaURL(named: mediaID),
                     sourceStartTime: sourceStartTime,
                     sourceEndTime: sourceEndTime,
                     sourceDuration: sourceDuration
@@ -148,21 +249,17 @@ struct MediaConversionService {
                 LogStore.log("xdz.convert.audio.fail error=\(error)")
                 // 音频是增强能力，画面转换不能因音轨损坏、缺失或暂时不可读而失败。
                 audioSourceURL = nil
-                warning(NSLocalizedString(
-                    "转换时无法保留源音频，已继续保存无声视频。",
+                let message = NSLocalizedString(
+                    "转换时无法保留源音频，预览不会包含声音。",
                     comment: "Audio fallback warning during conversion"
-                ))
+                )
+                audioWarningMessage = message
+                warning(message)
             }
         } else {
             audioSourceURL = nil
             LogStore.log("xdz.convert.audio.skip reason=nonVideoInput")
         }
-        defer {
-            if let temporaryAudioURL {
-                try? FileManager.default.removeItem(at: temporaryAudioURL)
-            }
-        }
-
         let audioClips = audioSourceURL.map {
             [AudioClip(sourceID: $0.path, duration: duration, volume: 1)]
         } ?? []
@@ -197,13 +294,21 @@ struct MediaConversionService {
             background: .clear
         )
 
+        let previewURL = temporaryURL(
+            sourceName: sourceName,
+            suffix: target == .livePhoto ? "live-photo-preview" : "video-preview",
+            fileExtension: "mov"
+        )
+        generatedPreviewURL = previewURL
+        let livePhotoOutput: LivePhotoExporter.Output?
         switch target {
         case .livePhoto:
             LogStore.log("xdz.convert.export.begin target=livePhoto duration=\(duration) range=\(sourceStartTime)-\(sourceEndTime)")
-            try await exportLivePhoto(
+            livePhotoOutput = try await exportLivePhoto(
                 conversionComposition,
                 sourceName: sourceName,
                 audioSourceURL: audioSourceURL,
+                outputURL: previewURL,
                 progress: progress
             )
         case .video:
@@ -212,23 +317,176 @@ struct MediaConversionService {
                 conversionComposition,
                 sourceName: sourceName,
                 audioSourceURL: audioSourceURL,
+                outputURL: previewURL,
                 progress: progress
             )
+            livePhotoOutput = nil
         }
+        progress(1)
+        let outputAudioTracks = try? await AVURLAsset(url: previewURL).loadTracks(withMediaType: .audio)
+        let hasOutputAudio = !(outputAudioTracks?.isEmpty ?? true)
+        if !audioClips.isEmpty, !hasOutputAudio, audioWarningMessage == nil {
+            let message = NSLocalizedString(
+                "转换时无法保留源音频，预览不会包含声音。",
+                comment: "Audio fallback warning during conversion"
+            )
+            audioWarningMessage = message
+            warning(message)
+        }
+        let prepared = PreparedConversion(
+            target: target,
+            sourceName: sourceName,
+            duration: duration,
+            sourceSize: CGSize(width: media.width, height: media.height),
+            hasOutputAudio: hasOutputAudio,
+            audioWarningMessage: audioWarningMessage,
+            sourceMediaID: mediaID,
+            sourceFileExtension: extensionName,
+            audioURL: audioSourceURL,
+            baseComposition: conversionComposition,
+            previewURL: previewURL,
+            livePhotoOutput: livePhotoOutput
+        )
+        retainedForPreview = true
+        return prepared
+    }
+
+    func save(_ prepared: PreparedConversion, cropRect: CGRect?) async throws {
+        guard !prepared.isDiscarded else { throw ConversionError.mediaUnavailable }
+        try await renderCrop(prepared, cropRect: cropRect)
+
+        switch prepared.target {
+        case .video:
+            try await saveVideoToPhotoLibrary(prepared.previewURL, sourceName: prepared.sourceName)
+        case .livePhoto:
+            guard let output = prepared.livePhotoOutput else { throw ConversionError.mediaUnavailable }
+            try await saveLivePhotoToPhotoLibrary(output, sourceName: prepared.sourceName)
+        }
+    }
+
+    /// Renders the selected crop into the retained preview without writing to Photos.
+    /// The caller can replace its player item with `prepared.previewURL` afterwards.
+    func renderCrop(_ prepared: PreparedConversion, cropRect: CGRect?) async throws {
+        guard !prepared.isDiscarded else { throw ConversionError.mediaUnavailable }
+        let normalized = normalizedCrop(cropRect, canvas: prepared.baseComposition.canvasRect)
+        guard prepared.renderedCrop != normalized else { return }
+        var composition = prepared.baseComposition
+        composition.cropRect = normalized
+        let outputURL = temporaryURL(
+            sourceName: prepared.sourceName,
+            suffix: prepared.target == .livePhoto ? "live-photo-cropped" : "video-cropped",
+            fileExtension: "mov"
+        )
+        var outputTransferred = false
+        defer {
+            if !outputTransferred { try? FileManager.default.removeItem(at: outputURL) }
+        }
+
+        switch prepared.target {
+        case .video:
+            try await exportVideo(
+                composition,
+                sourceName: prepared.sourceName,
+                audioSourceURL: prepared.audioURL,
+                outputURL: outputURL,
+                progress: { _ in }
+            )
+            try Task.checkCancellation()
+            guard !prepared.isDiscarded else { throw ConversionError.mediaUnavailable }
+            let audioStatus = await audioStatus(for: prepared, outputURL: outputURL)
+            try Task.checkCancellation()
+            guard !prepared.isDiscarded else { throw ConversionError.mediaUnavailable }
+            if let audioStatus {
+                prepared.updateAudioStatus(
+                    hasOutputAudio: audioStatus.hasOutputAudio,
+                    warningMessage: audioStatus.warningMessage
+                )
+            }
+            prepared.updateRenderedOutput(
+                url: outputURL,
+                livePhotoOutput: nil,
+                crop: normalized
+            )
+        case .livePhoto:
+            let output = try await exportLivePhoto(
+                composition,
+                sourceName: prepared.sourceName,
+                audioSourceURL: prepared.audioURL,
+                outputURL: outputURL,
+                progress: { _ in }
+            )
+            try Task.checkCancellation()
+            guard !prepared.isDiscarded else { throw ConversionError.mediaUnavailable }
+            let audioStatus = await audioStatus(for: prepared, outputURL: output.videoURL)
+            try Task.checkCancellation()
+            guard !prepared.isDiscarded else { throw ConversionError.mediaUnavailable }
+            if let audioStatus {
+                prepared.updateAudioStatus(
+                    hasOutputAudio: audioStatus.hasOutputAudio,
+                    warningMessage: audioStatus.warningMessage
+                )
+            }
+            prepared.updateRenderedOutput(
+                url: output.videoURL,
+                livePhotoOutput: output,
+                crop: normalized
+            )
+        }
+        outputTransferred = true
+    }
+
+    private func audioStatus(
+        for prepared: PreparedConversion,
+        outputURL: URL
+    ) async -> (hasOutputAudio: Bool, warningMessage: String?)? {
+        guard !prepared.baseComposition.audioClips.isEmpty else { return nil }
+        let tracks = try? await AVURLAsset(url: outputURL).loadTracks(withMediaType: .audio)
+        guard let tracks else { return nil }
+
+        let hasAudio = !tracks.isEmpty
+        let warning = hasAudio ? nil : NSLocalizedString(
+            "转换时无法保留源音频，预览不会包含声音。",
+            comment: "Audio fallback warning during conversion"
+        )
+        return (hasAudio, warning)
+    }
+
+    func discard(_ prepared: PreparedConversion) {
+        guard !prepared.isDiscarded else { return }
+        prepared.markDiscarded()
+        try? FileManager.default.removeItem(at: prepared.previewURL)
+        if prepared.initialPreviewURL != prepared.previewURL {
+            try? FileManager.default.removeItem(at: prepared.initialPreviewURL)
+        }
+        if let audioURL = prepared.audioURL,
+           audioURL.path.hasPrefix(FileManager.default.temporaryDirectory.path),
+           audioURL.lastPathComponent.hasPrefix("LF-conversion-audio-") {
+            try? FileManager.default.removeItem(at: audioURL)
+        }
+        let storedURL = BackgroundStore.shared.mediaURL(named: prepared.sourceMediaID)
+        try? FileManager.default.removeItem(at: storedURL)
+        BackgroundStore.shared.purgeDecodedMedia()
+    }
+
+    private func normalizedCrop(_ crop: CGRect?, canvas: CGRect) -> CGRect? {
+        guard let crop, crop.width.isFinite, crop.height.isFinite,
+              crop.width > 1, crop.height > 1 else { return nil }
+        let minX = min(max(crop.minX, canvas.minX), canvas.maxX - 2)
+        let minY = min(max(crop.minY, canvas.minY), canvas.maxY - 2)
+        let maxX = min(max(crop.maxX, minX + 2), canvas.maxX)
+        let maxY = min(max(crop.maxY, minY + 2), canvas.maxY)
+        let rect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        return rect == canvas ? nil : rect
     }
 
     private func exportVideo(
         _ composition: Composition,
         sourceName: String,
         audioSourceURL: URL?,
+        outputURL: URL,
         progress: @escaping (Double) -> Void
     ) async throws {
-        let url = temporaryURL(
-            sourceName: sourceName,
-            suffix: "video",
-            fileExtension: "mov"
-        )
-        defer { try? FileManager.default.removeItem(at: url) }
+        let url = outputURL
 
         LogStore.log("xdz.convert.videoExporter.begin url=\(url.path)")
         do {
@@ -251,40 +509,24 @@ struct MediaConversionService {
             LogStore.log("xdz.convert.videoExporter.fail error=\(error)")
             throw error
         }
-        do {
-            LogStore.log("xdz.convert.photoSave.begin type=video")
-            try await saveVideoToPhotoLibrary(url, sourceName: sourceName)
-            LogStore.log("xdz.convert.photoSave.done type=video")
-        } catch {
-            LogStore.log("xdz.convert.photoSave.fail type=video error=\(error)")
-            throw error
-        }
-        progress(1)
     }
 
     private func exportLivePhoto(
         _ composition: Composition,
         sourceName: String,
         audioSourceURL: URL?,
+        outputURL: URL,
         progress: @escaping (Double) -> Void
-    ) async throws {
-        let url = temporaryURL(
-            sourceName: sourceName,
-            suffix: "live-photo",
-            fileExtension: "mov"
-        )
-        defer { try? FileManager.default.removeItem(at: url) }
-
+    ) async throws -> LivePhotoExporter.Output {
         let output = try await LivePhotoExporter().export(
             composition,
-            to: url,
+            to: outputURL,
             audioURL: audioSourceURL,
             watermark: nil,
             progress: progress,
             isCancelled: { Task.isCancelled }
         )
-        try await saveLivePhotoToPhotoLibrary(output, sourceName: sourceName)
-        progress(1)
+        return output
     }
 
     /// 返回可直接用于导出的音频源。没有音轨时返回 nil；需要区间裁剪时生成
@@ -305,15 +547,21 @@ struct MediaConversionService {
         guard needsTrim else { return sourceURL }
 
         let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("GIFBloom-conversion-audio-\(UUID().uuidString)")
+            .appendingPathComponent("LF-conversion-audio-\(UUID().uuidString)")
             .appendingPathExtension("m4a")
         let start = CMTime(seconds: sourceStartTime, preferredTimescale: 600)
         let duration = CMTime(seconds: max(sourceEndTime - sourceStartTime, 0.1), preferredTimescale: 600)
-        let extracted = try await AudioExtractor().extractAudio(
-            from: sourceURL,
-            to: outputURL,
-            timeRange: CMTimeRange(start: start, duration: duration)
-        )
+        let extracted: Bool
+        do {
+            extracted = try await AudioExtractor().extractAudio(
+                from: sourceURL,
+                to: outputURL,
+                timeRange: CMTimeRange(start: start, duration: duration)
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: outputURL)
+            throw error
+        }
         guard extracted, FileManager.default.fileExists(atPath: outputURL.path) else {
             try? FileManager.default.removeItem(at: outputURL)
             return nil
@@ -350,12 +598,17 @@ struct MediaConversionService {
         guard authorized else {
             throw ConversionError.photoLibraryDenied
         }
+        let submissionURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LF-conversion-save-\(UUID().uuidString)")
+            .appendingPathExtension("mov")
+        defer { try? FileManager.default.removeItem(at: submissionURL) }
+        try FileManager.default.copyItem(at: url, to: submissionURL)
         try await PHPhotoLibrary.shared().performChanges {
             let request = PHAssetCreationRequest.forAsset()
             let options = PHAssetResourceCreationOptions()
             options.uniformTypeIdentifier = UTType.quickTimeMovie.identifier
             options.originalFilename = "\(safeFileName(sourceName))-video.mov"
-            request.addResource(with: .video, fileURL: url, options: options)
+            request.addResource(with: .video, fileURL: submissionURL, options: options)
         }
     }
 
@@ -372,12 +625,12 @@ struct MediaConversionService {
             .appendingPathComponent("GIFBloom-LivePhoto-\(identifier).mov")
         let coverURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("GIFBloom-LivePhoto-\(identifier).jpg")
-        try FileManager.default.copyItem(at: output.videoURL, to: videoURL)
-        try output.coverData.write(to: coverURL, options: .atomic)
         defer {
             try? FileManager.default.removeItem(at: videoURL)
             try? FileManager.default.removeItem(at: coverURL)
         }
+        try FileManager.default.copyItem(at: output.videoURL, to: videoURL)
+        try output.coverData.write(to: coverURL, options: .atomic)
 
         try await PHPhotoLibrary.shared().performChanges {
             let request = PHAssetCreationRequest.forAsset()
@@ -418,7 +671,7 @@ struct MediaConversionService {
     ) -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(
-                "\(safeFileName(sourceName))-\(suffix)-\(UUID().uuidString)"
+                "LF-\(safeFileName(sourceName))-\(suffix)-\(UUID().uuidString)"
             )
             .appendingPathExtension(fileExtension)
     }

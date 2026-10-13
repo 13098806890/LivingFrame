@@ -820,9 +820,6 @@
 
 /* i18n completion */
 "使用系统的 Apple Color Emoji 风格表情。" = "Sistemin Apple Color Emoji stilini kullanır.";
-"开始创作" = "Oluşturmaya başla";
-"从一段视频或 Live Photo 生成第一份动态剪影素材。" = "Bir video veya Live Photo'dan ilk hareketli kesitinizi oluşturun.";
-"选择素材 → 编辑 → 导出" = "Medya seç → Düzenle → Dışa aktar";
 "先添加第一份素材" = "İlk varlığınızı ekleyin";
 "选择剪影素材或相册内容，添加后就可以编辑和导出。" = "Bir kesit veya Fotoğraflar arşivi içeriği seçin, ardından düzenleyip dışa aktarın.";
 "在编辑页添加素材后，点击“保存作品”将正式版本保存到这里。编辑中的修改会自动保存在草稿箱。" = "Düzenleyicide medya ekleyip son sürümü buraya kaydetmek için “Çalışmayı Kaydet”e dokunun. Düzenlemeler otomatik olarak taslak şeklinde kaydedilir.";
@@ -836,3 +833,58 @@
 "重试导出" = "Dışa aktarmayı yeniden dene";
 "返回编辑" = "Düzenleyiciye dön";
 "重试保存到相册" = "Fotoğraflar'a kaydetmeyi yeniden dene";
+
+/* Conversion result preview */
+"已保存 %1$lld 项，未保存 %2$lld 项。" = "%1$lld öğe kaydedildi, %2$lld öğe kaydedilmedi.";
+"未知" = "Bilinmiyor";
+"拖动边框调整保存画面" = "Kaydedilecek çerçeveyi ayarlamak için kenarları sürükleyin";
+"类型" = "Tür";
+"Live Photo 预览" = "Live Photo Önizlemesi";
+"视频预览" = "Video Önizlemesi";
+"时长" = "Süre";
+"画面尺寸" = "Kare boyutu";
+"文件大小" = "Dosya boyutu";
+"声音" = "Ses";
+"无音频" = "Ses yok";
+"包含音频" = "Ses dahil";
+"完成裁剪" = "Bitti";
+"调整裁剪" = "Kırp";
+"恢复原始画面" = "Kırpmayı sıfırla";
+"正在保存…" = "Kaydediliyor…";
+"保存到照片" = "Fotoğraflara Kaydet";
+"跳过此项" = "Bu öğeyi atla";
+"取消本批次" = "Grubu iptal et";
+"保存失败，请重试。" = "Kaydedilemedi. Yeniden deneyin.";
+"取消裁剪" = "Kırpmayı iptal et";
+
+/* Conversion crop preview accessibility and formatting */
+"无法预览裁剪结果，请重试。" = "Kırpma önizlenemiyor. Tekrar deneyin.";
+"%1$d.%2$03d 秒" = "%1$d.%2$03d saniye";
+"裁剪框左上角" = "Sol üst kırpma tutamacı";
+"裁剪框上边缘" = "Üst kırpma kenarı";
+"裁剪框右上角" = "Sağ üst kırpma tutamacı";
+"裁剪框左边缘" = "Sol kırpma kenarı";
+"裁剪框右边缘" = "Sağ kırpma kenarı";
+"裁剪框左下角" = "Sol alt kırpma tutamacı";
+"裁剪框下边缘" = "Alt kırpma kenarı";
+"裁剪框右下角" = "Sağ alt kırpma tutamacı";
+"裁剪范围，%1$d × %2$d" = "Kırpma alanı, %1$d × %2$d";
+"未设置裁剪范围" = "Kırpma alanı ayarlanmadı";
+
+/* Conversion preview status and rendering feedback */
+"转换结果已准备，尚未保存到照片" = "Sonuç hazır ve henüz Fotoğraflar'a kaydedilmedi";
+"正在生成裁剪预览…" = "Kırpılmış önizleme oluşturuluyor…";
+"转换时无法保留源音频，预览不会包含声音。" = "Kaynak ses korunamadı. Önizlemede ses olmayacak.";
+
+/* Conversion preview loading */
+"正在准备预览…" = "Önizleme hazırlanıyor…";
+
+"播放预览" = "Önizlemeyi oynat";
+"暂停预览" = "Önizlemeyi duraklat";
+
+"打开预览声音" = "Önizleme sesini aç";
+"关闭预览声音" = "Önizleme sesini kapat";
+"第 %1$lld 项，共 %2$lld 项" = "%2$lld öğe içinde %1$lld. öğe";
+"上一项" = "Önceki öğe";
+"下一项" = "Sonraki öğe";
+"已保存到照片。" = "Fotoğraflar'a kaydedildi.";
