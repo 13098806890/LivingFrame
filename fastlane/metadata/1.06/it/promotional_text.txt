@@ -1,1 +1,1 @@
-Salva i lavori completati e continua a modificarli dopo l’esportazione. Gli effetti GIF restano coerenti, con indicazioni audio più chiare.
+Elabora un elemento alla volta. Visualizza e ritaglia prima di salvare in Foto; le bozze vengono salvate automaticamente.

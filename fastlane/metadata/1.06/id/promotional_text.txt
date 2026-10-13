@@ -1,1 +1,1 @@
-Simpan karya yang selesai dan lanjutkan edit setelah ekspor. Efek GIF tetap konsisten, dengan panduan audio yang lebih jelas.
+Proses satu item setiap kali. Pratinjau dan potong sebelum menyimpan ke Foto; draf tersimpan otomatis.
