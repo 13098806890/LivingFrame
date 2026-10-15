@@ -4,7 +4,7 @@ import XCTest
 
 final class StickerCatalogTests: XCTestCase {
     func testEmojiStickersRenderFromTheSystemEmojiFont() throws {
-        XCTAssertEqual(StickerCategory.allCases, [.doodle, .emoji, .fruit, .logo])
+        XCTAssertEqual(StickerCategory.allCases, [.doodle, .emoji, .fruit, .classicTemplate, .logo])
 
         let emojiStickers = DecorationRenderer.stickerCatalog.filter { $0.category == .emoji }
         XCTAssertEqual(Set(emojiStickers.map(\.id)).count, emojiStickers.count)
@@ -31,7 +31,7 @@ final class StickerCatalogTests: XCTestCase {
     }
 
     func testGIFBloomLogoStickersAreRegisteredAndLoadAllFrames() {
-        XCTAssertEqual(StickerCategory.allCases, [.doodle, .emoji, .fruit, .logo])
+        XCTAssertEqual(StickerCategory.allCases, [.doodle, .emoji, .fruit, .classicTemplate, .logo])
 
         let logoStickers = DecorationRenderer.stickerCatalog.filter { $0.category == .logo }
 
@@ -102,6 +102,29 @@ final class StickerCatalogTests: XCTestCase {
         for sticker in fruitStickers {
             XCTAssertEqual(renderer.previewFrames(for: sticker.id).count, 5, sticker.id)
             XCTAssertNotNil(renderer.previewImage(for: sticker.id), sticker.id)
+        }
+    }
+
+    func testClassicTemplateStickersLoadAllAspectRatios() throws {
+        let templates = DecorationRenderer.stickerCatalog.filter { $0.category == .classicTemplate }
+
+        XCTAssertEqual(templates.map(\.id), [
+            "sticker-template-studio-medallion-16x9",
+            "sticker-template-studio-medallion-1x1",
+            "sticker-template-studio-medallion-3x4",
+            "sticker-template-cartoon-iris-16x9",
+            "sticker-template-cartoon-iris-1x1",
+            "sticker-template-cartoon-iris-3x4",
+            "sticker-template-wanted-bounty-16x9",
+            "sticker-template-wanted-bounty-1x1",
+            "sticker-template-wanted-bounty-3x4"
+        ])
+        XCTAssertTrue(templates.allSatisfy { $0.frameCount == 1 && $0.resourceExtension == "png" })
+
+        let renderer = DecorationRenderer()
+        for template in templates {
+            XCTAssertEqual(renderer.previewFrames(for: template.id).count, 1, template.id)
+            XCTAssertNotNil(renderer.previewImage(for: template.id), template.id)
         }
     }
 

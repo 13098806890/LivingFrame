@@ -24,13 +24,14 @@ public enum StickerCategory: String, CaseIterable, Equatable, Sendable {
     case doodle
     case emoji
     case fruit
+    case classicTemplate
     case aiSticker
     case logo
 
     /// AI face stickers remain readable for existing saved compositions, but
     /// are not exposed to new users while the feature is hidden.
     public static let allCases: [StickerCategory] = [
-        .doodle, .emoji, .fruit, .logo
+        .doodle, .emoji, .fruit, .classicTemplate, .logo
     ]
 
     public var title: String {
@@ -38,6 +39,7 @@ public enum StickerCategory: String, CaseIterable, Equatable, Sendable {
         case .doodle: NSLocalizedString("涂鸦", comment: "Sticker category")
         case .emoji: NSLocalizedString("emoji", comment: "Sticker category")
         case .fruit: NSLocalizedString("水果", comment: "Sticker category")
+        case .classicTemplate: NSLocalizedString("影视模板", comment: "Sticker category")
         case .aiSticker: NSLocalizedString("AI贴纸", comment: "Sticker category")
         case .logo: NSLocalizedString("logo", comment: "Sticker category")
         }
@@ -120,6 +122,8 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
             key = "使用系统的 Apple Color Emoji 风格表情。"
         case .fruit:
             key = "让水果图案以轻快动画点亮画面。"
+        case .classicTemplate:
+            key = "带有透明头像孔的经典影视风格画面模板。"
         case .aiSticker:
             switch id {
             case "sticker-ai-cap-crayon-3d":
@@ -617,6 +621,51 @@ public struct DecorationRenderer {
             id: "sticker-fruit-plum", name: "李子", category: .fruit,
             resourceName: "fruit-plum", resourceExtension: "gif",
             isFrameSequence: false, frameCount: 5, frameDuration: 0.2
+        ),
+        StickerDefinition(
+            id: "sticker-template-studio-medallion-16x9", name: "MGM · 16:9", category: .classicTemplate,
+            resourceName: "studio-medallion-16x9", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-studio-medallion-1x1", name: "MGM · 1:1", category: .classicTemplate,
+            resourceName: "studio-medallion-1x1", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-studio-medallion-3x4", name: "MGM · 3:4", category: .classicTemplate,
+            resourceName: "studio-medallion-3x4", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-cartoon-iris-16x9", name: "Cartoon Iris · 16:9", category: .classicTemplate,
+            resourceName: "cartoon-iris-16x9", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-cartoon-iris-1x1", name: "Cartoon Iris · 1:1", category: .classicTemplate,
+            resourceName: "cartoon-iris-1x1", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-cartoon-iris-3x4", name: "Cartoon Iris · 3:4", category: .classicTemplate,
+            resourceName: "cartoon-iris-3x4", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-wanted-bounty-16x9", name: "Wanted Poster · 16:9", category: .classicTemplate,
+            resourceName: "wanted-bounty-16x9", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-wanted-bounty-1x1", name: "Wanted Poster · 1:1", category: .classicTemplate,
+            resourceName: "wanted-bounty-1x1", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-wanted-bounty-3x4", name: "Wanted Poster · 3:4", category: .classicTemplate,
+            resourceName: "wanted-bounty-3x4", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
         ),
         StickerDefinition(
             id: "sticker-ai-sunglasses-3d", name: "紫晶墨镜 · 3D视角", category: .aiSticker,
@@ -1244,6 +1293,13 @@ public struct DecorationRenderer {
                 forResource: resourceName,
                 withExtension: resourceExtension,
                 subdirectory: "GeneratedStickers/AI贴纸"
+            ) {
+                return url
+            }
+            if let url = bundle.url(
+                forResource: resourceName,
+                withExtension: resourceExtension,
+                subdirectory: "GeneratedStickers/Templates"
             ) {
                 return url
             }
