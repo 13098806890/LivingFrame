@@ -572,7 +572,7 @@
 "黑色" = "negro";
 "默认帧率" = "Velocidad de fotogramas predeterminada";
 "默认格式" = "Formato predeterminado";
-"默认选择最接近 10 MB 的规格，实际大小以导出结果为准" = "El tamaño más cercano a 10 MB está seleccionado de forma predeterminada. El tamaño real está sujeto al resultado de la exportación.";
+"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "De forma predeterminada se conserva la resolución más alta; el GIF puede superar los 10 MB.";
 
 /* Extraction duration helper */
 "超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。" = "Si el video supera la duración máxima por elemento, primero tendrás que elegir un fragmento. Si no, se extraerá desde el inicio.";

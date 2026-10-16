@@ -1,0 +1,2 @@
+• As prévias dos recortes permanecem nítidas com os estilos Contorno, Quadrinhos e Suave; a borda de Quadrinhos ficou mais fina.
+• A exportação de GIFs transparentes agora prioriza uma resolução maior quando os efeitos aumentam o tamanho do arquivo.

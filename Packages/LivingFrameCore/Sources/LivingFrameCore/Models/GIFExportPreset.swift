@@ -22,22 +22,26 @@ public struct GIFExportPreset: Identifiable, Equatable, Sendable {
         ExportFPSPolicy.availableOptions(maxSourceFPS: maxSourceFPS, presets: [15, 30])
     }
 
-    /// Chooses the largest estimated output that remains under the limit.
-    /// If every option exceeds the limit, chooses the smallest estimate.
+    /// Preserve pixel detail when an effect makes GIF frames more expensive.
+    /// Prefer the largest resolution, then the fastest frame rate at that
+    /// resolution that fits the limit. If none fits, keep the resolution and
+    /// choose its smallest estimate; the UI shows that estimate to the user.
     public static func defaultPreset(
         from presets: [GIFExportPreset],
         limitBytes: Int64 = 10 * 1024 * 1024
     ) -> GIFExportPreset? {
         let valid = presets.filter { $0.estimatedBytes > 0 && $0.estimatedBytes < .max }
         guard !valid.isEmpty else { return nil }
-        let underLimit = valid.filter { $0.estimatedBytes <= limitBytes }
-        return (underLimit.isEmpty ? valid : underLimit).max {
-            if $0.estimatedBytes != $1.estimatedBytes {
-                return $0.estimatedBytes < $1.estimatedBytes
-            }
-            let leftSize = Double($0.resolution.maxPixelSize ?? .greatestFiniteMagnitude)
-            let rightSize = Double($1.resolution.maxPixelSize ?? .greatestFiniteMagnitude)
-            return leftSize * $0.fps < rightSize * $1.fps
+        guard let largestPixelSize = valid.map({ $0.resolution.maxPixelSize ?? .greatestFiniteMagnitude }).max() else {
+            return nil
         }
+        let largestResolution = valid.filter {
+            ($0.resolution.maxPixelSize ?? .greatestFiniteMagnitude) == largestPixelSize
+        }
+        let underLimit = largestResolution.filter { $0.estimatedBytes <= limitBytes }
+        if !underLimit.isEmpty {
+            return underLimit.max { $0.fps < $1.fps }
+        }
+        return largestResolution.min { $0.estimatedBytes < $1.estimatedBytes }
     }
 }

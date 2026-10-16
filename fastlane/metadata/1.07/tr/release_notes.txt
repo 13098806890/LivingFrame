@@ -1,0 +1,2 @@
+• Kesit önizlemeleri Anahat, Çizgi Roman ve Pürüzsüz stillerinde net kalır; Çizgi Roman kenarlığı inceltildi.
+• Efektler dosya boyutunu artırdığında saydam GIF dışa aktarımı artık daha yüksek çözünürlüğe öncelik verir.

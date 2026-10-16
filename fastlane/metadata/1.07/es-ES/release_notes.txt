@@ -1,0 +1,2 @@
+• Las vistas previas de recortes se mantienen nítidas con los estilos Contorno, Cómic y Suavizado; el borde Cómic es más fino.
+• Al exportar GIF transparentes, se prioriza una mayor resolución cuando los efectos aumentan el tamaño del archivo.

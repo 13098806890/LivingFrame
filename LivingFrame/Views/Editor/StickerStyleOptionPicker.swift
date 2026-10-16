@@ -32,7 +32,7 @@ struct StickerStyleOptionPicker: View {
 
     private var thumbnailSetKey: String {
         [
-            "comic-border-v2",
+            "comic-border-v3",
             clip.id,
             String(frameIndex),
             clip.cropCacheKey,

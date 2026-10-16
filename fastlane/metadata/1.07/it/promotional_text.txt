@@ -1,0 +1,1 @@
+Elabora un elemento alla volta. Visualizza e ritaglia prima di salvare in Foto; le bozze vengono salvate automaticamente.

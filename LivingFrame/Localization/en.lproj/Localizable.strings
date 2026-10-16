@@ -600,7 +600,7 @@
 "黑色" = "black";
 "默认帧率" = "Default frame rate";
 "默认格式" = "Default format";
-"默认选择最接近 10 MB 的规格，实际大小以导出结果为准" = "The preset closest to 10 MB is selected by default. Check the exported file for its exact size.";
+"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "The default keeps the highest resolution; the GIF may exceed 10 MB.";
 
 /* Extraction duration helper */
 "超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。" = "For videos longer than the maximum item duration, choose a clip first. Shorter videos are extracted from the beginning.";

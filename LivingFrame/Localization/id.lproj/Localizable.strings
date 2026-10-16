@@ -572,7 +572,7 @@
 "黑色" = "hitam";
 "默认帧率" = "Kecepatan bingkai bawaan";
 "默认格式" = "Format bawaan";
-"默认选择最接近 10 MB 的规格，实际大小以导出结果为准" = "Ukuran yang paling dekat dengan 10 MB dipilih secara default. Ukuran sebenarnya tergantung pada hasil ekspor.";
+"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Resolusi tertinggi dipertahankan secara default; GIF mungkin melebihi 10 MB.";
 
 /* Extraction duration helper */
 "超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。" = "Jika durasi video melebihi batas maksimum per item, pilih klip terlebih dahulu. Jika tidak, ekstraksi dimulai dari awal.";

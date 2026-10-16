@@ -1,0 +1,2 @@
+• Bản xem trước ảnh tách nền vẫn sắc nét với các kiểu Viền, Truyện tranh và Mượt; viền Truyện tranh đã mỏng hơn.
+• Khi hiệu ứng làm tăng kích thước tệp, xuất GIF trong suốt sẽ ưu tiên độ phân giải cao hơn.

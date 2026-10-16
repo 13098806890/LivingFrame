@@ -1,0 +1,1 @@
+Procesa un elemento cada vez. Previsualiza y recorta antes de guardarlo en Fotos; los borradores se guardan automáticamente.

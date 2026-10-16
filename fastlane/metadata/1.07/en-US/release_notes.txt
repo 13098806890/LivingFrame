@@ -1,0 +1,2 @@
+• Cutout previews stay sharp with Outline, Comic, and Smooth styles; the Comic border is slimmer.
+• Transparent GIF export now favors higher resolution when effects increase file size.

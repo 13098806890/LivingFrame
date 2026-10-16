@@ -4300,7 +4300,7 @@ struct ClipMenuView: View {
             .font(.caption.weight(.medium))
             .disabled(isInteractionBusy)
 
-            Text("默认选择最接近 10 MB 的规格，实际大小以导出结果为准")
+            Text("默认优先保留画面尺寸；GIF 可能超过 10 MB")
                 .font(.caption2)
                 .foregroundStyle(LF.textSecondary)
 

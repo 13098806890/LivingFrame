@@ -1402,7 +1402,7 @@ public struct CompositionRenderer {
             let radius = max(1, targetRadius / scale)
             padding = max(padding, radius + max(1, radius * 0.25) * 2)
         case .comic:
-            let whiteRadius = max(1, clip.edgeThickness.radius * 2.7 / scale)
+            let whiteRadius = max(1, clip.edgeThickness.radius * 1.5 / scale)
             let offset = max(0.8, whiteRadius * 0.06)
             let blur = max(1.2, whiteRadius * 0.16)
             padding = max(padding, whiteRadius + offset + blur * 2)
@@ -1474,7 +1474,7 @@ public struct CompositionRenderer {
             let scale = max(fixScale, 0.001)
             let extent = image.extent
             // Comic 比 Outline 明显更厚，保持人物本身颜色和细节不变。
-            let whiteRadius = max(1, thickness.radius * 2.7 / scale)
+            let whiteRadius = max(1, thickness.radius * 1.5 / scale)
             let white = outlineLayer(image, radius: whiteRadius, color: CIColor(hex: "FFFFFF"), lineStyle: .solid)
                 .cropped(to: extent)
             let contour = outlineLayer(

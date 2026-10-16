@@ -572,7 +572,7 @@
 "黑色" = "màu đen";
 "默认帧率" = "Tốc độ khung hình mặc định";
 "默认格式" = "Định dạng mặc định";
-"默认选择最接近 10 MB 的规格，实际大小以导出结果为准" = "Kích thước gần nhất với 10 MB được chọn theo mặc định. Kích thước thực tế tùy thuộc vào kết quả xuất khẩu.";
+"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Mặc định giữ độ phân giải cao nhất; GIF có thể vượt quá 10 MB.";
 
 /* Extraction duration helper */
 "超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。" = "Nếu video dài hơn thời lượng tối đa cho mỗi mục, hãy chọn một đoạn trước. Nếu không, video sẽ được trích xuất từ đầu.";

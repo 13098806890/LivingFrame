@@ -1,0 +1,2 @@
+• Freigestellte Motive bleiben mit den Stilen Kontur, Comic und Glätten in der Vorschau scharf; der Comic-Rand ist schmaler.
+• Beim Export transparenter GIFs bleibt die höhere Auflösung bevorzugt erhalten, wenn Effekte die Dateigröße erhöhen.

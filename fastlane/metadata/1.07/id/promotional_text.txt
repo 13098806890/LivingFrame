@@ -1,0 +1,1 @@
+Proses satu item setiap kali. Pratinjau dan potong sebelum menyimpan ke Foto; draf tersimpan otomatis.

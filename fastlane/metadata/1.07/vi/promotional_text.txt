@@ -1,0 +1,1 @@
+Xử lý từng mục một. Xem trước và cắt trước khi lưu vào Ảnh; bản nháp được tự động lưu.

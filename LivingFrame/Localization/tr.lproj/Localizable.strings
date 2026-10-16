@@ -572,7 +572,7 @@
 "黑色" = "siyah";
 "默认帧率" = "Varsayılan kare hızı";
 "默认格式" = "Varsayılan format";
-"默认选择最接近 10 MB 的规格，实际大小以导出结果为准" = "Varsayılan olarak 10 MB'a en yakın boyut seçilir. Gerçek boyut ihracat sonucuna bağlıdır.";
+"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Varsayılan olarak en yüksek çözünürlük korunur; GIF 10 MB’ı aşabilir.";
 
 /* Extraction duration helper */
 "超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。" = "Video tek öğe için belirlenen maksimum süreyi aşarsa önce bir bölüm seçin. Aşmıyorsa içerik baştan çıkarılır.";

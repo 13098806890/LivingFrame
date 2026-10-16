@@ -1,0 +1,2 @@
+• Pratinjau potongan tetap tajam dengan gaya Outline, Comic, dan Smooth; bingkai Comic kini lebih tipis.
+• Ekspor GIF transparan kini mengutamakan resolusi lebih tinggi saat efek memperbesar ukuran file.
