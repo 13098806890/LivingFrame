@@ -1,0 +1,3 @@
+• Pratinjau potongan tetap tajam dengan gaya Outline, Comic, dan Smooth; bingkai Comic kini lebih tipis.
+• Ekspor GIF transparan kini mengutamakan resolusi lebih tinggi saat efek memperbesar ukuran file.
+Live Photo dan video hasil konversi kini muncul di Baru Ditambahkan, serta dapat difilter, diputar, dan dihapus dari Semua Aset.

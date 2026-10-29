@@ -4,7 +4,7 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Live Photo 导出：H.264 视频（≤3 秒）+ 封面 JPEG，供 PHAssetCreationRequest 配对保存。
+/// Live Photo 导出：H.264 视频 + 封面 JPEG，供 PHAssetCreationRequest 配对保存。
 /// 视频与封面写入一致的 AssetIdentifier（QuickTime 元数据 + EXIF MakerApple），
 /// 缺少该标识会导致 PHPhotosErrorDomain 3302/3392 配对导入失败。
 public struct LivePhotoExporter {
@@ -24,15 +24,20 @@ public struct LivePhotoExporter {
 
     public init() {}
 
-    /// Mirrors the export's fixed H.264 target bitrate and three-second limit.
-    public func estimateSize(_ composition: Composition) -> Int64 {
-        let duration = min(max(composition.duration, 0), 3)
+    /// Mirrors the export's fixed H.264 target bitrate and duration limit.
+    public func estimateSize(
+        _ composition: Composition,
+        maximumDuration: TimeInterval = 3
+    ) -> Int64 {
+        let limit = max(maximumDuration.isFinite ? maximumDuration : 3, 0.1)
+        let duration = min(max(composition.duration, 0), limit)
         return max(Int64((6_000_000 * duration / 8).rounded()), 1)
     }
 
     public func export(
         _ composition: Composition,
         to url: URL,
+        maximumDuration: TimeInterval = 3,
         watermark: ExportWatermark? = nil,
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
@@ -41,6 +46,7 @@ public struct LivePhotoExporter {
             composition,
             to: url,
             audioURL: nil,
+            maximumDuration: maximumDuration,
             watermark: watermark,
             progress: progress,
             isCancelled: isCancelled
@@ -52,6 +58,7 @@ public struct LivePhotoExporter {
         _ composition: Composition,
         to url: URL,
         audioURL: URL?,
+        maximumDuration: TimeInterval = 3,
         watermark: ExportWatermark? = nil,
         progress: @escaping (Double) -> Void = { _ in },
         isCancelled: @escaping () -> Bool = { Task.isCancelled }
@@ -59,7 +66,8 @@ public struct LivePhotoExporter {
         let renderSize = composition.renderRect.size
         let width = max(2, Int(renderSize.width))
         let height = max(2, Int(renderSize.height))
-        let duration = min(3, composition.duration)
+        let durationLimit = max(maximumDuration.isFinite ? maximumDuration : 3, 0.1)
+        let duration = min(max(composition.duration, 0), durationLimit)
         let frameCount = max(1, Int((duration * composition.fps).rounded(.up)))
         try? FileManager.default.removeItem(at: url)
         let start = Date()
@@ -83,50 +91,10 @@ public struct LivePhotoExporter {
         }
         writer.add(videoInput)
 
-        // 转换入口传入的是已按画面区间裁好的音频文件。直接 passthrough 写入
-        // 压缩音频，避免重新编码造成延迟或音画不同步。
-        var audioInput: AVAssetWriterInput?
-        var audioSamples: [CMSampleBuffer] = []
-        if let audioURL {
-            do {
-                let audioAsset = AVURLAsset(url: audioURL)
-                if let audioTrack = try await audioAsset.loadTracks(withMediaType: .audio).first {
-                    let reader = try AVAssetReader(asset: audioAsset)
-                    let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-                    output.alwaysCopiesSampleData = false
-                    guard reader.canAdd(output) else { throw ExportError.renderFailed }
-                    reader.add(output)
-                    guard reader.startReading() else { throw ExportError.renderFailed }
-                    while let sample = output.copyNextSampleBuffer() {
-                        audioSamples.append(sample)
-                    }
-                    guard reader.status == .completed else {
-                        throw ExportError.renderFailed
-                    }
-
-                    let formatDescriptions = try await audioTrack.load(.formatDescriptions)
-                    guard let formatHint = formatDescriptions.first else {
-                        throw ExportError.renderFailed
-                    }
-                    let input = AVAssetWriterInput(
-                        mediaType: .audio,
-                        outputSettings: nil,
-                        sourceFormatHint: formatHint
-                    )
-                    input.expectsMediaDataInRealTime = false
-                    guard writer.canAdd(input) else { throw ExportError.renderFailed }
-                    writer.add(input)
-                    audioInput = input
-                }
-            } catch {
-                // 音频损坏或系统无法 passthrough 时仍然导出画面，避免转换整体失败。
-                LogStore.log(
-                    "xdz.livephoto.exporter audio unavailable, continue silent "
-                        + "error=\(error)"
-                )
-                audioSamples.removeAll(keepingCapacity: false)
-                audioInput = nil
-            }
+        // AVAssetWriter can deadlock when appending audio and video through separate
+        // inputs on device. Write the paired video first, then passthrough-remux audio.
+        if audioURL != nil {
+            LogStore.log("xdz.livephoto.exporter audio.defer-to-remux")
         }
 
         // 配对标识：文件级 QuickTime 元数据（moov 层，无需 adaptor）。
@@ -172,34 +140,13 @@ public struct LivePhotoExporter {
             }
         }
 
+        LogStore.log("xdz.livephoto.exporter writer.startWriting.begin status=\(writer.status.rawValue)")
         guard writer.startWriting() else {
             LogStore.log("xdz.livephoto.exporter startWriting failed status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
             throw ExportError.renderFailed
         }
         writer.startSession(atSourceTime: .zero)
-
-        if let audioInput {
-            for sample in audioSamples {
-                while !audioInput.isReadyForMoreMediaData {
-                    if isCancelled() || Task.isCancelled {
-                        audioInput.markAsFinished()
-                        await writer.finishWriting()
-                        throw ExportError.cancelled
-                    }
-                    try await Task.sleep(nanoseconds: 3_000_000)
-                }
-                guard audioInput.append(sample) else {
-                    LogStore.log(
-                        "xdz.livephoto.exporter audio append failed "
-                            + "error=\(String(describing: writer.error))"
-                    )
-                    audioInput.markAsFinished()
-                    await writer.finishWriting()
-                    throw ExportError.renderFailed
-                }
-            }
-            audioInput.markAsFinished()
-        }
+        LogStore.log("xdz.livephoto.exporter writer.startWriting.done status=\(writer.status.rawValue)")
 
         let stillImageTimeItem = AVMutableMetadataItem()
         stillImageTimeItem.key = "com.apple.quicktime.still-image-time" as NSString
@@ -211,11 +158,13 @@ public struct LivePhotoExporter {
             items: [stillImageTimeItem],
             timeRange: CMTimeRange(start: .zero, duration: frameDuration)
         )
+        LogStore.log("xdz.livephoto.exporter still-image-time.append.begin")
         guard stillImageTimeAdaptor.append(stillImageTimeGroup) else {
             LogStore.log("xdz.livephoto.exporter append still-image-time metadata failed")
             throw ExportError.renderFailed
         }
         stillImageTimeInput.markAsFinished()
+        LogStore.log("xdz.livephoto.exporter still-image-time.append.done")
 
         let renderer = CompositionRenderer(context: context, exportWatermark: watermark)
         let renderRect = composition.renderRect
@@ -224,6 +173,7 @@ public struct LivePhotoExporter {
         var coverData: Data?
         var memory = ExportMemoryDiagnostics(exporter: "LivePhoto", frameCount: frameCount)
         memory.log("start-video-track")
+        LogStore.log("xdz.livephoto.exporter render.begin frames=\(frameCount) size=\(width)x\(height)")
 
         for index in 0..<frameCount {
             let stallStart = Date()
@@ -255,6 +205,9 @@ public struct LivePhotoExporter {
                 memory.log("before-buffer", frame: index + 1, totalFrames: frameCount)
             }
             let generatedCover = try autoreleasepool { () throws -> Data? in
+                if index == 0 {
+                    LogStore.log("xdz.livephoto.exporter frame.first.begin")
+                }
                 guard let pool = adaptor.pixelBufferPool else { throw ExportError.renderFailed }
                 var pixelBuffer: CVPixelBuffer?
                 let createStatus = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
@@ -282,6 +235,9 @@ public struct LivePhotoExporter {
                     throw ExportError.renderFailed
                 }
                 pixelBuffer = nil
+                if index == 0 {
+                    LogStore.log("xdz.livephoto.exporter frame.first.append.done")
+                }
                 return firstFrameCover
             }
             if let generatedCover {
@@ -311,6 +267,14 @@ public struct LivePhotoExporter {
             LogStore.log("xdz.livephoto.exporter cover JPEG is missing after rendering")
             throw ExportError.renderFailed
         }
+        if let audioURL {
+            try await remuxAudioIfPossible(
+                from: audioURL,
+                into: url,
+                assetIdentifier: assetID,
+                isCancelled: isCancelled
+            )
+        }
         let videoBytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         LogStore.log(
             "xdz.livephoto.exporter done elapsed=\(Int(Date().timeIntervalSince(start)))s "
@@ -318,6 +282,121 @@ public struct LivePhotoExporter {
         )
 
         return Output(videoURL: url, coverData: coverData, assetIdentifier: assetID)
+    }
+
+    /// Add the optional audio track after writing the Live Photo video and timed metadata
+    /// tracks. This avoids the multi-input AVAssetWriter stall seen when audio is appended
+    /// before video frames are available.
+    private func remuxAudioIfPossible(
+        from audioURL: URL,
+        into videoURL: URL,
+        assetIdentifier: String,
+        isCancelled: () -> Bool
+    ) async throws {
+        let remuxURL = videoURL.deletingPathExtension().appendingPathExtension("remux.mov")
+        try? FileManager.default.removeItem(at: remuxURL)
+        defer { try? FileManager.default.removeItem(at: remuxURL) }
+
+        do {
+            LogStore.log("xdz.livephoto.exporter remux.begin audio=\(audioURL.lastPathComponent)")
+            let videoAsset = AVURLAsset(url: videoURL)
+            let audioAsset = AVURLAsset(url: audioURL)
+            let composition = AVMutableComposition()
+            guard let sourceVideo = try await videoAsset.loadTracks(withMediaType: .video).first,
+                  let targetVideo = composition.addMutableTrack(
+                      withMediaType: .video,
+                      preferredTrackID: kCMPersistentTrackID_Invalid
+                  ) else {
+                throw ExportError.renderFailed
+            }
+            let videoDuration = try await videoAsset.load(.duration)
+            let videoRange = CMTimeRange(start: .zero, duration: videoDuration)
+            try targetVideo.insertTimeRange(videoRange, of: sourceVideo, at: .zero)
+
+            if let sourceAudio = try await audioAsset.loadTracks(withMediaType: .audio).first,
+               let targetAudio = composition.addMutableTrack(
+                   withMediaType: .audio,
+                   preferredTrackID: kCMPersistentTrackID_Invalid
+               ) {
+                let audioDuration = try await audioAsset.load(.duration)
+                let duration = CMTimeMinimum(videoDuration, audioDuration)
+                if CMTimeCompare(duration, .zero) > 0 {
+                    try targetAudio.insertTimeRange(
+                        CMTimeRange(start: .zero, duration: duration),
+                        of: sourceAudio,
+                        at: .zero
+                    )
+                }
+            }
+
+            // Preserve Live Photo's still-image-time metadata track through the remux.
+            for sourceMetadata in try await videoAsset.loadTracks(withMediaType: .metadata) {
+                guard let targetMetadata = composition.addMutableTrack(
+                    withMediaType: .metadata,
+                    preferredTrackID: kCMPersistentTrackID_Invalid
+                ) else {
+                    throw ExportError.renderFailed
+                }
+                let metadataRange = try await sourceMetadata.load(.timeRange)
+                try targetMetadata.insertTimeRange(metadataRange, of: sourceMetadata, at: .zero)
+            }
+
+            guard let session = AVAssetExportSession(
+                asset: composition,
+                presetName: AVAssetExportPresetPassthrough
+            ) else {
+                throw ExportError.renderFailed
+            }
+            let identifierItem = AVMutableMetadataItem()
+            identifierItem.key = "com.apple.quicktime.content.identifier" as NSString
+            identifierItem.keySpace = AVMetadataKeySpace.quickTimeMetadata
+            identifierItem.value = assetIdentifier as NSString
+            identifierItem.dataType = "com.apple.metadata.datatype.UTF-8"
+            session.metadata = [identifierItem]
+            session.shouldOptimizeForNetworkUse = false
+
+            let timeoutTask = Task {
+                do {
+                    try await Task.sleep(nanoseconds: 60_000_000_000)
+                    session.cancelExport()
+                } catch {
+                    // Export completed before the timeout.
+                }
+            }
+            defer { timeoutTask.cancel() }
+            try Task.checkCancellation()
+            guard !isCancelled() else { throw ExportError.cancelled }
+            try await session.export(to: remuxURL, as: .mov)
+            try Task.checkCancellation()
+            guard !isCancelled() else { throw ExportError.cancelled }
+
+            let remuxedAsset = AVURLAsset(url: remuxURL)
+            let remuxedTracks = try await remuxedAsset.load(.tracks)
+            let hasVideo = remuxedTracks.contains { $0.mediaType == .video }
+            let hasAudio = remuxedTracks.contains { $0.mediaType == .audio }
+            let hasTimedMetadata = remuxedTracks.contains { $0.mediaType == .metadata }
+            let fileMetadata = try await remuxedAsset.load(.metadata)
+            var hasIdentifier = false
+            for item in fileMetadata where (item.key as? String) == "com.apple.quicktime.content.identifier" {
+                if try await item.load(.stringValue) == assetIdentifier {
+                    hasIdentifier = true
+                    break
+                }
+            }
+            guard hasVideo, hasAudio, hasTimedMetadata, hasIdentifier else {
+                LogStore.log("xdz.livephoto.exporter remux.validation.failed video=\(hasVideo) audio=\(hasAudio) timedMetadata=\(hasTimedMetadata) identifier=\(hasIdentifier)")
+                return
+            }
+
+            _ = try FileManager.default.replaceItemAt(videoURL, withItemAt: remuxURL)
+            LogStore.log("xdz.livephoto.exporter remux.done audio=true timedMetadata=true identifier=true")
+        } catch {
+            if isCancelled() || Task.isCancelled {
+                throw ExportError.cancelled
+            }
+            // Audio is optional; retain the already valid paired silent Live Photo on failure.
+            LogStore.log("xdz.livephoto.exporter remux.failed error=\(error); keeping silent Live Photo")
+        }
     }
 
     /// still-image-time 元数据轨的格式描述 hint（metadata adaptor 必需）。

@@ -1,0 +1,1 @@
+Verarbeite ein Medium pro Vorgang. Vorschau und Zuschnitt vor dem Speichern in Fotos; Entwürfe werden automatisch gesichert.

@@ -1,0 +1,3 @@
+• Les aperçus des détourages restent nets avec les styles Contour, BD et Lissage ; la bordure BD est plus fine.
+• L’exportation des GIF transparents privilégie une résolution plus élevée lorsque les effets augmentent la taille du fichier.
+Les Live Photos et vidéos converties apparaissent désormais dans « Ajouts récents » et peuvent être filtrées, lues et supprimées dans « Tous les éléments ».

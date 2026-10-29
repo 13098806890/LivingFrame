@@ -242,6 +242,7 @@
 "%1$lld 个素材" = "%1$lld-Materialien";
 "%1$lld 张 / %2$.2f 秒" = "%1$lld Blätter / %2$.2f Sekunden";
 "%1$lld×%2$lld · %3$lld fps · %4$lld 帧" = "%1$lld×%2$lld · %3$lld fps · %4$lld Frames";
+"15 秒" = "15 Sekunden";
 "10 秒" = "10 Sekunden";
 "16:9" = "16:9";
 "1:1" = "1:1";
@@ -572,7 +573,7 @@
 "黑色" = "schwarz";
 "默认帧率" = "Standardbildrate";
 "默认格式" = "Standardformat";
-"默认选择最接近 10 MB 的规格，实际大小以导出结果为准" = "Standardmäßig ist die Größe ausgewählt, die 10 MB am nächsten kommt. Die tatsächliche Größe hängt vom Exportergebnis ab.";
+"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Standardmäßig bleibt die Bildauflösung erhalten; die GIF-Datei kann größer als 10 MB sein.";
 
 /* Extraction duration helper */
 "超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。" = "Videos, die länger als die maximale Dauer pro Medium sind, erfordern zuerst die Auswahl eines Abschnitts. Kürzere Videos werden ab dem Anfang verarbeitet.";
@@ -602,7 +603,7 @@
 "全部" = "Alle";
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "Abonniere GIFBloom Pro, um das Wasserzeichen beim Export zu entfernen.";
-"免费版最长 5 秒；GIFBloom Pro 可选 10 秒。" = "Kostenlos bis 5 Sek.; mit GIFBloom Pro 10 Sek.";
+"免费版最长 5 秒；GIFBloom Pro 可选 15 秒。" = "Kostenlos bis 5 Sek.; mit GIFBloom Pro 15 Sek.";
 "解锁更长片段" = "Längere Clips freischalten";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Wochen- und Jahresabos verlängern sich automatisch. Kündige mindestens 24 Stunden vor Ablauf. Verwalte dein Abo in den Apple-ID-Einstellungen.";
 "AI 贴纸仅限 GIFBloom Pro 使用。" = "KI-Sticker sind nur mit GIFBloom Pro verfügbar.";
@@ -611,6 +612,7 @@
 "解锁更长的素材提取时长。" = "Längere Clip-Extraktionsdauer freischalten.";
 "订阅去水印" = "Zum Entfernen abonnieren";
 "水果" = "Früchte";
+"最长片段" = "Maximale Clipdauer";
 "5 秒" = "5 Sekunden";
 
 "AI贴纸" = "KI-Sticker";
@@ -675,7 +677,7 @@
 "从视频、Live Photo 或照片提取透明剪影" = "Extract transparent cutouts from videos, Live Photos, or photos";
 "取消转换" = "Konvertierung abbrechen";
 "已转换并保存 %1$lld 项素材到照片。" = "Converted and saved %1$lld item(s) to Photos.";
-"成功转换 %1$lld 项，%2$lld 项失败。%@" = "%1$lld converted successfully; %2$lld failed. %@";
+"成功转换 %lld 项，%lld 项失败。%@" = "%lld converted successfully; %lld failed. %@";
 "截取首帧生成透明人物贴纸" = "Create a transparent sticker from the first frame";
 "提取可播放的透明人物素材" = "Create a playable transparent cutout";
 "正在准备转换" = "Konvertierung wird vorbereitet";

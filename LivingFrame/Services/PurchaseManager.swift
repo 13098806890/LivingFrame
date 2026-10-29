@@ -9,7 +9,7 @@ final class PurchaseManager: ObservableObject {
     static let lifetimeProductID = "com.livingframe.app.pro.lifetime"
     static let subscriptionGroupID = "22389365"
     static let freeMaximumExtractionDuration = 5.0
-    static let proMaximumExtractionDuration = 10.0
+    static let proMaximumExtractionDuration = 15.0
 
     private static let productIDs: Set<String> = [
         weeklyProductID,

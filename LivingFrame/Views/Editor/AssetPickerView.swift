@@ -496,10 +496,6 @@ struct AnimatedClipPreview: View {
 
     private let initialPreloadCount = 6
     private let playbackPreloadWindow = 10
-    /// Core Image 贴纸效果比普通帧解码更重。播放时使用略低于静态预览的
-    /// 分辨率，避免预渲染耗时过长；播放阶段不再临时渲染样式。
-    private let styledPlaybackMaxPixelSize: CGFloat = 360
-
     init(
         clip: SegmentedClip,
         maxPixelSize: CGFloat,
@@ -539,12 +535,6 @@ struct AnimatedClipPreview: View {
         usesCoreStickerStylePreview && clip.stickerStyle != .none && coreStickerStyleComposition != nil
     }
 
-    private var playbackPixelSize: CGFloat {
-        usesRenderedStickerPreview
-            ? min(maxPixelSize, styledPlaybackMaxPixelSize)
-            : maxPixelSize
-    }
-
     var body: some View {
         ZStack {
             CheckerboardView()
@@ -557,7 +547,7 @@ struct AnimatedClipPreview: View {
                     CoreStickerStylePreviewFrame(
                         clip: clip,
                         frameIndex: previewFrame,
-                        maxPixelSize: isPlaying ? playbackPixelSize : maxPixelSize,
+                        maxPixelSize: maxPixelSize,
                         composition: coreStickerStyleComposition
                     )
                 } else {
@@ -630,7 +620,8 @@ struct AnimatedClipPreview: View {
         let indices = playbackFrames
         let clipValue = clip
         let usesStyledRenderer = usesRenderedStickerPreview
-        let pixelSize = usesStyledRenderer ? playbackPixelSize : maxPixelSize
+        // 带效果的播放也使用静态预览的尺寸；低分辨率帧在详情页放大后会模糊。
+        let pixelSize = maxPixelSize
         let compositionValue = coreStickerStyleComposition
 
         if usesStyledRenderer, let compositionValue {
@@ -1066,6 +1057,9 @@ private struct CoreStickerStylePreviewFrame: View {
             String(frameIndex),
             clip.cropCacheKey,
             clip.stickerStyle.rawValue,
+            clip.edgeStyle.rawValue,
+            clip.edgeThickness.rawValue,
+            clip.edgeColorHex,
             String(clip.normalizedRotationQuarterTurns),
             String(Int(maxPixelSize.rounded()))
         ].joined(separator: "|")
@@ -1114,9 +1108,9 @@ struct ClipPreviewImage: View {
             case .outline:
                 halo(color: .white, radius: stickerHaloRadius, opacity: 0.95)
             case .comic:
-                halo(color: .black, radius: stickerHaloRadius * 2.52, opacity: 0.13)
+                halo(color: .black, radius: stickerHaloRadius * 1.55, opacity: 0.13)
                     .offset(y: 1)
-                halo(color: .white, radius: stickerHaloRadius * 2.325, opacity: 0.98)
+                halo(color: .white, radius: stickerHaloRadius * 1.35, opacity: 0.98)
             case .smooth:
                 halo(color: .white, radius: max(2, stickerHaloRadius * 0.55), opacity: 0.25)
             case .none:

@@ -250,6 +250,98 @@ final class CompositionRendererClipEffectsTests: XCTestCase {
         XCTAssertEqual(styledBounds.midY, plainBounds.midY, accuracy: 1)
     }
 
+    func testStickerStylesKeepSubjectInteriorSharpAtPreviewSize() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sticker-interior-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let frame = try XCTUnwrap(makeSharpSubjectFrame())
+        XCTAssertTrue(writePNG(frame, to: folder.appendingPathComponent("00000.png")))
+
+        let clip = SegmentedClip(
+            id: "sticker-interior-\(UUID().uuidString)",
+            name: "sharp subject",
+            fps: 1,
+            frameCount: 1,
+            width: frame.width,
+            height: frame.height,
+            folderURL: folder
+        )
+        let composition = Composition(
+            name: "style sharpness",
+            canvas: CanvasSpec(width: 120, height: 120),
+            duration: 1,
+            fps: 1,
+            elements: [CompositionElement(
+                kind: .clip(clipID: clip.id),
+                name: clip.name,
+                transform: ElementTransform(position: CGPoint(x: 60, y: 60)),
+                endTime: 1,
+                sourceEndTime: 1
+            )],
+            background: .clear
+        )
+        FrameCache.shared.registerInMemory(clip)
+        let renderer = CompositionRenderer(frameMaxPixelSize: 60)
+        let baseline = try XCTUnwrap(renderer.render(composition, at: 0))
+        let baselinePixels = try XCTUnwrap(CGImageTestSupport.rgbaPixels(in: baseline))
+
+        for style in [StickerStyle.outline, .comic, .smooth] {
+            var styled = clip
+            styled.stickerStyle = style
+            FrameCache.shared.registerInMemory(styled)
+            let image = try XCTUnwrap(renderer.render(composition, at: 0))
+            let pixels = try XCTUnwrap(CGImageTestSupport.rgbaPixels(in: image))
+            for y in 22..<38 {
+                for x in 22..<38 {
+                    let offset = (y * image.width + x) * 4
+                    XCTAssertEqual(Array(pixels[offset..<(offset + 4)]),
+                                   Array(baselinePixels[offset..<(offset + 4)]),
+                                   "\(style) changed the subject interior at (\(x), \(y))")
+                }
+            }
+        }
+    }
+
+    func testComicBorderStaysWithinMediumThickness() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("comic-width-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let frame = try XCTUnwrap(makeEdgeSubjectFrame())
+        XCTAssertTrue(writePNG(frame, to: folder.appendingPathComponent("00000.png")))
+        let clip = SegmentedClip(
+            id: "comic-width-\(UUID().uuidString)",
+            name: "comic width",
+            fps: 1,
+            frameCount: 1,
+            width: frame.width,
+            height: frame.height,
+            folderURL: folder,
+            edgeThickness: .medium,
+            stickerStyle: .comic
+        )
+        FrameCache.shared.registerInMemory(clip)
+        let composition = Composition(
+            name: "comic width",
+            canvas: CanvasSpec(width: 220, height: 220),
+            duration: 1,
+            fps: 1,
+            elements: [CompositionElement(
+                kind: .clip(clipID: clip.id),
+                name: clip.name,
+                transform: ElementTransform(position: CGPoint(x: 110, y: 110)),
+                endTime: 1,
+                sourceEndTime: 1
+            )],
+            background: .clear
+        )
+        let rendered = try XCTUnwrap(CompositionRenderer().render(composition, at: 0))
+        let bounds = try XCTUnwrap(visibleAlphaBounds(in: rendered))
+        XCTAssertLessThan(bounds.width, 180)
+        XCTAssertGreaterThan(bounds.width, 140)
+    }
+
     func testStickerStyleThumbnailRendersEveryAvailableStyle() throws {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("sticker-style-preview-\(UUID().uuidString)", isDirectory: true)
@@ -556,6 +648,27 @@ final class CompositionRendererClipEffectsTests: XCTestCase {
 
         context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         context.fill(CGRect(x: 20, y: 15, width: 40, height: 30))
+        return context.makeImage()
+    }
+
+    private func makeSharpSubjectFrame() -> CGImage? {
+        let size = CGSize(width: 120, height: 120)
+        guard let context = CGContext(
+            data: nil,
+            width: 120,
+            height: 120,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.clear(CGRect(origin: .zero, size: size))
+        for x in stride(from: 30, to: 90, by: 2) {
+            context.setFillColor((x / 2).isMultiple(of: 2)
+                ? CGColor(gray: 0, alpha: 1)
+                : CGColor(gray: 1, alpha: 1))
+            context.fill(CGRect(x: x, y: 30, width: 2, height: 60))
+        }
         return context.makeImage()
     }
 

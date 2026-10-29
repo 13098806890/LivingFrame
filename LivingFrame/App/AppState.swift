@@ -6,18 +6,42 @@ import Photos
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct ConvertedLibraryAsset: Identifiable, Codable, Equatable {
+    enum Kind: String, Codable {
+        case livePhoto
+        case video
+    }
+
+    let id: String
+    let name: String
+    let kind: Kind
+    let duration: TimeInterval
+    let createdAt: Date
+    let videoFileName: String
+    let coverFileName: String?
+
+    func videoURL(in directory: URL) -> URL {
+        directory.appendingPathComponent(videoFileName)
+    }
+
+    func coverURL(in directory: URL) -> URL? {
+        coverFileName.map { directory.appendingPathComponent($0) }
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     static let processingFPSOptions: [Double] = [10, 15, 30, 60]
 
     private static func clampedExtractionDuration(_ value: Double) -> Double {
         guard value.isFinite else { return 5 }
-        return min(max(value, 3), 10)
+        return min(max(value, 3), 15)
     }
 
     // MARK: - 素材
 
     @Published var clips: [SegmentedClip] = []
+    @Published private(set) var convertedAssets: [ConvertedLibraryAsset] = []
     /// 用户导入的静态/动态拼接媒体，可在编辑页作为独立元素添加多次。
     @Published var backgroundMedia: [BackgroundMediaItem] = []
     @Published var isSegmenting = false
@@ -393,6 +417,24 @@ final class AppState: ObservableObject {
 
     private let worksStore = WorksStore()
     private let folderStore = LibraryFolderStore()
+    let convertedAssetRootURL: URL = {
+#if DEBUG
+        let fixtureArguments: Set<String> = ["-UIAuditSeedProject", "-UIAuditSeedAnimatedCollage"]
+        if ProcessInfo.processInfo.arguments.contains(where: fixtureArguments.contains) {
+            guard let rawNamespace = ProcessInfo.processInfo.environment["GIFBLOOM_UI_AUDIT_NAMESPACE"],
+                  let namespace = UUID(uuidString: rawNamespace),
+                  let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+                fatalError("UI audit fixture requested without an isolated converted media store")
+            }
+            return caches
+                .appendingPathComponent("GIFBloom-UIAudit", isDirectory: true)
+                .appendingPathComponent(namespace.uuidString, isDirectory: true)
+                .appendingPathComponent("ConvertedMedia", isDirectory: true)
+        }
+#endif
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return documents.appendingPathComponent("Library/ConvertedMedia", isDirectory: true)
+    }()
     private let audioEngine = AudioPreviewEngine()
     private let workPersistence: WorkPersistenceCoordinator
     private var backgroundMediaReloadTask: Task<Void, Never>?
@@ -420,6 +462,7 @@ final class AppState: ObservableObject {
         // 恢复持久化的素材与文件夹
         FrameCache.shared.reload()
         clips = FrameCache.shared.allClips()
+        convertedAssets = loadConvertedAssets()
         // 启动时也整理一次相册素材库；保留最近导入的素材和所有作品仍引用的文件。
         Task { [weak self] in
             await self?.retainRecentBackgroundMedia()
@@ -2136,6 +2179,90 @@ final class AppState: ObservableObject {
         clips.insert(clip, at: 0)
         LogStore.log("library.clip.published id=\(clip.id) count=\(clips.count)")
         syncAudioPreview()
+    }
+
+    func archiveConvertedAsset(_ prepared: MediaConversionService.PreparedConversion) async {
+        let id = UUID().uuidString
+        let videoFileName = "\(id).mov"
+        let coverFileName = prepared.target == .livePhoto ? "\(id).jpg" : nil
+        let sourceVideoURL = prepared.livePhotoOutput?.videoURL ?? prepared.previewURL
+        let coverData = prepared.livePhotoOutput?.coverData
+        let targetDirectory = convertedAssetRootURL
+        let item = ConvertedLibraryAsset(
+            id: id,
+            name: prepared.sourceName,
+            kind: prepared.target == .livePhoto ? .livePhoto : .video,
+            duration: prepared.duration,
+            createdAt: Date(),
+            videoFileName: videoFileName,
+            coverFileName: coverFileName
+        )
+
+        let stored = await Task.detached(priority: .utility) {
+            do {
+                try FileManager.default.createDirectory(
+                    at: targetDirectory,
+                    withIntermediateDirectories: true
+                )
+                try FileManager.default.copyItem(
+                    at: sourceVideoURL,
+                    to: targetDirectory.appendingPathComponent(videoFileName)
+                )
+                if let coverFileName, let coverData {
+                    try coverData.write(
+                        to: targetDirectory.appendingPathComponent(coverFileName),
+                        options: .atomic
+                    )
+                }
+                return true
+            } catch {
+                try? FileManager.default.removeItem(at: targetDirectory.appendingPathComponent(videoFileName))
+                if let coverFileName {
+                    try? FileManager.default.removeItem(at: targetDirectory.appendingPathComponent(coverFileName))
+                }
+                LogStore.log("library.convertedAsset.copyFail id=\(id) error=\(error)")
+                return false
+            }
+        }.value
+
+        guard stored else { return }
+        convertedAssets.insert(item, at: 0)
+        persistConvertedAssets()
+        LogStore.log("library.convertedAsset.published id=\(id) kind=\(item.kind.rawValue)")
+    }
+
+    func deleteConvertedAsset(_ id: String) {
+        guard let item = convertedAssets.first(where: { $0.id == id }) else { return }
+        convertedAssets.removeAll { $0.id == id }
+        try? FileManager.default.removeItem(at: item.videoURL(in: convertedAssetRootURL))
+        if let coverURL = item.coverURL(in: convertedAssetRootURL) {
+            try? FileManager.default.removeItem(at: coverURL)
+        }
+        persistConvertedAssets()
+    }
+
+    private func loadConvertedAssets() -> [ConvertedLibraryAsset] {
+        let indexURL = convertedAssetRootURL.appendingPathComponent("index.json")
+        guard let data = try? Data(contentsOf: indexURL),
+              let items = try? JSONDecoder().decode([ConvertedLibraryAsset].self, from: data) else {
+            return []
+        }
+        return items
+            .filter { FileManager.default.fileExists(atPath: $0.videoURL(in: convertedAssetRootURL).path) }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private func persistConvertedAssets() {
+        do {
+            try FileManager.default.createDirectory(
+                at: convertedAssetRootURL,
+                withIntermediateDirectories: true
+            )
+            let data = try JSONEncoder().encode(convertedAssets)
+            try data.write(to: convertedAssetRootURL.appendingPathComponent("index.json"), options: .atomic)
+        } catch {
+            LogStore.log("library.convertedAsset.indexSaveFail error=\(error)")
+        }
     }
 
     // MARK: - 新画布偏好

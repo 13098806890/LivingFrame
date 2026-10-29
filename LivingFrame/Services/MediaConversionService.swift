@@ -10,8 +10,10 @@ import UniformTypeIdentifiers
 /// 转换使用与编辑器导出相同的 CompositionRenderer 和 Core 导出器，因此 GIF、视频
 /// 和 Live Photo 的方向、帧读取以及编码行为不会在素材库入口形成第二套实现。
 struct MediaConversionService {
-    /// Live Photo 的标准交互窗口上限；视频超过此时长时由界面让用户选择区间。
-    static let livePhotoMaximumDuration: TimeInterval = 3.0
+    /// The conversion UI offers these upper bounds for video-to-Live-Photo clips.
+    static let livePhotoMaximumDurations: [TimeInterval] = [5, 15]
+    static let defaultLivePhotoMaximumDuration: TimeInterval = 5
+    private static let gifLivePhotoMaximumDuration: TimeInterval = 3
 
     enum Target: Equatable {
         case livePhoto
@@ -25,6 +27,7 @@ struct MediaConversionService {
         let target: Target
         let sourceName: String
         let duration: TimeInterval
+        let livePhotoMaximumDuration: TimeInterval
         let sourceSize: CGSize
         private(set) var hasOutputAudio: Bool
         private(set) var audioWarningMessage: String?
@@ -44,6 +47,7 @@ struct MediaConversionService {
             target: Target,
             sourceName: String,
             duration: TimeInterval,
+            livePhotoMaximumDuration: TimeInterval,
             sourceSize: CGSize,
             hasOutputAudio: Bool,
             audioWarningMessage: String?,
@@ -57,6 +61,7 @@ struct MediaConversionService {
             self.target = target
             self.sourceName = sourceName
             self.duration = duration
+            self.livePhotoMaximumDuration = livePhotoMaximumDuration
             self.sourceSize = sourceSize
             self.hasOutputAudio = hasOutputAudio
             self.audioWarningMessage = audioWarningMessage
@@ -124,6 +129,7 @@ struct MediaConversionService {
         sourceFileExtension: String,
         target: Target,
         sourceRange: ClosedRange<TimeInterval>? = nil,
+        livePhotoMaximumDuration: TimeInterval = Self.defaultLivePhotoMaximumDuration,
         progress: @escaping (Double) -> Void,
         warning: @escaping (String) -> Void = { _ in }
     ) async throws {
@@ -133,6 +139,7 @@ struct MediaConversionService {
             sourceFileExtension: sourceFileExtension,
             target: target,
             sourceRange: sourceRange,
+            livePhotoMaximumDuration: livePhotoMaximumDuration,
             progress: progress,
             warning: warning
         )
@@ -146,6 +153,7 @@ struct MediaConversionService {
         sourceFileExtension: String,
         target: Target,
         sourceRange: ClosedRange<TimeInterval>? = nil,
+        livePhotoMaximumDuration: TimeInterval = Self.defaultLivePhotoMaximumDuration,
         progress: @escaping (Double) -> Void,
         warning: @escaping (String) -> Void = { _ in }
     ) async throws -> PreparedConversion {
@@ -201,9 +209,14 @@ struct MediaConversionService {
             }
         }
         progress(0.04)
-        let media = await backgroundStore.allUserMedia().first { $0.id == mediaID }
+        let metadataLookupStart = Date()
+        let copiedURL = backgroundStore.mediaURL(named: mediaID)
+        let copiedFileSize = (try? FileManager.default.attributesOfItem(atPath: copiedURL.path)[.size] as? Int) ?? 0
+        LogStore.log("xdz.convert.media.lookup.begin id=\(mediaID) bytes=\(copiedFileSize) path=\(copiedURL.path)")
+        let media = await backgroundStore.userMedia(named: mediaID)
+        LogStore.log("xdz.convert.media.lookup.done id=\(mediaID) found=\(media != nil) elapsed=\(Date().timeIntervalSince(metadataLookupStart))")
         guard let media, media.width > 0, media.height > 0 else {
-            LogStore.log("xdz.convert.fail reason=mediaUnavailable id=\(mediaID)")
+            LogStore.log("xdz.convert.fail reason=mediaUnavailable id=\(mediaID) size=\(media?.width ?? 0)x\(media?.height ?? 0)")
             throw ConversionError.mediaUnavailable
         }
         LogStore.log("xdz.convert.media.ready id=\(mediaID) size=\(media.width)x\(media.height) duration=\(media.duration)")
@@ -216,12 +229,19 @@ struct MediaConversionService {
             max(media.duration, sourceStartTime)
         )
         let selectedDuration = max(sourceEndTime - sourceStartTime, 0.1)
+        let requestedLivePhotoMaximumDuration = Self.livePhotoMaximumDurations.contains(livePhotoMaximumDuration)
+            ? livePhotoMaximumDuration
+            : Self.defaultLivePhotoMaximumDuration
+        // Preserve the existing GIF-to-Live-Photo limit; the new 5/15 second choice
+        // applies to video sources only.
+        let allowedLivePhotoMaximumDuration = extensionName == "gif"
+            ? Self.gifLivePhotoMaximumDuration
+            : requestedLivePhotoMaximumDuration
 
         let duration: TimeInterval
         switch target {
         case .livePhoto:
-            // Live Photo 的标准交互窗口不能超过 3 秒；保持现有导出器约束。
-            duration = min(selectedDuration, Self.livePhotoMaximumDuration)
+            duration = min(selectedDuration, allowedLivePhotoMaximumDuration)
         case .video:
             duration = selectedDuration
         }
@@ -309,7 +329,12 @@ struct MediaConversionService {
                 sourceName: sourceName,
                 audioSourceURL: audioSourceURL,
                 outputURL: previewURL,
-                progress: progress
+                maximumDuration: allowedLivePhotoMaximumDuration,
+                progress: { fraction in
+                    // 4% marks import and audio preparation; keep export progress
+                    // within the remaining range so the progress indicator never moves backwards.
+                    progress(0.04 + 0.96 * fraction)
+                }
             )
         case .video:
             LogStore.log("xdz.convert.export.begin target=video duration=\(duration) range=\(sourceStartTime)-\(sourceEndTime)")
@@ -337,6 +362,7 @@ struct MediaConversionService {
             target: target,
             sourceName: sourceName,
             duration: duration,
+            livePhotoMaximumDuration: allowedLivePhotoMaximumDuration,
             sourceSize: CGSize(width: media.width, height: media.height),
             hasOutputAudio: hasOutputAudio,
             audioWarningMessage: audioWarningMessage,
@@ -413,6 +439,7 @@ struct MediaConversionService {
                 sourceName: prepared.sourceName,
                 audioSourceURL: prepared.audioURL,
                 outputURL: outputURL,
+                maximumDuration: prepared.livePhotoMaximumDuration,
                 progress: { _ in }
             )
             try Task.checkCancellation()
@@ -516,12 +543,14 @@ struct MediaConversionService {
         sourceName: String,
         audioSourceURL: URL?,
         outputURL: URL,
+        maximumDuration: TimeInterval,
         progress: @escaping (Double) -> Void
     ) async throws -> LivePhotoExporter.Output {
         let output = try await LivePhotoExporter().export(
             composition,
             to: outputURL,
             audioURL: audioSourceURL,
+            maximumDuration: maximumDuration,
             watermark: nil,
             progress: progress,
             isCancelled: { Task.isCancelled }

@@ -1,0 +1,3 @@
+• Freigestellte Motive bleiben mit den Stilen Kontur, Comic und Glätten in der Vorschau scharf; der Comic-Rand ist schmaler.
+• Beim Export transparenter GIFs bleibt die höhere Auflösung bevorzugt erhalten, wenn Effekte die Dateigröße erhöhen.
+Konvertierte Live Photos und Videos erscheinen jetzt unter „Zuletzt hinzugefügt“ und lassen sich unter „Alle Medien“ filtern, abspielen und löschen.

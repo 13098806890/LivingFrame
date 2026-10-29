@@ -1,0 +1,3 @@
+• Kesit önizlemeleri Anahat, Çizgi Roman ve Pürüzsüz stillerinde net kalır; Çizgi Roman kenarlığı inceltildi.
+• Efektler dosya boyutunu artırdığında saydam GIF dışa aktarımı artık daha yüksek çözünürlüğe öncelik verir.
+Dönüştürülen Live Photo’lar ve videolar artık Son Eklenenler’de görünür; Tüm Öğeler bölümünde filtrelenebilir, oynatılabilir ve silinebilir.

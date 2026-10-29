@@ -14,11 +14,31 @@ final class GIFExportPresetTests: XCTestCase {
         XCTAssertEqual(GIFExportPreset.fpsOptions(maxSourceFPS: 60), [15, 30, 60])
     }
 
-    func testDefaultPresetChoosesLargestEstimatedSizeBelowTenMegabytes() {
+    func testDefaultPresetPreservesHighestResolutionWhenItJustExceedsLimit() {
         let presets = [
             GIFExportPreset(resolution: .p360, fps: 10, estimatedBytes: 4_000_000),
             GIFExportPreset(resolution: .p720, fps: 15, estimatedBytes: 9_500_000),
             GIFExportPreset(resolution: .original, fps: 20, estimatedBytes: 10_500_000)
+        ]
+
+        XCTAssertEqual(GIFExportPreset.defaultPreset(from: presets), presets[2])
+    }
+
+    func testDefaultPresetKeepsResolutionWhenEdgeEffectsIncreaseEstimatedSize() {
+        let presets = [
+            GIFExportPreset(resolution: .p360, fps: 30, estimatedBytes: 9_800_000),
+            GIFExportPreset(resolution: .p720, fps: 15, estimatedBytes: 11_000_000),
+            GIFExportPreset(resolution: .p720, fps: 30, estimatedBytes: 15_000_000)
+        ]
+
+        XCTAssertEqual(GIFExportPreset.defaultPreset(from: presets), presets[1])
+    }
+
+    func testDefaultPresetLowersFrameRateBeforeResolution() {
+        let presets = [
+            GIFExportPreset(resolution: .p360, fps: 30, estimatedBytes: 8_000_000),
+            GIFExportPreset(resolution: .p720, fps: 15, estimatedBytes: 9_000_000),
+            GIFExportPreset(resolution: .p720, fps: 30, estimatedBytes: 12_000_000)
         ]
 
         XCTAssertEqual(GIFExportPreset.defaultPreset(from: presets), presets[1])

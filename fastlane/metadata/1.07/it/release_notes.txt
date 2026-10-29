@@ -1,0 +1,3 @@
+• Le anteprime dei ritagli restano nitide con gli stili Contorno, Fumetto e Sfumato; il bordo Fumetto è più sottile.
+• L’esportazione dei GIF trasparenti ora privilegia una risoluzione maggiore quando gli effetti aumentano la dimensione del file.
+Le Live Photo e i video convertiti ora compaiono in «Aggiunti di recente» e possono essere filtrati, riprodotti ed eliminati in «Tutti gli elementi».

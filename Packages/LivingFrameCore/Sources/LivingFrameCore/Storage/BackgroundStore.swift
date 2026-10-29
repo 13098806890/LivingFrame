@@ -245,6 +245,14 @@ public struct BackgroundStore {
         return media.sorted { $0.createdAt > $1.createdAt }
     }
 
+    /// Load metadata for one imported media file without scanning the full user-media library.
+    public func userMedia(named name: String) async -> BackgroundMediaItem? {
+        guard name.hasPrefix("user-") else { return nil }
+        let url = mediaURL(named: name)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return await metadataItem(for: url, id: name)
+    }
+
     /// Removes older imported files unless they are still referenced by a work or the active edit.
     /// This keeps the reusable album-media library small without breaking existing compositions.
     @discardableResult
@@ -405,11 +413,19 @@ public struct BackgroundStore {
         let createdAt = dates?.creationDate ?? dates?.contentModificationDate ?? .distantPast
         let item: BackgroundMediaItem?
         if isVideo(url: url) {
+            let metadataStart = Date()
+            let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            LogStore.log("xdz.background.metadata.video.begin id=\(id) ext=\(url.pathExtension) bytes=\(fileSize)")
             let asset = AVURLAsset(url: url)
+            LogStore.log("xdz.background.metadata.video.duration.begin id=\(id)")
             let durationTime = (try? await asset.load(.duration)) ?? .zero
             let duration = max(CMTimeGetSeconds(durationTime), 0.1)
+            LogStore.log("xdz.background.metadata.video.duration.done id=\(id) seconds=\(duration) elapsed=\(Date().timeIntervalSince(metadataStart))")
+            LogStore.log("xdz.background.metadata.video.tracks.begin id=\(id)")
             let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
             let videoTrack = tracks.first
+            LogStore.log("xdz.background.metadata.video.tracks.done id=\(id) count=\(tracks.count) elapsed=\(Date().timeIntervalSince(metadataStart))")
+            LogStore.log("xdz.background.metadata.video.size.begin id=\(id)")
             let naturalSize = (try? await videoTrack?.load(.naturalSize)) ?? .zero
             let transform = (try? await videoTrack?.load(.preferredTransform)) ?? .identity
             let size = naturalSize.applying(transform)
@@ -423,6 +439,7 @@ public struct BackgroundStore {
                 createdAt: createdAt,
                 mediaType: .video
             )
+            LogStore.log("xdz.background.metadata.video.done id=\(id) size=\(abs(size.width))x\(abs(size.height)) elapsed=\(Date().timeIntervalSince(metadataStart))")
         } else {
             return imageMetadataItem(for: url, id: id)
         }
