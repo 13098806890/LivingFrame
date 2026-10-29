@@ -242,6 +242,7 @@
 "%1$lld 个素材" = "%1$lld素材";
 "%1$lld 张 / %2$.2f 秒" = "%1$lld 枚 / %2$.2f 秒";
 "%1$lld×%2$lld · %3$lld fps · %4$lld 帧" = "%1$lld×%2$lld・%3$lld fps・%4$lldフレーム";
+"15 秒" = "15秒";
 "10 秒" = "10秒";
 "16:9" = "16:9";
 "1:1" = "1:1";
@@ -602,7 +603,7 @@
 "全部" = "すべて";
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "GIFBloom Proに登録すると、書き出しの透かしを削除できます。";
-"免费版最长 5 秒；GIFBloom Pro 可选 10 秒。" = "無料版は最長5秒、GIFBloom Proは10秒。";
+"免费版最长 5 秒；GIFBloom Pro 可选 15 秒。" = "無料版は最長5秒、GIFBloom Proは15秒。";
 "解锁更长片段" = "長いクリップを解放";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "週・年プランは自動更新されます。更新を停止するには期間終了の24時間前までに解約してください。Apple IDの設定から管理できます。";
 "AI 贴纸仅限 GIFBloom Pro 使用。" = "AIステッカーはGIFBloom Pro限定です。";
@@ -611,6 +612,7 @@
 "解锁更长的素材提取时长。" = "素材をより長く抽出できます。";
 "订阅去水印" = "透かしを削除するために登録";
 "水果" = "果物";
+"最长片段" = "クリップの最長時間";
 "5 秒" = "5秒";
 
 "AI贴纸" = "AIステッカー";
@@ -675,7 +677,7 @@
 "从视频、Live Photo 或照片提取透明剪影" = "Extract transparent cutouts from videos, Live Photos, or photos";
 "取消转换" = "変換をキャンセル";
 "已转换并保存 %1$lld 项素材到照片。" = "Converted and saved %1$lld item(s) to Photos.";
-"成功转换 %1$lld 项，%2$lld 项失败。%@" = "%1$lld converted successfully; %2$lld failed. %@";
+"成功转换 %lld 项，%lld 项失败。%@" = "%lld converted successfully; %lld failed. %@";
 "截取首帧生成透明人物贴纸" = "Create a transparent sticker from the first frame";
 "提取可播放的透明人物素材" = "Create a playable transparent cutout";
 "正在准备转换" = "変換を準備中";

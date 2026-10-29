@@ -7,23 +7,52 @@ import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
+private struct VideoRangeSelection {
+    let range: ClosedRange<TimeInterval>
+    let maximumDuration: TimeInterval
+}
+
 struct LibraryView: View {
+    private enum MediaWorkflow: String, Identifiable {
+        case dynamicCutout
+        case staticSticker
+        case livePhoto
+        case video
+
+        var id: String { rawValue }
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .dynamicCutout: "动态剪影"
+            case .staticSticker: "静态贴纸"
+            case .livePhoto: "转为 Live Photo"
+            case .video: "转为视频"
+            }
+        }
+
+        var pickerFilter: PHPickerFilter {
+            switch self {
+            case .dynamicCutout: .any(of: [.videos, .livePhotos])
+            case .staticSticker: .any(of: [.videos, .livePhotos, .images])
+            case .livePhoto: .any(of: [.videos, .playbackStyle(.imageAnimated)])
+            case .video: .any(of: [.livePhotos, .playbackStyle(.imageAnimated)])
+            }
+        }
+    }
+
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var purchaseManager: PurchaseManager
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var pickerItems: [PhotosPickerItem] = []
-    @State private var isShowingExtractionPicker = false
-    @State private var liveConversionPickerItems: [PhotosPickerItem] = []
-    @State private var isShowingLiveConversionPicker = false
-    @State private var videoConversionPickerItems: [PhotosPickerItem] = []
-    @State private var isShowingVideoConversionPicker = false
+    @State private var workflowPickerItems: [PhotosPickerItem] = []
+    @State private var pendingPickerWorkflow: MediaWorkflow?
+    @State private var isShowingWorkflowPicker = false
+    @State private var activeWorkflow: MediaWorkflow?
     @State private var conversionTask: Task<Void, Never>?
     @State private var isConverting = false
     @State private var conversionProgress: Double = 0
     @State private var conversionTarget: MediaConversionService.Target = .livePhoto
     @State private var conversionTitle = ""
     @State private var conversionErrorMessage: String?
-    @State private var conversionResultMessage: String?
     @State private var pendingConversionPreview: PendingConversionPreview?
     @State private var activeConversionPreview: PendingConversionPreview?
     @State private var pendingClipBatchPreview: PendingClipBatchPreview?
@@ -37,6 +66,7 @@ struct LibraryView: View {
     @State private var dragOverFolderID: String?
     /// 单击素材打开的详情页（nil = 不显示）
     @State private var menuClip: SegmentedClip?
+    @State private var openedConvertedAsset: ConvertedLibraryAsset?
     @State private var clipDeletionAlert: ClipDeletionAlert?
     /// 记录当前打开相册选择器的剪影类型，动态剪影与静态贴纸分别从独立入口进入。
     @State private var pendingExtractKind: ExtractKind = .live
@@ -71,21 +101,27 @@ struct LibraryView: View {
         let name: String
         let duration: TimeInterval
         let maxDuration: TimeInterval
+        let offersLivePhotoDurationChoice: Bool
+        let allowsFifteenSecondLivePhoto: Bool
         let confirmTitle: LocalizedStringKey
-        var resume: (ClosedRange<TimeInterval>?) -> Void
+        var resume: (VideoRangeSelection?) -> Void
 
         init(
             url: URL,
             name: String,
             duration: TimeInterval,
             maxDuration: TimeInterval,
+            offersLivePhotoDurationChoice: Bool = false,
+            allowsFifteenSecondLivePhoto: Bool = false,
             confirmTitle: LocalizedStringKey = "生成剪影",
-            resume: @escaping (ClosedRange<TimeInterval>?) -> Void
+            resume: @escaping (VideoRangeSelection?) -> Void
         ) {
             self.url = url
             self.name = name
             self.duration = duration
             self.maxDuration = maxDuration
+            self.offersLivePhotoDurationChoice = offersLivePhotoDurationChoice
+            self.allowsFifteenSecondLivePhoto = allowsFifteenSecondLivePhoto
             self.confirmTitle = confirmTitle
             self.resume = resume
         }
@@ -163,18 +199,6 @@ struct LibraryView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    if isDownloading {
-                        downloadCard
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                    if isExtractionActive {
-                        segmentationCard
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                    if isConverting {
-                        conversionCard
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
                     pickerSection
                     foldersSection
                     clipsSection
@@ -189,9 +213,6 @@ struct LibraryView: View {
             .safeAreaPadding(.bottom, dynamicTypeSize.isAccessibilitySize ? 144 : 96)
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
-            .animation(.easeInOut(duration: 0.22), value: isDownloading)
-            .animation(.easeInOut(duration: 0.22), value: isExtractionActive)
-            .animation(.easeInOut(duration: 0.22), value: isConverting)
             .navigationTitle("转换")
             .navigationBarTitleDisplayMode(.large)
             .magicBackground()
@@ -213,7 +234,7 @@ struct LibraryView: View {
                     comment: "Import alert title"
                 ),
                 isPresented: Binding(
-                    get: { loadErrorMessage != nil },
+                    get: { activeWorkflow == nil && loadErrorMessage != nil },
                     set: { if !$0 { loadError = nil; appState.segmentationError = nil } }
                 )
             ) {
@@ -234,7 +255,7 @@ struct LibraryView: View {
             .alert(
                 NSLocalizedString("转换失败", comment: "Media conversion failure title"),
                 isPresented: Binding(
-                    get: { conversionErrorMessage != nil },
+                    get: { activeWorkflow == nil && conversionErrorMessage != nil },
                     set: { if !$0 { conversionErrorMessage = nil } }
                 )
             ) {
@@ -244,79 +265,41 @@ struct LibraryView: View {
             } message: {
                 Text(conversionErrorMessage ?? "")
             }
-            .alert(
-                NSLocalizedString("转换完成", comment: "Media conversion success title"),
-                isPresented: Binding(
-                    get: { conversionResultMessage != nil },
-                    set: { if !$0 { conversionResultMessage = nil } }
-                )
-            ) {
-                Button(NSLocalizedString("知道了", comment: "Dismiss conversion success"), role: .cancel) {
-                    conversionResultMessage = nil
+            .sheet(item: $activeWorkflow) { workflow in
+                mediaWorkflowCover(for: workflow)
+                    .presentationDetents([.large])
+                    .interactiveDismissDisabled()
+            }
+            .photosPicker(
+                isPresented: $isShowingWorkflowPicker,
+                selection: $workflowPickerItems,
+                maxSelectionCount: 1,
+                selectionBehavior: .ordered,
+                matching: pendingPickerWorkflow?.pickerFilter,
+                preferredItemEncoding: .current
+            )
+            .onChange(of: isShowingWorkflowPicker) { wasPresented, isPresented in
+                guard wasPresented, !isPresented else { return }
+                let workflow = pendingPickerWorkflow
+                pendingPickerWorkflow = nil
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard let workflow, !workflowPickerItems.isEmpty else {
+                        workflowPickerItems.removeAll()
+                        return
+                    }
+                    let selectedItems = workflowPickerItems
+                    workflowPickerItems.removeAll()
+                    activeWorkflow = workflow
+                    switch workflow {
+                    case .dynamicCutout, .staticSticker:
+                        handleExtractionSelection(selectedItems)
+                    case .livePhoto:
+                        handleConversionSelection(selectedItems, target: .livePhoto)
+                    case .video:
+                        handleConversionSelection(selectedItems, target: .video)
+                    }
                 }
-            } message: {
-                Text(conversionResultMessage ?? "")
-            }
-            .sheet(item: $pendingVideoRange, onDismiss: {
-                pendingVideoRange?.resume(nil)
-                pendingVideoRange = nil
-            }) { request in
-                VideoRangePickerView(
-                    url: request.url,
-                    name: request.name,
-                    duration: request.duration,
-                    maxDuration: request.maxDuration,
-                    confirmTitle: request.confirmTitle,
-                    onCancel: {
-                        request.resume(nil)
-                        pendingVideoRange = nil
-                    },
-                    onConfirm: { range in
-                        request.resume(range)
-                        pendingVideoRange = nil
-                    }
-                )
-            }
-            .sheet(item: $pendingSubjectSelection, onDismiss: {
-                pendingSubjectSelection?.resume(nil, nil)
-                pendingSubjectSelection = nil
-            }) { request in
-                SubjectSelectionView(
-                    analysis: request.analysis,
-                    initialLassoPoints: request.initialRegion ?? [],
-                    debugLassoPoints: request.debugRegion ?? [],
-                    onCancel: {
-                        request.resume(nil, nil)
-                        pendingSubjectSelection = nil
-                    },
-                    onConfirm: { selectedIDs, selectionRegion in
-                        request.resume(selectedIDs, selectionRegion)
-                        pendingSubjectSelection = nil
-                    }
-                )
-            }
-            .sheet(item: $pendingSubjectRegionSelection, onDismiss: {
-                pendingSubjectRegionSelection?.resume(SubjectRegionChoice(confirmed: false, points: nil))
-                pendingSubjectRegionSelection = nil
-            }) { request in
-                InitialSubjectRegionPickerView(
-                    image: request.image,
-                    onCancel: {
-                        request.resume(SubjectRegionChoice(confirmed: false, points: nil))
-                        pendingSubjectRegionSelection = nil
-                    },
-                    onSkip: {
-                        request.resume(SubjectRegionChoice(confirmed: true, points: nil))
-                        pendingSubjectRegionSelection = nil
-                    },
-                    onConfirm: { points in
-                        request.resume(SubjectRegionChoice(
-                            confirmed: true,
-                            points: points
-                        ))
-                        pendingSubjectRegionSelection = nil
-                    }
-                )
             }
             .fullScreenCover(item: $menuClip) { clip in
                 ClipMenuView(
@@ -325,40 +308,9 @@ struct LibraryView: View {
                 )
                 .environmentObject(appState)
             }
-            .fullScreenCover(item: $pendingClipBatchPreview, onDismiss: {
-                pendingClipBatchPreview = nil
-            }) { request in
-                ClipBatchPreviewView(
-                    clips: request.clips,
-                    onClose: { pendingClipBatchPreview = nil }
-                )
-                .environmentObject(appState)
-                .environmentObject(purchaseManager)
-            }
-            .fullScreenCover(item: $pendingConversionPreview, onDismiss: {
-                guard let request = activeConversionPreview else { return }
-                request.requestDismissal()
-                request.prepared.forEach { MediaConversionService().discard($0) }
-                activeConversionPreview = nil
-                pendingConversionPreview = nil
-                request.finish()
-            }) { request in
-                ConversionBatchPreviewView(
-                    prepared: request.prepared,
-                    onSave: { prepared, cropRect in
-#if DEBUG
-                        if ProcessInfo.processInfo.arguments.contains("-UIAuditConversionPreviewQueue") {
-                            request.markSaved(prepared)
-                            return
-                        }
-#endif
-                        try await MediaConversionService().save(prepared, cropRect: cropRect)
-                        request.markSaved(prepared)
-                    },
-                    onCancel: {
-                        requestConversionPreviewDismissal(request)
-                    }
-                )
+            .sheet(item: $openedConvertedAsset) { asset in
+                ConvertedAssetDetailView(asset: asset, rootURL: appState.convertedAssetRootURL)
+                    .environmentObject(appState)
             }
             .onAppear {
 #if DEBUG
@@ -370,6 +322,7 @@ struct LibraryView: View {
                             conversionErrorMessage = "Missing conversion preview fixture"
                             return
                         }
+                        activeWorkflow = .video
                         do {
                             let preparePreview: (String) async throws -> MediaConversionService.PreparedConversion = { sourceName in
                                 try await MediaConversionService().prepare(
@@ -401,6 +354,7 @@ struct LibraryView: View {
                             conversionErrorMessage = "Missing conversion preview fixture"
                             return
                         }
+                        activeWorkflow = .video
                         do {
                             let prepared = try await MediaConversionService().prepare(
                                 sourceURL: url,
@@ -444,9 +398,11 @@ struct LibraryView: View {
 #endif
             }
             .onDisappear {
-                importTask?.cancel()
-                if activeConversionPreview == nil {
-                    conversionTask?.cancel()
+                if activeWorkflow == nil {
+                    importTask?.cancel()
+                    if activeConversionPreview == nil {
+                        conversionTask?.cancel()
+                    }
                 }
             }
         }
@@ -454,6 +410,198 @@ struct LibraryView: View {
     }
 
     // MARK: - 素材入口
+
+    private func beginWorkflow(_ workflow: MediaWorkflow) {
+        workflowPickerItems.removeAll()
+        switch workflow {
+        case .dynamicCutout, .staticSticker:
+            clearExtractionError()
+        case .livePhoto, .video:
+            conversionErrorMessage = nil
+        }
+        pendingPickerWorkflow = workflow
+        isShowingWorkflowPicker = true
+    }
+
+    private func closeWorkflow() {
+        importTask?.cancel()
+        conversionTask?.cancel()
+        pendingPickerWorkflow = nil
+        clearExtractionError()
+        conversionErrorMessage = nil
+        if let request = pendingVideoRange {
+            pendingVideoRange = nil
+            request.resume(nil)
+        }
+        if let request = pendingSubjectSelection {
+            pendingSubjectSelection = nil
+            request.resume(nil, nil)
+        }
+        if let request = pendingSubjectRegionSelection {
+            pendingSubjectRegionSelection = nil
+            request.resume(SubjectRegionChoice(confirmed: false))
+        }
+        activeWorkflow = nil
+    }
+
+    private func mediaWorkflowCover(for workflow: MediaWorkflow) -> some View {
+        Group {
+            if let request = pendingVideoRange {
+                VideoRangePickerView(
+                    url: request.url,
+                    name: request.name,
+                    duration: request.duration,
+                    maxDuration: request.maxDuration,
+                    offersLivePhotoDurationChoice: request.offersLivePhotoDurationChoice,
+                    allowsFifteenSecondLivePhoto: request.allowsFifteenSecondLivePhoto,
+                    confirmTitle: request.confirmTitle,
+                    onCancel: {
+                        pendingVideoRange = nil
+                        workflowPickerItems.removeAll()
+                        request.resume(nil)
+                    },
+                    onConfirm: { selection in
+                        pendingVideoRange = nil
+                        request.resume(selection)
+                    }
+                )
+            } else if let request = pendingSubjectSelection {
+                SubjectSelectionView(
+                    analysis: request.analysis,
+                    initialLassoPoints: request.initialRegion ?? [],
+                    debugLassoPoints: request.debugRegion ?? [],
+                    onCancel: {
+                        pendingSubjectSelection = nil
+                        request.resume(nil, nil)
+                    },
+                    onConfirm: { selectedIDs, selectionRegion in
+                        pendingSubjectSelection = nil
+                        request.resume(selectedIDs, selectionRegion)
+                    }
+                )
+            } else if let request = pendingSubjectRegionSelection {
+                InitialSubjectRegionPickerView(
+                    image: request.image,
+                    onCancel: {
+                        pendingSubjectRegionSelection = nil
+                        request.resume(SubjectRegionChoice(confirmed: false))
+                    },
+                    onSkip: {
+                        pendingSubjectRegionSelection = nil
+                        request.resume(SubjectRegionChoice(confirmed: true))
+                    },
+                    onConfirm: { points in
+                        pendingSubjectRegionSelection = nil
+                        request.resume(SubjectRegionChoice(confirmed: true, points: points))
+                    }
+                )
+            } else if let request = pendingClipBatchPreview {
+                ClipBatchPreviewView(
+                    clips: request.clips,
+                    onClose: {
+                        pendingClipBatchPreview = nil
+                        if loadErrorMessage == nil {
+                            activeWorkflow = nil
+                        }
+                    }
+                )
+                .environmentObject(appState)
+                .environmentObject(purchaseManager)
+            } else if let request = pendingConversionPreview {
+                ConversionBatchPreviewView(
+                    prepared: request.prepared,
+                    onSave: { prepared, cropRect in
+#if DEBUG
+                        if ProcessInfo.processInfo.arguments.contains("-UIAuditConversionPreviewQueue") {
+                            request.markSaved(prepared)
+                            return
+                        }
+#endif
+                        try await MediaConversionService().save(prepared, cropRect: cropRect)
+                        await appState.archiveConvertedAsset(prepared)
+                        request.markSaved(prepared)
+                    },
+                    onCancel: {
+                        requestConversionPreviewDismissal(request)
+                    }
+                )
+            } else if isDownloading || isExtractionActive || isConverting
+                || ((workflow == .dynamicCutout || workflow == .staticSticker) ? loadErrorMessage != nil : conversionErrorMessage != nil) {
+                mediaWorkflowProgress(for: workflow)
+            } else {
+                mediaWorkflowProgress(for: workflow)
+            }
+        }
+    }
+
+    private func mediaWorkflowProgress(for workflow: MediaWorkflow) -> some View {
+        let isExtraction = workflow == .dynamicCutout || workflow == .staticSticker
+        let errorMessage = isExtraction ? loadErrorMessage : conversionErrorMessage
+        let errorTitle = isExtraction
+            ? NSLocalizedString(batchFailureTitle ?? (loadError != nil ? "导入失败" : "剪影生成失败"), comment: "Import alert title")
+            : NSLocalizedString("转换失败", comment: "Media conversion failure title")
+        let preparationTitle: LocalizedStringKey = isExtraction ? "正在准备剪影素材" : "正在准备转换"
+
+        return NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    if isDownloading {
+                        downloadCard
+                    } else if isExtractionActive {
+                        segmentationCard
+                    } else if isConverting {
+                        conversionCard
+                    }
+
+                    if !isDownloading, !isExtractionActive, !isConverting {
+                        if let message = errorMessage {
+                            SectionCard(verbatimTitle: errorTitle) {
+                                Text(message)
+                                    .font(.subheadline)
+                                    .foregroundStyle(LF.textSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else {
+                            SectionCard(title: preparationTitle) {
+                                ProgressView()
+                                    .tint(LF.gold)
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                    }
+
+                    if !isDownloading, !isExtractionActive, !isConverting {
+                        if isExtraction, !lastImportedSources.isEmpty {
+                            Button("重试") {
+                                retryLastExtraction()
+                            }
+                            .lfActionButtonStyle(.primary)
+                        }
+                        Button("选择其他素材") {
+                            closeWorkflow()
+                        }
+                        .lfActionButtonStyle(.secondary)
+                    }
+                }
+                .padding(20)
+            }
+            .navigationTitle(workflow.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        closeWorkflow()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
+                    }
+                    .accessibilityLabel("取消")
+                }
+            }
+            .magicBackground()
+        }
+        .interactiveDismissDisabled(isDownloading || isExtractionActive || isConverting)
+    }
 
     private var pickerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -470,44 +618,6 @@ struct LibraryView: View {
                 videoConversionPickerControl
             }
         }
-        .photosPicker(
-            isPresented: $isShowingExtractionPicker,
-            selection: $pickerItems,
-            maxSelectionCount: 1,
-            selectionBehavior: .ordered,
-            matching: pendingExtractKind == .live
-                ? .any(of: [.videos, .livePhotos])
-                : .any(of: [.videos, .livePhotos, .images])
-        )
-        .onChange(of: isShowingExtractionPicker) { wasPresented, isPresented in
-            guard wasPresented, !isPresented else { return }
-            Task { @MainActor in
-                // PhotosPicker updates its selection as it dismisses. Read it on
-                // the next main-actor turn so all selected assets are included.
-                await Task.yield()
-                handleExtractionSelection(pickerItems)
-            }
-        }
-        .onChange(of: isShowingLiveConversionPicker) { wasPresented, isPresented in
-            guard wasPresented, !isPresented else { return }
-            Task { @MainActor in
-                await Task.yield()
-                handleConversionSelection(
-                    liveConversionPickerItems,
-                    target: .livePhoto
-                )
-            }
-        }
-        .onChange(of: isShowingVideoConversionPicker) { wasPresented, isPresented in
-            guard wasPresented, !isPresented else { return }
-            Task { @MainActor in
-                await Task.yield()
-                handleConversionSelection(
-                    videoConversionPickerItems,
-                    target: .video
-                )
-            }
-        }
     }
 
     @ViewBuilder
@@ -521,7 +631,7 @@ struct LibraryView: View {
             } else {
                 staticStickerSymbolAnimation += 1
             }
-            isShowingExtractionPicker = true
+            beginWorkflow(isDynamic ? .dynamicCutout : .staticSticker)
         } label: {
             conversionActionCard(
                 title: title,
@@ -549,7 +659,7 @@ struct LibraryView: View {
     private var liveConversionPickerControl: some View {
         Button {
             liveConversionSymbolAnimation += 1
-            isShowingLiveConversionPicker = true
+            beginWorkflow(.livePhoto)
         } label: {
             conversionActionCard(
                 title: "转为 Live Photo",
@@ -560,16 +670,6 @@ struct LibraryView: View {
             )
         }
         .lfAnimatedPlainButtonStyle()
-        .photosPicker(
-            isPresented: $isShowingLiveConversionPicker,
-            selection: $liveConversionPickerItems,
-            maxSelectionCount: 1,
-            selectionBehavior: .ordered,
-            matching: .any(of: [
-                .videos,
-                .playbackStyle(.imageAnimated)
-            ])
-        )
         .disabled(isMediaBusy)
         .accessibilityIdentifier("library-convert-live-entry")
         .accessibilityLabel("转为 Live Photo")
@@ -579,7 +679,7 @@ struct LibraryView: View {
     private var videoConversionPickerControl: some View {
         Button {
             videoConversionSymbolAnimation += 1
-            isShowingVideoConversionPicker = true
+            beginWorkflow(.video)
         } label: {
             conversionActionCard(
                 title: "转为视频",
@@ -590,16 +690,6 @@ struct LibraryView: View {
             )
         }
         .lfAnimatedPlainButtonStyle()
-        .photosPicker(
-            isPresented: $isShowingVideoConversionPicker,
-            selection: $videoConversionPickerItems,
-            maxSelectionCount: 1,
-            selectionBehavior: .ordered,
-            matching: .any(of: [
-                .livePhotos,
-                .playbackStyle(.imageAnimated)
-            ])
-        )
         .disabled(isMediaBusy)
         .accessibilityIdentifier("library-convert-video-entry")
         .accessibilityLabel("转为视频")
@@ -652,9 +742,6 @@ struct LibraryView: View {
 
     private func handleExtractionSelection(_ items: [PhotosPickerItem]) {
         guard !items.isEmpty else { return }
-        // Clear only after the picker has closed; clearing its live selection
-        // while it is open dismisses it after the first tap.
-        pickerItems.removeAll()
         // A new selection starts a new retry batch. Never let an older
         // failed URL remain eligible for a later retry action.
         lastImportedSources.forEach { $0.removeTemporaryFiles() }
@@ -664,20 +751,16 @@ struct LibraryView: View {
         isDownloading = true
         downloadProgress = nil
         importTask = Task { @MainActor in
-            // 1. 并行下载所有选中素材（iCloud 下载可多线程加速）
+            // 1. 读取选中的素材及其 iCloud 资源。
             var downloadedSources: [(index: Int, source: ImportSource)] = []
             var importFailures: [String] = []
-            await withTaskGroup(of: (Int, ImportLoadResult).self) { group in
-                for (index, item) in items.enumerated() {
-                    group.addTask { (index, await load(item)) }
-                }
-                for await result in group {
-                    switch result.1 {
-                    case .success(let source):
-                        downloadedSources.append((result.0, source))
-                    case .failure(let message):
-                        importFailures.append(message)
-                    }
+            for (index, item) in items.enumerated() {
+                let result = await load(item)
+                switch result {
+                case .success(let source):
+                    downloadedSources.append((index, source))
+                case .failure(let message):
+                    importFailures.append(message)
                 }
             }
             // 下载完成即隐藏下载进度条（剪影生成阶段由进度卡片展示）
@@ -723,27 +806,18 @@ struct LibraryView: View {
         LogStore.log(
             "xdz.convert.selection target=\(target) count=\(items.count) items=\(itemSummaries.joined(separator: " | "))"
         )
-        switch target {
-        case .livePhoto:
-            liveConversionPickerItems.removeAll()
-        case .video:
-            videoConversionPickerItems.removeAll()
-        }
 
         conversionTask?.cancel()
         conversionErrorMessage = nil
-        conversionResultMessage = nil
         conversionProgress = 0
         conversionTarget = target
         conversionTitle = target == .livePhoto ? "正在转换为 Live Photo" : "正在转换为视频"
         isConverting = true
-        // PhotosPickerItem.loadTransferable 可能需要先从 iCloud 取回动图，
-        // 但它不提供可观察的百分比进度；统一显示下载卡片，未知进度时使用转圈。
+        // 相册素材可能需要先从 iCloud 下载；未知百分比时显示转圈。
         isDownloading = true
         downloadProgress = nil
 
         conversionTask = Task { @MainActor in
-            var skippedCount = 0
             var failureCount = 0
             var firstFailure: String?
             var firstWarning: String?
@@ -766,32 +840,36 @@ struct LibraryView: View {
                     firstFailure = firstFailure ?? conversionInputFailureMessage(for: target)
                     continue
                 }
-                // Every source owns temporary PhotosPicker/iCloud files until this
+                // Every source owns temporary picker/iCloud files until this
                 // item has either been prepared, skipped, or failed.
                 defer { source.removeTemporaryFiles() }
                 isDownloading = false
                 downloadProgress = nil
                 do {
                     let sourceRange: ClosedRange<TimeInterval>?
+                    var livePhotoMaximumDuration = MediaConversionService.defaultLivePhotoMaximumDuration
                     if target == .livePhoto,
                        isVideoConversionSource(source.fileExtension) {
                         let duration = await videoDuration(of: source.url)
-                        if duration > MediaConversionService.livePhotoMaximumDuration {
-                            sourceRange = await withCheckedContinuation { continuation in
+                        if duration > MediaConversionService.defaultLivePhotoMaximumDuration {
+                            let selection: VideoRangeSelection? = await withCheckedContinuation { continuation in
                                 pendingVideoRange = PendingVideoRange(
                                     url: source.url,
                                     name: source.name,
                                     duration: duration,
-                                    maxDuration: MediaConversionService.livePhotoMaximumDuration,
+                                    maxDuration: MediaConversionService.defaultLivePhotoMaximumDuration,
+                                    offersLivePhotoDurationChoice: true,
+                                    allowsFifteenSecondLivePhoto: purchaseManager.hasPro,
                                     confirmTitle: "转为 Live Photo"
-                                ) { selectedRange in
-                                    continuation.resume(returning: selectedRange)
+                                ) { selectedSelection in
+                                    continuation.resume(returning: selectedSelection)
                                 }
                             }
-                            guard sourceRange != nil else {
-                                skippedCount += 1
+                            guard let selection else {
                                 continue
                             }
+                            sourceRange = selection.range
+                            livePhotoMaximumDuration = selection.maximumDuration
                         } else {
                             sourceRange = nil
                         }
@@ -805,6 +883,7 @@ struct LibraryView: View {
                         sourceFileExtension: source.fileExtension,
                         target: target,
                         sourceRange: sourceRange,
+                        livePhotoMaximumDuration: livePhotoMaximumDuration,
                         progress: { value in
                             Task { @MainActor in
                                 self.conversionProgress = min(max(value, 0), 1)
@@ -828,6 +907,7 @@ struct LibraryView: View {
                 isDownloading = false
                 downloadProgress = nil
                 conversionProgress = 0
+                activeWorkflow = nil
                 return
             }
 
@@ -845,13 +925,15 @@ struct LibraryView: View {
                     .joined(separator: "\n")
                     conversionErrorMessage = String.localizedStringWithFormat(
                         NSLocalizedString(
-                            "成功转换 %1$lld 项，%2$lld 项失败。%@",
+                            "成功转换 %lld 项，%lld 项失败。%@",
                             comment: "Mixed conversion result"
                         ),
                         Int64(0),
                         Int64(failureCount),
                         failureDetail
                     )
+                } else {
+                    activeWorkflow = nil
                 }
                 return
             }
@@ -871,13 +953,14 @@ struct LibraryView: View {
             } onCancel: {
                 Task { @MainActor in
                     guard let preview = activeConversionPreview else { return }
-                    preview.requestDismissal()
-                    pendingConversionPreview = nil
+                    requestConversionPreviewDismissal(preview)
                 }
             }
 
-            // onDismiss normally owns this cleanup. The idempotent discard also
-            // covers cancellation that arrives before the cover is presented.
+            // The preview close handler owns dismissal; this also covers a
+            // cancellation that arrives before the preview becomes visible.
+            activeConversionPreview = nil
+            pendingConversionPreview = nil
             preparedResults.forEach { MediaConversionService().discard($0) }
 
             isConverting = false
@@ -885,35 +968,8 @@ struct LibraryView: View {
             downloadProgress = nil
             conversionProgress = 0
             let successCount = batchResult.0.count
-            let cancelled = batchResult.1
-            let unprocessedCount = max(preparedResults.count - successCount, 0)
 
-            if cancelled {
-                if successCount > 0 || skippedCount > 0 || unprocessedCount > 0 {
-                    conversionResultMessage = String.localizedStringWithFormat(
-                        NSLocalizedString("已保存 %1$lld 项，未保存 %2$lld 项。", comment: "Conversion batch closed with unsaved results"),
-                        Int64(successCount),
-                        Int64(unprocessedCount + skippedCount + failureCount)
-                    )
-                }
-                if failureCount > 0 {
-                    let failureDetail = [
-                        firstFailure ?? NSLocalizedString("请重新选择素材后重试。", comment: "Conversion retry suggestion"),
-                        firstWarning
-                    ]
-                    .compactMap { $0 }
-                    .joined(separator: "\n")
-                    conversionErrorMessage = String.localizedStringWithFormat(
-                        NSLocalizedString(
-                            "成功转换 %1$lld 项，%2$lld 项失败。%@",
-                            comment: "Mixed conversion result"
-                        ),
-                        Int64(successCount),
-                        Int64(failureCount),
-                        failureDetail
-                    )
-                }
-            } else if failureCount > 0 {
+            if failureCount > 0 {
                 let failureDetail = [
                     firstFailure ?? NSLocalizedString("请重新选择素材后重试。", comment: "Conversion retry suggestion"),
                     firstWarning
@@ -922,25 +978,15 @@ struct LibraryView: View {
                 .joined(separator: "\n")
                 conversionErrorMessage = String.localizedStringWithFormat(
                     NSLocalizedString(
-                        "成功转换 %1$lld 项，%2$lld 项失败。%@",
+                        "成功转换 %lld 项，%lld 项失败。%@",
                         comment: "Mixed conversion result"
                     ),
                     Int64(successCount),
                     Int64(failureCount),
                     failureDetail
                 )
-            } else if successCount > 0 {
-                let successMessage = String.localizedStringWithFormat(
-                    NSLocalizedString(
-                        "已保存 %1$lld 项，未保存 %2$lld 项。",
-                        comment: "Conversion batch result with unsaved results"
-                    ),
-                    Int64(successCount),
-                    Int64(unprocessedCount + skippedCount + failureCount)
-                )
-                conversionResultMessage = [successMessage, firstWarning]
-                    .compactMap { $0 }
-                    .joined(separator: "\n")
+            } else {
+                activeWorkflow = nil
             }
         }
     }
@@ -948,8 +994,16 @@ struct LibraryView: View {
     private func requestConversionPreviewDismissal(_ request: PendingConversionPreview) {
         guard activeConversionPreview?.id == request.id else { return }
         request.requestDismissal()
-        guard pendingConversionPreview?.id == request.id else { return }
-        pendingConversionPreview = nil
+        request.finish()
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-UIAuditConversionPreviewQueue")
+            || ProcessInfo.processInfo.arguments.contains("-UIAuditConversionPreview") {
+            request.prepared.forEach { MediaConversionService().discard($0) }
+            activeConversionPreview = nil
+            pendingConversionPreview = nil
+            activeWorkflow = nil
+        }
+#endif
     }
 
     private func loadConversionSource(
@@ -986,7 +1040,7 @@ struct LibraryView: View {
                 LogStore.log("xdz.convert.source.branch gif target=video")
                 return await loadGIFConversionSource(item)
             }
-            // PhotosPicker 的 Live Photo 在不同系统版本、iCloud 状态下可能只返回
+            // 相册选择器的 Live Photo 在不同系统版本、iCloud 状态下可能只返回
             // image/movie 或泛化的动态图片类型，甚至没有 itemIdentifier。入口已经
             // 用 .livePhotos 做了筛选，这里必须直接尝试读取 Live Photo，让导入器
             // 通过 PHLivePhoto 的 Transferable 兜底并触发配对视频的 iCloud 下载。
@@ -1210,18 +1264,19 @@ struct LibraryView: View {
                         let duration = await videoDuration(of: url)
                         // 所有动态素材都先让用户确认时间范围。即使源文件没有超过
                         // 最大时长，也需要让用户可以从中间开始截取，而不是默认从 0 秒开始。
-                        let range: ClosedRange<TimeInterval>? = await withCheckedContinuation { continuation in
+                        let selection: VideoRangeSelection? = await withCheckedContinuation { continuation in
                             pendingVideoRange = PendingVideoRange(
                                 url: url,
                                 name: name,
                                 duration: duration,
                                 maxDuration: min(maxExtractionDuration, max(duration, 0.1)),
                                 confirmTitle: "生成剪影"
-                            ) { selectedRange in
-                                continuation.resume(returning: selectedRange)
+                            ) { selectedSelection in
+                                continuation.resume(returning: selectedSelection)
                             }
                         }
-                        guard let range else { continue }
+                        guard let selection else { continue }
+                        let range = selection.range
                         let extractedClip = await extractVideoSource(
                             url: url,
                             name: name,
@@ -1293,6 +1348,9 @@ struct LibraryView: View {
                     importFailureCount: importFailureCount,
                     extractionFailureCount: extractionFailureCount
                 )
+            }
+            if Task.isCancelled || (extractedClips.isEmpty && extractionFailures.isEmpty) {
+                activeWorkflow = nil
             }
         }
     }
@@ -1396,11 +1454,10 @@ struct LibraryView: View {
 
     private func chooseDifferentMedia() {
         clearExtractionError()
-        pickerItems.removeAll()
         lastImportedSources.forEach { $0.removeTemporaryFiles() }
         lastImportedSources.removeAll()
         lastImportedKinds.removeAll()
-        // PhotosPicker cannot be opened programmatically from an alert. Move
+        // The picker cannot be opened programmatically from an alert. Move
         // accessibility focus back to the actual entry so the next action is
         // explicit and never retries the old source.
         DispatchQueue.main.async {
@@ -1799,7 +1856,7 @@ struct LibraryView: View {
                     .accessibilityIdentifier("library-view-all-clips")
                 }
 
-                if appState.clips.isEmpty {
+                if recentLibraryAssets.isEmpty {
                     EmptyStateView(
                         icon: "folder",
                         title: "还没有素材",
@@ -1809,15 +1866,21 @@ struct LibraryView: View {
                     .padding(.vertical, 24)
                 } else {
                     LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(appState.clips.prefix(4)) { clip in
-                            // 首页只展示最近四项，完整管理入口在独立素材页。
-                            ClipCell(
-                                clip: clip,
-                                onOpen: { menuClip = clip },
-                                onDelete: { requestClipDeletion(clip) },
-                                deleteAccessibilityLabel: "删除素材",
-                                deleteAccessibilityIdentifier: "library-delete-clip-\(clip.id)"
-                            )
+                        ForEach(recentLibraryAssets.prefix(4)) { asset in
+                            switch asset {
+                            case .clip(let clip):
+                                ClipCell(
+                                    clip: clip,
+                                    onOpen: { menuClip = clip },
+                                    onDelete: { requestClipDeletion(clip) },
+                                    deleteAccessibilityLabel: "删除素材",
+                                    deleteAccessibilityIdentifier: "library-delete-clip-\(clip.id)"
+                                )
+                            case .converted(let converted):
+                                ConvertedAssetCell(asset: converted) {
+                                    openedConvertedAsset = converted
+                                }
+                            }
                         }
                     }
                 }
@@ -1849,6 +1912,12 @@ struct LibraryView: View {
         }
     }
 
+    private var recentLibraryAssets: [LibraryAssetEntry] {
+        (appState.clips.map(LibraryAssetEntry.clip)
+            + appState.convertedAssets.map(LibraryAssetEntry.converted))
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
     private func requestClipDeletion(_ clip: SegmentedClip) {
         let workNames = appState.worksReferencingClip(clip.id).map(\.name)
         clipDeletionAlert = ClipDeletionAlert(
@@ -1877,36 +1946,248 @@ private struct ClipDeletionAlert: Identifiable {
     }
 }
 
+private enum LibraryAssetEntry: Identifiable {
+    case clip(SegmentedClip)
+    case converted(ConvertedLibraryAsset)
+
+    var id: String {
+        switch self {
+        case .clip(let clip): "clip-\(clip.id)"
+        case .converted(let asset): "converted-\(asset.id)"
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .clip(let clip): clip.name
+        case .converted(let asset): asset.name
+        }
+    }
+
+    var createdAt: Date {
+        switch self {
+        case .clip(let clip): clip.createdAt
+        case .converted(let asset): asset.createdAt
+        }
+    }
+}
+
+private struct ConvertedAssetCell: View {
+    @EnvironmentObject private var appState: AppState
+    let asset: ConvertedLibraryAsset
+    let onOpen: () -> Void
+    @State private var thumbnail: UIImage?
+    @State private var isShowingDeleteConfirmation = false
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                Button(action: onOpen) {
+                    ZStack {
+                        if let thumbnail {
+                            Image(uiImage: thumbnail)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(LF.surface2)
+                            ProgressView().tint(LF.gold)
+                        }
+                        ClipPreviewBadgeIcon(
+                            systemName: asset.kind == .livePhoto ? "livephoto" : "video.fill",
+                            foregroundStyle: LF.actionPrimary,
+                            backgroundStyle: LF.actionPrimary.opacity(0.16)
+                        )
+                        .frame(width: 42, height: 42)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(13)
+                            .background(.black.opacity(0.55), in: Circle())
+                    }
+                    .frame(height: 120)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("播放素材")
+
+                Button {
+                    isShowingDeleteConfirmation = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.black.opacity(0.62), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(8)
+                .accessibilityLabel("删除素材")
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(LF.surface2, lineWidth: 1)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(asset.name)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                Text("\(asset.kind == .livePhoto ? "Live Photo" : NSLocalizedString("视频", comment: "Video asset type")) · \(formattedDuration(asset.duration))")
+                    .font(.caption2)
+                    .foregroundStyle(LF.textSecondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .task(id: asset.id) {
+            let url = asset.videoURL(in: appState.convertedAssetRootURL)
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 480, height: 480)
+            if let (image, _) = try? await generator.image(at: .zero) {
+                thumbnail = UIImage(cgImage: image)
+            }
+        }
+        .alert("删除素材？", isPresented: $isShowingDeleteConfirmation) {
+            Button("删除", role: .destructive) {
+                appState.deleteConvertedAsset(asset.id)
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("删除后无法恢复。")
+        }
+    }
+
+    private func formattedDuration(_ duration: TimeInterval) -> String {
+        String(format: "%d:%04.1f", Int(duration) / 60, duration.truncatingRemainder(dividingBy: 60))
+    }
+}
+
+private struct ConvertedAssetDetailView: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    let asset: ConvertedLibraryAsset
+    let rootURL: URL
+    @State private var player: AVPlayer
+    @State private var isShowingDeleteConfirmation = false
+
+    init(asset: ConvertedLibraryAsset, rootURL: URL) {
+        self.asset = asset
+        self.rootURL = rootURL
+        _player = State(initialValue: AVPlayer(url: asset.videoURL(in: rootURL)))
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                VideoPlayer(player: player)
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(asset.name)
+                        .font(.headline)
+                    Label(
+                        asset.kind == .livePhoto ? "Live Photo" : NSLocalizedString("视频", comment: "Video asset type"),
+                        systemImage: asset.kind == .livePhoto ? "livephoto" : "video.fill"
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(LF.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .navigationTitle("素材预览")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(role: .destructive) {
+                        isShowingDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .accessibilityLabel("删除素材")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+            .magicBackground()
+        }
+        .presentationDetents([.large])
+        .onAppear { player.play() }
+        .onDisappear { player.pause() }
+        .alert("删除素材？", isPresented: $isShowingDeleteConfirmation) {
+            Button("删除", role: .destructive) {
+                appState.deleteConvertedAsset(asset.id)
+                dismiss()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("删除后无法恢复。")
+        }
+    }
+}
+
 /// 完整素材浏览页，搜索和类型筛选固定在素材列表入口附近，避免首页随素材数量增长。
 private struct AllClipsView: View {
     @EnvironmentObject private var appState: AppState
     @State private var searchText = ""
     @State private var filter: ClipLibraryFilter = .all
     @State private var menuClip: SegmentedClip?
+    @State private var openedConvertedAsset: ConvertedLibraryAsset?
     @State private var clipDeletionAlert: ClipDeletionAlert?
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
-    private var visibleClips: [SegmentedClip] {
-        let filtered = appState.clips.filter { filter.includes($0) }
+    private var visibleAssets: [LibraryAssetEntry] {
+        let filtered = appState.clips
+            .filter { filter.includes($0) }
+            .map(LibraryAssetEntry.clip)
+            + appState.convertedAssets
+                .filter { filter.includes($0) }
+                .map(LibraryAssetEntry.converted)
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return filtered }
-        return filtered.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        let matching = query.isEmpty
+            ? filtered
+            : filtered.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        return matching.sorted { $0.createdAt > $1.createdAt }
     }
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
-                Picker("素材类型", selection: $filter) {
-                    ForEach(ClipLibraryFilter.allCases) { option in
-                        Text(option.title).tag(option)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(ClipLibraryFilter.allCases) { option in
+                            Button {
+                                filter = option
+                            } label: {
+                                Text(option.title)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(filter == option ? LF.selectionText : LF.textSecondary)
+                                    .padding(.horizontal, 13)
+                                    .padding(.vertical, 9)
+                                    .background(
+                                        filter == option ? LF.selectionFill : LF.surface,
+                                        in: Capsule()
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(filter == option ? .isSelected : [])
+                        }
                     }
                 }
-                .pickerStyle(.segmented)
 
                 SectionCard(title: nil) {
-                    if visibleClips.isEmpty {
-                        if appState.clips.isEmpty {
+                    if visibleAssets.isEmpty {
+                        if appState.clips.isEmpty && appState.convertedAssets.isEmpty {
                             EmptyStateView(
                                 icon: "folder",
                                 title: "还没有素材",
@@ -1933,21 +2214,28 @@ private struct AllClipsView: View {
                             Spacer()
                             Text(String.localizedStringWithFormat(
                                 NSLocalizedString("%1$lld items", comment: "Visible asset count"),
-                                Int64(visibleClips.count)
+                                Int64(visibleAssets.count)
                             ))
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(LF.textSecondary)
                         }
 
                         LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(visibleClips) { clip in
-                                ClipCell(
-                                    clip: clip,
-                                    onOpen: { menuClip = clip },
-                                    onDelete: { requestClipDeletion(clip) },
-                                    deleteAccessibilityLabel: "删除素材",
-                                    deleteAccessibilityIdentifier: "library-all-delete-clip-\(clip.id)"
-                                )
+                            ForEach(visibleAssets) { asset in
+                                switch asset {
+                                case .clip(let clip):
+                                    ClipCell(
+                                        clip: clip,
+                                        onOpen: { menuClip = clip },
+                                        onDelete: { requestClipDeletion(clip) },
+                                        deleteAccessibilityLabel: "删除素材",
+                                        deleteAccessibilityIdentifier: "library-all-delete-clip-\(clip.id)"
+                                    )
+                                case .converted(let converted):
+                                    ConvertedAssetCell(asset: converted) {
+                                        openedConvertedAsset = converted
+                                    }
+                                }
                             }
                         }
                     }
@@ -1969,6 +2257,10 @@ private struct AllClipsView: View {
                 onClose: { menuClip = nil }
             )
             .environmentObject(appState)
+        }
+        .sheet(item: $openedConvertedAsset) { asset in
+            ConvertedAssetDetailView(asset: asset, rootURL: appState.convertedAssetRootURL)
+                .environmentObject(appState)
         }
         .alert(item: $clipDeletionAlert) { request in
             switch request.kind {
@@ -2009,14 +2301,18 @@ private enum ClipLibraryFilter: String, CaseIterable, Identifiable {
     case all
     case live
     case still
+    case livePhoto
+    case video
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .all: NSLocalizedString("全部", comment: "All clip filter")
-        case .live: NSLocalizedString("动态", comment: "Animated clip filter")
-        case .still: NSLocalizedString("静态", comment: "Still clip filter")
+        case .live: NSLocalizedString("动态剪影", comment: "Animated clip filter")
+        case .still: NSLocalizedString("静态剪影", comment: "Still clip filter")
+        case .livePhoto: "Live Photo"
+        case .video: NSLocalizedString("视频", comment: "Video asset filter")
         }
     }
 
@@ -2025,6 +2321,16 @@ private enum ClipLibraryFilter: String, CaseIterable, Identifiable {
         case .all: true
         case .live: clip.frameCount > 1
         case .still: clip.frameCount <= 1
+        case .livePhoto, .video: false
+        }
+    }
+
+    func includes(_ asset: ConvertedLibraryAsset) -> Bool {
+        switch self {
+        case .all: true
+        case .livePhoto: asset.kind == .livePhoto
+        case .video: asset.kind == .video
+        case .live, .still: false
         }
     }
 }
@@ -2037,7 +2343,6 @@ private struct SubjectSelectionView: View {
     let onCancel: () -> Void
     let onConfirm: (Set<Int>, [CGPoint]?) -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @State private var selectedIDs: Set<Int>
 
     private let colors: [Color] = [.cyan, .orange, .green, .pink, .purple, .yellow]
@@ -2142,7 +2447,6 @@ private struct SubjectSelectionView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         onCancel()
-                        dismiss()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.headline.weight(.semibold))
@@ -2153,7 +2457,6 @@ private struct SubjectSelectionView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         onConfirm(selectedIDs, lassoPoints.isEmpty ? nil : lassoPoints)
-                        dismiss()
                     } label: {
                         Image(systemName: "checkmark")
                             .font(.headline.weight(.semibold))
@@ -2171,7 +2474,6 @@ private struct SubjectSelectionView: View {
                 applyLasso(initialLassoPoints)
             }
         }
-        .presentationDetents([.medium, .large])
         .sheet(isPresented: $isFrameInspectorPresented) {
             SubjectFrameInspectorView(
                 frames: analysis.frameDebug,
@@ -2759,7 +3061,6 @@ private struct InitialSubjectRegionPickerView: View {
     let onSkip: () -> Void
     let onConfirm: ([CGPoint]?) -> Void
 
-    @Environment(\.dismiss) private var dismiss
     var body: some View {
         VisionInitialRegionPickerView(
             image: image,
@@ -2778,7 +3079,6 @@ private struct VisionInitialRegionPickerView: View {
     let onSkip: () -> Void
     let onConfirm: ([CGPoint]) -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @State private var isLassoMode = true
     @State private var lassoPoints: [CGPoint] = []
 
@@ -2840,7 +3140,6 @@ private struct VisionInitialRegionPickerView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         onCancel()
-                        dismiss()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.headline.weight(.semibold))
@@ -2851,7 +3150,6 @@ private struct VisionInitialRegionPickerView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         onConfirm(lassoPoints)
-                        dismiss()
                     } label: {
                         Image(systemName: "checkmark")
                             .font(.headline.weight(.semibold))
@@ -2862,7 +3160,6 @@ private struct VisionInitialRegionPickerView: View {
                 ToolbarItem(placement: .bottomBar) {
                     Button("跳过圈选") {
                         onSkip()
-                        dismiss()
                     }
                 }
             }
@@ -2870,8 +3167,6 @@ private struct VisionInitialRegionPickerView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(LF.background.opacity(0.94), for: .navigationBar)
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
     }
 }
 private struct VideoRangePickerView: View {
@@ -2879,14 +3174,16 @@ private struct VideoRangePickerView: View {
     let name: String
     let duration: TimeInterval
     let maxDuration: TimeInterval
+    let offersLivePhotoDurationChoice: Bool
+    let allowsFifteenSecondLivePhoto: Bool
     let confirmTitle: LocalizedStringKey
     let onCancel: () -> Void
-    let onConfirm: (ClosedRange<TimeInterval>) -> Void
+    let onConfirm: (VideoRangeSelection) -> Void
 
-    @Environment(\.dismiss) private var dismiss
+    @State private var isShowingProStore = false
     @State private var startTime: TimeInterval
     @State private var endTime: TimeInterval
-    @State private var selectedDetent: PresentationDetent = .large
+    @State private var selectedMaximumDuration: TimeInterval
     @State private var videoAspectRatio: CGFloat = 16.0 / 9.0
     @StateObject private var previewController: VideoRangePreviewController
 
@@ -2895,9 +3192,11 @@ private struct VideoRangePickerView: View {
         name: String,
         duration: TimeInterval,
         maxDuration: TimeInterval,
+        offersLivePhotoDurationChoice: Bool = false,
+        allowsFifteenSecondLivePhoto: Bool = false,
         confirmTitle: LocalizedStringKey = "生成剪影",
         onCancel: @escaping () -> Void,
-        onConfirm: @escaping (ClosedRange<TimeInterval>) -> Void
+        onConfirm: @escaping (VideoRangeSelection) -> Void
     ) {
         let safeDuration = max(duration, 0.1)
         let safeMaxDuration = max(maxDuration, 0.1)
@@ -2905,11 +3204,14 @@ private struct VideoRangePickerView: View {
         self.name = name
         self.duration = safeDuration
         self.maxDuration = safeMaxDuration
+        self.offersLivePhotoDurationChoice = offersLivePhotoDurationChoice
+        self.allowsFifteenSecondLivePhoto = allowsFifteenSecondLivePhoto
         self.confirmTitle = confirmTitle
         self.onCancel = onCancel
         self.onConfirm = onConfirm
         _startTime = State(initialValue: 0)
         _endTime = State(initialValue: min(safeDuration, safeMaxDuration))
+        _selectedMaximumDuration = State(initialValue: safeMaxDuration)
         _previewController = StateObject(wrappedValue: VideoRangePreviewController(url: url))
     }
 
@@ -2924,6 +3226,32 @@ private struct VideoRangePickerView: View {
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
                             .lineLimit(1)
+                    }
+
+                    if offersLivePhotoDurationChoice {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("最长片段")
+                                .font(.subheadline.weight(.medium))
+                            Picker("最长片段", selection: $selectedMaximumDuration) {
+                                Text("5 秒").tag(TimeInterval(5))
+                                Text("15 秒").tag(TimeInterval(15)).disabled(!allowsFifteenSecondLivePhoto)
+                            }
+                            .pickerStyle(.segmented)
+                            if !allowsFifteenSecondLivePhoto {
+                                HStack(spacing: 8) {
+                                    Text("免费版最长 5 秒；GIFBloom Pro 可选 15 秒。")
+                                        .font(.caption)
+                                        .foregroundStyle(LF.textSecondary)
+                                    Spacer(minLength: 4)
+                                    Button("解锁更长片段") {
+                                        isShowingProStore = true
+                                    }
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(LF.actionPrimary)
+                                    .fixedSize()
+                                }
+                            }
+                        }
                     }
 
                     ZStack(alignment: .topLeading) {
@@ -2943,7 +3271,7 @@ private struct VideoRangePickerView: View {
                         duration: duration,
                         startTime: $startTime,
                         endTime: $endTime,
-                        maxDuration: maxDuration
+                        maxDuration: activeMaximumDuration
                     )
 
                     HStack(spacing: 10) {
@@ -2987,7 +3315,6 @@ private struct VideoRangePickerView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         onCancel()
-                        dismiss()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.headline.weight(.semibold))
@@ -2997,8 +3324,12 @@ private struct VideoRangePickerView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        onConfirm(startTime...endTime)
-                        dismiss()
+                        onConfirm(
+                            VideoRangeSelection(
+                                range: startTime...endTime,
+                                maximumDuration: activeMaximumDuration
+                            )
+                        )
                     } label: {
                         Image(systemName: "checkmark")
                             .font(.headline.weight(.semibold))
@@ -3011,12 +3342,22 @@ private struct VideoRangePickerView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(LF.background.opacity(0.94), for: .navigationBar)
         }
-        .presentationDetents([.medium, .large], selection: $selectedDetent)
+        .sheet(isPresented: $isShowingProStore) {
+            GIFBloomProStoreView()
+        }
         .onChange(of: startTime) { _, _ in
             if previewController.isPlaying { previewController.stop() }
         }
         .onChange(of: endTime) { _, _ in
             if previewController.isPlaying { previewController.stop() }
+        }
+        .onChange(of: selectedMaximumDuration) { oldValue, newValue in
+            let currentLength = endTime - startTime
+            if newValue < oldValue {
+                endTime = min(duration, max(startTime + 0.1, startTime + newValue))
+            } else if currentLength >= oldValue - 0.05 {
+                endTime = min(duration, startTime + newValue)
+            }
         }
         .onDisappear {
             previewController.stop()
@@ -3029,6 +3370,10 @@ private struct VideoRangePickerView: View {
     private func formatTimestamp(_ value: TimeInterval) -> String {
         let safeValue = max(value, 0)
         return String(format: "%d:%04.1f", Int(safeValue) / 60, safeValue.truncatingRemainder(dividingBy: 60))
+    }
+
+    private var activeMaximumDuration: TimeInterval {
+        offersLivePhotoDurationChoice ? selectedMaximumDuration : maxDuration
     }
 
     private func loadVideoAspectRatio() async {
@@ -3850,7 +4195,6 @@ private struct ClipCropEditorView: View {
 struct ClipMenuView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var purchaseManager: PurchaseManager
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let clip: SegmentedClip
     let onClose: () -> Void
@@ -3997,7 +4341,6 @@ struct ClipMenuView: View {
 
     private func close() {
         onClose()
-        dismiss()
     }
 
     var body: some View {

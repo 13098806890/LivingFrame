@@ -57,7 +57,7 @@ struct SettingsView: View {
                                     if !purchaseManager.hasPro {
                                         Divider()
                                     }
-                                    extractionDurationOption(10)
+                                    extractionDurationOption(15)
                                 } label: {
                                     HStack(spacing: 6) {
                                         Text(extractionDurationLabel(for: selectedExtractionDuration))
@@ -78,7 +78,7 @@ struct SettingsView: View {
 
                         if !purchaseManager.hasPro {
                             HStack(spacing: 10) {
-                                Text("免费版最长 5 秒；GIFBloom Pro 可选 10 秒。")
+                                Text("免费版最长 5 秒；GIFBloom Pro 可选 15 秒。")
                                     .font(.caption)
                                     .foregroundStyle(LF.textSecondary)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -335,7 +335,7 @@ struct SettingsView: View {
         switch Int(duration.rounded()) {
         case 3: "3 秒"
         case 5: "5 秒"
-        default: "10 秒"
+        default: "15 秒"
         }
     }
 
@@ -343,7 +343,7 @@ struct SettingsView: View {
         switch Int(duration.rounded()) {
         case 3: NSLocalizedString("3 秒", comment: "Extraction duration")
         case 5: NSLocalizedString("5 秒", comment: "Extraction duration")
-        default: NSLocalizedString("10 秒", comment: "Extraction duration")
+        default: NSLocalizedString("15 秒", comment: "Extraction duration")
         }
     }
 

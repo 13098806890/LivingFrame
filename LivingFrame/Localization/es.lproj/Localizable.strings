@@ -242,6 +242,7 @@
 "%1$lld 个素材" = "Materiales %1$lld";
 "%1$lld 张 / %2$.2f 秒" = "%1$lld hojas / %2$.2f segundos";
 "%1$lld×%2$lld · %3$lld fps · %4$lld 帧" = "%1$lld×%2$lld · %3$lld fps · %4$lld fotogramas";
+"15 秒" = "15 segundos";
 "10 秒" = "10 segundos";
 "16:9" = "16:9";
 "1:1" = "1:1";
@@ -602,7 +603,7 @@
 "全部" = "Todos";
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "Suscríbete a GIFBloom Pro para eliminar la marca de agua de las exportaciones.";
-"免费版最长 5 秒；GIFBloom Pro 可选 10 秒。" = "Gratis: hasta 5 s; GIFBloom Pro: 10 s.";
+"免费版最长 5 秒；GIFBloom Pro 可选 15 秒。" = "Gratis: hasta 5 s; GIFBloom Pro: 15 s.";
 "解锁更长片段" = "Desbloquear clips más largos";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Los planes semanales y anuales se renuevan automáticamente. Cancela al menos 24 horas antes del fin del periodo. Gestiona tu plan en los ajustes del Apple ID.";
 "AI 贴纸仅限 GIFBloom Pro 使用。" = "Los stickers con IA solo están disponibles con GIFBloom Pro.";
@@ -611,6 +612,7 @@
 "解锁更长的素材提取时长。" = "Desbloquea extracciones de clips más largas.";
 "订阅去水印" = "Suscribirse para eliminar la marca de agua";
 "水果" = "Frutas";
+"最长片段" = "Duración máxima del clip";
 "5 秒" = "5 segundos";
 
 "AI贴纸" = "Pegatinas con IA";
@@ -675,7 +677,7 @@
 "从视频、Live Photo 或照片提取透明剪影" = "Extract transparent cutouts from videos, Live Photos, or photos";
 "取消转换" = "Cancelar conversión";
 "已转换并保存 %1$lld 项素材到照片。" = "Converted and saved %1$lld item(s) to Photos.";
-"成功转换 %1$lld 项，%2$lld 项失败。%@" = "%1$lld converted successfully; %2$lld failed. %@";
+"成功转换 %lld 项，%lld 项失败。%@" = "%lld converted successfully; %lld failed. %@";
 "截取首帧生成透明人物贴纸" = "Create a transparent sticker from the first frame";
 "提取可播放的透明人物素材" = "Create a playable transparent cutout";
 "正在准备转换" = "Preparando la conversión";

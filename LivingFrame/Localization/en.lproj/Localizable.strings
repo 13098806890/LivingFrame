@@ -213,7 +213,7 @@
 "没有获得保存到照片的权限，请在系统设置中允许后重试。" = "Photo access is required to save the result. Allow it in Settings and retry.";
 "转为 Live Photo 只支持 GIF 和视频；普通照片不会被处理。" = "Convert to Live Photo accepts GIFs and videos only; still photos are not processed.";
 "转为视频只支持 Live Photo 和 GIF，请重新选择动态素材。" = "Convert to Video accepts Live Photos and GIFs. Choose dynamic media and try again.";
-"成功转换 %1$lld 项，%2$lld 项失败。%@" = "%1$lld converted successfully; %2$lld failed. %@";
+"成功转换 %lld 项，%lld 项失败。%@" = "%lld converted successfully; %lld failed. %@";
 "请重新选择素材后重试。" = "Choose media again and retry.";
 "已转换并保存 %1$lld 项素材到照片。" = "Converted and saved %1$lld item(s) to Photos.";
 "转换时无法保留源音频，预览不会包含声音。" = "The source audio couldn't be retained. The preview will be silent.";
@@ -270,6 +270,7 @@
 "%1$lld 个素材" = "%1$lld items";
 "%1$lld 张 / %2$.2f 秒" = "%1$lld frames / %2$.2f seconds";
 "%1$lld×%2$lld · %3$lld fps · %4$lld 帧" = "%1$lld×%2$lld · %3$lld fps · %4$lld frames";
+"15 秒" = "15 seconds";
 "10 秒" = "10 seconds";
 "16:9" = "16:9";
 "1:1" = "1:1";
@@ -630,7 +631,7 @@
 "全部" = "All";
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "Subscribe to GIFBloom Pro to remove export watermarks.";
-"免费版最长 5 秒；GIFBloom Pro 可选 10 秒。" = "Free: up to 5 sec; GIFBloom Pro: 10 sec.";
+"免费版最长 5 秒；GIFBloom Pro 可选 15 秒。" = "Free: up to 5 sec; GIFBloom Pro: 15 sec.";
 "解锁更长片段" = "Unlock longer clips";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Weekly and yearly plans auto-renew. Cancel at least 24 hours before the period ends. Manage your plan in Apple ID settings.";
 "AI 贴纸仅限 GIFBloom Pro 使用。" = "AI stickers are only available with GIFBloom Pro.";
@@ -639,6 +640,7 @@
 "解锁更长的素材提取时长。" = "Unlock longer clip extraction times.";
 "订阅去水印" = "Subscribe to remove watermark";
 "水果" = "Fruit";
+"最长片段" = "Max clip duration";
 "5 秒" = "5 seconds";
 
 "AI贴纸" = "AI Stickers";
