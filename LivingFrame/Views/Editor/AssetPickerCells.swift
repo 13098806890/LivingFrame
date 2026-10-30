@@ -75,14 +75,25 @@ struct BackgroundAssetCell: View {
 struct AssetCell: View {
     let clip: SegmentedClip
     let onSelect: () -> Void
-    @State private var isPlaying = false
+    @Environment(\.displayScale) private var displayScale
+    @Binding private var isPlaying: Bool
     @State private var isPreparingPlayback = false
+
+    init(clip: SegmentedClip, isPlaying: Binding<Bool>, onSelect: @escaping () -> Void) {
+        self.clip = clip
+        self.onSelect = onSelect
+        _isPlaying = isPlaying
+    }
+
+    private var previewMaxPixelSize: CGFloat {
+        min(360, max(180, 120 * displayScale))
+    }
 
     var body: some View {
         VStack(spacing: 4) {
              AnimatedClipPreview(
                  clip: clip,
-                 maxPixelSize: FrameCache.previewThumbnailMaxPixelSize,
+                 maxPixelSize: previewMaxPixelSize,
                  isPlaying: $isPlaying,
                  isPreparingPlayback: $isPreparingPlayback
              )

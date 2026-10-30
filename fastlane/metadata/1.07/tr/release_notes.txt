@@ -2,3 +2,5 @@
 • Efektler dosya boyutunu artırdığında saydam GIF dışa aktarımı artık daha yüksek çözünürlüğe öncelik verir.
 • Dönüştürülen Live Photo’lar ve videolar artık Son Eklenenler’de görünür; Tüm Öğeler bölümünde filtrelenebilir, oynatılabilir ve silinebilir.
 • Uzun videolardan 15 saniyeye kadar Live Photo oluşturun (ücretsiz 5 saniye; GIFBloom Pro ile 15 saniye).
+• Seçtiğiniz kare hızını düşürmeden videoları daha hızlı dışa aktarın.
+• Dışa aktarmaya başlamadan önce biçimi seçin.

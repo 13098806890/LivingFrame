@@ -3,6 +3,73 @@ import CoreImage.CIFilterBuiltins
 import CoreText
 import Foundation
 
+private struct SubjectBoundsCacheKey: Hashable {
+    let clipID: String
+    let frameIndex: Int
+    let width: Int
+    let height: Int
+    let cropCacheKey: String
+    let isThumbnail: Bool
+}
+
+/// Small, per-renderer LRU for derived alpha bounds. Bounds are stable for a
+/// source frame, while the memory cost is tiny compared with retaining pixels.
+private final class SubjectBoundsCache {
+    private enum Value {
+        case empty
+        case bounds(CGRect)
+
+        var rect: CGRect? {
+            switch self {
+            case .empty: nil
+            case .bounds(let rect): rect
+            }
+        }
+    }
+
+    private let lock = NSLock()
+    private let limit = 2_048
+    private var values: [SubjectBoundsCacheKey: Value] = [:]
+    private var recency: [SubjectBoundsCacheKey] = []
+
+    func value(for key: SubjectBoundsCacheKey, compute: () -> CGRect?) -> CGRect? {
+        lock.lock()
+        if let cached = values[key] {
+            touch(key)
+            lock.unlock()
+            return cached.rect
+        }
+        lock.unlock()
+
+        let computed = compute()
+
+        lock.lock()
+        if let cached = values[key] {
+            touch(key)
+            lock.unlock()
+            return cached.rect
+        }
+        if let computed {
+            values[key] = .bounds(computed)
+        } else {
+            values[key] = .empty
+        }
+        recency.removeAll { $0 == key }
+        recency.append(key)
+        while recency.count > limit {
+            let evicted = recency.removeFirst()
+            values.removeValue(forKey: evicted)
+        }
+        lock.unlock()
+        return computed
+    }
+
+    private func touch(_ key: SubjectBoundsCacheKey) {
+        recency.removeAll { $0 == key }
+        recency.append(key)
+    }
+}
+
 /// 统一渲染管线：预览与导出共用，保证所见即所得
 /// 创作空间 = CI 左下原点坐标（y 向上），UI 层做坐标换算
 public struct CompositionRenderer {
@@ -18,6 +85,8 @@ public struct CompositionRenderer {
     private let exportWatermark: ExportWatermark?
     /// 导出时使用的不可变素材快照。命中后不会逐帧回读可变的 FrameCache 注册值。
     private let clipSnapshots: [String: SegmentedClip]
+    /// Avoid rescanning the same full-resolution alpha plane on repeated frames.
+    private let subjectBoundsCache = SubjectBoundsCache()
     /// 背景素材的读取入口由调用方提供，避免渲染器把磁盘存储和渲染逻辑绑在一起。
     private let backgroundMediaProvider: any BackgroundMediaProviding
 
@@ -1279,7 +1348,7 @@ public struct CompositionRenderer {
         let fps = clip.fps
         guard fps.isFinite, fps > 0 else {
             if let frame = FrameCache.shared.cachedFrame(for: clip, index: playbackFrames[0]) {
-                return clipFrameImage(frame, clip: clip)
+                return clipFrameImage(frame, clip: clip, frameIndex: playbackFrames[0])
             }
             return nil
         }
@@ -1300,7 +1369,7 @@ public struct CompositionRenderer {
         let cycleFrameCount = max(endIndex - startIndex, 1)
         guard time.isFinite else {
             if let frame = FrameCache.shared.cachedFrame(for: clip, index: playbackFrames[startIndex]) {
-                return clipFrameImage(frame, clip: clip)
+                return clipFrameImage(frame, clip: clip, frameIndex: playbackFrames[startIndex])
             }
             return nil
         }
@@ -1319,14 +1388,33 @@ public struct CompositionRenderer {
             frame = FrameCache.shared.cachedFrame(for: clip, index: index)
         }
         guard let frame else { return nil }
-        return clipFrameImage(frame, clip: clip)
+        return clipFrameImage(frame, clip: clip, frameIndex: index)
     }
 
-    private func clipFrameImage(_ frame: CGImage, clip: SegmentedClip) -> RenderedClipFrame {
+    private func clipFrameImage(
+        _ frame: CGImage,
+        clip: SegmentedClip,
+        frameIndex: Int
+    ) -> RenderedClipFrame {
         // Keep the complete source canvas for positioning, but carry the visible
         // subject bounds separately so clip effects can size themselves from the
         // same alpha boundary used by option previews.
-        var subjectBounds = AlphaSubjectBounds.visiblePixelBounds(in: frame)
+        let needsSubjectBounds = appliesClipEffects
+            && (clip.stickerStyle == .outline || clip.stickerStyle == .smooth)
+        var subjectBounds: CGRect?
+        if needsSubjectBounds {
+            let key = SubjectBoundsCacheKey(
+                clipID: clip.id,
+                frameIndex: frameIndex,
+                width: frame.width,
+                height: frame.height,
+                cropCacheKey: clip.cropCacheKey,
+                isThumbnail: frameMaxPixelSize != nil
+            )
+            subjectBounds = subjectBoundsCache.value(for: key) {
+                AlphaSubjectBounds.visiblePixelBounds(in: frame)
+            }
+        }
         var image = CIImage(cgImage: frame)
         // Thumbnail decoding already applies the crop in FrameCache. Full-resolution
         // frames are cropped here before the stored clockwise rotation is applied.

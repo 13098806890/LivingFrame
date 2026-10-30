@@ -169,6 +169,9 @@ final class AppState: ObservableObject {
     @Published private(set) var isPreparingPlayback = false
     private var playbackPreparationTask: Task<Void, Never>?
     private var playbackPreparationStartedAt: Date?
+    /// Monotonic playback clock; renderer and main-thread scheduling latency must
+    /// not accumulate as drift between the playhead and source frames.
+    private var lastPlaybackTickUptime: TimeInterval?
     private let minimumPlaybackPreparationDuration: TimeInterval = 0.24
     /// 倒序播放
     @Published var isReversed = false
@@ -258,7 +261,7 @@ final class AppState: ObservableObject {
                   clip.fps > 0 else {
                 return nil
             }
-            return clip.fps
+            return clip.fps * max(clip.playbackSpeed.isFinite ? clip.playbackSpeed : 1, 0.01)
         }
         return max(dynamicFPS.max() ?? composition.fps, 1)
     }
@@ -399,6 +402,9 @@ final class AppState: ObservableObject {
     var cacheSizeTask: Task<Void, Never>?
 
     init() {
+        // Warm BackgroundStore's static caches on the main actor before its
+        // startup maintenance tasks access them from utility-priority work.
+        BackgroundStore.prepareForUse()
         workPersistence = WorkPersistenceCoordinator(store: worksStore)
         let persistence = workPersistence
         Task { [weak self] in
@@ -1064,6 +1070,16 @@ final class AppState: ObservableObject {
         }.value
         guard let id else { return nil }
         return id
+    }
+
+    @discardableResult
+    func importBackgroundVideo(from fileURL: URL, preferredFileExtension: String? = nil) async -> String? {
+        await Task.detached(priority: .utility) {
+            BackgroundStore.shared.saveUserVideo(
+                from: fileURL,
+                preferredFileExtension: preferredFileExtension
+            )
+        }.value
     }
 
     /// 从普通编辑器添加一个独立的相册元素。
@@ -3013,12 +3029,14 @@ final class AppState: ObservableObject {
         isPreparingPlayback = true
         isPlaying = true
         audioEngine.play(from: currentTime)
+        lastPlaybackTickUptime = ProcessInfo.processInfo.systemUptime
     }
 
     func pause() {
         playbackPreparationTask?.cancel()
         playbackPreparationTask = nil
         playbackPreparationStartedAt = nil
+        lastPlaybackTickUptime = nil
         isPreparingPlayback = false
         isPlaying = false
         audioEngine.stop()
@@ -3052,13 +3070,23 @@ final class AppState: ObservableObject {
         let duration = composition?.duration ?? 0
         let clamped = duration.isFinite ? min(max(time, 0), duration) : max(time, 0)
         currentTime = clamped.isFinite ? clamped : 0
+        if isPlaying {
+            lastPlaybackTickUptime = ProcessInfo.processInfo.systemUptime
+        }
     }
 
     /// 播放由画布渲染驱动：一帧完整合成完成后才调用一次。
     func tick(delta: TimeInterval = 0.05) {
         guard isPlaying, let comp = composition, comp.fps > 0, comp.duration.isFinite else { return }
-        // 使用实际渲染间隔推进时间，不再让独立 Timer 超过预览渲染速度。
-        let step = min(max(delta.isFinite ? delta : 0.05, 0.001), 0.25)
+        // Measure elapsed time directly instead of estimating from render duration.
+        // This includes renderer completion and the time SwiftUI needs to schedule
+        // the next frame, so neither delay accumulates into source/playhead drift.
+        let now = ProcessInfo.processInfo.systemUptime
+        let elapsed = lastPlaybackTickUptime.map { now - $0 }
+        lastPlaybackTickUptime = now
+        let fallback = delta.isFinite ? delta : 0.05
+        let measuredStep = elapsed.flatMap { $0.isFinite ? $0 : nil } ?? fallback
+        let step = max(measuredStep, 0.001)
         if isReversed {
             let next = currentTime - step
             if next <= 0 {
@@ -3066,6 +3094,7 @@ final class AppState: ObservableObject {
                 playbackPreparationTask?.cancel()
                 playbackPreparationTask = nil
                 playbackPreparationStartedAt = nil
+                lastPlaybackTickUptime = nil
                 isPreparingPlayback = false
                 isPlaying = false
                 audioEngine.stop()
@@ -3080,6 +3109,7 @@ final class AppState: ObservableObject {
                 playbackPreparationTask?.cancel()
                 playbackPreparationTask = nil
                 playbackPreparationStartedAt = nil
+                lastPlaybackTickUptime = nil
                 isPreparingPlayback = false
                 isPlaying = false
                 audioEngine.stop()

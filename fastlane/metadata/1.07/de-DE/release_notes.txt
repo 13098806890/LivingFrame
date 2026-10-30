@@ -2,3 +2,5 @@
 • Beim Export transparenter GIFs bleibt die höhere Auflösung bevorzugt erhalten, wenn Effekte die Dateigröße erhöhen.
 • Konvertierte Live Photos und Videos erscheinen jetzt unter „Zuletzt hinzugefügt“ und lassen sich unter „Alle Medien“ filtern, abspielen und löschen.
 • Erstelle aus langen Videos Live Photos mit bis zu 15 Sekunden (5 Sekunden kostenlos, 15 Sekunden mit GIFBloom Pro).
+• Videos werden schneller exportiert, ohne die gewählte Bildrate zu verringern.
+• Wähle das Exportformat vor dem Export aus.

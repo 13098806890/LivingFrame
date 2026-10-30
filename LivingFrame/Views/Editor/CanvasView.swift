@@ -48,6 +48,10 @@ struct CanvasView: View {
     @State private var renderVersion = 0
     /// 是否有一个预览渲染正在执行；执行期间只保留最新请求，避免任务堆积或全部被跳过。
     @State private var isRenderInFlight = false
+    /// 播放时只预渲染紧邻当前时间的少量完整画布帧，不缓存整段视频。
+    @State private var playbackFrameCache: [Int: CGImage] = [:]
+    @State private var playbackPrefetchTask: Task<Void, Never>?
+    @State private var playbackFrameBufferGeneration = 0
     /// 背景分区预览直接采用导出的最终输出路径，避免降采样阶段混合透明遮罩。
     @State private var usesExactBackgroundPreview = false
     private enum TransformGestureMode: Equatable {
@@ -188,7 +192,11 @@ struct CanvasView: View {
             refreshRendererScale()
             render()
         }
+        .onDisappear {
+            invalidatePlaybackFrameCache()
+        }
         .onChange(of: appState.composition) { _, _ in
+            invalidatePlaybackFrameCache()
             // 时间轴移动/裁剪只影响某个时间点是否可见，不值得在每一个触摸事件
             // 重做整张 CI 合成。拖拽结束时由 isTimelineEditing 的变化补一次最终预览。
             guard !appState.isTimelineEditing,
@@ -1145,6 +1153,7 @@ struct CanvasView: View {
 
     /// 视口尺寸变化时重建预览渲染器（按屏幕像素渲染，预览清晰度足够且不浪费）
     private func refreshRendererScale() {
+        invalidatePlaybackFrameCache()
         let requiresExactOutput = needsExactBackgroundPreview
         // 分区背景在暂停时需要像素级对齐；播放时使用轻量预览，避免每帧
         // 读取全分辨率 PNG 并重新合成，暂停后仍恢复精确路径。
@@ -1192,8 +1201,42 @@ struct CanvasView: View {
             }
             return compositionWithInteractionElevation(previewComposition)
         }
-        let time = composition.map { min(appState.currentTime, $0.duration) } ?? 0
         let renderer = renderer
+        let isPlaybackRender = drivesPlayback && appState.isPlaying
+        let playbackFPS = composition.map { targetPlaybackFPS(for: $0) }
+        let playbackFrameIndex = isPlaybackRender
+            ? playbackFPS.map { playbackFrameNumber(for: appState.currentTime, fps: $0) }
+            : nil
+        if let playbackFrameIndex, isPlaybackRender {
+            discardConsumedPlaybackFrames(currentIndex: playbackFrameIndex)
+        }
+        let time = composition.map { composition in
+            guard let playbackFPS, let playbackFrameIndex else {
+                return min(appState.currentTime, composition.duration)
+            }
+            return min(Double(playbackFrameIndex) / playbackFPS, composition.duration)
+        } ?? 0
+
+        if let composition,
+           let playbackFPS,
+           let playbackFrameIndex,
+           let cachedFrame = playbackFrameCache.removeValue(forKey: playbackFrameIndex) {
+            isRenderInFlight = false
+            previewImage = UIImage(cgImage: cachedFrame)
+            appState.finishPlaybackPreparation()
+            if clearInteractivePreviewAfterRender {
+                clearInteractiveDragPreview()
+            }
+            prefetchPlaybackFrames(
+                after: playbackFrameIndex,
+                composition: composition,
+                renderer: renderer,
+                fps: playbackFPS
+            )
+            scheduleNextPlaybackStep(renderDuration: 0)
+            return
+        }
+
         let renderStartedAt = Date()
         Task.detached(priority: .userInitiated) { [renderer, composition, time, renderStartedAt] in
             let cg: CGImage?
@@ -1224,6 +1267,16 @@ struct CanvasView: View {
                 if !isCurrentVersion {
                     self.render()
                 } else if self.appState.isPlaying && self.drivesPlayback {
+                    if let composition,
+                       let playbackFPS,
+                       let playbackFrameIndex {
+                        self.prefetchPlaybackFrames(
+                            after: playbackFrameIndex,
+                            composition: composition,
+                            renderer: renderer,
+                            fps: playbackFPS
+                        )
+                    }
                     self.scheduleNextPlaybackStep(
                         renderDuration: Date().timeIntervalSince(renderStartedAt)
                     )
@@ -1232,16 +1285,111 @@ struct CanvasView: View {
         }
     }
 
+    private var playbackFrameBufferLimit: Int { 1 }
+
+    private func targetPlaybackFPS(for composition: Composition) -> Double {
+        let compositionFPS = composition.fps.isFinite && composition.fps > 0 ? composition.fps : 30
+        let sourceFPS = appState.maximumSourceFPS.isFinite && appState.maximumSourceFPS > 0
+            ? appState.maximumSourceFPS
+            : compositionFPS
+        return min(max(max(compositionFPS, sourceFPS), 15), 30)
+    }
+
+    private func playbackFrameNumber(for time: TimeInterval, fps: Double) -> Int {
+        let safeTime = time.isFinite ? max(time, 0) : 0
+        return max(Int((safeTime * fps).rounded(.down)), 0)
+    }
+
+    private func discardConsumedPlaybackFrames(currentIndex: Int) {
+        let reverse = appState.isReversed
+        playbackFrameCache = playbackFrameCache.filter { index, _ in
+            reverse ? index <= currentIndex : index >= currentIndex
+        }
+    }
+
+    private func invalidatePlaybackFrameCache() {
+        playbackFrameBufferGeneration &+= 1
+        playbackPrefetchTask?.cancel()
+        playbackPrefetchTask = nil
+        playbackFrameCache.removeAll(keepingCapacity: false)
+    }
+
+    private func prefetchPlaybackFrames(
+        after currentIndex: Int,
+        composition: Composition,
+        renderer: CompositionRenderer,
+        fps: Double
+    ) {
+        guard drivesPlayback,
+              appState.isPlaying,
+              playbackPrefetchTask == nil,
+              playbackFrameCache.count < playbackFrameBufferLimit else { return }
+
+        let generation = playbackFrameBufferGeneration
+        let direction = appState.isReversed ? -1 : 1
+        let furthestCachedIndex = direction > 0
+            ? max(currentIndex, playbackFrameCache.keys.max() ?? currentIndex)
+            : min(currentIndex, playbackFrameCache.keys.min() ?? currentIndex)
+        let availableSlots = playbackFrameBufferLimit - playbackFrameCache.count
+        var indices: [Int] = []
+        for offset in 1...availableSlots {
+            let index = furthestCachedIndex + direction * offset
+            guard index >= 0,
+                  Double(index) / fps < composition.duration,
+                  playbackFrameCache[index] == nil else { break }
+            indices.append(index)
+        }
+        guard !indices.isEmpty else { return }
+
+        playbackPrefetchTask = Task(priority: .utility) { @MainActor in
+            var shouldRefillBuffer = true
+            for index in indices {
+                guard !Task.isCancelled,
+                      generation == playbackFrameBufferGeneration,
+                      appState.isPlaying else { break }
+
+                let frameTime = Double(index) / fps
+                guard let image = await renderer.renderAsync(composition, at: frameTime) else {
+                    // Avoid repeatedly retrying an unrenderable frame in a tight refill loop.
+                    shouldRefillBuffer = false
+                    break
+                }
+                guard !Task.isCancelled,
+                      generation == playbackFrameBufferGeneration,
+                      appState.isPlaying else { break }
+
+                let currentIndex = playbackFrameNumber(for: appState.currentTime, fps: fps)
+                let isStillAhead = direction > 0 ? index >= currentIndex : index <= currentIndex
+                if isStillAhead {
+                    playbackFrameCache[index] = image
+                    if index == currentIndex, !isRenderInFlight {
+                        render()
+                    }
+                }
+            }
+
+            guard generation == playbackFrameBufferGeneration else { return }
+            playbackPrefetchTask = nil
+            guard shouldRefillBuffer else { return }
+            let currentIndex = playbackFrameNumber(for: appState.currentTime, fps: fps)
+            prefetchPlaybackFrames(
+                after: currentIndex,
+                composition: composition,
+                renderer: renderer,
+                fps: fps
+            )
+        }
+    }
+
     /// 渲染完成后再推进播放时间，确保播放时钟不会领先于完整合成画面。
     private func scheduleNextPlaybackStep(renderDuration: TimeInterval) {
         guard let composition = appState.composition else { return }
-        let targetFPS = min(max(composition.fps, 15), 30)
+        let targetFPS = targetPlaybackFPS(for: composition)
         let frameInterval = 1 / targetFPS
         let delay = max(0, frameInterval - renderDuration)
-        let delta = max(frameInterval, renderDuration)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             guard self.appState.isPlaying else { return }
-            self.appState.tick(delta: delta)
+            self.appState.tick()
         }
     }
 }

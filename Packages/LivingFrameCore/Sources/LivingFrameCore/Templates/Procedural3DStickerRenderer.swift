@@ -14,7 +14,12 @@ private typealias StickerPlatformColor = NSColor
 /// separate from the authored multi-view PNG path so both approaches can be
 /// compared in the sticker picker.
 public enum Procedural3DStickerRenderer {
-    private static let imageCache = NSCache<NSString, CGImage>()
+    private static let imageCache: NSCache<NSString, CGImage> = {
+        let cache = NSCache<NSString, CGImage>()
+        cache.countLimit = 24
+        cache.totalCostLimit = 48 * 1024 * 1024
+        return cache
+    }()
     private static let lock = NSLock()
 
     public static func image(

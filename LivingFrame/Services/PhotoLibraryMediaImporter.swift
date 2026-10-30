@@ -21,9 +21,24 @@ enum PhotoLibraryMediaImporter {
     }
 
     struct BackgroundMedia {
-        let data: Data
+        let data: Data?
+        let fileURL: URL?
         let fileExtension: String?
         let isVideo: Bool
+
+        init(data: Data, fileExtension: String?, isVideo: Bool) {
+            self.data = data
+            self.fileURL = nil
+            self.fileExtension = fileExtension
+            self.isVideo = isVideo
+        }
+
+        init(fileURL: URL, fileExtension: String?, isVideo: Bool) {
+            self.data = nil
+            self.fileURL = fileURL
+            self.fileExtension = fileExtension
+            self.isVideo = isVideo
+        }
     }
 
     static func requestReadWriteAuthorization() async -> PHAuthorizationStatus? {
@@ -56,7 +71,7 @@ enum PhotoLibraryMediaImporter {
     ) async -> BackgroundMedia? {
         LogStore.log("xdz.import background begin item=\(item.itemIdentifier ?? "nil")")
         if let liveVideo = await loadLivePhotoVideoData(from: item, progress: progress) {
-            LogStore.log("xdz.import background live/video ready bytes=\(liveVideo.data.count)")
+            LogStore.log("xdz.import background live/video ready file=\(liveVideo.fileURL?.lastPathComponent ?? "data")")
             return liveVideo
         }
 
@@ -171,9 +186,9 @@ enum PhotoLibraryMediaImporter {
            let asset = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject,
            asset.mediaSubtypes.contains(.photoLive),
            let url = await requestVideoURL(for: asset, progress: progress),
-           let data = await readData(at: url) {
+           let localURL = await copyToTemporaryFile(url) {
             progress(1)
-            return BackgroundMedia(data: data, fileExtension: url.pathExtension, isVideo: true)
+            return BackgroundMedia(fileURL: localURL, fileExtension: url.pathExtension, isVideo: true)
         }
 
         let livePhoto: PHLivePhoto?
@@ -184,11 +199,11 @@ enum PhotoLibraryMediaImporter {
         }
         guard let livePhoto,
               let videoResource = pairedResources(for: livePhoto)?.video,
-              let data = await resourceData(videoResource, progress: progress) else {
+              let fileURL = await writeResource(videoResource, progress: progress) else {
             return nil
         }
         return BackgroundMedia(
-            data: data,
+            fileURL: fileURL,
             fileExtension: URL(fileURLWithPath: videoResource.originalFilename).pathExtension,
             isVideo: true
         )
@@ -204,18 +219,16 @@ enum PhotoLibraryMediaImporter {
            let asset = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject,
            asset.mediaType == .video,
            let url = await requestVideoURL(for: asset, progress: progress),
-           let data = await readData(at: url) {
+           let localURL = await copyToTemporaryFile(url) {
             progress(1)
-            return BackgroundMedia(data: data, fileExtension: url.pathExtension, isVideo: true)
+            return BackgroundMedia(fileURL: localURL, fileExtension: url.pathExtension, isVideo: true)
         }
 
         guard let movie = try? await item.loadTransferable(type: MovieFile.self) else {
             return nil
         }
-        defer { try? FileManager.default.removeItem(at: movie.url) }
-        guard let data = await readData(at: movie.url) else { return nil }
         progress(1)
-        return BackgroundMedia(data: data, fileExtension: movie.url.pathExtension, isVideo: true)
+        return BackgroundMedia(fileURL: movie.url, fileExtension: movie.url.pathExtension, isVideo: true)
     }
 
     private static func requestVideoURL(
@@ -316,15 +329,6 @@ enum PhotoLibraryMediaImporter {
         return destination
     }
 
-    private static func resourceData(
-        _ resource: PHAssetResource,
-        progress: @escaping @Sendable (Double) -> Void
-    ) async -> Data? {
-        guard let url = await writeResource(resource, progress: progress) else { return nil }
-        defer { try? FileManager.default.removeItem(at: url) }
-        return await readData(at: url)
-    }
-
     private static func copyToTemporaryFile(_ url: URL) async -> URL? {
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("LF-import-\(UUID().uuidString)")
@@ -335,12 +339,6 @@ enum PhotoLibraryMediaImporter {
         } catch {
             return nil
         }
-    }
-
-    private static func readData(at url: URL) async -> Data? {
-        await Task.detached(priority: .utility) {
-            try? Data(contentsOf: url)
-        }.value
     }
 
     private static func exifOrientation(of url: URL) -> CGImagePropertyOrientation? {

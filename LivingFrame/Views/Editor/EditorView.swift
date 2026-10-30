@@ -471,10 +471,14 @@ struct EditorView: View {
     }
 
     private var exportButton: some View {
-        Button("导出") {
+        Button {
             appState.showExportView = true
+        } label: {
+            Label("导出", systemImage: "square.and.arrow.up")
+                .lineLimit(1)
         }
-        .lfTextPillButtonStyle()
+        .lfActionButtonStyle(.secondary)
+        .controlSize(.small)
         .accessibilityIdentifier("editor-export")
     }
 
@@ -1693,11 +1697,23 @@ private struct StickerPreview: View {
         }
         .task(id: "\(decorationID)-\(frames.count)-\(isPlaying)") {
             guard isPlaying, frames.count > 1 else { return }
+            let interval = max(frameDuration.isFinite ? frameDuration : 0.1, 0.001)
+            let playbackStartedAt = Date()
             while !Task.isCancelled {
-                let milliseconds = max(Int((frameDuration * 1000).rounded()), 1)
-                try? await Task.sleep(for: .milliseconds(milliseconds))
-                guard !Task.isCancelled, !frames.isEmpty else { return }
-                frameIndex = (frameIndex + 1) % frames.count
+                guard !frames.isEmpty else { return }
+                let elapsed = max(Date().timeIntervalSince(playbackStartedAt), 0)
+                frameIndex = Int(elapsed / interval) % frames.count
+                let nextBoundary = playbackStartedAt.addingTimeInterval(
+                    (floor(elapsed / interval) + 1) * interval
+                )
+                let remaining = nextBoundary.timeIntervalSinceNow
+                if remaining > 0 {
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+                    } catch {
+                        return
+                    }
+                }
             }
         }
     }

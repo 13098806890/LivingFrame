@@ -22,12 +22,13 @@ struct ExportView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.requestReview) private var requestReview
 
+    /// Internal placeholder only; the user must explicitly select a format before exporting.
     @State private var format: ExportFormat = .gif
+    @State private var hasSelectedFormat = false
     @State private var fps: Double = 15
     @State private var resolution: ExportResolution = .original
     @State private var chatSticker = false
     @State private var weChatGIFPreset: WeChatGIFPreset = .sticker
-    @State private var showAdvancedFormats = false
     @State private var exportedChatSticker = false
     @State private var exportedURL: URL?
     @State private var exportError: String?
@@ -70,58 +71,61 @@ struct ExportView: View {
                     SectionCard(title: "导出格式") {
                         exportFormatPicker
 
-                        Text(format.subtitle)
+                        Text(hasSelectedFormat ? format.subtitle : "请选择导出格式")
                             .font(.caption)
                             .foregroundStyle(LF.textSecondary)
 
                         if let comp = appState.composition,
+                           hasSelectedFormat,
                            exportedURL == nil,
                            exportError == nil {
                             exportNotes(comp)
                         }
 
-                        if format == .gif {
-                        Toggle("微信 GIF 优化", isOn: $chatSticker)
-                            .tint(LF.actionPrimary)
-                        if chatSticker {
-                            Picker("GIF 预设", selection: $weChatGIFPreset) {
-                                ForEach(WeChatGIFPreset.allCases) { preset in
-                                    Text(preset.title).tag(preset)
+                        if hasSelectedFormat {
+                            if format == .gif {
+                                Toggle("微信 GIF 优化", isOn: $chatSticker)
+                                    .tint(LF.actionPrimary)
+                                if chatSticker {
+                                    Picker("GIF 预设", selection: $weChatGIFPreset) {
+                                        ForEach(WeChatGIFPreset.allCases) { preset in
+                                            Text(preset.title).tag(preset)
+                                        }
+                                    }
+                                    .pickerStyle(.segmented)
+                                    Text(NSLocalizedString(
+                                        " 超过 10 MB 时会均匀抽帧，最低 6 fps；不会缩小画面。建议使用 1:1 画布让主体显示更大。半透明阴影会转为硬边。",
+                                        comment: "WeChat GIF export note"
+                                    ).trimmingCharacters(in: .whitespacesAndNewlines))
+                                        .font(.caption)
+                                        .foregroundStyle(LF.textSecondary)
                                 }
-                            }
-                            .pickerStyle(.segmented)
-                            Text(NSLocalizedString(
-                                " 超过 10 MB 时会均匀抽帧，最低 6 fps；不会缩小画面。建议使用 1:1 画布让主体显示更大。半透明阴影会转为硬边。",
-                                comment: "WeChat GIF export note"
-                            ).trimmingCharacters(in: .whitespacesAndNewlines))
-                                .font(.caption)
-                                .foregroundStyle(LF.textSecondary)
-                        }
                         }
 
-                        if format != .livePhoto && !(format == .gif && chatSticker) {
-                        Picker("分辨率", selection: $resolution) {
-                            ForEach(availableResolutionOptions) { option in
-                                Text(option.title).tag(option)
+                            if format != .livePhoto && !(format == .gif && chatSticker) {
+                                Picker("分辨率", selection: $resolution) {
+                                    ForEach(availableResolutionOptions) { option in
+                                        Text(option.title).tag(option)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                Picker("帧率", selection: $fps) {
+                                    ForEach(availableFPSOptions, id: \.self) { option in
+                                        Text("\(fpsTitle(option)) fps").tag(option)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                Text(String.localizedStringWithFormat(
+                                    NSLocalizedString("当前工程动态素材最高：%1$@ fps", comment: "Highest source frame rate in project"),
+                                    fpsTitle(appState.maximumSourceFPS) as NSString
+                                ))
+                                    .font(.caption)
+                                    .foregroundStyle(LF.textSecondary)
+                            } else if format == .livePhoto {
+                                Label("Live Photo 使用原始画布与工程帧率", systemImage: "lock.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(LF.textSecondary)
                             }
-                        }
-                        .pickerStyle(.segmented)
-                        Picker("帧率", selection: $fps) {
-                            ForEach(availableFPSOptions, id: \.self) { option in
-                                Text("\(fpsTitle(option)) fps").tag(option)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        Text(String.localizedStringWithFormat(
-                            NSLocalizedString("当前工程动态素材最高：%1$@ fps", comment: "Highest source frame rate in project"),
-                            fpsTitle(appState.maximumSourceFPS) as NSString
-                        ))
-                            .font(.caption)
-                            .foregroundStyle(LF.textSecondary)
-                        } else if format == .livePhoto {
-                        Label("Live Photo 使用原始画布与工程帧率", systemImage: "lock.fill")
-                            .font(.caption)
-                            .foregroundStyle(LF.textSecondary)
                         }
                     }
                     .disabled(appState.isExporting)
@@ -159,7 +163,7 @@ struct ExportView: View {
                                     .foregroundStyle(LF.textSecondary)
                             }
                         }
-                        Text(format == .gif && chatSticker
+                        Text(hasSelectedFormat && format == .gif && chatSticker
                             ? NSLocalizedString("微信 GIF 预估值按 15 fps 计算；超过 10 MB 会自动降低帧率。", comment: "WeChat GIF estimate FPS note")
                             : NSLocalizedString("文件体积会随画面细节、透明区域和编码器变化；导出完成后会显示准确结果。", comment: "Estimated file size note"))
                             .font(.caption2)
@@ -201,7 +205,7 @@ struct ExportView: View {
                     .accessibilityLabel("导出")
                     .accessibilityIdentifier("export-start")
                     .tint(LF.actionPrimary)
-                    .disabled(appState.isExporting || isSavingToLibrary || isPreparingExport || isEstimatingSize || appState.isSavingWork)
+                    .disabled(!hasSelectedFormat || appState.isExporting || isSavingToLibrary || isPreparingExport || isEstimatingSize || appState.isSavingWork)
                 }
             }
         }
@@ -210,8 +214,7 @@ struct ExportView: View {
             GIFBloomProStoreView()
         }
         .onAppear {
-            format = appState.defaultFormat
-            showAdvancedFormats = appState.defaultFormat != .gif
+            hasSelectedFormat = false
             fps = normalizedFPSSelection(appState.exportFPS)
             resolution = normalizedResolutionSelection(resolution)
             previewTime = appState.currentTime
@@ -229,7 +232,7 @@ struct ExportView: View {
         }
         .task(id: exportEstimateKey) {
             let requestKey = exportEstimateKey
-            guard appState.composition != nil else {
+            guard let selectedFormat, appState.composition != nil else {
                 estimatedSizeBytes = nil
                 isEstimatingSize = false
                 return
@@ -238,12 +241,12 @@ struct ExportView: View {
             isEstimatingSize = true
             do {
                 let bytes = try await appState.estimateExportSize(
-                    format: format,
+                    format: selectedFormat,
                     fps: fps,
                     chatSticker: format == .gif && chatSticker,
                     chatGIFPixelSize: weChatGIFPreset.pixelSize,
                     resolution: resolution,
-                    watermark: format == .gif ? previewWatermark : nil
+                    watermark: selectedFormat == .gif ? previewWatermark : nil
                 )
                 guard !Task.isCancelled, requestKey == exportEstimateKey else { return }
                 estimatedSizeBytes = bytes
@@ -267,7 +270,7 @@ struct ExportView: View {
         components.reserveCapacity(9)
         components.append(compositionID)
         components.append(duration)
-        components.append(format.rawValue)
+        components.append(selectedFormat?.rawValue ?? "unselected")
         components.append(String(fps))
         components.append(resolution.rawValue)
         components.append(String(chatSticker))
@@ -350,7 +353,7 @@ struct ExportView: View {
                     ShareLink(item: url) {
                         Label("分享", systemImage: "square.and.arrow.up")
                     }
-                    .lfTranslucentActionButtonStyle()
+                    .lfActionButtonStyle(.secondary)
                 }
 
                 Button {
@@ -367,27 +370,6 @@ struct ExportView: View {
                 }
                 .lfActionButtonStyle(.secondary)
                 .disabled(savedToLibrary || isSavingToLibrary)
-
-                HStack(spacing: 10) {
-                    Button {
-                        appState.selectedTab = .works
-                        dismiss()
-                    } label: {
-                        Label("查看作品", systemImage: "photo.stack")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .lfActionButtonStyle(.primary)
-                    .accessibilityIdentifier("export-view-work")
-
-                    Button {
-                        dismiss()
-                    } label: {
-                        Label("继续编辑", systemImage: "pencil")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .lfActionButtonStyle(.secondary)
-                    .accessibilityIdentifier("export-continue-editing")
-                }
             }
         }
     }
@@ -415,49 +397,24 @@ struct ExportView: View {
         }
     }
 
-    /// 普通路径只突出 GIF；低频的视频和 Live Photo 格式放进高级选项。
+    /// 所有导出格式都直接展示，要求用户明确选择格式。
     private var exportFormatPicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            formatButton(.gif)
-
-            DisclosureGroup(isExpanded: $showAdvancedFormats) {
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
-                    spacing: 8
-                ) {
-                    ForEach(ExportFormat.allCases.filter { $0 != .gif }) { option in
-                        formatButton(option)
-                    }
-                }
-                .padding(.top, 4)
-            } label: {
-                HStack {
-                    Label("更多导出格式", systemImage: "slider.horizontal.3")
-                    Spacer()
-                    if format != .gif {
-                        Text(format.title)
-                            .font(.caption)
-                            .foregroundStyle(LF.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(LF.header)
+        LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+            spacing: 8
+        ) {
+            ForEach(ExportFormat.allCases) { option in
+                formatButton(option)
             }
-            .tint(LF.header)
         }
-        .accessibilityElement(children: .contain)
     }
 
     private func formatButton(_ option: ExportFormat) -> some View {
         Button {
-            format = option
-            if option != .gif {
-                showAdvancedFormats = true
-            }
+            selectFormat(option)
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: format == option ? "checkmark.circle.fill" : "circle")
+                Image(systemName: hasSelectedFormat && format == option ? "checkmark.circle.fill" : "circle")
                     .font(.subheadline)
                 Text(option.title)
                     .font(.caption.weight(.semibold))
@@ -465,17 +422,17 @@ struct ExportView: View {
                     .minimumScaleFactor(0.72)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .foregroundStyle(format == option ? LF.selectionText : LF.textPrimary)
+            .foregroundStyle(hasSelectedFormat && format == option ? LF.selectionText : LF.textPrimary)
             .padding(.horizontal, 11)
             .frame(minHeight: 46, alignment: .leading)
             .background(
-                format == option ? LF.selectionFill : LF.surface2,
+                hasSelectedFormat && format == option ? LF.selectionFill : LF.surface2,
                 in: Capsule()
             )
             .overlay {
                 Capsule()
                     .strokeBorder(
-                        format == option ? LF.selectionStroke : LF.brandTint.opacity(0.2),
+                        hasSelectedFormat && format == option ? LF.selectionStroke : LF.brandTint.opacity(0.2),
                         lineWidth: 1
                     )
             }
@@ -518,8 +475,7 @@ struct ExportView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(LF.destructive)
                 Button {
-                    format = .h264
-                    showAdvancedFormats = true
+                    selectFormat(.h264)
                 } label: {
                     Label("切换到视频", systemImage: "video")
                         .frame(maxWidth: .infinity)
@@ -534,7 +490,14 @@ struct ExportView: View {
         }
     }
 
+    private func selectFormat(_ option: ExportFormat) {
+        format = option
+        hasSelectedFormat = true
+        resolution = normalizedResolutionSelection(resolution)
+    }
+
     private func export() {
+        guard hasSelectedFormat else { return }
         exportedURL = nil
         exportedChatSticker = false
         savedToLibrary = false
@@ -619,12 +582,16 @@ struct ExportView: View {
     }
 
     private var previewMaximumRenderSize: CGFloat? {
+        guard hasSelectedFormat else { return resolution.maxPixelSize }
         if format == .gif && chatSticker { return weChatGIFPreset.pixelSize }
         if format == .livePhoto { return nil }
         return resolution.maxPixelSize
     }
 
     private func previewOutputSize(for composition: Composition) -> CGSize {
+        guard hasSelectedFormat else {
+            return resolution.outputSize(for: composition.renderRect.size, requiresEvenDimensions: false)
+        }
         if format == .gif && chatSticker {
             let size = weChatGIFPreset.pixelSize
             return CGSize(width: size, height: size)
@@ -637,6 +604,7 @@ struct ExportView: View {
     }
 
     private func previewFPS(for composition: Composition) -> Double {
+        guard hasSelectedFormat else { return fps }
         if format == .livePhoto { return composition.fps }
         if format == .gif && chatSticker { return 15 }
         return fps
@@ -656,7 +624,7 @@ struct ExportView: View {
     }
 
     private var availableResolutionOptions: [ExportResolution] {
-        if format == .gif {
+        if selectedFormat == .gif {
             return GIFExportPreset.resolutionOptions(
                 maxSourceDimension: appState.maximumSourceDimension
             )
@@ -668,6 +636,10 @@ struct ExportView: View {
         let options = availableResolutionOptions
         guard !options.isEmpty else { return preferred }
         return options.contains(preferred) ? preferred : (options.last ?? preferred)
+    }
+
+    private var selectedFormat: ExportFormat? {
+        hasSelectedFormat ? format : nil
     }
 
     private func fpsTitle(_ fps: Double) -> String {

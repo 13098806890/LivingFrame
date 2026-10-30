@@ -2,3 +2,5 @@
 • Al exportar GIF transparentes, se prioriza una mayor resolución cuando los efectos aumentan el tamaño del archivo.
 • Las Live Photos y los vídeos convertidos aparecen ahora en «Añadidos recientemente» y se pueden filtrar, reproducir y eliminar en «Todos los elementos».
 • Convierte vídeos largos en Live Photos de hasta 15 s: 5 s gratis y 15 s con GIFBloom Pro.
+• Exporta vídeos más rápido sin reducir la frecuencia de fotogramas elegida.
+• Elige el formato antes de iniciar la exportación.

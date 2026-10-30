@@ -2093,6 +2093,7 @@ private struct BackgroundTimelineStrip: View {
     let playbackRate: TimeInterval
     let playbackOffset: TimeInterval
     @State private var frames: [CGImage] = []
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Group {
@@ -2113,24 +2114,39 @@ private struct BackgroundTimelineStrip: View {
         }
         .frame(width: width, height: height, alignment: .leading)
         .task(id: previewTaskID) {
+            frames = []
             let id = media.id
             let count = cellCount
             let duration = max(media.duration, 0.1)
             let isAnimated = media.isAnimated
-            let loaded = await Task.detached(priority: .utility) {
+            let maxPixelSize = max(96, Int((max(cellWidth, height) * displayScale).rounded(.up)))
+            let loadingTask = Task.detached(priority: .utility) {
                 let sampleCount = isAnimated ? count : 1
                 var frames: [CGImage] = []
                 frames.reserveCapacity(sampleCount)
                 for index in 0..<sampleCount {
+                    guard !Task.isCancelled else { break }
                     let time = duration * Double(index) / Double(max(sampleCount - 1, 1))
-                    if let frame = await BackgroundStore.shared.loadFrameAsync(named: id, at: time) {
+                    if let frame = await BackgroundStore.shared.loadPreviewFrameAsync(
+                        named: id,
+                        at: time,
+                        maxPixelSize: maxPixelSize
+                    ) {
                         frames.append(frame)
                     }
                 }
                 return frames
-            }.value
+            }
+            let loaded = await withTaskCancellationHandler {
+                await loadingTask.value
+            } onCancel: {
+                loadingTask.cancel()
+            }
             guard !Task.isCancelled else { return }
             frames = loaded
+        }
+        .onDisappear {
+            frames.removeAll(keepingCapacity: false)
         }
     }
 

@@ -2,3 +2,5 @@
 • Ekspor GIF transparan kini mengutamakan resolusi lebih tinggi saat efek memperbesar ukuran file.
 • Live Photo dan video hasil konversi kini muncul di Baru Ditambahkan, serta dapat difilter, diputar, dan dihapus dari Semua Aset.
 • Buat Live Photo hingga 15 detik dari video panjang (5 detik gratis; 15 detik dengan GIFBloom Pro).
+• Ekspor video kini lebih cepat tanpa mengurangi kecepatan bingkai yang dipilih.
+• Pilih format ekspor sebelum memulai ekspor.

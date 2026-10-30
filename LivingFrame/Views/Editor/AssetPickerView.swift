@@ -1,7 +1,9 @@
 import Combine
+import ImageIO
 import LivingFrameCore
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 编辑页素材选择器：从素材库选择素材，或直接选择照片/动态素材进行拼接。
 struct AssetPickerView: View {
@@ -21,6 +23,8 @@ struct AssetPickerView: View {
     @State private var backgroundImportTotalCount = 0
     @State private var backgroundImportTask: Task<Void, Never>?
     @State private var isAddingSelectedAssets = false
+    /// Only one animated clip preview should consume decode/render resources at a time.
+    @State private var playingPreviewClipID: String?
     /// 当前浏览的文件夹（nil = 全部素材），按钮直接切换，不依赖 NavigationLink
     @State private var folderID: String?
     /// 拼接素材选完后交给独立拼接编辑器；普通剪影素材选择不需要这个回调。
@@ -154,6 +158,7 @@ struct AssetPickerView: View {
         .presentationDetents([.medium, .large])
         .onDisappear {
             backgroundImportTask?.cancel()
+            playingPreviewClipID = nil
         }
         .onChange(of: isShowingBackgroundPicker) { wasPresented, isPresented in
             guard wasPresented, !isPresented else { return }
@@ -194,13 +199,30 @@ struct AssetPickerView: View {
                         backgroundImportProgress = completed + progress / Double(max(items.count, 1))
                     }
                 }
-                if let imported,
-                   let id = await appState.importBackgroundMedia(
-                    data: imported.data,
-                    preferredFileExtension: imported.fileExtension,
-                    isVideo: imported.isVideo
-                   ) {
-                    selectedBackgroundIDs.insert(id)
+                if let imported {
+                    defer {
+                        if let fileURL = imported.fileURL {
+                            try? FileManager.default.removeItem(at: fileURL)
+                        }
+                    }
+                    let id: String?
+                    if let fileURL = imported.fileURL {
+                        id = await appState.importBackgroundVideo(
+                            from: fileURL,
+                            preferredFileExtension: imported.fileExtension
+                        )
+                    } else if let data = imported.data {
+                        id = await appState.importBackgroundMedia(
+                            data: data,
+                            preferredFileExtension: imported.fileExtension,
+                            isVideo: imported.isVideo
+                        )
+                    } else {
+                        id = nil
+                    }
+                    if let id {
+                        selectedBackgroundIDs.insert(id)
+                    }
                 }
                 backgroundImportCompletedCount = index + 1
                 backgroundImportProgress = Double(index + 1) / Double(max(items.count, 1))
@@ -324,7 +346,19 @@ struct AssetPickerView: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 10) {
                     ForEach(scopedClips) { clip in
-                        AssetCell(clip: clip) {
+                        AssetCell(
+                            clip: clip,
+                            isPlaying: Binding(
+                                get: { playingPreviewClipID == clip.id },
+                                set: { shouldPlay in
+                                    if shouldPlay {
+                                        playingPreviewClipID = clip.id
+                                    } else if playingPreviewClipID == clip.id {
+                                        playingPreviewClipID = nil
+                                    }
+                                }
+                            )
+                        ) {
                             if selectedIDs.contains(clip.id) {
                                 selectedIDs.remove(clip.id)
                             } else {
@@ -493,21 +527,36 @@ struct AnimatedClipPreview: View {
     @State private var decodedFrames: [Int: CGImage] = [:]
     /// Detail 预览播放窗口内已经套用贴纸效果的帧，与编辑器渲染管线保持一致。
     @State private var renderedStickerFrames: [Int: CGImage] = [:]
+    /// Full pre-rendered detail preview frames are disk-backed to keep peak RAM bounded.
+    @State private var preRenderedPreviewDirectory: URL?
+    @State private var preRenderedSourcePositions: [Int] = []
 
-    private let initialPreloadCount = 6
-    private let playbackPreloadWindow = 10
+    private let initialPreloadCount = 12
+    private let preRenderBeforePlayback: Bool
+    private var playbackPreloadWindow: Int {
+        let bytesPerFrame = max(maxPixelSize * maxPixelSize * 4, 1)
+        let frameBudget = Int((24 * 1024 * 1024) / bytesPerFrame)
+        // Retain a small safety margin for the current frame and two recently
+        // displayed frames, keeping each preview's decoded image budget bounded.
+        return min(max(frameBudget - 3, 10), 36)
+    }
+    private var playbackPreloadBatchSize: Int {
+        min(playbackPreloadWindow, 6)
+    }
     init(
         clip: SegmentedClip,
         maxPixelSize: CGFloat,
         isPlaying: Binding<Bool>,
         isPreparingPlayback: Binding<Bool> = .constant(false),
         usesCoreStickerStylePreview: Bool = false,
-        coreStickerStyleComposition: Composition? = nil
+        coreStickerStyleComposition: Composition? = nil,
+        preRenderBeforePlayback: Bool = false
     ) {
         self.clip = clip
         self.maxPixelSize = maxPixelSize
         self.usesCoreStickerStylePreview = usesCoreStickerStylePreview
         self.coreStickerStyleComposition = coreStickerStyleComposition
+        self.preRenderBeforePlayback = preRenderBeforePlayback
         _isPlaying = isPlaying
         _isPreparingPlayback = isPreparingPlayback
     }
@@ -518,7 +567,10 @@ struct AnimatedClipPreview: View {
 
     private var previewFrame: Int {
         guard !playbackFrames.isEmpty else { return 0 }
-        return playbackFrames[min(framePosition, playbackFrames.count - 1)]
+        let sourcePosition = preRenderedSourcePositions.indices.contains(framePosition)
+            ? preRenderedSourcePositions[framePosition]
+            : framePosition
+        return playbackFrames[min(sourcePosition, playbackFrames.count - 1)]
     }
 
     private var isDynamic: Bool {
@@ -568,7 +620,7 @@ struct AnimatedClipPreview: View {
             .timingCurve(0.23, 1, 0.32, 1, duration: 0.18),
             value: isPreparingPlayback
         )
-        .task(id: "\(isPlaying)-\(clip.cropCacheKey)-\(clip.stickerStyle.rawValue)") {
+        .task(id: "\(isPlaying)-\(clip.rotationQuarterTurns)-\(clip.cropCacheKey)-\(clip.stickerStyle.rawValue)") {
             await playOnceIfNeeded()
         }
         .onAppear {
@@ -579,6 +631,17 @@ struct AnimatedClipPreview: View {
             isPreparingPlayback = false
             decodedFrames.removeAll(keepingCapacity: false)
             renderedStickerFrames.removeAll(keepingCapacity: false)
+            removePreRenderedPreview()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .frameCacheDidPurgeDecodedFrames)) { _ in
+            LogStore.log(
+                "xdz.preview.cache-purge clip=\(clip.id) playing=\(isPlaying) position=\(framePosition)"
+            )
+            isPlaying = false
+            isPreparingPlayback = false
+            framePosition = 0
+            decodedFrames.removeAll(keepingCapacity: false)
+            renderedStickerFrames.removeAll(keepingCapacity: false)
         }
         .onChange(of: clip.id) { _, _ in
             framePosition = 0
@@ -586,22 +649,37 @@ struct AnimatedClipPreview: View {
             isPreparingPlayback = false
             decodedFrames.removeAll(keepingCapacity: false)
             renderedStickerFrames.removeAll(keepingCapacity: false)
+            removePreRenderedPreview()
         }
         .onChange(of: clip.cropCacheKey) { _, _ in
             framePosition = 0
             isPreparingPlayback = false
             decodedFrames.removeAll(keepingCapacity: false)
+            removePreRenderedPreview()
             renderedStickerFrames.removeAll(keepingCapacity: false)
+        }
+        .onChange(of: clip.rotationQuarterTurns) { _, _ in
+            framePosition = 0
+            isPreparingPlayback = false
+            decodedFrames.removeAll(keepingCapacity: false)
+            renderedStickerFrames.removeAll(keepingCapacity: false)
+            removePreRenderedPreview()
         }
         .onChange(of: clip.stickerStyle) { _, _ in
             framePosition = 0
             isPreparingPlayback = false
             renderedStickerFrames.removeAll(keepingCapacity: false)
+            removePreRenderedPreview()
         }
         .onChange(of: isPlaying) { _, playing in
+            LogStore.log(
+                "xdz.preview.playback.state clip=\(clip.id) playing=\(playing) position=\(framePosition)"
+            )
             if !playing {
                 framePosition = 0
                 isPreparingPlayback = false
+                decodedFrames.removeAll(keepingCapacity: false)
+                renderedStickerFrames.removeAll(keepingCapacity: false)
             }
         }
     }
@@ -623,6 +701,20 @@ struct AnimatedClipPreview: View {
         // 带效果的播放也使用静态预览的尺寸；低分辨率帧在详情页放大后会模糊。
         let pixelSize = maxPixelSize
         let compositionValue = coreStickerStyleComposition
+        LogStore.log(
+            "xdz.preview.playback.start clip=\(clip.id) frameCount=\(clip.frameCount) indices=\(indices.count) fps=\(clip.fps) speed=\(clip.playbackSpeed) styled=\(usesStyledRenderer)"
+        )
+
+        if preRenderBeforePlayback {
+            await playPreRenderedPreview(
+                clip: clipValue,
+                indices: indices,
+                usesStyledRenderer: usesStyledRenderer,
+                composition: compositionValue,
+                maxPixelSize: pixelSize
+            )
+            return
+        }
 
         if usesStyledRenderer, let compositionValue {
             // 样式效果每帧都包含形态学膨胀、阴影和模糊。使用有限窗口预取，
@@ -631,7 +723,13 @@ struct AnimatedClipPreview: View {
             var prefetchTask: Task<[Int: CGImage], Never>?
             var nextPrefetchStart = initialPositions.count
             let preloadWindow = playbackPreloadWindow
-            let preloadLead = max(preloadWindow / 2, 1)
+            let preloadBatchSize = playbackPreloadBatchSize
+            let sourceFPS = clip.fps.isFinite && clip.fps > 0 ? clip.fps : 1
+            let playbackSpeed = clip.playbackSpeed.isFinite ? max(clip.playbackSpeed, 0.01) : 1
+            let sourcePositionRate = sourceFPS * playbackSpeed
+            // Begin decoding about half a second ahead, so a batch is ready
+            // before playback reaches it, especially for high-FPS source clips.
+            let preloadLead = max(Int(min(sourcePositionRate * 0.5, Double(indices.count))), preloadBatchSize)
             defer { prefetchTask?.cancel() }
 
             renderedStickerFrames = await Self.loadRenderedStickerFrames(
@@ -641,8 +739,24 @@ struct AnimatedClipPreview: View {
                 maxPixelSize: pixelSize
             )
             guard !Task.isCancelled, isPlaying, renderedStickerFrames.count > 1 else {
+                LogStore.log(
+                    "xdz.preview.playback.prepare-failed clip=\(clip.id) cancelled=\(Task.isCancelled) playing=\(isPlaying) rendered=\(renderedStickerFrames.count) indices=\(indices.count)"
+                )
                 isPreparingPlayback = false
                 return
+            }
+            if nextPrefetchStart < indices.count {
+                let end = min(nextPrefetchStart + preloadBatchSize, indices.count)
+                let window = Array(nextPrefetchStart..<end)
+                nextPrefetchStart = end
+                prefetchTask = Task.detached(priority: .userInitiated) {
+                    await Self.loadRenderedStickerFrames(
+                        window,
+                        clip: clipValue,
+                        composition: compositionValue,
+                        maxPixelSize: pixelSize
+                    )
+                }
             }
 
             let remainingIndicatorDuration = 0.16 - Date().timeIntervalSince(preparationStartedAt)
@@ -660,34 +774,31 @@ struct AnimatedClipPreview: View {
             }
             isPreparingPlayback = false
 
-            let frameInterval = max(1.0 / max(clip.fps, 1), 0.04)
+            // Keep source-time progression at the clip's real FPS. The 30 FPS
+            // limit controls display cadence only; high-FPS clips skip source frames.
+            let displayFPS = min(max(sourcePositionRate, 1), 30)
+            let frameInterval = 1.0 / displayFPS
+            let playbackStartedAt = ProcessInfo.processInfo.systemUptime
+            var pausedPlaybackDuration: TimeInterval = 0
+            var nextPlaybackDeadline = 0
             for nextPosition in 0..<indices.count {
-                guard !Task.isCancelled, isPlaying else { return }
-
-                if renderedStickerFrames[nextPosition] == nil {
-                    if let task = prefetchTask {
-                        let loaded = await task.value
-                        renderedStickerFrames.merge(loaded) { _, new in new }
-                        prefetchTask = nil
-                    }
-                    if renderedStickerFrames[nextPosition] == nil {
-                        let loaded = await Self.loadRenderedStickerFrames(
-                            [nextPosition],
-                            clip: clipValue,
-                            composition: compositionValue,
-                            maxPixelSize: pixelSize
-                        )
-                        renderedStickerFrames.merge(loaded) { _, new in new }
-                    }
+                guard !Task.isCancelled, isPlaying else {
+                    LogStore.log(
+                        "xdz.preview.playback.interrupted clip=\(clip.id) position=\(nextPosition) cancelled=\(Task.isCancelled) playing=\(isPlaying)"
+                    )
+                    return
                 }
-
-                guard renderedStickerFrames[nextPosition] != nil else { continue }
-                framePosition = nextPosition
+                let elapsed = max(
+                    ProcessInfo.processInfo.systemUptime - playbackStartedAt - pausedPlaybackDuration,
+                    0
+                )
+                let duePosition = min(Int(elapsed * sourcePositionRate), indices.count - 1)
+                if nextPosition < duePosition { continue }
 
                 if prefetchTask == nil,
                    nextPrefetchStart < indices.count,
                    nextPosition + preloadLead >= nextPrefetchStart {
-                    let end = min(nextPrefetchStart + preloadWindow, indices.count)
+                    let end = min(nextPrefetchStart + preloadBatchSize, indices.count)
                     let window = Array(nextPrefetchStart..<end)
                     nextPrefetchStart = end
                     prefetchTask = Task.detached(priority: .userInitiated) {
@@ -700,11 +811,89 @@ struct AnimatedClipPreview: View {
                     }
                 }
 
-                do {
-                    try await Task.sleep(nanoseconds: UInt64(frameInterval * 1_000_000_000))
-                } catch {
-                    return
+                if renderedStickerFrames[nextPosition] == nil {
+                    if let task = prefetchTask {
+                        let waitStartedAt = ProcessInfo.processInfo.systemUptime
+                        let loaded = await withTaskCancellationHandler {
+                            await task.value
+                        } onCancel: {
+                            task.cancel()
+                        }
+                        let waitDuration = ProcessInfo.processInfo.systemUptime - waitStartedAt
+                        pausedPlaybackDuration += waitDuration
+                        if waitDuration >= 0.05 {
+                            LogStore.log(
+                                "xdz.preview.decode-wait clip=\(clip.id) position=\(nextPosition) source=prefetch ms=\(Int(waitDuration * 1_000))"
+                            )
+                        }
+                        guard !Task.isCancelled, isPlaying else { return }
+                        renderedStickerFrames.merge(loaded) { _, new in new }
+                        prefetchTask = nil
+                    }
+                    if renderedStickerFrames[nextPosition] == nil {
+                        let waitStartedAt = ProcessInfo.processInfo.systemUptime
+                        let loaded = await Self.loadRenderedStickerFrames(
+                            [nextPosition],
+                            clip: clipValue,
+                            composition: compositionValue,
+                            maxPixelSize: pixelSize
+                        )
+                        let waitDuration = ProcessInfo.processInfo.systemUptime - waitStartedAt
+                        pausedPlaybackDuration += waitDuration
+                        if waitDuration >= 0.05 {
+                            LogStore.log(
+                                "xdz.preview.decode-wait clip=\(clip.id) position=\(nextPosition) source=frame ms=\(Int(waitDuration * 1_000))"
+                            )
+                        }
+                        guard !Task.isCancelled, isPlaying else { return }
+                        renderedStickerFrames.merge(loaded) { _, new in new }
+                    }
                 }
+
+                guard renderedStickerFrames[nextPosition] != nil else {
+                    if nextPosition < 6 {
+                        LogStore.log("xdz.preview.frame-missing clip=\(clip.id) position=\(nextPosition) renderer=styled")
+                    }
+                    let elapsedAtMissingFrame = max(
+                        ProcessInfo.processInfo.systemUptime - playbackStartedAt - pausedPlaybackDuration,
+                        0
+                    )
+                    nextPlaybackDeadline = max(
+                        nextPlaybackDeadline + 1,
+                        Int(elapsedAtMissingFrame / frameInterval) + 1
+                    )
+                    guard await sleepUntilPlaybackFrame(
+                        nextPlaybackDeadline,
+                        startedAt: playbackStartedAt + pausedPlaybackDuration,
+                        frameInterval: frameInterval
+                    ) else { return }
+                    continue
+                }
+                let latestDuePosition = min(
+                    Int(max(
+                        ProcessInfo.processInfo.systemUptime - playbackStartedAt - pausedPlaybackDuration,
+                        0
+                    ) * sourcePositionRate),
+                    indices.count - 1
+                )
+                if nextPosition < latestDuePosition { continue }
+                framePosition = nextPosition
+                if nextPosition < 6 || nextPosition.isMultiple(of: 30) {
+                    LogStore.log(
+                        "xdz.preview.frame clip=\(clip.id) position=\(nextPosition)/\(indices.count) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - playbackStartedAt) * 1_000)) renderer=styled"
+                    )
+                }
+
+                let elapsedAtPresentation = max(ProcessInfo.processInfo.systemUptime - playbackStartedAt, 0)
+                nextPlaybackDeadline = max(
+                    nextPlaybackDeadline + 1,
+                    Int(max(elapsedAtPresentation - pausedPlaybackDuration, 0) / frameInterval) + 1
+                )
+                guard await sleepUntilPlaybackFrame(
+                    nextPlaybackDeadline,
+                    startedAt: playbackStartedAt + pausedPlaybackDuration,
+                    frameInterval: frameInterval
+                ) else { return }
 
                 let minimumRetainedPosition = max(nextPosition - 2, 0)
                 let maximumRetainedPosition = min(nextPosition + preloadWindow, indices.count - 1)
@@ -713,6 +902,7 @@ struct AnimatedClipPreview: View {
                 }
             }
             guard !Task.isCancelled else { return }
+            LogStore.log("xdz.preview.playback.finished clip=\(clip.id) frames=\(indices.count) renderer=styled")
             isPlaying = false
             framePosition = 0
             return
@@ -722,7 +912,13 @@ struct AnimatedClipPreview: View {
         var prefetchTask: Task<[Int: CGImage], Never>?
         var nextPrefetchStart = initialPositions.count
         let preloadWindow = playbackPreloadWindow
-        let preloadLead = max(preloadWindow / 2, 1)
+        let preloadBatchSize = playbackPreloadBatchSize
+        let sourceFPS = clip.fps.isFinite && clip.fps > 0 ? clip.fps : 1
+        let playbackSpeed = clip.playbackSpeed.isFinite ? max(clip.playbackSpeed, 0.01) : 1
+        let sourcePositionRate = sourceFPS * playbackSpeed
+        // Begin decoding about half a second ahead, so a batch is ready
+        // before playback reaches it, especially for high-FPS source clips.
+        let preloadLead = max(Int(min(sourcePositionRate * 0.5, Double(indices.count))), preloadBatchSize)
         defer { prefetchTask?.cancel() }
 
         decodedFrames = await loadPreviewFrames(
@@ -731,8 +927,31 @@ struct AnimatedClipPreview: View {
             maxPixelSize: pixelSize
         )
         guard !Task.isCancelled, isPlaying else {
+            LogStore.log(
+                "xdz.preview.playback.prepare-cancelled clip=\(clip.id) cancelled=\(Task.isCancelled) playing=\(isPlaying) loaded=\(decodedFrames.count) indices=\(indices.count)"
+            )
             isPreparingPlayback = false
             return
+        }
+        if nextPrefetchStart < indices.count {
+            let end = min(nextPrefetchStart + preloadBatchSize, indices.count)
+            let window = Array(nextPrefetchStart..<end)
+            nextPrefetchStart = end
+            prefetchTask = Task.detached(priority: .userInitiated) {
+                var loaded: [Int: CGImage] = [:]
+                for position in window {
+                    guard !Task.isCancelled,
+                          indices.indices.contains(position) else { continue }
+                    if let image = FrameCache.shared.cachedThumbnail(
+                        for: clipValue,
+                        index: indices[position],
+                        maxPixelSize: pixelSize
+                    ) {
+                        loaded[position] = image
+                    }
+                }
+                return loaded
+            }
         }
 
         let minimumIndicatorDuration: TimeInterval = 0.16
@@ -753,38 +972,39 @@ struct AnimatedClipPreview: View {
 
         let loadedFrameCount = decodedFrames.count
         guard indices.count > 1, loadedFrameCount > 1 else {
+            LogStore.log(
+                "xdz.preview.playback.too-few-frames clip=\(clip.id) loaded=\(loadedFrameCount) indices=\(indices.count)"
+            )
             isPlaying = false
             framePosition = 0
             return
         }
 
-        let frameInterval = max(1.0 / max(clip.fps, 1), 0.04)
+        // Keep source-time progression at the clip's real FPS. The 30 FPS
+        // limit controls display cadence only; high-FPS clips skip source frames.
+        let displayFPS = min(max(sourcePositionRate, 1), 30)
+        let frameInterval = 1.0 / displayFPS
+        let playbackStartedAt = ProcessInfo.processInfo.systemUptime
+        var pausedPlaybackDuration: TimeInterval = 0
+        var nextPlaybackDeadline = 0
         for nextPosition in 0..<indices.count {
-            guard !Task.isCancelled, isPlaying else { return }
-
-            if decodedFrames[nextPosition] == nil {
-                if let task = prefetchTask {
-                    let loaded = await task.value
-                    decodedFrames.merge(loaded) { _, new in new }
-                    prefetchTask = nil
-                }
-                if decodedFrames[nextPosition] == nil {
-                    let loaded = await loadPreviewFrames(
-                        [nextPosition],
-                        clip: clipValue,
-                        maxPixelSize: pixelSize
-                    )
-                    decodedFrames.merge(loaded) { _, new in new }
-                }
+            guard !Task.isCancelled, isPlaying else {
+                LogStore.log(
+                    "xdz.preview.playback.interrupted clip=\(clip.id) position=\(nextPosition) cancelled=\(Task.isCancelled) playing=\(isPlaying)"
+                )
+                return
             }
-
-            guard decodedFrames[nextPosition] != nil else { continue }
-            framePosition = nextPosition
+            let elapsed = max(
+                ProcessInfo.processInfo.systemUptime - playbackStartedAt - pausedPlaybackDuration,
+                0
+            )
+            let duePosition = min(Int(elapsed * sourcePositionRate), indices.count - 1)
+            if nextPosition < duePosition { continue }
 
             if prefetchTask == nil,
                nextPrefetchStart < indices.count,
                nextPosition + preloadLead >= nextPrefetchStart {
-                let end = min(nextPrefetchStart + preloadWindow, indices.count)
+                let end = min(nextPrefetchStart + preloadBatchSize, indices.count)
                 let window = Array(nextPrefetchStart..<end)
                 nextPrefetchStart = end
                 prefetchTask = Task.detached(priority: .userInitiated) {
@@ -804,11 +1024,88 @@ struct AnimatedClipPreview: View {
                 }
             }
 
-            do {
-                try await Task.sleep(nanoseconds: UInt64(frameInterval * 1_000_000_000))
-            } catch {
-                return
+            if decodedFrames[nextPosition] == nil {
+                if let task = prefetchTask {
+                    let waitStartedAt = ProcessInfo.processInfo.systemUptime
+                    let loaded = await withTaskCancellationHandler {
+                        await task.value
+                    } onCancel: {
+                        task.cancel()
+                    }
+                    let waitDuration = ProcessInfo.processInfo.systemUptime - waitStartedAt
+                    pausedPlaybackDuration += waitDuration
+                    if waitDuration >= 0.05 {
+                        LogStore.log(
+                            "xdz.preview.decode-wait clip=\(clip.id) position=\(nextPosition) source=prefetch ms=\(Int(waitDuration * 1_000))"
+                        )
+                    }
+                    guard !Task.isCancelled, isPlaying else { return }
+                    decodedFrames.merge(loaded) { _, new in new }
+                    prefetchTask = nil
+                }
+                if decodedFrames[nextPosition] == nil {
+                    let waitStartedAt = ProcessInfo.processInfo.systemUptime
+                    let loaded = await loadPreviewFrames(
+                        [nextPosition],
+                        clip: clipValue,
+                        maxPixelSize: pixelSize
+                    )
+                    let waitDuration = ProcessInfo.processInfo.systemUptime - waitStartedAt
+                    pausedPlaybackDuration += waitDuration
+                    if waitDuration >= 0.05 {
+                        LogStore.log(
+                            "xdz.preview.decode-wait clip=\(clip.id) position=\(nextPosition) source=frame ms=\(Int(waitDuration * 1_000))"
+                        )
+                    }
+                    guard !Task.isCancelled, isPlaying else { return }
+                    decodedFrames.merge(loaded) { _, new in new }
+                }
             }
+
+            guard decodedFrames[nextPosition] != nil else {
+                if nextPosition < 6 {
+                    LogStore.log("xdz.preview.frame-missing clip=\(clip.id) position=\(nextPosition) renderer=plain")
+                }
+                let elapsedAtMissingFrame = max(
+                    ProcessInfo.processInfo.systemUptime - playbackStartedAt - pausedPlaybackDuration,
+                    0
+                )
+                nextPlaybackDeadline = max(
+                    nextPlaybackDeadline + 1,
+                    Int(elapsedAtMissingFrame / frameInterval) + 1
+                )
+                guard await sleepUntilPlaybackFrame(
+                    nextPlaybackDeadline,
+                    startedAt: playbackStartedAt + pausedPlaybackDuration,
+                    frameInterval: frameInterval
+                ) else { return }
+                continue
+            }
+            let latestDuePosition = min(
+                Int(max(
+                    ProcessInfo.processInfo.systemUptime - playbackStartedAt - pausedPlaybackDuration,
+                    0
+                ) * sourcePositionRate),
+                indices.count - 1
+            )
+            if nextPosition < latestDuePosition { continue }
+            framePosition = nextPosition
+            if nextPosition < 6 || nextPosition.isMultiple(of: 30) {
+                LogStore.log(
+                    "xdz.preview.frame clip=\(clip.id) position=\(nextPosition)/\(indices.count) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - playbackStartedAt) * 1_000)) renderer=plain"
+                )
+            }
+
+            let elapsedAtPresentation = max(ProcessInfo.processInfo.systemUptime - playbackStartedAt, 0)
+            nextPlaybackDeadline = max(
+                nextPlaybackDeadline + 1,
+                Int(max(elapsedAtPresentation - pausedPlaybackDuration, 0) / frameInterval) + 1
+            )
+            guard await sleepUntilPlaybackFrame(
+                nextPlaybackDeadline,
+                startedAt: playbackStartedAt + pausedPlaybackDuration,
+                frameInterval: frameInterval
+            ) else { return }
 
             // 只保留当前播放点附近的窗口，避免缩略图缓存和组件状态重复持有整段素材。
             let minimumRetainedPosition = max(nextPosition - 2, 0)
@@ -819,8 +1116,345 @@ struct AnimatedClipPreview: View {
         }
 
         guard !Task.isCancelled else { return }
+        LogStore.log("xdz.preview.playback.finished clip=\(clip.id) frames=\(indices.count) renderer=plain")
         isPlaying = false
         framePosition = 0
+    }
+
+    /// Render the complete display-rate sequence before starting detail playback.
+    /// Rendered PNGs stay in a per-view temporary folder; only a small decoded
+    /// window is held in RAM while frame timing advances.
+    private func playPreRenderedPreview(
+        clip: SegmentedClip,
+        indices: [Int],
+        usesStyledRenderer: Bool,
+        composition: Composition?,
+        maxPixelSize: CGFloat
+    ) async {
+        let sourceFPS = clip.fps.isFinite && clip.fps > 0 ? clip.fps : 1
+        let speed = clip.playbackSpeed.isFinite ? max(clip.playbackSpeed, 0.01) : 1
+        let sourcePositionRate = sourceFPS * speed
+        let displayFPS = min(max(sourcePositionRate, 1), 30)
+        let frameInterval = 1 / displayFPS
+        let sourcePositions = Self.previewSourcePositions(
+            frameCount: indices.count,
+            sourcePositionRate: sourcePositionRate,
+            displayFPS: displayFPS
+        )
+        guard sourcePositions.count > 1 else {
+            isPreparingPlayback = false
+            isPlaying = false
+            return
+        }
+        LogStore.log(
+            "xdz.preview.prerender.start clip=\(clip.id) sourceFrames=\(indices.count) previewFrames=\(sourcePositions.count) fps=\(displayFPS)"
+        )
+
+        let directory: URL
+        if let cachedDirectory = preRenderedPreviewDirectory,
+           preRenderedSourcePositions == sourcePositions,
+           FileManager.default.fileExists(atPath: cachedDirectory.path) {
+            directory = cachedDirectory
+        } else {
+            removePreRenderedPreview()
+            isPreparingPlayback = true
+            guard let renderedDirectory = await Self.renderPreviewSequenceToDisk(
+                clip: clip,
+                sourcePositions: sourcePositions,
+                usesStyledRenderer: usesStyledRenderer,
+                composition: composition,
+                maxPixelSize: maxPixelSize
+            ) else {
+                isPreparingPlayback = false
+                if !Task.isCancelled { isPlaying = false }
+                return
+            }
+            guard !Task.isCancelled, isPlaying else {
+                try? FileManager.default.removeItem(at: renderedDirectory)
+                isPreparingPlayback = false
+                return
+            }
+            preRenderedPreviewDirectory = renderedDirectory
+            preRenderedSourcePositions = sourcePositions
+            directory = renderedDirectory
+        }
+
+        let preloadWindow = playbackPreloadWindow
+        let preloadBatchSize = playbackPreloadBatchSize
+        let initialSlots = Array(0..<min(initialPreloadCount, sourcePositions.count))
+        let initialImages = await Self.loadPreviewSequenceFrames(initialSlots, directory: directory)
+        if usesStyledRenderer {
+            renderedStickerFrames = initialImages
+        } else {
+            decodedFrames = initialImages
+        }
+        guard !Task.isCancelled, isPlaying, initialImages.count > 1 else {
+            isPreparingPlayback = false
+            if isPlaying { isPlaying = false }
+            return
+        }
+
+        var nextPrefetchStart = initialSlots.count
+        var prefetchTask: Task<[Int: CGImage], Never>?
+        if nextPrefetchStart < sourcePositions.count {
+            let end = min(nextPrefetchStart + preloadBatchSize, sourcePositions.count)
+            let slots = Array(nextPrefetchStart..<end)
+            nextPrefetchStart = end
+            prefetchTask = Task.detached(priority: .userInitiated) {
+                await Self.loadPreviewSequenceFrames(slots, directory: directory)
+            }
+        }
+        defer { prefetchTask?.cancel() }
+
+        guard !Task.isCancelled, isPlaying else {
+            isPreparingPlayback = false
+            return
+        }
+        isPreparingPlayback = false
+
+        let playbackStartedAt = ProcessInfo.processInfo.systemUptime
+        var pausedPlaybackDuration: TimeInterval = 0
+        var nextPlaybackDeadline = 0
+        for slot in sourcePositions.indices {
+            guard !Task.isCancelled, isPlaying else { return }
+            var images = usesStyledRenderer ? renderedStickerFrames : decodedFrames
+            if images[slot] == nil {
+                if let task = prefetchTask {
+                    let waitStart = ProcessInfo.processInfo.systemUptime
+                    let loaded = await withTaskCancellationHandler {
+                        await task.value
+                    } onCancel: {
+                        task.cancel()
+                    }
+                    let waitDuration = ProcessInfo.processInfo.systemUptime - waitStart
+                    pausedPlaybackDuration += waitDuration
+                    if waitDuration >= 0.05 {
+                        LogStore.log(
+                            "xdz.preview.playback.decode-wait clip=\(clip.id) slot=\(slot) source=disk-batch ms=\(Int(waitDuration * 1_000))"
+                        )
+                    }
+                    guard !Task.isCancelled, isPlaying else { return }
+                    images.merge(loaded) { _, new in new }
+                    if usesStyledRenderer {
+                        renderedStickerFrames = images
+                    } else {
+                        decodedFrames = images
+                    }
+                    prefetchTask = nil
+                }
+                images = usesStyledRenderer ? renderedStickerFrames : decodedFrames
+                if images[slot] == nil {
+                    let waitStart = ProcessInfo.processInfo.systemUptime
+                    let oneFrame = await Self.loadPreviewSequenceFrames([slot], directory: directory)
+                    let waitDuration = ProcessInfo.processInfo.systemUptime - waitStart
+                    pausedPlaybackDuration += waitDuration
+                    if waitDuration >= 0.05 {
+                        LogStore.log(
+                            "xdz.preview.playback.decode-wait clip=\(clip.id) slot=\(slot) source=disk-frame ms=\(Int(waitDuration * 1_000))"
+                        )
+                    }
+                    guard !Task.isCancelled, isPlaying else { return }
+                    images.merge(oneFrame) { _, new in new }
+                    if usesStyledRenderer {
+                        renderedStickerFrames = images
+                    } else {
+                        decodedFrames = images
+                    }
+                }
+            }
+
+            if usesStyledRenderer ? renderedStickerFrames[slot] == nil : decodedFrames[slot] == nil {
+                continue
+            }
+            framePosition = slot
+            if slot < 5 || slot.isMultiple(of: 30) {
+                LogStore.log(
+                    "xdz.preview.playback.frame clip=\(clip.id) slot=\(slot)/\(sourcePositions.count) sourcePosition=\(sourcePositions[slot])"
+                )
+            }
+
+            if prefetchTask == nil, nextPrefetchStart < sourcePositions.count,
+               slot + preloadWindow >= nextPrefetchStart {
+                let end = min(nextPrefetchStart + preloadBatchSize, sourcePositions.count)
+                let slots = Array(nextPrefetchStart..<end)
+                nextPrefetchStart = end
+                prefetchTask = Task.detached(priority: .userInitiated) {
+                    await Self.loadPreviewSequenceFrames(slots, directory: directory)
+                }
+            }
+
+            let minimumRetainedSlot = max(slot - 2, 0)
+            let maximumRetainedSlot = min(slot + preloadWindow, sourcePositions.count - 1)
+            if usesStyledRenderer {
+                renderedStickerFrames = renderedStickerFrames.filter { position, _ in
+                    (minimumRetainedSlot...maximumRetainedSlot).contains(position)
+                }
+            } else {
+                decodedFrames = decodedFrames.filter { position, _ in
+                    (minimumRetainedSlot...maximumRetainedSlot).contains(position)
+                }
+            }
+
+            nextPlaybackDeadline += 1
+            guard await sleepUntilPlaybackFrame(
+                nextPlaybackDeadline,
+                startedAt: playbackStartedAt + pausedPlaybackDuration,
+                frameInterval: frameInterval
+            ) else { return }
+        }
+        guard !Task.isCancelled else { return }
+        LogStore.log("xdz.preview.playback.finished clip=\(clip.id) frames=\(sourcePositions.count) mode=prerendered")
+        isPlaying = false
+        framePosition = 0
+    }
+
+    private func removePreRenderedPreview() {
+        if let preRenderedPreviewDirectory {
+            try? FileManager.default.removeItem(at: preRenderedPreviewDirectory)
+        }
+        preRenderedPreviewDirectory = nil
+        preRenderedSourcePositions = []
+    }
+
+    private static func previewSourcePositions(
+        frameCount: Int,
+        sourcePositionRate: Double,
+        displayFPS: Double
+    ) -> [Int] {
+        guard frameCount > 0, sourcePositionRate.isFinite, sourcePositionRate > 0,
+              displayFPS.isFinite, displayFPS > 0 else { return [] }
+        let estimatedCount = Double(frameCount) * displayFPS / sourcePositionRate
+        let count = max(1, Int(min(ceil(estimatedCount), 18_000)))
+        return (0..<count).map { slot in
+            min(Int(Double(slot) * sourcePositionRate / displayFPS), frameCount - 1)
+        }
+    }
+
+    private static func renderPreviewSequenceToDisk(
+        clip: SegmentedClip,
+        sourcePositions: [Int],
+        usesStyledRenderer: Bool,
+        composition: Composition?,
+        maxPixelSize: CGFloat
+    ) async -> URL? {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LivingFramePreview-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        } catch {
+            LogStore.log("xdz.preview.prerender.failed stage=create-folder error=\(error)")
+            return nil
+        }
+        defer {
+            if Task.isCancelled { try? FileManager.default.removeItem(at: folder) }
+        }
+
+        let sourceIndices = clip.playbackFrameIndices
+        let batchSize = 4
+        LogStore.log(
+            "xdz.preview.prerender.render.begin clip=\(clip.id) frames=\(sourcePositions.count) maxPixelSize=\(Int(maxPixelSize)) styled=\(usesStyledRenderer)"
+        )
+        for batchStart in stride(from: 0, to: sourcePositions.count, by: batchSize) {
+            guard !Task.isCancelled else { return nil }
+            let batchEnd = min(batchStart + batchSize, sourcePositions.count)
+            let slots = Array(batchStart..<batchEnd)
+            let batchPositions = slots.map { sourcePositions[$0] }
+            let imagesByPosition: [Int: CGImage]
+            if usesStyledRenderer, let composition {
+                imagesByPosition = await loadRenderedStickerFrames(
+                    batchPositions,
+                    clip: clip,
+                    composition: composition,
+                    maxPixelSize: maxPixelSize
+                )
+            } else {
+                let loadTask = Task.detached(priority: .userInitiated) {
+                    var images: [Int: CGImage] = [:]
+                    for position in Set(batchPositions) {
+                        guard !Task.isCancelled,
+                              sourceIndices.indices.contains(position),
+                              let image = FrameCache.shared.cachedThumbnail(
+                                for: clip,
+                                index: sourceIndices[position],
+                                maxPixelSize: maxPixelSize
+                              ) else { continue }
+                        images[position] = image
+                    }
+                    return images
+                }
+                imagesByPosition = await withTaskCancellationHandler {
+                    await loadTask.value
+                } onCancel: {
+                    loadTask.cancel()
+                }
+            }
+            guard !Task.isCancelled else { return nil }
+
+            let writeTask = Task.detached(priority: .utility) {
+                for (slot, position) in zip(slots, batchPositions) {
+                    guard !Task.isCancelled,
+                          let image = imagesByPosition[position] else { return false }
+                    let url = folder.appendingPathComponent(String(format: "%05d.png", slot))
+                    guard let destination = CGImageDestinationCreateWithURL(
+                        url as CFURL,
+                        UTType.png.identifier as CFString,
+                        1,
+                        nil
+                    ) else { return false }
+                    CGImageDestinationAddImage(destination, image, nil)
+                    guard CGImageDestinationFinalize(destination) else { return false }
+                }
+                return true
+            }
+            guard await writeTask.value else {
+                LogStore.log("xdz.preview.prerender.failed stage=write batch=\(batchStart)..<\(batchEnd)")
+                try? FileManager.default.removeItem(at: folder)
+                return nil
+            }
+            if batchEnd.isMultiple(of: 60) || batchEnd == sourcePositions.count {
+                LogStore.log("xdz.preview.prerender.progress frames=\(batchEnd)/\(sourcePositions.count)")
+            }
+        }
+        LogStore.log("xdz.preview.prerender.finished frames=\(sourcePositions.count)")
+        return folder
+    }
+
+    private static func loadPreviewSequenceFrames(
+        _ slots: [Int],
+        directory: URL
+    ) async -> [Int: CGImage] {
+        let loadTask = Task.detached(priority: .userInitiated) {
+            var images: [Int: CGImage] = [:]
+            for slot in slots {
+                guard !Task.isCancelled else { break }
+                let url = directory.appendingPathComponent(String(format: "%05d.png", slot)) as CFURL
+                guard let source = CGImageSourceCreateWithURL(url, nil),
+                      let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { continue }
+                images[slot] = image
+            }
+            return images
+        }
+        return await withTaskCancellationHandler {
+            await loadTask.value
+        } onCancel: {
+            loadTask.cancel()
+        }
+    }
+
+    private func sleepUntilPlaybackFrame(
+        _ frameNumber: Int,
+        startedAt: TimeInterval,
+        frameInterval: TimeInterval
+    ) async -> Bool {
+        let deadline = startedAt + Double(frameNumber) * frameInterval
+        let remaining = deadline - ProcessInfo.processInfo.systemUptime
+        guard remaining > 0 else { return !Task.isCancelled }
+        do {
+            try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+            return !Task.isCancelled
+        } catch {
+            return false
+        }
     }
 
     private func loadPreviewFrames(
@@ -829,7 +1463,7 @@ struct AnimatedClipPreview: View {
         maxPixelSize: CGFloat
     ) async -> [Int: CGImage] {
         let sourceIndices = clip.playbackFrameIndices
-        return await Task.detached(priority: .userInitiated) {
+        let loadTask = Task.detached(priority: .userInitiated) {
             var loaded: [Int: CGImage] = [:]
             for position in positions {
                 guard !Task.isCancelled,
@@ -842,7 +1476,12 @@ struct AnimatedClipPreview: View {
                 loaded[position] = image
             }
             return loaded
-        }.value
+        }
+        return await withTaskCancellationHandler {
+            await loadTask.value
+        } onCancel: {
+            loadTask.cancel()
+        }
     }
 
     private static func loadRenderedStickerFrames(

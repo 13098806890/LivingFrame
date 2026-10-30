@@ -165,6 +165,8 @@ struct LibraryView: View {
     private struct PendingSubjectSelection: Identifiable {
         let id = UUID()
         let analysis: VideoSegmentationAnalysis
+        let videoURL: URL
+        let sourceStartTime: TimeInterval
         let initialRegion: [CGPoint]?
         let debugRegion: [CGPoint]?
         var resume: (Set<Int>?, [CGPoint]?) -> Void
@@ -459,6 +461,8 @@ struct LibraryView: View {
             } else if let request = pendingSubjectSelection {
                 SubjectSelectionView(
                     analysis: request.analysis,
+                    videoURL: request.videoURL,
+                    sourceStartTime: request.sourceStartTime,
                     initialLassoPoints: request.initialRegion ?? [],
                     debugLassoPoints: request.debugRegion ?? [],
                     onCancel: {
@@ -1194,6 +1198,8 @@ struct LibraryView: View {
                 // 不把旧坐标直接画到另一帧上，避免造成误导。
                 pendingSubjectSelection = PendingSubjectSelection(
                     analysis: analysis,
+                    videoURL: url,
+                    sourceStartTime: sourceStartTime,
                     initialRegion: nil,
                     debugRegion: initialRegion
                 ) { selected, region in
@@ -2125,6 +2131,8 @@ private enum ClipLibraryFilter: String, CaseIterable, Identifiable {
 /// 动态素材主体选择器。分析阶段完成后展示代表帧和轨迹框，支持选择一个或多个主体。
 private struct SubjectSelectionView: View {
     let analysis: VideoSegmentationAnalysis
+    let videoURL: URL
+    let sourceStartTime: TimeInterval
     let initialLassoPoints: [CGPoint]
     let debugLassoPoints: [CGPoint]
     let onCancel: () -> Void
@@ -2139,12 +2147,16 @@ private struct SubjectSelectionView: View {
 
     init(
         analysis: VideoSegmentationAnalysis,
+        videoURL: URL,
+        sourceStartTime: TimeInterval,
         initialLassoPoints: [CGPoint] = [],
         debugLassoPoints: [CGPoint] = [],
         onCancel: @escaping () -> Void,
         onConfirm: @escaping (Set<Int>, [CGPoint]?) -> Void
     ) {
         self.analysis = analysis
+        self.videoURL = videoURL
+        self.sourceStartTime = sourceStartTime
         self.initialLassoPoints = initialLassoPoints
         self.debugLassoPoints = debugLassoPoints
         self.onCancel = onCancel
@@ -2264,6 +2276,9 @@ private struct SubjectSelectionView: View {
         .sheet(isPresented: $isFrameInspectorPresented) {
             SubjectFrameInspectorView(
                 frames: analysis.frameDebug,
+                videoURL: videoURL,
+                sourceStartTime: sourceStartTime,
+                frameRate: analysis.debugFrameRate,
                 lassoPoints: lassoPoints.isEmpty ? debugLassoPoints : lassoPoints,
                 selectedTrackIDs: selectedIDs
             )
@@ -2525,11 +2540,15 @@ private struct SubjectSelectionView: View {
 
 private struct SubjectFrameInspectorView: View {
     let frames: [VideoSegmentationFrameDebug]
+    let videoURL: URL
+    let sourceStartTime: TimeInterval
+    let frameRate: Double
     let lassoPoints: [CGPoint]
     let selectedTrackIDs: Set<Int>
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedFrameIndex = 0
+    @State private var selectedImage: CGImage?
 
     private var selectedFrame: VideoSegmentationFrameDebug? {
         guard frames.indices.contains(selectedFrameIndex) else { return nil }
@@ -2542,6 +2561,7 @@ private struct SubjectFrameInspectorView: View {
                 if let selectedFrame {
                     SubjectFrameBoundaryCanvas(
                         frame: selectedFrame,
+                        image: selectedImage,
                         lassoPoints: lassoPoints,
                         selectedTrackIDs: selectedTrackIDs
                     )
@@ -2563,28 +2583,12 @@ private struct SubjectFrameInspectorView: View {
                                 Button {
                                     selectedFrameIndex = offset
                                 } label: {
-                                    Image(decorative: frame.image, scale: 1)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 70, height: 88)
-                                        .background(.black.opacity(0.12))
-                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                        .overlay {
-                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                .stroke(
-                                                    offset == selectedFrameIndex ? LF.actionPrimary : .clear,
-                                                    lineWidth: 3
-                                                )
-                                        }
-                                        .overlay(alignment: .bottomTrailing) {
-                                            Text("\(frame.id + 1)")
-                                                .font(.caption2.monospacedDigit())
-                                                .foregroundStyle(.white)
-                                                .padding(.horizontal, 4)
-                                                .padding(.vertical, 2)
-                                                .background(.black.opacity(0.65), in: Capsule())
-                                                .padding(4)
-                                        }
+                                    SubjectFrameThumbnail(
+                                        videoURL: videoURL,
+                                        time: frameTime(for: frame),
+                                        frameNumber: frame.id + 1,
+                                        isSelected: offset == selectedFrameIndex
+                                    )
                                 }
                                 .lfAnimatedPlainButtonStyle()
                                 .accessibilityLabel(String.localizedStringWithFormat(
@@ -2621,6 +2625,19 @@ private struct SubjectFrameInspectorView: View {
             .magicBackground()
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(LF.background.opacity(0.94), for: .navigationBar)
+            .task(id: selectedFrameIndex) {
+                selectedImage = nil
+                guard let selectedFrame else { return }
+                let image = await loadVideoFrame(
+                    from: videoURL,
+                    at: frameTime(for: selectedFrame),
+                    maximumDimension: 1440
+                )
+                // AVAssetImageGenerator may finish after SwiftUI has cancelled
+                // this task because the user selected a different frame.
+                guard !Task.isCancelled else { return }
+                selectedImage = image
+            }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
@@ -2637,6 +2654,10 @@ private struct SubjectFrameInspectorView: View {
         .foregroundStyle(LF.textSecondary)
     }
 
+    private func frameTime(for frame: VideoSegmentationFrameDebug) -> TimeInterval {
+        sourceStartTime + (frame.timeOffset ?? Double(frame.id) / max(frameRate, 1))
+    }
+
     private func legendItem(color: Color, title: LocalizedStringKey) -> some View {
         Label {
             Text(title)
@@ -2648,8 +2669,73 @@ private struct SubjectFrameInspectorView: View {
     }
 }
 
+private struct SubjectFrameThumbnail: View {
+    let videoURL: URL
+    let time: TimeInterval
+    let frameNumber: Int
+    let isSelected: Bool
+
+    @State private var image: CGImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Rectangle()
+                    .fill(.black.opacity(0.12))
+                    .overlay { ProgressView().controlSize(.mini) }
+            }
+        }
+        .frame(width: 70, height: 88)
+        .background(.black.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isSelected ? LF.actionPrimary : .clear, lineWidth: 3)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Text("\(frameNumber)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .background(.black.opacity(0.65), in: Capsule())
+                .padding(4)
+        }
+        .task {
+            let loaded = await loadVideoFrame(from: videoURL, at: time, maximumDimension: 240)
+            guard !Task.isCancelled else { return }
+            image = loaded
+        }
+        .onDisappear {
+            image = nil
+        }
+    }
+}
+
+private func loadVideoFrame(from url: URL, at seconds: TimeInterval, maximumDimension: CGFloat) async -> CGImage? {
+    let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+    generator.appliesPreferredTrackTransform = true
+    generator.requestedTimeToleranceBefore = .zero
+    generator.requestedTimeToleranceAfter = .zero
+    generator.maximumSize = CGSize(width: maximumDimension, height: maximumDimension)
+    return await withTaskCancellationHandler {
+        do {
+            return try await generator.image(at: CMTime(seconds: max(seconds, 0), preferredTimescale: 600)).image
+        } catch {
+            return nil
+        }
+    } onCancel: {
+        generator.cancelAllCGImageGeneration()
+    }
+}
+
 private struct SubjectFrameBoundaryCanvas: View {
     let frame: VideoSegmentationFrameDebug
+    let image: CGImage?
     let lassoPoints: [CGPoint]
     let selectedTrackIDs: Set<Int>
 
@@ -2657,11 +2743,16 @@ private struct SubjectFrameBoundaryCanvas: View {
         GeometryReader { proxy in
             let rect = imageContentRect(for: proxy.size)
             ZStack(alignment: .topLeading) {
-                Image(decorative: frame.image, scale: 1)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .background(.black.opacity(0.12))
+                if let image {
+                    Image(decorative: image, scale: 1)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .background(.black.opacity(0.12))
+                } else {
+                    ProgressView()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
 
                 ForEach(frame.instanceContours.keys.sorted(), id: \.self) { instance in
                     if let contour = frame.instanceContours[instance], contour.count >= 3 {
@@ -2710,10 +2801,7 @@ private struct SubjectFrameBoundaryCanvas: View {
                 }
             }
         }
-        .aspectRatio(
-            CGFloat(frame.image.width) / CGFloat(max(frame.image.height, 1)),
-            contentMode: .fit
-        )
+        .aspectRatio(image.map { CGFloat($0.width) / CGFloat(max($0.height, 1)) } ?? 1, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -2722,7 +2810,8 @@ private struct SubjectFrameBoundaryCanvas: View {
     }
 
     private func imageContentRect(for size: CGSize) -> CGRect {
-        let imageAspect = CGFloat(frame.image.width) / CGFloat(max(frame.image.height, 1))
+        guard let image else { return CGRect(origin: .zero, size: size) }
+        let imageAspect = CGFloat(image.width) / CGFloat(max(image.height, 1))
         let containerAspect = size.width / max(size.height, 1)
         if imageAspect > containerAspect {
             let width = size.width
@@ -3827,7 +3916,8 @@ private struct ClipDetailPreview: View {
                 isPlaying: $isPlaying,
                 isPreparingPlayback: $isPreparingPlayback,
                 usesCoreStickerStylePreview: true,
-                coreStickerStyleComposition: stickerComposition
+                coreStickerStyleComposition: stickerComposition,
+                preRenderBeforePlayback: true
             )
                 .aspectRatio(aspectRatio, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -4989,6 +5079,15 @@ private struct ConversionPreviewSheet: View {
             .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { notification in
                 guard let endedItem = notification.object as? AVPlayerItem,
                       endedItem === player.currentItem else { return }
+                let duration = endedItem.duration.seconds
+                let currentTime = player.currentTime().seconds
+                // A delayed end notification from a previous play can arrive
+                // after replay has already sought to the beginning. Ignore it
+                // unless this item is still actually at its end.
+                if duration.isFinite, currentTime.isFinite,
+                   currentTime < duration - 0.12 {
+                    return
+                }
                 playbackToken &+= 1
                 cancelPendingSeeks()
                 wantsPlayback = false
@@ -5257,7 +5356,11 @@ private struct ConversionPreviewSheet: View {
         guard isActive, !isSaving, isPreviewVisible else { return }
         wantsPlayback = true
 
-        guard didFinishPlayback else {
+        let duration = player.currentItem?.duration.seconds ?? .nan
+        let currentTime = player.currentTime().seconds
+        let hasReachedEnd = didFinishPlayback
+            || (duration.isFinite && currentTime.isFinite && currentTime >= duration - 0.12)
+        guard hasReachedEnd else {
             cancelPendingSeeks()
             playbackToken &+= 1
             player.isMuted = isMuted

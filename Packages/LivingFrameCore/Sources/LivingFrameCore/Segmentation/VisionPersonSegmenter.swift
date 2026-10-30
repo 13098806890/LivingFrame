@@ -49,17 +49,32 @@ public enum VisionMaskSource: String, Sendable {
 /// 使用 Vision 的 VNGeneratePersonInstanceMaskRequest，优先保证遮挡场景中的
 /// 多人物拆分；它比通用前景实例请求更适合本应用的“人物剪影”素材。
 public struct VisionPersonSegmenter {
+    private static let fallbackColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     private let context: CIContext
 
     public init() {
         context = CIContext(options: [
-            .workingColorSpace: NSNull(),
-            .outputColorSpace: NSNull(),
+            // Vision returns a masked pixel buffer; render it in the input image's
+            // profile to preserve the original subject colors.
+            .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!,
             // Segmentation creates a new full-frame mask for every input frame.
             // Keeping intermediate textures here causes the process footprint to
             // grow linearly during long video extraction.
             .cacheIntermediates: false
         ])
+    }
+
+    private func renderImage(
+        _ image: CIImage,
+        from rect: CGRect,
+        preserving colorSpace: CGColorSpace?
+    ) -> CGImage? {
+        context.createCGImage(
+            image,
+            from: rect,
+            format: .RGBA8,
+            colorSpace: colorSpace ?? image.colorSpace ?? Self.fallbackColorSpace
+        )
     }
 
     /// 返回当前帧的人物实例统计。Vision 的实例编号只在当前帧内有效。
@@ -94,7 +109,7 @@ public struct VisionPersonSegmenter {
             throw PersonSegmenterError.noSubject
         }
         let ci = CIImage(cvPixelBuffer: buffer)
-        guard let output = context.createCGImage(ci, from: ci.extent) else {
+        guard let output = renderImage(ci, from: ci.extent, preserving: cgImage.colorSpace) else {
             throw PersonSegmenterError.renderFailed
         }
         LogStore.log(
@@ -117,7 +132,7 @@ public struct VisionPersonSegmenter {
             throw PersonSegmenterError.noSubject
         }
         let ci = CIImage(cvPixelBuffer: buffer)
-        guard let output = context.createCGImage(ci, from: ci.extent) else {
+        guard let output = renderImage(ci, from: ci.extent, preserving: cgImage.colorSpace) else {
             throw PersonSegmenterError.renderFailed
         }
         LogStore.log("xdz.vision.render source=foreground selected=all")
@@ -209,7 +224,7 @@ public struct VisionPersonSegmenter {
         if let selectedInstances, selectedInstances.isEmpty {
             let extent = CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height)
             let clear = CIImage(color: CIColor.clear).cropped(to: extent)
-            guard let output = context.createCGImage(clear, from: extent) else {
+            guard let output = renderImage(clear, from: extent, preserving: cgImage.colorSpace) else {
                 throw PersonSegmenterError.renderFailed
             }
             return output
@@ -224,7 +239,7 @@ public struct VisionPersonSegmenter {
             throw PersonSegmenterError.noSubject
         }
         let ci = CIImage(cvPixelBuffer: buffer)
-        guard let output = context.createCGImage(ci, from: ci.extent) else {
+        guard let output = renderImage(ci, from: ci.extent, preserving: cgImage.colorSpace) else {
             throw PersonSegmenterError.renderFailed
         }
         return output

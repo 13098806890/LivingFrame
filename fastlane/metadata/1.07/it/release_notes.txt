@@ -2,3 +2,5 @@
 • L’esportazione dei GIF trasparenti ora privilegia una risoluzione maggiore quando gli effetti aumentano la dimensione del file.
 • Le Live Photo e i video convertiti ora compaiono in «Aggiunti di recente» e possono essere filtrati, riprodotti ed eliminati in «Tutti gli elementi».
 • Crea Live Photo fino a 15 secondi da video lunghi (5 secondi gratis; 15 con GIFBloom Pro).
+• Esporta i video più velocemente senza ridurre la frequenza dei fotogrammi scelta.
+• Scegli il formato prima di avviare l’esportazione.

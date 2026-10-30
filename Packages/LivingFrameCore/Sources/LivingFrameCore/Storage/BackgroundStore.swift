@@ -68,15 +68,35 @@ public struct BackgroundStore {
     public static let shared = BackgroundStore()
     public static let userMediaRetentionLimit = 20
 
+    /// Initialize the process-wide caches before dispatching utility work that
+    /// may touch them. Swift lazily initializes static properties under a
+    /// one-time lock, so the first low-QoS cache access can otherwise make a
+    /// user-initiated renderer wait for that initialization to finish.
+    public static func prepareForUse() {
+        _ = imageCache
+        _ = frameCache
+        _ = previewFrameCache
+        _ = videoSourceCache
+        _ = metadataLock
+        _ = metadataCache
+        _ = orientationContext
+    }
+
     private actor VideoFrameSource {
         let generator: AVAssetImageGenerator
 
-        init(url: URL) {
+        init(url: URL, maximumPixelSize: Int? = nil) {
             let asset = AVURLAsset(url: url)
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
             generator.requestedTimeToleranceBefore = .zero
             generator.requestedTimeToleranceAfter = .zero
+            if let maximumPixelSize {
+                generator.maximumSize = CGSize(
+                    width: CGFloat(maximumPixelSize),
+                    height: CGFloat(maximumPixelSize)
+                )
+            }
             self.generator = generator
         }
 
@@ -209,6 +229,28 @@ public struct BackgroundStore {
         let fileExtension = requested.flatMap { allowed.contains($0) ? $0 : nil } ?? "mov"
         let url = rootURL.appendingPathComponent(fileName).appendingPathExtension(fileExtension)
         guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
+        Self.imageCache.removeObject(forKey: fileName as NSString)
+        Self.previewFrameCache.removeObject(forKey: fileName as NSString)
+        Self.removeCachedMetadata(for: fileName)
+        return fileName
+    }
+
+    /// Copy a video directly from disk so importing large movies never requires
+    /// holding the complete file in memory.
+    @discardableResult
+    public func saveUserVideo(from sourceURL: URL, preferredFileExtension: String? = nil) -> String? {
+        let fileName = "user-\(UUID().uuidString)"
+        let allowed = ["mov", "mp4", "m4v"]
+        let requested = (preferredFileExtension ?? sourceURL.pathExtension)
+            .lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        let fileExtension = allowed.contains(requested) ? requested : "mov"
+        let destination = rootURL.appendingPathComponent(fileName).appendingPathExtension(fileExtension)
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: destination)
+        } catch {
+            return nil
+        }
         Self.imageCache.removeObject(forKey: fileName as NSString)
         Self.previewFrameCache.removeObject(forKey: fileName as NSString)
         Self.removeCachedMetadata(for: fileName)
@@ -382,6 +424,17 @@ public struct BackgroundStore {
         let timeKey = Int((boundedTime * 60).rounded(.down))
         let key = "\(name)-preview-\(timeKey)-\(pixelSize)" as NSString
         if let cached = Self.previewFrameCache.object(forKey: key) { return cached }
+        let url = mediaURL(named: name)
+        if isVideo(url: url) {
+            guard let frame = await loadVideoFrame(
+                named: name,
+                url: url,
+                at: boundedTime,
+                maximumPixelSize: pixelSize
+            ) else { return nil }
+            Self.previewFrameCache.setObject(frame, forKey: key, cost: imageCost(frame))
+            return frame
+        }
         guard let frame = await loadFrameAsync(named: name, at: boundedTime) else { return nil }
         return cachePreviewFrame(frame, for: key, pixelSize: pixelSize)
     }
@@ -529,24 +582,34 @@ public struct BackgroundStore {
         return Self.orientationContext.createCGImage(oriented, from: oriented.extent) ?? image
     }
 
-    private func loadVideoFrame(named name: String, url: URL, at time: TimeInterval) async -> CGImage? {
-        let sourceKey = url.path as NSString
+    private func loadVideoFrame(
+        named name: String,
+        url: URL,
+        at time: TimeInterval,
+        maximumPixelSize: Int? = nil
+    ) async -> CGImage? {
+        let sourceSuffix = maximumPixelSize.map { "-preview-\($0)" } ?? ""
+        let sourceKey = (url.path + sourceSuffix) as NSString
         let source: VideoFrameSource
         if let cached = Self.videoSourceCache.object(forKey: sourceKey) {
             source = cached
         } else {
-            let created = VideoFrameSource(url: url)
+            let created = VideoFrameSource(url: url, maximumPixelSize: maximumPixelSize)
             Self.videoSourceCache.setObject(created, forKey: sourceKey)
             source = created
         }
         let bounded = time.isFinite ? max(time, 0) : 0
         let frameIndex = Int((bounded * 30).rounded(.down))
         let key = "\(name)-video-\(frameIndex)" as NSString
-        if let cached = Self.frameCache.object(forKey: key) { return cached }
+        if maximumPixelSize == nil, let cached = Self.frameCache.object(forKey: key) {
+            return cached
+        }
         guard let frame = await source.copyFrame(
             at: CMTime(seconds: bounded, preferredTimescale: 600)
         ) else { return nil }
-        Self.frameCache.setObject(frame, forKey: key, cost: imageCost(frame))
+        if maximumPixelSize == nil {
+            Self.frameCache.setObject(frame, forKey: key, cost: imageCost(frame))
+        }
         return frame
     }
 

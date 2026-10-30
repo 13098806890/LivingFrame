@@ -43,22 +43,23 @@ public struct VideoSubjectTrack: Identifiable {
     }
 }
 
-/// 用于调试主体匹配的逐帧可视化数据。image 是分析阶段生成的低分辨率缩略图，
-/// instanceContours 使用左上角为原点的归一化坐标，避免检查器再次执行 Vision。
+/// 用于调试主体匹配的逐帧元数据。原始帧图像由检查器按需从视频读取，
+/// 避免分析阶段把整段视频的缩略图都保留在内存中。
 public struct VideoSegmentationFrameDebug: Identifiable {
     public let id: Int
-    public let image: CGImage
+    /// Time offset from the analyzed source range, taken from the sample PTS.
+    public let timeOffset: TimeInterval?
     public let instanceContours: [Int: [CGPoint]]
     public let instanceToTrack: [Int: Int]
 
     public init(
         id: Int,
-        image: CGImage,
+        timeOffset: TimeInterval? = nil,
         instanceContours: [Int: [CGPoint]],
         instanceToTrack: [Int: Int]
     ) {
         self.id = id
-        self.image = image
+        self.timeOffset = timeOffset
         self.instanceContours = instanceContours
         self.instanceToTrack = instanceToTrack
     }
@@ -74,19 +75,23 @@ public struct VideoSegmentationAnalysis {
     public let frameTrackBoundingBoxes: [[Int: CGRect]]
     public let previewImage: CGImage?
     public let frameDebug: [VideoSegmentationFrameDebug]
+    /// 实际分析帧率；仅用于没有保存 PTS 的旧版/手动构造调试帧回退。
+    public let debugFrameRate: Double
 
     public init(
         tracks: [VideoSubjectTrack],
         frameAssignments: [[Int: Int]],
         frameTrackBoundingBoxes: [[Int: CGRect]] = [],
         previewImage: CGImage?,
-        frameDebug: [VideoSegmentationFrameDebug] = []
+        frameDebug: [VideoSegmentationFrameDebug] = [],
+        debugFrameRate: Double = 30
     ) {
         self.tracks = tracks
         self.frameAssignments = frameAssignments
         self.frameTrackBoundingBoxes = frameTrackBoundingBoxes
         self.previewImage = previewImage
         self.frameDebug = frameDebug
+        self.debugFrameRate = debugFrameRate
     }
 }
 
@@ -136,13 +141,65 @@ public struct VideoSegmentationPipeline {
             && abs(transform.d - 1) < 0.001
     }
 
+    private static let fallbackColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+
     private let context = CIContext(options: [
-        .workingColorSpace: NSNull(),
-        .outputColorSpace: NSNull(),
+        // Keep Core Image color managed, then emit each frame in its source profile
+        // so wide-gamut camera footage does not become muted in the PNG sequence.
+        .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!,
         // Video extraction renders a new full-frame image on every iteration.
         // Do not retain intermediate textures across frames.
         .cacheIntermediates: false
     ])
+
+    private func renderImage(_ image: CIImage, from rect: CGRect, preserving colorSpace: CGColorSpace?) -> CGImage? {
+        context.createCGImage(
+            image,
+            from: rect,
+            format: .RGBA8,
+            colorSpace: colorSpace ?? image.colorSpace ?? Self.fallbackColorSpace
+        )
+    }
+
+    private func colorSpaceName(_ colorSpace: CGColorSpace?) -> String {
+        guard let colorSpace else { return "nil" }
+        if let name = colorSpace.name {
+            return name as String
+        }
+        return "unnamed-model-\(colorSpace.model.rawValue)"
+    }
+
+    private func alphaSummary(of image: CGImage) -> String {
+        let sampleSize = 24
+        let bytesPerRow = sampleSize * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * sampleSize)
+        let rendered = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let bitmap = CGContext(
+                data: buffer.baseAddress,
+                width: sampleSize,
+                height: sampleSize,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: Self.fallbackColorSpace,
+                bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue
+                    | CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            bitmap.draw(image, in: CGRect(x: 0, y: 0, width: sampleSize, height: sampleSize))
+            return true
+        }
+        guard rendered else { return "unavailable" }
+
+        var visible = 0
+        var opaque = 0
+        var alphaTotal = 0
+        for index in 0..<(sampleSize * sampleSize) {
+            let alpha = Int(pixels[index * 4 + 3])
+            if alpha > 16 { visible += 1; alphaTotal += alpha }
+            if alpha > 240 { opaque += 1 }
+        }
+        let meanVisibleAlpha = visible > 0 ? alphaTotal / visible : 0
+        return "visible=\(visible)/\(sampleSize * sampleSize) opaque=\(opaque) meanVisibleAlpha=\(meanVisibleAlpha)"
+    }
 
     public init() {}
 
@@ -248,7 +305,11 @@ public struct VideoSegmentationPipeline {
             let input = scale < 1.0
                 ? oriented.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
                 : oriented
-            guard let cgImage = context.createCGImage(input, from: input.extent.integral) else {
+            guard let cgImage = renderImage(
+                input,
+                from: input.extent.integral,
+                preserving: input.colorSpace
+            ) else {
                 assignments.append([:])
                 trackBoundingBoxes.append([:])
                 processedFrameIndex += 1
@@ -330,20 +391,21 @@ public struct VideoSegmentationPipeline {
                 "xdz.subject.analysis.frame=\(processedFrameIndex) "
                     + "instances=\(instanceSummary) tracks=\(trackSummary) mapping=\(mappingSummary)"
             )
-            if let debugImage = debugThumbnail(from: cgImage) {
-                let contours = infos.reduce(into: [Int: [CGPoint]]()) { result, info in
-                    let contour = maskContour(from: info.maskSignature)
-                    if contour.count >= 3 {
-                        result[info.index] = contour
-                    }
+            let contours = infos.reduce(into: [Int: [CGPoint]]()) { result, info in
+                let contour = maskContour(from: info.maskSignature)
+                if contour.count >= 3 {
+                    result[info.index] = contour
                 }
-                frameDebug.append(VideoSegmentationFrameDebug(
-                    id: processedFrameIndex,
-                    image: debugImage,
-                    instanceContours: contours,
-                    instanceToTrack: mapping
-                ))
             }
+            let sourceTimeOffset = CMTimeGetSeconds(
+                CMSampleBufferGetPresentationTimeStamp(sample)
+            ) - safeStartTime
+            frameDebug.append(VideoSegmentationFrameDebug(
+                id: processedFrameIndex,
+                timeOffset: sourceTimeOffset.isFinite ? max(sourceTimeOffset, 0) : nil,
+                instanceContours: contours,
+                instanceToTrack: mapping
+            ))
             if infos.count > previewInstanceCount {
                 previewInstanceCount = infos.count
                 previewImage = cgImage
@@ -414,7 +476,8 @@ public struct VideoSegmentationPipeline {
             frameAssignments: assignments,
             frameTrackBoundingBoxes: trackBoundingBoxes,
             previewImage: previewImage,
-            frameDebug: frameDebug
+            frameDebug: frameDebug,
+            debugFrameRate: outputFPS
         )
     }
 
@@ -581,7 +644,11 @@ public struct VideoSegmentationPipeline {
                 let input = scale < 1.0
                     ? oriented.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
                     : oriented
-                guard let cgImage = context.createCGImage(input, from: input.extent.integral) else { return }
+                guard let cgImage = renderImage(
+                    input,
+                    from: input.extent.integral,
+                    preserving: input.colorSpace
+                ) else { return }
 
             // 先追踪上一帧主体的大致位置。人物实例掩码随后负责精确轮廓，
             // 追踪结果用于阻止大动作时实例编号突然切换。
@@ -784,9 +851,20 @@ public struct VideoSegmentationPipeline {
                 }
                 let frameURL = folder.appendingPathComponent(String(format: "%05d.png", index))
                 let outputSize = autoreleasepool { () -> (width: Int, height: Int)? in
-                    guard let outCG = context.createCGImage(output, from: output.extent.integral),
+                    guard let outCG = renderImage(
+                        output,
+                        from: output.extent.integral,
+                        preserving: cgImage.colorSpace
+                    ),
                           writePNG(outCG, to: frameURL) else {
                         return nil
+                    }
+                    if index == 0 {
+                        LogStore.log(
+                            "xdz.subject.color video source=\(colorSpaceName(cgImage.colorSpace)) "
+                                + "output=\(colorSpaceName(outCG.colorSpace)) "
+                                + "alpha={\(alphaSummary(of: outCG))}"
+                        )
                     }
                     return (outCG.width, outCG.height)
                 }
@@ -805,7 +883,11 @@ public struct VideoSegmentationPipeline {
                 if let prev = prevMaskedImage {
                     let frameURL = folder.appendingPathComponent(String(format: "%05d.png", index))
                     let fallbackSize = autoreleasepool { () -> (width: Int, height: Int)? in
-                        guard let fallback = context.createCGImage(prev, from: prev.extent.integral),
+                        guard let fallback = renderImage(
+                            prev,
+                            from: prev.extent.integral,
+                            preserving: cgImage.colorSpace
+                        ),
                               writePNG(fallback, to: frameURL) else {
                             return nil
                         }
@@ -927,7 +1009,11 @@ public struct VideoSegmentationPipeline {
         let input = scale < 1.0
             ? sourceImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
             : sourceImage
-        guard let cgImage = context.createCGImage(input, from: input.extent) else {
+        guard let cgImage = renderImage(
+            input,
+            from: input.extent,
+            preserving: source.colorSpace
+        ) else {
             throw SegmentationError.noFrames
         }
         let segmented: CGImage
@@ -941,6 +1027,12 @@ public struct VideoSegmentationPipeline {
         case .visionPerson:
             segmented = try VisionPersonSegmenter().segmentedImage(from: cgImage)
         }
+
+        LogStore.log(
+            "xdz.subject.color photo source=\(colorSpaceName(source.colorSpace)) "
+                + "segmented=\(colorSpaceName(segmented.colorSpace)) "
+                + "alpha={\(alphaSummary(of: segmented))}"
+        )
 
         let clipID = UUID().uuidString
         let folder = try FrameCache.shared.makeClipFolder(id: clipID)
@@ -966,19 +1058,6 @@ public struct VideoSegmentationPipeline {
         try FrameCache.shared.register(clip)
         succeeded = true
         return clip
-    }
-
-    /// 将当前帧的 Vision 实例与上一帧轨迹匹配。Vision 的实例编号不跨帧稳定，
-    /// 因此使用包围盒 IoU、中心距离和面积变化做轻量级关联。
-    private func debugThumbnail(from image: CGImage) -> CGImage? {
-        let maximumDimension: CGFloat = 360
-        let sourceDimension = max(CGFloat(image.width), CGFloat(image.height))
-        let scale = min(1, maximumDimension / max(sourceDimension, 1))
-        guard scale < 1 else { return image }
-        let ciImage = CIImage(cgImage: image).transformed(
-            by: CGAffineTransform(scaleX: scale, y: scale)
-        )
-        return context.createCGImage(ciImage, from: ciImage.extent.integral)
     }
 
     private struct DebugGridPoint: Hashable {

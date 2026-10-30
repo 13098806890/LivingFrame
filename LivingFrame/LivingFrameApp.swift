@@ -1,4 +1,6 @@
 import SwiftUI
+import LivingFrameCore
+import UIKit
 
 @main
 struct LivingFrameApp: App {
@@ -16,6 +18,9 @@ struct LivingFrameApp: App {
                 .environmentObject(appState)
                 .environmentObject(purchaseManager)
                 .tint(LF.gold)
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                    FrameCache.shared.purgeDecodedFrames()
+                }
                 .task {
                     appState.cleanupStaleTemporaryFiles()
                 }
@@ -34,6 +39,11 @@ struct LivingFrameApp: App {
                 }
             }
             guard phase == .inactive || phase == .background else { return }
+            // Preview playback is foreground-only. Resetting AppState's
+            // monotonic clock here prevents suspended time from being counted
+            // when the editor's next frame callback runs after activation.
+            appState.pause()
+            FrameCache.shared.purgeDecodedFrames()
             appState.persistUserSettings()
             // 自动保存不能依赖应用被 kill 时一定会收到终止回调；
             // 进入后台/非活跃状态是系统给出的最后可靠保存机会。

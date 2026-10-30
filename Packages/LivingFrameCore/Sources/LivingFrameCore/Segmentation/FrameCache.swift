@@ -4,6 +4,12 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
+public extension Notification.Name {
+    static let frameCacheDidPurgeDecodedFrames = Notification.Name(
+        "LivingFrame.frameCacheDidPurgeDecodedFrames"
+    )
+}
+
 /// 磁盘素材库：管理抠图素材的 PNG 序列目录（Documents/Library/Clips，持久保存）
 public final class FrameCache {
     public static let shared = FrameCache()
@@ -19,9 +25,9 @@ public final class FrameCache {
     /// LRU 淘汰顺序（队首 = 最久未使用）。整表清空会导致多素材循环播放时频繁重解码
     private var frameOrder: [String] = []
     private var frameCacheCost = 0
-    /// 预览缓存最多保留约 96MB，避免多素材播放时无限增长。
-    private let frameCacheMaxCost = 96 * 1024 * 1024
-    private let frameCacheMaxCount = 256
+    /// 预览缓存最多保留约 128MB；LRU 淘汰保证缓存不会随播放时长无限增长。
+    private let frameCacheMaxCost = 128 * 1024 * 1024
+    private let frameCacheMaxCount = 384
     private let cropContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
     /// 素材占用空间缓存（clipID → bytes）
     private var clipSizes: [String: Int64] = [:]
@@ -127,6 +133,7 @@ public final class FrameCache {
         frameOrder.removeAll(keepingCapacity: false)
         frameCacheCost = 0
         frameLock.unlock()
+        NotificationCenter.default.post(name: .frameCacheDidPurgeDecodedFrames, object: self)
     }
 
     /// 命中返回并标记最近使用；未命中则加载入缓存（超容量淘汰最久未使用的一条）

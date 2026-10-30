@@ -21,7 +21,13 @@ extension AppState {
                 return
             }
 
-            for item in items where item.lastPathComponent.hasPrefix("LF-") {
+            for item in items {
+                let name = item.lastPathComponent
+                // Preview sequences use their own namespace so the Settings
+                // "clear cache" action cannot remove a preview that is active.
+                let isApplicationTemporaryItem = name.hasPrefix("LF-")
+                    || name.hasPrefix("LivingFramePreview-")
+                guard isApplicationTemporaryItem else { continue }
                 guard let values = try? item.resourceValues(forKeys: keys),
                       let modifiedAt = values.contentModificationDate,
                       modifiedAt < cutoff else {
