@@ -1,6 +1,3 @@
-• Freigestellte Motive bleiben mit den Stilen Kontur, Comic und Glätten in der Vorschau scharf; der Comic-Rand ist schmaler.
-• Beim Export transparenter GIFs bleibt die höhere Auflösung bevorzugt erhalten, wenn Effekte die Dateigröße erhöhen.
-• Konvertierte Live Photos und Videos erscheinen jetzt unter „Zuletzt hinzugefügt“ und lassen sich unter „Alle Medien“ filtern, abspielen und löschen.
-• Erstelle aus langen Videos Live Photos mit bis zu 15 Sekunden (5 Sekunden kostenlos, 15 Sekunden mit GIFBloom Pro).
-• Videos werden schneller exportiert, ohne die gewählte Bildrate zu verringern.
-• Wähle das Exportformat vor dem Export aus.
+• Erstelle aus langen Videos Live Photos mit bis zu 15 Sekunden (5 Sekunden kostenlos, 15 mit GIFBloom Pro).
+• Wandle GIFs, Videos und Live Photos ganz einfach in andere Formate um.
+• Entdecke neue Vorlagen und freue dich auf flüssigere Vorschauen und Exporte.

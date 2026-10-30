@@ -1,6 +1,3 @@
-• As prévias dos recortes permanecem nítidas com os estilos Contorno, Quadrinhos e Suave; a borda de Quadrinhos ficou mais fina.
-• A exportação de GIFs transparentes agora prioriza uma resolução maior quando os efeitos aumentam o tamanho do arquivo.
-• Live Photos e vídeos convertidos agora aparecem em Adicionados Recentemente e podem ser filtrados, reproduzidos e apagados em Todos os Itens.
 • Crie Live Photos de até 15 s a partir de vídeos longos (5 s grátis; 15 s com GIFBloom Pro).
-• Exporte vídeos mais rapidamente sem reduzir a taxa de quadros escolhida.
-• Escolha o formato antes de iniciar a exportação.
+• Converta GIFs, vídeos e Live Photos entre formatos com facilidade.
+• Experimente novos modelos e aproveite prévias e exportações mais fluidas.

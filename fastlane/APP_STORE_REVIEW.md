@@ -4,10 +4,17 @@
 
 - **Local release candidate:** `1.07` / build `17` in the Xcode project.
 - **Last documented App Store Connect baseline:** published `1.06` / build `15`, checked on 2026-10-27. Recheck the live version, build, and status before submitting 1.07.
-- **Local metadata candidate:** `fastlane/metadata/1.07/<locale>/` contains all 17 App Store locales. These files are prepared locally and have not been uploaded by this task.
+- **Localized metadata:** `fastlane/metadata/1.07/<locale>/` contains all 17 App Store locales. What's New and promotional text were uploaded to App Store Connect on 2026-10-30; this metadata-only upload did not include screenshots or a build and did not submit the version for review.
 - **Local screenshot candidate:** `fastlane/screenshots/1.07/<locale>/` contains six screenshots per locale (102 PNGs total). The 1.07 files currently mirror the 1.06 set; review the actual 1.07 set before upload.
 - **Fastlane data snapshot:** `fastlane/data/1.07/` has not been generated. This is an App Store Connect state/pricing snapshot, not a prerequisite for the local app build or review of metadata and screenshots. Generate it after confirming the live 1.07 record; do not infer live state from local files.
 - **Historical data snapshot:** `fastlane/data/1.0/` was captured on 2026-09-17. It is not evidence of the current release version.
+
+## Latest metadata upload
+
+- **Date:** 2026-10-30.
+- **Result:** Fastlane `upload_metadata` completed successfully for version 1.07 after updating localized What's New and promotional text.
+- **Precheck note:** The first upload attempt reported the Turkish privacy policy URL as unreachable; the final successful retry passed the URL check. No broken-URL warning remained in the completed run.
+- **Scope:** No build or screenshots were uploaded, and 1.07 was not submitted for review or released.
 
 ## 1.07 review items
 

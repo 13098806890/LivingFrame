@@ -1,6 +1,3 @@
-• Bản xem trước ảnh tách nền vẫn sắc nét với các kiểu Viền, Truyện tranh và Mượt; viền Truyện tranh đã mỏng hơn.
-• Khi hiệu ứng làm tăng kích thước tệp, xuất GIF trong suốt sẽ ưu tiên độ phân giải cao hơn.
-• Live Photo và video đã chuyển đổi giờ xuất hiện trong mục Mới thêm gần đây; bạn có thể lọc, phát và xóa chúng trong Tất cả nội dung.
 • Tạo Live Photo tối đa 15 giây từ video dài (miễn phí 5 giây; 15 giây với GIFBloom Pro).
-• Xuất video nhanh hơn mà vẫn giữ nguyên tốc độ khung hình đã chọn.
-• Chọn định dạng trước khi bắt đầu xuất.
+• Dễ dàng chuyển đổi định dạng GIF, video và Live Photo.
+• Khám phá mẫu mới cùng trải nghiệm xem trước và xuất mượt mà hơn.

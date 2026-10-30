@@ -1,6 +1,3 @@
-• Les aperçus des détourages restent nets avec les styles Contour, BD et Lissage ; la bordure BD est plus fine.
-• L’exportation des GIF transparents privilégie une résolution plus élevée lorsque les effets augmentent la taille du fichier.
-• Les Live Photos et vidéos converties apparaissent désormais dans « Ajouts récents » et peuvent être filtrées, lues et supprimées dans « Tous les éléments ».
-• Créez des Live Photos jusqu’à 15 s depuis une longue vidéo : 5 s gratuites, 15 s avec GIFBloom Pro.
-• Exportez vos vidéos plus rapidement sans réduire la fréquence d’images choisie.
-• Choisissez un format avant de lancer l’exportation.
+• Créez des Live Photos jusqu’à 15 s à partir de longues vidéos (5 s gratuites, 15 avec GIFBloom Pro).
+• Convertissez facilement GIF, vidéos et Live Photos entre formats.
+• Découvrez de nouveaux modèles et profitez d’aperçus et d’exports plus fluides.
