@@ -110,6 +110,66 @@ private struct SubjectTrackState {
     var pendingInstanceCount: Int
 }
 
+/// Low-frequency timing aggregation for the second (render) pass. Timing is
+/// reported in windows so device logs stay useful without logging every frame.
+private struct SegmentationTimingWindow {
+    private(set) var frameCount = 0
+    private var sampleRead = 0.0
+    private var inputRender = 0.0
+    private var tracker = 0.0
+    private var visionMask = 0.0
+    private var bounds = 0.0
+    private var compositeSetup = 0.0
+    private var outputRender = 0.0
+    private var pngWrite = 0.0
+    private var frameWall = 0.0
+
+    mutating func record(
+        sampleRead: TimeInterval,
+        inputRender: TimeInterval,
+        tracker: TimeInterval,
+        visionMask: TimeInterval,
+        bounds: TimeInterval,
+        compositeSetup: TimeInterval,
+        outputRender: TimeInterval,
+        pngWrite: TimeInterval,
+        frameWall: TimeInterval
+    ) -> Bool {
+        frameCount += 1
+        self.sampleRead += sampleRead
+        self.inputRender += inputRender
+        self.tracker += tracker
+        self.visionMask += visionMask
+        self.bounds += bounds
+        self.compositeSetup += compositeSetup
+        self.outputRender += outputRender
+        self.pngWrite += pngWrite
+        self.frameWall += frameWall
+        return frameCount >= 15
+    }
+
+    mutating func logAndReset(reason: String) {
+        guard frameCount > 0 else { return }
+        let divisor = Double(frameCount)
+        func milliseconds(_ seconds: TimeInterval) -> String {
+            String(format: "%.1f", seconds * 1_000 / divisor)
+        }
+        LogStore.log(
+            "xdz.segmentation.timing reason=\(reason) frames=\(frameCount) "
+                + "avgMs={sampleRead:\(milliseconds(sampleRead)), "
+                + "inputRender:\(milliseconds(inputRender)), "
+                + "tracker:\(milliseconds(tracker)), "
+                + "visionMask:\(milliseconds(visionMask)), "
+                + "bounds:\(milliseconds(bounds)), "
+                + "compositeSetup:\(milliseconds(compositeSetup)), "
+                + "outputRender:\(milliseconds(outputRender)), "
+                + "pngWrite:\(milliseconds(pngWrite)), "
+                + "frameWall:\(milliseconds(frameWall))}"
+        )
+        self = SegmentationTimingWindow()
+    }
+}
+
 /// 视频抠图管线：逐帧读流 → 实例掩码抠图 → 透明 PNG 序列 → 提取音频
 public struct VideoSegmentationPipeline {
     public struct ProgressInfo {
@@ -602,7 +662,12 @@ public struct VideoSegmentationPipeline {
         let canFollowSingleSubjectLasso = selectedSubjectIDs?.count == 1
             && absoluteSelectionShape != nil
             && lassoSourceBounds != nil
-        while let sample = output.copyNextSampleBuffer() {
+        var timingWindow = SegmentationTimingWindow()
+        var pendingSampleReadTime: TimeInterval = 0
+        while true {
+            let sampleReadStartedAt = ProcessInfo.processInfo.systemUptime
+            guard let sample = output.copyNextSampleBuffer() else { break }
+            pendingSampleReadTime += ProcessInfo.processInfo.systemUptime - sampleReadStartedAt
             if isCancelled() || Task.isCancelled {
                 reader.cancelReading()
                 memory.log("cancelled", frame: index, totalFrames: totalFrames)
@@ -618,11 +683,22 @@ public struct VideoSegmentationPipeline {
                 skippedNoImage += 1
                 continue
             }
+            let frameStartedAt = ProcessInfo.processInfo.systemUptime
+            let frameSampleReadTime = pendingSampleReadTime
+            pendingSampleReadTime = 0
+            var inputRenderTime: TimeInterval = 0
+            var trackerTime: TimeInterval = 0
+            var visionMaskTime: TimeInterval = 0
+            var boundsTime: TimeInterval = 0
+            var compositeTime: TimeInterval = 0
+            var outputRenderTime: TimeInterval = 0
+            var pngWriteTime: TimeInterval = 0
             let shouldLogMemory = memory.shouldLog(frame: index, totalFrames: totalFrames)
             if shouldLogMemory {
                 memory.log("before-frame", frame: index, totalFrames: totalFrames)
             }
             autoreleasepool {
+                let inputRenderStartedAt = ProcessInfo.processInfo.systemUptime
                 let source = CIImage(cvPixelBuffer: pixelBuffer)
                 // 方向修正：优先用视频轨旋转元数据；若变换不含旋转（identity、仅平移或浮点误差导致
                 // 推导为 up/down），则以静态图 EXIF 方向为准——Live Photo 的静态图与视频来自同一次
@@ -648,12 +724,17 @@ public struct VideoSegmentationPipeline {
                     input,
                     from: input.extent.integral,
                     preserving: input.colorSpace
-                ) else { return }
+                ) else {
+                    inputRenderTime = ProcessInfo.processInfo.systemUptime - inputRenderStartedAt
+                    return
+                }
+                inputRenderTime = ProcessInfo.processInfo.systemUptime - inputRenderStartedAt
 
             // 先追踪上一帧主体的大致位置。人物实例掩码随后负责精确轮廓，
             // 追踪结果用于阻止大动作时实例编号突然切换。
             trackerPrediction = nil
             trackerConfidence = 0
+            let trackerStartedAt = ProcessInfo.processInfo.systemUptime
             if let objectTracker {
                 do {
                     try sequenceHandler.perform([objectTracker], on: cgImage)
@@ -670,6 +751,7 @@ public struct VideoSegmentationPipeline {
                     LogStore.log("xdz.subject.tracker frame=\(index) failed=\(error)")
                 }
             }
+            trackerTime = ProcessInfo.processInfo.systemUptime - trackerStartedAt
 
             do {
                 var selectedInstances: IndexSet?
@@ -713,6 +795,7 @@ public struct VideoSegmentationPipeline {
                             LogStore.log("xdz.subject.render.frame=\(index) personMask=clear")
                         }
                     } else {
+                        let visionMaskStartedAt = ProcessInfo.processInfo.systemUptime
                         let personCGImage = try autoreleasepool {
                             try segmenter.segmentedImage(
                                 from: cgImage,
@@ -720,8 +803,35 @@ public struct VideoSegmentationPipeline {
                                 selectedInstances: selectedInstances
                             )
                         }
-                        if let candidateBounds = normalizedVisibleBounds(in: personCGImage),
-                           AlphaSubjectBounds.visiblePixelBounds(in: personCGImage) != nil {
+                        visionMaskTime += ProcessInfo.processInfo.systemUptime - visionMaskStartedAt
+                        let boundsStartedAt = ProcessInfo.processInfo.systemUptime
+                        // The analysis pass already measured each selected track's
+                        // normalized mask bounds for this exact frame. Reuse them
+                        // instead of rasterizing the full-resolution output mask to
+                        // a second bitmap just to repeat the same bounds calculation.
+                        let analyzedBounds: CGRect?
+                        if let analysis, let selectedSubjectIDs,
+                           analysis.frameTrackBoundingBoxes.indices.contains(currentAnalysisFrameIndex) {
+                            let frameBounds = analysis.frameTrackBoundingBoxes[currentAnalysisFrameIndex]
+                            let selectedBounds = selectedSubjectIDs.compactMap { frameBounds[$0] }
+                            analyzedBounds = selectedBounds.dropFirst().reduce(selectedBounds.first) { partial, bounds in
+                                partial?.union(bounds) ?? bounds
+                            }
+                        } else {
+                            analyzedBounds = nil
+                        }
+                        let candidateBounds = analyzedBounds ?? normalizedVisibleBounds(in: personCGImage)
+                        let hasVisibleSubject = analyzedBounds == nil
+                            ? candidateBounds != nil
+                            : hasVisibleAlpha(in: personCGImage)
+                        boundsTime += ProcessInfo.processInfo.systemUptime - boundsStartedAt
+                        if index == 0 {
+                            LogStore.log(
+                                "xdz.subject.bounds source=\(analyzedBounds == nil ? "render-mask-fallback" : "analysis-track") "
+                                    + "visible=\(hasVisibleSubject)"
+                            )
+                        }
+                        if let candidateBounds, hasVisibleSubject {
                             let isAbruptChange = previousRefinedBounds.map {
                                 let previousArea = max($0.width * $0.height, 0.0001)
                                 let candidateArea = candidateBounds.width * candidateBounds.height
@@ -813,6 +923,7 @@ public struct VideoSegmentationPipeline {
                     let source: VisionMaskSource = algorithm == .foreground
                         ? .foreground
                         : .person
+                    let visionMaskStartedAt = ProcessInfo.processInfo.systemUptime
                     let foreground = try autoreleasepool {
                         try segmenter.segmentedImage(
                             from: cgImage,
@@ -820,7 +931,17 @@ public struct VideoSegmentationPipeline {
                             selectedInstances: nil
                         )
                     }
-                    if AlphaSubjectBounds.visiblePixelBounds(in: foreground) != nil {
+                    visionMaskTime += ProcessInfo.processInfo.systemUptime - visionMaskStartedAt
+                    let boundsStartedAt = ProcessInfo.processInfo.systemUptime
+                    let hasVisibleSubject = hasVisibleAlpha(in: foreground)
+                    boundsTime += ProcessInfo.processInfo.systemUptime - boundsStartedAt
+                    if index == 0 {
+                        LogStore.log(
+                            "xdz.subject.bounds source=sampled-alpha algorithm=\(source.rawValue) "
+                                + "visible=\(hasVisibleSubject)"
+                        )
+                    }
+                    if hasVisibleSubject {
                         current = CIImage(cgImage: foreground)
                     } else if let previous = prevMaskedImage {
                         current = previous
@@ -834,6 +955,7 @@ public struct VideoSegmentationPipeline {
                 // 时域补全：与上一帧原始分割结果做并集（通道取最大）。
                 // 逐帧独立分割会偶发漏检（如腿部某帧缺失），并集让漏检帧用上一帧补全。
                 // 只与上一帧并集，不累计，避免人物移动产生拖影。
+                let compositeStartedAt = ProcessInfo.processInfo.systemUptime
                 let output: CIImage
                 if hasExplicitSubjectSelection {
                     // Vision 已选择主体时 current 是 person mask，不能再和
@@ -849,16 +971,25 @@ public struct VideoSegmentationPipeline {
                 if currentHasVisibleSubject {
                     prevMaskedImage = current
                 }
+                compositeTime = ProcessInfo.processInfo.systemUptime - compositeStartedAt
                 let frameURL = folder.appendingPathComponent(String(format: "%05d.png", index))
                 let outputSize = autoreleasepool { () -> (width: Int, height: Int)? in
+                    let outputRenderStartedAt = ProcessInfo.processInfo.systemUptime
                     guard let outCG = renderImage(
                         output,
                         from: output.extent.integral,
                         preserving: cgImage.colorSpace
-                    ),
-                          writePNG(outCG, to: frameURL) else {
+                    ) else {
+                        outputRenderTime = ProcessInfo.processInfo.systemUptime - outputRenderStartedAt
                         return nil
                     }
+                    outputRenderTime = ProcessInfo.processInfo.systemUptime - outputRenderStartedAt
+                    let pngWriteStartedAt = ProcessInfo.processInfo.systemUptime
+                    guard writePNG(outCG, to: frameURL) else {
+                        pngWriteTime = ProcessInfo.processInfo.systemUptime - pngWriteStartedAt
+                        return nil
+                    }
+                    pngWriteTime = ProcessInfo.processInfo.systemUptime - pngWriteStartedAt
                     if index == 0 {
                         LogStore.log(
                             "xdz.subject.color video source=\(colorSpaceName(cgImage.colorSpace)) "
@@ -883,14 +1014,22 @@ public struct VideoSegmentationPipeline {
                 if let prev = prevMaskedImage {
                     let frameURL = folder.appendingPathComponent(String(format: "%05d.png", index))
                     let fallbackSize = autoreleasepool { () -> (width: Int, height: Int)? in
+                        let outputRenderStartedAt = ProcessInfo.processInfo.systemUptime
                         guard let fallback = renderImage(
                             prev,
                             from: prev.extent.integral,
                             preserving: cgImage.colorSpace
-                        ),
-                              writePNG(fallback, to: frameURL) else {
+                        ) else {
+                            outputRenderTime += ProcessInfo.processInfo.systemUptime - outputRenderStartedAt
                             return nil
                         }
+                        outputRenderTime += ProcessInfo.processInfo.systemUptime - outputRenderStartedAt
+                        let pngWriteStartedAt = ProcessInfo.processInfo.systemUptime
+                        guard writePNG(fallback, to: frameURL) else {
+                            pngWriteTime += ProcessInfo.processInfo.systemUptime - pngWriteStartedAt
+                            return nil
+                        }
+                        pngWriteTime += ProcessInfo.processInfo.systemUptime - pngWriteStartedAt
                         return (fallback.width, fallback.height)
                     }
                     if let fallbackSize {
@@ -911,6 +1050,20 @@ public struct VideoSegmentationPipeline {
                 LogStore.log("xdz.subject.render.frame=\(index) visionFailed=true fallback=none")
             }
         }
+        let shouldLogTiming = timingWindow.record(
+            sampleRead: frameSampleReadTime,
+            inputRender: inputRenderTime,
+            tracker: trackerTime,
+            visionMask: visionMaskTime,
+            bounds: boundsTime,
+            compositeSetup: compositeTime,
+            outputRender: outputRenderTime,
+            pngWrite: pngWriteTime,
+            frameWall: ProcessInfo.processInfo.systemUptime - frameStartedAt
+        )
+        if shouldLogTiming {
+            timingWindow.logAndReset(reason: "15-frame-window")
+        }
         if shouldLogMemory {
             memory.log("after-frame", frame: index, totalFrames: totalFrames)
         }
@@ -930,6 +1083,7 @@ public struct VideoSegmentationPipeline {
         }
         }
 
+        timingWindow.logAndReset(reason: "final-window")
         reader.cancelReading()
         memory.log("reader-finished", frame: index, totalFrames: totalFrames)
 
@@ -1411,6 +1565,37 @@ public struct VideoSegmentationPipeline {
             width: CGFloat(maxX - minX + 1) / CGFloat(sampleSize),
             height: CGFloat(maxY - minY + 1) / CGFloat(sampleSize)
         )
+    }
+
+    /// Fast visibility check for frames whose normalized bounds were already
+    /// computed during analysis. Most masks are obvious on this small sample;
+    /// retain an exact fallback for tiny or unusually sparse subjects.
+    private func hasVisibleAlpha(in image: CGImage) -> Bool {
+        let sampleSize = 24
+        let bytesPerRow = sampleSize * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * sampleSize)
+        let rendered = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let bitmap = CGContext(
+                data: buffer.baseAddress,
+                width: sampleSize,
+                height: sampleSize,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: Self.fallbackColorSpace,
+                bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue
+                    | CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            bitmap.clear(CGRect(x: 0, y: 0, width: sampleSize, height: sampleSize))
+            bitmap.interpolationQuality = .none
+            bitmap.draw(image, in: CGRect(x: 0, y: 0, width: sampleSize, height: sampleSize))
+            return true
+        }
+        if rendered {
+            for pixelIndex in 0..<(sampleSize * sampleSize) where pixels[pixelIndex * 4 + 3] > 24 {
+                return true
+            }
+        }
+        return AlphaSubjectBounds.visiblePixelBounds(in: image) != nil
     }
 
     private func polygonMask(

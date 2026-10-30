@@ -9,10 +9,12 @@ Generated visual template artwork for the LivingFrame project. Put future genera
 
 ## Wanted poster concept
 
-- `wanted-bounty`: original user-photo bounty poster inspired by the One Piece wanted-poster format. The portrait area keeps its parchment fill and has only a small, circular transparent avatar hole with an irregular torn-paper edge; it does not reproduce a character or official logo. Sources: [ONE PIECE.com: wanted poster series and paper texture](https://one-piece.com/news/o20190708_9455/index.html) and [ONE PIECE.com: Luffy WANTED POSTER collaboration](https://one-piece.com/news/68591/index.html).
+- `wanted-bounty`: original Western bounty poster with a large rectangular transparent portrait window. The three aspect ratios adapt the poster composition while keeping the portrait window prominent.
 
-PNG art retains alpha transparency only in the small circular portrait opening; the surrounding frame remains filled with paper texture.
+## New frame concepts
 
-## Future template sizing
+- `photo-frame`: ornate antique walnut and gold photo frames with a rectangular transparent portrait opening and transparent space outside the frame.
+- `newspaper-front`: aged newspaper front pages with a rectangular transparent portrait opening, letterpress headlines and editorial columns.
+- `wizarding-academy`: original midnight-blue and gold celestial portrait frames with stars, moon phases and alchemical ornament. The design uses generic magical motifs rather than franchise logos or characters.
 
-For future generated templates, preserve the material and design inside the portrait frame. Cut out only a small circular opening for the user's avatar, with a naturally irregular/torn edge that matches the material (such as paper). Do not leave a large rectangular or full-body-sized blank area. Make all templates in `16x9`, `1x1`, and `3x4` ratios, adapting the composition while keeping the avatar hole compact and centered in its frame.
+Each family is provided in `16x9`, `1x1`, and `3x4` ratios. Keep the portrait window rectangular and truly transparent, and adapt its placement and surrounding composition to the aspect ratio.

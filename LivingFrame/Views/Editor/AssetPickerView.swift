@@ -1309,11 +1309,15 @@ struct AnimatedClipPreview: View {
     }
 
     private func removePreRenderedPreview() {
-        if let preRenderedPreviewDirectory {
-            try? FileManager.default.removeItem(at: preRenderedPreviewDirectory)
-        }
+        let directoryToRemove = preRenderedPreviewDirectory
         preRenderedPreviewDirectory = nil
         preRenderedSourcePositions = []
+        guard let directoryToRemove else { return }
+        // The preview folder may contain one PNG per frame. Remove it off the
+        // main actor so dismissing the detail sheet does not stall its animation.
+        Task.detached(priority: .utility) {
+            try? FileManager.default.removeItem(at: directoryToRemove)
+        }
     }
 
     private static func previewSourcePositions(

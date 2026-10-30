@@ -123,7 +123,7 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         case .fruit:
             key = "让水果图案以轻快动画点亮画面。"
         case .classicTemplate:
-            key = "带有透明头像孔的经典影视风格画面模板。"
+            key = "带有矩形透明头像窗的风格化画面模板。"
         case .aiSticker:
             switch id {
             case "sticker-ai-cap-crayon-3d":
@@ -665,6 +665,51 @@ public struct DecorationRenderer {
         StickerDefinition(
             id: "sticker-template-wanted-bounty-3x4", name: "Wanted Poster · 3:4", category: .classicTemplate,
             resourceName: "wanted-bounty-3x4", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-photo-frame-16x9", name: "Photo Frame · 16:9", category: .classicTemplate,
+            resourceName: "photo-frame-16x9", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-photo-frame-1x1", name: "Photo Frame · 1:1", category: .classicTemplate,
+            resourceName: "photo-frame-1x1", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-photo-frame-3x4", name: "Photo Frame · 3:4", category: .classicTemplate,
+            resourceName: "photo-frame-3x4", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-newspaper-front-16x9", name: "Newspaper · 16:9", category: .classicTemplate,
+            resourceName: "newspaper-front-16x9", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-newspaper-front-1x1", name: "Newspaper · 1:1", category: .classicTemplate,
+            resourceName: "newspaper-front-1x1", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-newspaper-front-3x4", name: "Newspaper · 3:4", category: .classicTemplate,
+            resourceName: "newspaper-front-3x4", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-wizarding-academy-16x9", name: "Wizarding Academy · 16:9", category: .classicTemplate,
+            resourceName: "wizarding-academy-16x9", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-wizarding-academy-1x1", name: "Wizarding Academy · 1:1", category: .classicTemplate,
+            resourceName: "wizarding-academy-1x1", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-wizarding-academy-3x4", name: "Wizarding Academy · 3:4", category: .classicTemplate,
+            resourceName: "wizarding-academy-3x4", resourceExtension: "png",
             isFrameSequence: false, frameCount: 1
         ),
         StickerDefinition(

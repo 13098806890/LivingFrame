@@ -117,7 +117,16 @@ final class StickerCatalogTests: XCTestCase {
             "sticker-template-cartoon-iris-3x4",
             "sticker-template-wanted-bounty-16x9",
             "sticker-template-wanted-bounty-1x1",
-            "sticker-template-wanted-bounty-3x4"
+            "sticker-template-wanted-bounty-3x4",
+            "sticker-template-photo-frame-16x9",
+            "sticker-template-photo-frame-1x1",
+            "sticker-template-photo-frame-3x4",
+            "sticker-template-newspaper-front-16x9",
+            "sticker-template-newspaper-front-1x1",
+            "sticker-template-newspaper-front-3x4",
+            "sticker-template-wizarding-academy-16x9",
+            "sticker-template-wizarding-academy-1x1",
+            "sticker-template-wizarding-academy-3x4"
         ])
         XCTAssertTrue(templates.allSatisfy { $0.frameCount == 1 && $0.resourceExtension == "png" })
 

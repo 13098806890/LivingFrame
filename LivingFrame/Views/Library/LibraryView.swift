@@ -155,10 +155,14 @@ struct LibraryView: View {
 
     private final class PendingClipBatchPreview: Identifiable {
         let id = UUID()
-        let clips: [SegmentedClip]
+        private(set) var clips: [SegmentedClip]
 
         init(clips: [SegmentedClip]) {
             self.clips = clips
+        }
+
+        func releaseClips() {
+            clips.removeAll(keepingCapacity: false)
         }
     }
 
@@ -263,7 +267,22 @@ struct LibraryView: View {
             } message: {
                 Text(conversionErrorMessage ?? "")
             }
-            .sheet(item: $activeWorkflow) { workflow in
+            .sheet(item: $activeWorkflow, onDismiss: {
+                // Keep a successful batch preview mounted throughout the sheet's
+                // closing animation. Clearing it earlier swaps the sheet content
+                // to the workflow placeholder on the same dismiss transaction.
+                // Release the clips in place, avoiding another root-view state
+                // invalidation after the sheet has disappeared.
+                LogStore.log("xdz.workflow.sheet.dismissed")
+                pendingClipBatchPreview?.releaseClips()
+                if let preview = pendingConversionPreview {
+                    LogStore.log(
+                        "xdz.workflow.conversion.cleanup prepared=\(preview.prepared.count)"
+                    )
+                    pendingConversionPreview = nil
+                    preview.prepared.forEach { MediaConversionService().discard($0) }
+                }
+            }) { workflow in
                 mediaWorkflowCover(for: workflow)
                     .presentationDetents([.large])
                     .interactiveDismissDisabled()
@@ -392,6 +411,9 @@ struct LibraryView: View {
 #endif
             }
             .onDisappear {
+                LogStore.log(
+                    "xdz.workflow.owner.disappear active=\(activeWorkflow.map { String(describing: $0) } ?? "none")"
+                )
                 if activeWorkflow == nil {
                     importTask?.cancel()
                     if activeConversionPreview == nil {
@@ -406,6 +428,7 @@ struct LibraryView: View {
     // MARK: - 素材入口
 
     private func beginWorkflow(_ workflow: MediaWorkflow) {
+        pendingClipBatchPreview = nil
         workflowPickerItems.removeAll()
         switch workflow {
         case .dynamicCutout, .staticSticker:
@@ -494,9 +517,15 @@ struct LibraryView: View {
                 ClipBatchPreviewView(
                     clips: request.clips,
                     onClose: {
-                        pendingClipBatchPreview = nil
+                        LogStore.log(
+                            "xdz.workflow.preview.close clips=\(request.clips.count) partialFailure=\(loadErrorMessage != nil)"
+                        )
                         if loadErrorMessage == nil {
                             activeWorkflow = nil
+                        } else {
+                            // For partial failures the sheet stays open to show the
+                            // retry/error state, so switch away from the preview now.
+                            pendingClipBatchPreview = nil
                         }
                     }
                 )
@@ -963,8 +992,6 @@ struct LibraryView: View {
             // The preview close handler owns dismissal; this also covers a
             // cancellation that arrives before the preview becomes visible.
             activeConversionPreview = nil
-            pendingConversionPreview = nil
-            preparedResults.forEach { MediaConversionService().discard($0) }
 
             isConverting = false
             isDownloading = false
@@ -973,6 +1000,11 @@ struct LibraryView: View {
             let successCount = batchResult.0.count
 
             if failureCount > 0 {
+                // This path keeps the workflow sheet open to present the partial
+                // failure state, so the preview is no longer visible and its
+                // temporary files can be released immediately.
+                pendingConversionPreview = nil
+                preparedResults.forEach { MediaConversionService().discard($0) }
                 let failureDetail = [
                     firstFailure ?? NSLocalizedString("请重新选择素材后重试。", comment: "Conversion retry suggestion"),
                     firstWarning
@@ -5467,11 +5499,24 @@ private struct ClipBatchPreviewView: View {
             }
         }
         .onChange(of: visibleClips.count) { _, count in
+            LogStore.log("xdz.workflow.preview.items count=\(count) index=\(currentIndex)")
             if count == 0 {
                 onClose()
             } else {
                 currentIndex = min(currentIndex, count - 1)
             }
+        }
+        .onAppear {
+            LogStore.log(
+                "xdz.workflow.preview.appear clips=\(visibleClips.count) "
+                    + "current=\(visibleClips.indices.contains(currentIndex) ? visibleClips[currentIndex].id : "none")"
+            )
+        }
+        .onDisappear {
+            LogStore.log(
+                "xdz.workflow.preview.disappear clips=\(visibleClips.count) "
+                    + "current=\(visibleClips.indices.contains(currentIndex) ? visibleClips[currentIndex].id : "none")"
+            )
         }
     }
 
@@ -5576,6 +5621,18 @@ private struct ConversionBatchPreviewView: View {
                 .id(prepared[currentIndex].id)
                 .simultaneousGesture(swipeGesture)
             }
+        }
+        .onAppear {
+            LogStore.log(
+                "xdz.workflow.conversionPreview.appear prepared=\(prepared.count) "
+                    + "index=\(currentIndex) saved=\(savedIDs.count)"
+            )
+        }
+        .onDisappear {
+            LogStore.log(
+                "xdz.workflow.conversionPreview.disappear prepared=\(prepared.count) "
+                    + "index=\(currentIndex) saved=\(savedIDs.count)"
+            )
         }
     }
 

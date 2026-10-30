@@ -654,6 +654,10 @@ struct EditorView: View {
             .shadow(color: Color.black.opacity(0.08), radius: 14, x: 0, y: 6)
     }
 
+    private var hasEditableSelection: Bool {
+        !appState.selectedElementIDs.isEmpty || appState.selectedAudioID != nil
+    }
+
     private var transportBar: some View {
         ZStack {
             HStack {
@@ -669,6 +673,30 @@ struct EditorView: View {
                     .foregroundStyle(appState.canUndo ? LF.textPrimary : LF.textSecondary.opacity(0.35))
                     .disabled(!appState.canUndo)
                     .accessibilityLabel("撤销")
+
+                    Button {
+                        showDeleteSelectionConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 30, height: 30)
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .foregroundStyle(hasEditableSelection ? LF.destructive : LF.textSecondary.opacity(0.35))
+                    .disabled(!hasEditableSelection || appState.isCropping)
+                    .accessibilityLabel("删除素材")
+
+                    Button {
+                        requestInspectorForSelection()
+                    } label: {
+                        Image(systemName: "pencil.line")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 30, height: 30)
+                    }
+                    .lfAnimatedPlainButtonStyle()
+                    .foregroundStyle(hasEditableSelection ? LF.textPrimary : LF.textSecondary.opacity(0.35))
+                    .disabled(!hasEditableSelection || appState.isCropping)
+                    .accessibilityLabel("编辑素材")
 
                     Button {
                         appState.redo()
