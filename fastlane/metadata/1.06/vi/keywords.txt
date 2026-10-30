@@ -1,1 +1,1 @@
-ảnh động,Live Photo,chỉnh sửa video,video trong suốt,tách nền,ghép ảnh,hoạt ảnh
+video trong suốt,nhãn dán,ghép ảnh,hoạt hình,khung hình,ảnh động,cắt ghép video

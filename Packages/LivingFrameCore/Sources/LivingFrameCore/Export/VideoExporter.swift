@@ -208,35 +208,32 @@ public struct VideoExporter {
                 memory.log("before-buffer", frame: index + 1, totalFrames: frameCount)
             }
             let renderStart = Date()
-            let renderOK = try autoreleasepool { () throws -> Bool in
-                guard let pool = adaptor.pixelBufferPool else {
-                    LogStore.log("VideoExporter: pixelBufferPool is nil index=\(index) status=\(writer.status.rawValue)")
-                    throw ExportError.renderFailed
-                }
-                var pixelBuffer: CVPixelBuffer?
-                let createStatus = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
-                guard createStatus == kCVReturnSuccess, let buffer = pixelBuffer else {
-                    LogStore.log("VideoExporter: pixel buffer allocation failed index=\(index) status=\(createStatus)")
-                    throw ExportError.renderFailed
-                }
-                if format == .hevcAlpha {
-                    prepareAlphaPixelBuffer(buffer)
-                }
-                let rendered = renderer.render(
-                    composition,
-                    at: Double(index) / fps,
-                    into: buffer,
-                    outputSize: renderSize
-                )
-                let time = CMTime(seconds: Double(index) / fps, preferredTimescale: 600)
-                guard adaptor.append(buffer, withPresentationTime: time) else {
-                    LogStore.log("VideoExporter: append failed index=\(index)/\(frameCount) status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
-                    throw ExportError.renderFailed
-                }
-                pixelBuffer = nil
-                return rendered
+            guard let pool = adaptor.pixelBufferPool else {
+                LogStore.log("VideoExporter: pixelBufferPool is nil index=\(index) status=\(writer.status.rawValue)")
+                throw ExportError.renderFailed
             }
-            if !renderOK && index < 3 {
+            var pixelBuffer: CVPixelBuffer?
+            let createStatus = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
+            guard createStatus == kCVReturnSuccess, let buffer = pixelBuffer else {
+                LogStore.log("VideoExporter: pixel buffer allocation failed index=\(index) status=\(createStatus)")
+                throw ExportError.renderFailed
+            }
+            if format == .hevcAlpha {
+                prepareAlphaPixelBuffer(buffer)
+            }
+            let rendered = await renderer.renderAsync(
+                composition,
+                at: Double(index) / fps,
+                into: buffer,
+                outputSize: renderSize
+            )
+            let time = CMTime(seconds: Double(index) / fps, preferredTimescale: 600)
+            guard adaptor.append(buffer, withPresentationTime: time) else {
+                LogStore.log("VideoExporter: append failed index=\(index)/\(frameCount) status=\(writer.status.rawValue) error=\(String(describing: writer.error))")
+                throw ExportError.renderFailed
+            }
+            pixelBuffer = nil
+            if !rendered && index < 3 {
                 LogStore.log("VideoExporter: render(into:) 失败 index=\(index)")
             }
             let renderCost = Date().timeIntervalSince(renderStart)

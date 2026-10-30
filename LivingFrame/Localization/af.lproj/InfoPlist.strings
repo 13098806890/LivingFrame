@@ -1,0 +1,4 @@
+/* Afrikaans */
+"CFBundleDisplayName" = "GIFBloom";
+"NSPhotoLibraryUsageDescription" = "Kies 'n video of Live Photo om geanimeerde foto's te skep.";
+"NSPhotoLibraryAddUsageDescription" = "Stoor die animasies en video's wat jy skep in Foto's.";

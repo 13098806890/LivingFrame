@@ -12,9 +12,9 @@ GIFBloom 是一款用來製作 GIF 動態貼圖和影片去背的工具。將影
 GIFBloom 是用來創作和編輯個人動態照片作品的工具。
 
 
-你可以選擇保留一個或多個主體；需要更精確時，使用自由圈選限定大致範圍，再於擷取前裁剪素材片段。擷取後，可在時間軸上分別調整每個動態剪影的位置、大小、旋轉、圖層順序和播放時間。GIFBloom Pro 支援最長 10 秒的擷取，並提供每週訂閱、年度訂閱和永久買斷選項。
+你可以選擇保留一個或多個主體；需要更精確時，使用自由圈選限定大致範圍，再於擷取前裁剪素材片段。擷取後，可在時間軸上分別調整每個動態剪影的位置、大小、旋轉、圖層順序和播放時間。GIFBloom Pro 支援最長 15 秒的擷取，並提供每週訂閱、年度訂閱和永久買斷選項。
 
-支援將 GIF 和影片轉換為 Live Photo，也可以將 Live Photo 和 GIF 匯出為一般影片。你可以製作帶漫畫邊緣效果的動態剪影或靜態貼圖；從較長影片建立 Live Photo 時，還可以選擇 3 秒片段。
+支援將 GIF 和影片轉換為 Live Photo，也可將 Live Photo 和 GIF 匯出為一般影片。還可製作帶漫畫邊緣效果的動態剪影或靜態貼圖。長影片可製作最長 15 秒的 Live Photo（免費版最長 5 秒，GIFBloom Pro 最長 15 秒）。
 
 使用條款: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 隱私權政策: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=zh-Hant

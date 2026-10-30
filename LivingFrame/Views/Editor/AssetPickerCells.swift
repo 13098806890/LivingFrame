@@ -7,13 +7,14 @@ struct BackgroundAssetCell: View {
     let isSelected: Bool
     let onSelect: () -> Void
     var showsSelection = true
+    @State private var previewFrame: CGImage?
 
     var body: some View {
         VStack(spacing: 4) {
             ZStack(alignment: .topTrailing) {
                 Group {
-                    if let image = BackgroundStore.shared.loadFrame(named: item.id, at: 0) {
-                        Image(decorative: image, scale: 1)
+                    if let previewFrame {
+                        Image(decorative: previewFrame, scale: 1)
                             .resizable()
                             .scaledToFill()
                     } else {
@@ -47,11 +48,20 @@ struct BackgroundAssetCell: View {
                     onSelect()
                 }
             }
+            .task(id: item.id) {
+                let frame = await BackgroundStore.shared.loadPreviewFrameAsync(
+                    named: item.id,
+                    at: 0,
+                    maxPixelSize: 360
+                )
+                guard !Task.isCancelled else { return }
+                previewFrame = frame
+            }
 
             HStack(spacing: 4) {
                 Text(NSLocalizedString(item.isAnimated ? "动态素材" : "静态素材", comment: "Media type"))
                 if item.isAnimated {
-                    Text("\(String(format: "%.1fs", item.duration))")
+                    Text("\(String.localizedStringWithFormat("%.1fs", item.duration))")
                         .foregroundStyle(LF.textSecondary)
                 }
             }

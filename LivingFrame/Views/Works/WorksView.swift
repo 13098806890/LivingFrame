@@ -66,7 +66,7 @@ struct WorksView: View {
                                     } label: {
                                         HStack(spacing: 4) {
                                             Text("查看全部")
-                                            Image(systemName: "chevron.right")
+                                            Image(systemName: "chevron.forward")
                                                 .font(.caption2.weight(.semibold))
                                         }
                                         .font(.subheadline.weight(.medium))

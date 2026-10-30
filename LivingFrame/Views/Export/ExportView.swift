@@ -1,5 +1,6 @@
 import LivingFrameCore
 import Photos
+import StoreKit
 import SwiftUI
 import UIKit
 
@@ -19,6 +20,7 @@ struct ExportView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var purchaseManager: PurchaseManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.requestReview) private var requestReview
 
     @State private var format: ExportFormat = .gif
     @State private var fps: Double = 15
@@ -41,6 +43,7 @@ struct ExportView: View {
     @State private var estimatedSizeBytes: Int64?
     @State private var isEstimatingSize = false
     @State private var previewWatermark: ExportWatermark?
+    @State private var reviewPromptTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -222,6 +225,7 @@ struct ExportView: View {
         }
         .onDisappear {
             exportTask?.cancel()
+            reviewPromptTask?.cancel()
         }
         .task(id: exportEstimateKey) {
             let requestKey = exportEstimateKey
@@ -281,7 +285,7 @@ struct ExportView: View {
                 if appState.isExporting {
                     ProgressView(value: appState.exportProgress)
                         .tint(LF.gold)
-                    Text(String(format: "%d%%", Int(appState.exportProgress * 100)))
+                    Text(String.localizedStringWithFormat("%d%%", Int(appState.exportProgress * 100)))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(LF.textSecondary)
                 } else if isSavingToLibrary {
@@ -565,6 +569,7 @@ struct ExportView: View {
                 exportedChatSticker = isChatSticker
                 if selectedFormat == .livePhoto {
                     savedToLibrary = true
+                    scheduleReviewRequestWhenExportFlowIsIdle()
                 } else {
                     saveToLibrary(url: url)
                 }
@@ -581,6 +586,35 @@ struct ExportView: View {
                 )
                 exportError = error.localizedDescription
             }
+        }
+    }
+
+    private func scheduleReviewRequestWhenExportFlowIsIdle() {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        guard !arguments.contains("-UIAuditSeedProject"),
+              !arguments.contains("-UIAuditSeedAnimatedCollage") else {
+            return
+        }
+        #endif
+
+        reviewPromptTask?.cancel()
+        reviewPromptTask = Task { @MainActor in
+            while isSavingToLibrary {
+                do {
+                    try await Task.sleep(for: .milliseconds(250))
+                } catch {
+                    return
+                }
+            }
+
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            requestReview()
         }
     }
 
@@ -638,7 +672,7 @@ struct ExportView: View {
 
     private func fpsTitle(_ fps: Double) -> String {
         if abs(fps.rounded() - fps) < 0.01 { return String(Int(fps.rounded())) }
-        return String(format: "%.1f", fps)
+        return String.localizedStringWithFormat("%.1f", fps)
     }
 
     private var exportedFileSize: String? {
@@ -673,6 +707,7 @@ struct ExportView: View {
                     }
                 }
                 savedToLibrary = true
+                scheduleReviewRequestWhenExportFlowIsIdle()
             } catch {
                 librarySaveError = error.localizedDescription
             }
@@ -761,10 +796,8 @@ private struct ExportFramePreview: View {
             let maxPixel = maximumRenderSize
             let previewWatermark = watermark
             let rendered = await Task.detached(priority: .userInitiated) {
-                autoreleasepool {
-                    CompositionRenderer(frameMaxPixelSize: maxPixel, exportWatermark: previewWatermark)
-                        .render(snapshot, at: frameTime)
-                }
+                await CompositionRenderer(frameMaxPixelSize: maxPixel, exportWatermark: previewWatermark)
+                    .renderAsync(snapshot, at: frameTime)
             }.value
             guard !Task.isCancelled else { return }
             image = rendered.map(UIImage.init(cgImage:))

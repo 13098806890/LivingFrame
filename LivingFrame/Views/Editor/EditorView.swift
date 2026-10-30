@@ -537,10 +537,12 @@ struct EditorView: View {
                 Text("先添加第一份素材")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(LF.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("选择剪影素材或相册内容，添加后就可以编辑和导出。")
                     .font(.caption)
                     .foregroundStyle(LF.textSecondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 Button {
                     showAssetPicker = true
                 } label: {
@@ -808,7 +810,7 @@ struct EditorView: View {
     @ViewBuilder
     private func compactEditorToolbarContent(availableWidth: CGFloat) -> some View {
         if availableWidth >= minimumEditorToolbarContentWidth {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 ForEach(EditorTool.visibleCases) { tool in
                     editorToolButton(tool, fillsAvailableWidth: true)
                 }
@@ -826,8 +828,8 @@ struct EditorView: View {
 
     private var minimumEditorToolbarContentWidth: CGFloat {
         let toolCount = EditorTool.visibleCases.count
-        return CGFloat(toolCount) * 52
-            + CGFloat(max(toolCount - 1, 0)) * 14
+        return CGFloat(toolCount) * 54
+            + CGFloat(max(toolCount - 1, 0)) * 4
     }
 
     private func editorToolButton(
@@ -844,9 +846,14 @@ struct EditorView: View {
                     .frame(width: 28, height: 28)
                 Text(tool.title)
                     .font(.caption2)
+                    .lineLimit(2)
+                    .minimumScaleFactor(fillsAvailableWidth ? 0.8 : 1)
             }
             .foregroundStyle(isTimelineActive ? LF.selectionStroke : LF.textPrimary)
-            .frame(maxWidth: fillsAvailableWidth ? .infinity : 52)
+            .frame(
+                minWidth: fillsAvailableWidth ? 0 : 68,
+                maxWidth: fillsAvailableWidth ? .infinity : 68
+            )
             .background(
                 isTimelineActive ? LF.selectionFill.opacity(0.78) : Color.clear,
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -1612,7 +1619,7 @@ private struct FaceStickerTargetPickerSheet: View {
 
                                         Spacer(minLength: 0)
 
-                                        Image(systemName: "chevron.right")
+                                        Image(systemName: "chevron.forward")
                                             .font(.caption.weight(.semibold))
                                             .foregroundStyle(LF.textSecondary)
                                     }

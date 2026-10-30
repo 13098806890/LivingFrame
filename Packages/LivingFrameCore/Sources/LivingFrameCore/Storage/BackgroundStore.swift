@@ -48,7 +48,19 @@ public struct BackgroundMediaItem: Identifiable, Equatable, Sendable {
 /// 渲染器只依赖这组读取能力，不直接绑定具体的磁盘存储实现。
 public protocol BackgroundMediaProviding {
     func loadFrame(named name: String, at time: TimeInterval) -> CGImage?
+    func loadFrameAsync(named name: String, at time: TimeInterval) async -> CGImage?
     func media(named name: String) -> BackgroundMediaItem?
+    func mediaAsync(named name: String) async -> BackgroundMediaItem?
+}
+
+public extension BackgroundMediaProviding {
+    func loadFrameAsync(named name: String, at time: TimeInterval) async -> CGImage? {
+        loadFrame(named: name, at: time)
+    }
+
+    func mediaAsync(named name: String) async -> BackgroundMediaItem? {
+        media(named: name)
+    }
 }
 
 /// 背景图片存储：用户相册图片与 App 预置图片统一存于 Documents/Library/Backgrounds/
@@ -56,28 +68,8 @@ public struct BackgroundStore {
     public static let shared = BackgroundStore()
     public static let userMediaRetentionLimit = 20
 
-    private final class VideoFrameSource: NSObject {
-        private final class GeneratedFrameBox: @unchecked Sendable {
-            private let lock = NSLock()
-            let semaphore = DispatchSemaphore(value: 0)
-            private var image: CGImage?
-
-            func set(_ image: CGImage?) {
-                lock.lock()
-                self.image = image
-                lock.unlock()
-                semaphore.signal()
-            }
-
-            func get() -> CGImage? {
-                lock.lock()
-                defer { lock.unlock() }
-                return image
-            }
-        }
-
+    private actor VideoFrameSource {
         let generator: AVAssetImageGenerator
-        private let lock = NSLock()
 
         init(url: URL) {
             let asset = AVURLAsset(url: url)
@@ -88,15 +80,12 @@ public struct BackgroundStore {
             self.generator = generator
         }
 
-        func copyFrame(at time: CMTime) -> CGImage? {
-            lock.lock()
-            defer { lock.unlock() }
-            let result = GeneratedFrameBox()
-            generator.generateCGImageAsynchronously(for: time) { image, _, _ in
-                result.set(image)
+        func copyFrame(at time: CMTime) async -> CGImage? {
+            do {
+                return try await generator.image(at: time).image
+            } catch {
+                return nil
             }
-            result.semaphore.wait()
-            return result.get()
         }
     }
 
@@ -330,7 +319,12 @@ public struct BackgroundStore {
             return cached
         }
         let url = mediaURL(named: name)
-        if isVideo(url: url) { return loadVideoFrame(named: name, url: url, at: time) }
+        // Video decoding is asynchronous. Synchronous render callers may use a
+        // cached frame, but must never block a high-QoS thread on AVFoundation.
+        if isVideo(url: url) {
+            let frameIndex = Int(((time.isFinite ? max(time, 0) : 0) * 30).rounded(.down))
+            return Self.frameCache.object(forKey: "\(name)-video-\(frameIndex)" as NSString)
+        }
         guard let source = imageSource(named: name) else { return nil }
         let count = max(CGImageSourceGetCount(source), 1)
         guard count > 1 else { return loadImage(named: name) }
@@ -354,6 +348,14 @@ public struct BackgroundStore {
         return oriented
     }
 
+    public func loadFrameAsync(named name: String, at time: TimeInterval) async -> CGImage? {
+        let key = name as NSString
+        if let cached = Self.imageCache.object(forKey: key) { return cached }
+        let url = mediaURL(named: name)
+        guard isVideo(url: url) else { return loadFrame(named: name, at: time) }
+        return await loadVideoFrame(named: name, url: url, at: time)
+    }
+
     /// 编辑器预览专用的低分辨率帧。导出仍使用 loadFrame 的原始分辨率，
     /// 拼接页面只保留足够屏幕显示的像素，避免多张大图同时参与 SwiftUI 合成。
     public func loadPreviewFrame(
@@ -367,6 +369,24 @@ public struct BackgroundStore {
         let key = "\(name)-preview-\(timeKey)-\(pixelSize)" as NSString
         if let cached = Self.previewFrameCache.object(forKey: key) { return cached }
         guard let frame = loadFrame(named: name, at: boundedTime) else { return nil }
+        return cachePreviewFrame(frame, for: key, pixelSize: pixelSize)
+    }
+
+    public func loadPreviewFrameAsync(
+        named name: String,
+        at time: TimeInterval,
+        maxPixelSize: Int = 720
+    ) async -> CGImage? {
+        let pixelSize = max(maxPixelSize, 1)
+        let boundedTime = time.isFinite ? max(time, 0) : 0
+        let timeKey = Int((boundedTime * 60).rounded(.down))
+        let key = "\(name)-preview-\(timeKey)-\(pixelSize)" as NSString
+        if let cached = Self.previewFrameCache.object(forKey: key) { return cached }
+        guard let frame = await loadFrameAsync(named: name, at: boundedTime) else { return nil }
+        return cachePreviewFrame(frame, for: key, pixelSize: pixelSize)
+    }
+
+    private func cachePreviewFrame(_ frame: CGImage, for key: NSString, pixelSize: Int) -> CGImage {
         let longestEdge = max(frame.width, frame.height)
         guard longestEdge > pixelSize else {
             Self.previewFrameCache.setObject(frame, forKey: key, cost: imageCost(frame))
@@ -404,6 +424,11 @@ public struct BackgroundStore {
         // 避免在同步渲染路径上阻塞等待 AVAsset 的异步属性加载。
         guard !isVideo(url: url) else { return nil }
         return imageMetadataItem(for: url, id: name)
+    }
+
+    public func mediaAsync(named name: String) async -> BackgroundMediaItem? {
+        if let cached = Self.cachedMetadata(for: name) { return cached }
+        return await userMedia(named: name)
     }
 
     private func metadataItem(for url: URL, id: String) async -> BackgroundMediaItem? {
@@ -504,7 +529,7 @@ public struct BackgroundStore {
         return Self.orientationContext.createCGImage(oriented, from: oriented.extent) ?? image
     }
 
-    private func loadVideoFrame(named name: String, url: URL, at time: TimeInterval) -> CGImage? {
+    private func loadVideoFrame(named name: String, url: URL, at time: TimeInterval) async -> CGImage? {
         let sourceKey = url.path as NSString
         let source: VideoFrameSource
         if let cached = Self.videoSourceCache.object(forKey: sourceKey) {
@@ -518,7 +543,7 @@ public struct BackgroundStore {
         let frameIndex = Int((bounded * 30).rounded(.down))
         let key = "\(name)-video-\(frameIndex)" as NSString
         if let cached = Self.frameCache.object(forKey: key) { return cached }
-        guard let frame = source.copyFrame(
+        guard let frame = await source.copyFrame(
             at: CMTime(seconds: bounded, preferredTimescale: 600)
         ) else { return nil }
         Self.frameCache.setObject(frame, forKey: key, cost: imageCost(frame))

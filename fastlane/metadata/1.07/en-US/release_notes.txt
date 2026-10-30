@@ -1,3 +1,4 @@
 • Cutout previews stay sharp with Outline, Comic, and Smooth styles; the Comic border is slimmer.
 • Transparent GIF export now favors higher resolution when effects increase file size.
-Converted Live Photos and videos now appear in Recently Added and can be filtered, played, and deleted in All Assets.
+• Converted Live Photos and videos now appear in Recently Added and can be filtered, played, and deleted in All Assets.
+• Create Live Photos up to 15 seconds from long videos (5 seconds free; 15 seconds with GIFBloom Pro).

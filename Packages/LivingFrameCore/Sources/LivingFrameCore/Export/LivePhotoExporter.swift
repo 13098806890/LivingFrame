@@ -204,6 +204,8 @@ public struct LivePhotoExporter {
             if shouldLogMemory {
                 memory.log("before-buffer", frame: index + 1, totalFrames: frameCount)
             }
+            let source = await renderer.renderCIImageAsync(composition, at: Double(index) / composition.fps)
+                ?? CIImage.clear.cropped(to: renderRect)
             let generatedCover = try autoreleasepool { () throws -> Data? in
                 if index == 0 {
                     LogStore.log("xdz.livephoto.exporter frame.first.begin")
@@ -216,8 +218,6 @@ public struct LivePhotoExporter {
                     throw ExportError.renderFailed
                 }
                 // Live Photo 无透明通道：clear 背景填充为白色，保证不透明
-                let source = renderer.renderCIImage(composition, at: Double(index) / composition.fps)
-                    ?? CIImage.clear.cropped(to: renderRect)
                 // CIImage keeps its original canvas coordinates after cropping. The
                 // writer buffers use the cropped output dimensions, so translate the
                 // selected area to a zero-origin output before rendering both frames

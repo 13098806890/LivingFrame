@@ -244,6 +244,9 @@ struct SettingsView: View {
                                 .padding(.vertical, 14)
 
                             VStack(spacing: 0) {
+                                aboutLink("在 App Store 评分与评价", icon: "star", destination: GIFBloomStoreLinks.appStoreReview)
+                                    .accessibilityIdentifier("settings-rate-app")
+                                settingsDivider
                                 aboutLink("隐私政策", icon: "hand.raised", destination: GIFBloomStoreLinks.privacyPolicy)
                                 settingsDivider
                                 aboutLink("支持", icon: "questionmark.circle", destination: GIFBloomStoreLinks.support)
@@ -371,7 +374,7 @@ struct SettingsView: View {
                 Label(title, systemImage: icon)
                     .foregroundStyle(LF.textPrimary)
                 Spacer()
-                Image(systemName: "chevron.right")
+                Image(systemName: "chevron.forward")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(LF.textSecondary)
             }

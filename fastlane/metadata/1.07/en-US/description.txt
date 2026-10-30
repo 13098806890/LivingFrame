@@ -12,9 +12,9 @@ Cutout generation, composition, and export happen on your device. No account is 
 Create animated photos, layered GIFs, and transparent video clips from your own media, then save them to Photos or share them.
 
 
-Choose one person or several people to keep, draw a freeform selection when you need more control, and trim the source range before extraction. Then fine-tune each moving cutout on the timeline, including its position, scale, rotation, layer order, and timing. GIFBloom Pro supports extraction up to 10 seconds and is available with weekly, annual, or lifetime purchase options.
+Choose one person or several people to keep, draw a freeform selection when you need more control, and trim the source range before extraction. Then fine-tune each moving cutout on the timeline, including its position, scale, rotation, layer order, and timing. GIFBloom Pro supports extraction up to 15 seconds and is available with weekly, annual, or lifetime purchase options.
 
-Convert GIFs and videos to Live Photos, or export Live Photos and GIFs as standard videos. Create animated cutouts or static stickers with comic-style borders, and choose a 3-second segment when making a Live Photo from a longer video.
+Convert GIFs and videos to Live Photos, or export Live Photos and GIFs as standard videos. Create animated cutouts or static stickers with comic-style borders. Turn long videos into Live Photos up to 15 seconds long (up to 5 seconds free; up to 15 seconds with GIFBloom Pro).
 
 Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 Privacy Policy: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=en

@@ -8,6 +8,7 @@ enum GIFBloomStoreLinks {
     static var privacyPolicy: URL { localizedPage("privacy-policy.html") }
     static var support: URL { localizedPage("support.html") }
     static var termsOfUse: URL { URL(string: standardEULA)! }
+    static var appStoreReview: URL { URL(string: "https://apps.apple.com/app/id6804921680?action=write-review")! }
 
     private static func localizedPage(_ page: String) -> URL {
         URL(string: "\(siteRoot)\(page)?lang=\(siteLanguageCode)")!

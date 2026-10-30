@@ -32,6 +32,7 @@
 "导出成功" = "書き出し完了";
 "存到相册" = "写真に保存";
 "已存入相册" = "写真に保存しました";
+"已保存到相册" = "写真に保存しました";
 "工程信息" = "プロジェクト情報";
 "取消" = "キャンセル";
 "说明" = "説明";
@@ -45,7 +46,7 @@
 "我的动态照片" = "マイ動く写真";
 "还没有可导出的工程" = "書き出せるプロジェクトがありません";
 "GIF（通用）" = "GIF";
-"透明视频（HEVC-alpha）" = "動画 (HEVC)";
+"透明视频（HEVC-alpha）" = "透明ビデオ (HEVC-alpha)";
 "普通视频（H.264）" = "動画 (H.264)";
 "兼容性最广，适合分享，透明边缘为硬边" = "互換性が最も高く共有向き。透明部分の縁はハードエッジ";
 "保留半透明边缘，体积小，适合再次合成" = "半透明の縁を保持しサイズも小さく、再合成に最適";
@@ -176,6 +177,7 @@
 "添加素材" = "素材を追加";
 "正在导入素材" = "素材を読み込み中";
 "选择视频 / Live Photo / 照片" = "動画 / Live Photo / 写真を選択";
+"选择视频或 Live Photo" = "ビデオまたは Live Photo を選択してください";
 "重做" = "やり直す";
 "重置" = "リセット";
 "锯齿" = "ギザギザ";
@@ -242,7 +244,6 @@
 "%1$lld 个素材" = "%1$lld素材";
 "%1$lld 张 / %2$.2f 秒" = "%1$lld 枚 / %2$.2f 秒";
 "%1$lld×%2$lld · %3$lld fps · %4$lld 帧" = "%1$lld×%2$lld・%3$lld fps・%4$lldフレーム";
-"15 秒" = "15秒";
 "10 秒" = "10秒";
 "16:9" = "16:9";
 "1:1" = "1:1";
@@ -573,7 +574,6 @@
 "黑色" = "黒";
 "默认帧率" = "デフォルトのフレームレート";
 "默认格式" = "デフォルトの形式";
-"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "初期設定では最高解像度を維持します。GIF は 10 MB を超える場合があります。";
 
 /* Extraction duration helper */
 "超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。" = "動画が素材ごとの上限時間を超える場合は、先に切り出す範囲を選択します。上限以内の場合は先頭から抽出します。";
@@ -603,7 +603,6 @@
 "全部" = "すべて";
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "GIFBloom Proに登録すると、書き出しの透かしを削除できます。";
-"免费版最长 5 秒；GIFBloom Pro 可选 15 秒。" = "無料版は最長5秒、GIFBloom Proは15秒。";
 "解锁更长片段" = "長いクリップを解放";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "週・年プランは自動更新されます。更新を停止するには期間終了の24時間前までに解約してください。Apple IDの設定から管理できます。";
 "AI 贴纸仅限 GIFBloom Pro 使用。" = "AIステッカーはGIFBloom Pro限定です。";
@@ -612,7 +611,6 @@
 "解锁更长的素材提取时长。" = "素材をより長く抽出できます。";
 "订阅去水印" = "透かしを削除するために登録";
 "水果" = "果物";
-"最长片段" = "クリップの最長時間";
 "5 秒" = "5秒";
 
 "AI贴纸" = "AIステッカー";
@@ -672,34 +670,34 @@
 "试试其他名称或筛选条件" = "別の名前やフィルタを試す";
 "%1$lld items" = "%1$lld項目";
 
-"从 GIF 或视频生成可长按播放的 Live Photo" = "Create Live Photos from GIFs or videos";
-"从 Live Photo 导出普通视频" = "Export a standard video from a Live Photo";
-"从视频、Live Photo 或照片提取透明剪影" = "Extract transparent cutouts from videos, Live Photos, or photos";
+"从 GIF 或视频生成可长按播放的 Live Photo" = "GIF またはビデオから Live Photo を作成する";
+"从 Live Photo 导出普通视频" = "Live Photo から標準ビデオをエクスポートする";
+"从视频、Live Photo 或照片提取透明剪影" = "ビデオ、Live Photo、または写真から透明なカットアウトを抽出します";
 "取消转换" = "変換をキャンセル";
-"已转换并保存 %1$lld 项素材到照片。" = "Converted and saved %1$lld item(s) to Photos.";
-"成功转换 %lld 项，%lld 项失败。%@" = "%lld converted successfully; %lld failed. %@";
-"截取首帧生成透明人物贴纸" = "Create a transparent sticker from the first frame";
-"提取可播放的透明人物素材" = "Create a playable transparent cutout";
+"已转换并保存 %1$lld 项素材到照片。" = "%1$lld アイテムを写真に変換して保存しました。";
+"成功转换 %1$lld 项，%2$lld 项失败。%@" = "%1$lld は正常に変換されました。 %2$lld は失敗しました。 %@";
+"截取首帧生成透明人物贴纸" = "1フレーム目から透明ステッカーを作成";
+"提取可播放的透明人物素材" = "再生可能な透明なカットアウトを作成する";
 "正在准备转换" = "変換を準備中";
-"正在处理第 %1$lld/%2$lld 个素材" = "Processing item %1$lld of %2$lld";
-"正在转换为 Live Photo" = "Converting to Live Photo";
-"正在转换为视频" = "Converting to Video";
-"没有获得保存到照片的权限，请在系统设置中允许后重试。" = "Photo access is required to save the result. Allow it in Settings and retry.";
-"请重新选择素材后重试。" = "Choose media again and retry.";
+"正在处理第 %1$lld/%2$lld 个素材" = "%2$lldの処理品目%1$lld";
+"正在转换为 Live Photo" = "Live Photo に変換中";
+"正在转换为视频" = "ビデオへの変換";
+"没有获得保存到照片的权限，请在系统设置中允许后重试。" = "結果を保存するには写真へのアクセスが必要です。設定で許可して再試行してください。";
+"请重新选择素材后重试。" = "メディアを再度選択して再試行してください。";
 "转为 Live Photo" = "Live Photoに変換";
-"转为 Live Photo 只支持 GIF 和视频；普通照片不会被处理。" = "Convert to Live Photo accepts GIFs and videos only; still photos are not processed.";
+"转为 Live Photo 只支持 GIF 和视频；普通照片不会被处理。" = "Live Photo に変換では、GIF とビデオのみを受け入れます。静止画は加工しておりません。";
 "转为视频" = "動画に変換";
-"转为视频只支持 Live Photo 和 GIF，请重新选择动态素材。" = "Convert to Video accepts Live Photos and GIFs. Choose dynamic media and try again.";
+"转为视频只支持 Live Photo 和 GIF，请重新选择动态素材。" = "「ビデオに変換」では、Live Photo および GIF を受け入れます。ダイナミックメディアを選択して再試行してください。";
 "转换" = "変換";
 "转换失败" = "変換に失敗しました";
 "转换完成" = "変換完了";
-"转换素材暂时无法读取，请重新选择后重试。" = "The media could not be read. Choose it again and retry.";
-"这个素材格式不支持当前转换。请选择 GIF、视频或 Live Photo。" = "This media format is not supported for this conversion. Choose a GIF, video, or Live Photo.";
+"转换素材暂时无法读取，请重新选择后重试。" = "メディアを読み取れませんでした。もう一度選択して再試行してください。";
+"这个素材格式不支持当前转换。请选择 GIF、视频或 Live Photo。" = "このメディア形式はこの変換ではサポートされていません。 GIF、ビデオ、または Live Photo を選択します。";
 "静态贴纸" = "静的ステッカー";
-"选择视频、Live Photo 或照片" = "Select a video, Live Photo, or photo";
-"选择照片、Live Photo 或视频的首帧" = "Select a photo, Live Photo, or the first frame of a video";
-"相册中只处理 GIF 和视频" = "Only GIFs and videos are processed from Photos";
-"从相册选择 Live Photo 或 GIF" = "Choose a Live Photo or GIF from Photos";
+"选择视频、Live Photo 或照片" = "ビデオ、Live Photo、または写真を選択してください";
+"选择照片、Live Photo 或视频的首帧" = "写真、Live Photo、またはビデオの最初のフレームを選択します";
+"相册中只处理 GIF 和视频" = "GIF とビデオのみが写真から処理されます";
+"从相册选择 Live Photo 或 GIF" = "写真から Live Photo または GIF を選択してください";
 "保存贴纸失败" = "ステッカーを保存できませんでした";
 "贴纸效果" = "ステッカー効果";
 "贴纸已保存到相册。" = "ステッカーを「写真」に保存しました。";
@@ -894,3 +892,18 @@
 /* Classic sticker templates */
 "影视模板" = "クラシックテンプレート";
 "带有透明头像孔的经典影视风格画面模板。" = "クラシック映画風のデザインに、人物写真用の小さな透明な丸い穴を設けています。";
+
+/* App Store rating and reviews */
+"在 App Store 评分与评价" = "App Store で GIFBloom を評価";
+
+"15 秒" = "15秒";
+
+"最长片段" = "クリップの最大時間";
+
+"免费版最长 5 秒；GIFBloom Pro 可选 15 秒。" = "無料版は最長5秒、GIFBloom Proは最長15秒。";
+
+"重试保存到照片" = "写真への保存を再試行";
+
+"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "デフォルトでは画像サイズを維持します。GIFは10 MBを超える場合があります";
+
+"%lld seconds" = "%lld秒";

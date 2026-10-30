@@ -12,9 +12,9 @@ Freistellen, Komposition und Export erfolgen auf deinem Gerät. Ein Konto ist ni
 GIFBloom ist ein Kreativwerkzeug zum Erstellen und Bearbeiten persönlicher animierter Fotoprojekte.
 
 
-Wähle eine oder mehrere Personen aus, zeichne bei Bedarf eine freie Auswahl und kürze den gewünschten Abschnitt vor dem Freistellen. Passe anschließend jede animierte Freistellung in der Zeitleiste an: Position, Größe, Drehung, Ebenenreihenfolge und Anzeigedauer. GIFBloom Pro unterstützt Extraktionen von bis zu 10 Sekunden und ist als Wochen‑, Jahres‑ oder zeitlich unbegrenzter Kauf erhältlich.
+Wähle eine oder mehrere Personen aus, zeichne bei Bedarf eine freie Auswahl und kürze den gewünschten Abschnitt vor dem Freistellen. Passe anschließend jede animierte Freistellung in der Zeitleiste an: Position, Größe, Drehung, Ebenenreihenfolge und Anzeigedauer. GIFBloom Pro unterstützt Extraktionen von bis zu 15 Sekunden und ist als Wochen‑, Jahres‑ oder zeitlich unbegrenzter Kauf erhältlich.
 
-Wandle GIFs und Videos in Live Photos um und exportiere Live Photos oder GIFs als normale Videos. Erstelle animierte Freisteller oder statische Sticker mit Comic-Rändern und wähle beim Erstellen einer Live Photo aus einem langen Video einen 3-Sekunden-Ausschnitt.
+Wandle GIFs und Videos in Live Photos um und exportiere Live Photos oder GIFs als normale Videos. Erstelle animierte Freisteller oder statische Sticker mit Comic-Rändern. Verwandle lange Videos in bis zu 15 Sekunden lange Live Photos (kostenlos bis 5 Sekunden, mit GIFBloom Pro bis zu 15 Sekunden).
 
 Nutzungsbedingungen: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 Datenschutzerklärung: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=de

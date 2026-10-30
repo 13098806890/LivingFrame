@@ -138,10 +138,9 @@ public struct GIFExporter {
                 memory.log("before-render", frame: index + 1, totalFrames: frameCount)
             }
             let frameStart = Date()
+            let frame = await renderer.renderAsync(composition, at: Double(index) / fps)
             let added = autoreleasepool { () -> Bool in
-                guard let frame = renderer.render(composition, at: Double(index) / fps) else {
-                    return false
-                }
+                guard let frame else { return false }
                 let outputFrame = outputSize.flatMap { gifCanvasFrame(frame, outputSize: $0) } ?? frame
                 let frameProperties = [
                     kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1.0 / fps]
@@ -194,7 +193,7 @@ public struct GIFExporter {
         watermark: ExportWatermark? = nil,
         clipSnapshots: [String: SegmentedClip] = [:],
         isCancelled: () -> Bool = { Task.isCancelled }
-    ) throws -> Int64 {
+    ) async throws -> Int64 {
         let totalFrames = max(1, Int((composition.duration * fps).rounded(.up)))
         let sampleCount = min(max(sampleFrameCount, 1), totalFrames)
         let url = FileManager.default.temporaryDirectory
@@ -214,7 +213,7 @@ public struct GIFExporter {
             let frameIndex = sampleCount == 1
                 ? 0
                 : Int((Double(sampleIndex) * Double(totalFrames - 1) / Double(sampleCount - 1)).rounded())
-            guard let image = renderer.render(composition, at: Double(frameIndex) / fps) else { continue }
+            guard let image = await renderer.renderAsync(composition, at: Double(frameIndex) / fps) else { continue }
             sampledImages.append(outputSize.flatMap { gifCanvasFrame(image, outputSize: $0) } ?? image)
         }
         if isCancelled() || Task.isCancelled { throw ExportError.cancelled }
@@ -244,7 +243,7 @@ public struct GIFExporter {
         watermark: ExportWatermark? = nil,
         clipSnapshots: [String: SegmentedClip] = [:],
         isCancelled: () -> Bool = { Task.isCancelled }
-    ) throws -> [Int64] {
+    ) async throws -> [Int64] {
         guard !requests.isEmpty else { return [] }
         let safeRequests = requests.map { request in
             GIFSizeEstimateRequest(
@@ -282,7 +281,7 @@ public struct GIFExporter {
                 ? 0
                 : Double(sampleIndex) / Double(sampleCount - 1)
             let time = max(composition.duration, 0) * fraction
-            if let image = renderer.render(composition, at: time) {
+            if let image = await renderer.renderAsync(composition, at: time) {
                 sampledImages.append(image)
             }
         }

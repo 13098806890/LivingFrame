@@ -1,1 +1,1 @@
-GIFBloom
+GIFBloom: Pembuat GIF

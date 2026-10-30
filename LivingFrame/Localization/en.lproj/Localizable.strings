@@ -33,6 +33,7 @@
 "导出成功" = "Exported Successfully";
 "存到相册" = "Save to Photos";
 "已存入相册" = "Saved to Photos";
+"已保存到相册" = "Saved to Photos";
 "工程信息" = "Project Info";
 "取消" = "Cancel";
 "说明" = "Info";
@@ -46,7 +47,7 @@
 "我的动态照片" = "My Living Photo";
 "还没有可导出的工程" = "Nothing to export yet";
 "GIF（通用）" = "GIF";
-"透明视频（HEVC-alpha）" = "Video (HEVC)";
+"透明视频（HEVC-alpha）" = "Transparent video (HEVC-alpha)";
 "普通视频（H.264）" = "Video (H.264)";
 "兼容性最广，适合分享，透明边缘为硬边" = "Most compatible and great for sharing; transparency has hard edges";
 "保留半透明边缘，体积小，适合再次合成" = "Keeps soft transparent edges, small size, ideal for re-compositing";
@@ -178,6 +179,7 @@
 "添加素材" = "Add media";
 "正在导入素材" = "Importing media";
 "选择视频 / Live Photo / 照片" = "Select a Video / Live Photo / Photo";
+"选择视频或 Live Photo" = "Select a video or Live Photo";
 "重做" = "Redo";
 "重置" = "Reset";
 "锯齿" = "Jagged";
@@ -196,9 +198,9 @@
 "提取可播放的透明人物素材" = "Create a playable transparent cutout";
 "截取首帧生成透明人物贴纸" = "Create a transparent sticker from the first frame";
 "生成剪影" = "Create Cutout";
-"从视频、Live Photo 或照片提取透明剪影" = "Extract transparent cutouts from videos, Live Photos, or photos";
+"从视频、Live Photo 或照片提取透明剪影" = "Extract transparent cutouts from videos, Live Photo, or photos";
 "转为 Live Photo" = "Convert to Live Photo";
-"从 GIF 或视频生成可长按播放的 Live Photo" = "Create Live Photos from GIFs or videos";
+"从 GIF 或视频生成可长按播放的 Live Photo" = "Create Live Photo from GIFs or videos";
 "转为视频" = "Convert to Video";
 "从 Live Photo 导出普通视频" = "Export a standard video from a Live Photo";
 "转换失败" = "Conversion Failed";
@@ -212,8 +214,8 @@
 "转换素材暂时无法读取，请重新选择后重试。" = "The media could not be read. Choose it again and retry.";
 "没有获得保存到照片的权限，请在系统设置中允许后重试。" = "Photo access is required to save the result. Allow it in Settings and retry.";
 "转为 Live Photo 只支持 GIF 和视频；普通照片不会被处理。" = "Convert to Live Photo accepts GIFs and videos only; still photos are not processed.";
-"转为视频只支持 Live Photo 和 GIF，请重新选择动态素材。" = "Convert to Video accepts Live Photos and GIFs. Choose dynamic media and try again.";
-"成功转换 %lld 项，%lld 项失败。%@" = "%lld converted successfully; %lld failed. %@";
+"转为视频只支持 Live Photo 和 GIF，请重新选择动态素材。" = "Convert to Video accepts Live Photo and GIFs. Choose dynamic media and try again.";
+"成功转换 %1$lld 项，%2$lld 项失败。%@" = "%1$lld converted successfully; %2$lld failed. %@";
 "请重新选择素材后重试。" = "Choose media again and retry.";
 "已转换并保存 %1$lld 项素材到照片。" = "Converted and saved %1$lld item(s) to Photos.";
 "转换时无法保留源音频，预览不会包含声音。" = "The source audio couldn't be retained. The preview will be silent.";
@@ -270,7 +272,6 @@
 "%1$lld 个素材" = "%1$lld items";
 "%1$lld 张 / %2$.2f 秒" = "%1$lld frames / %2$.2f seconds";
 "%1$lld×%2$lld · %3$lld fps · %4$lld 帧" = "%1$lld×%2$lld · %3$lld fps · %4$lld frames";
-"15 秒" = "15 seconds";
 "10 秒" = "10 seconds";
 "16:9" = "16:9";
 "1:1" = "1:1";
@@ -601,7 +602,6 @@
 "黑色" = "black";
 "默认帧率" = "Default frame rate";
 "默认格式" = "Default format";
-"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "The default keeps the highest resolution; the GIF may exceed 10 MB.";
 
 /* Extraction duration helper */
 "超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。" = "For videos longer than the maximum item duration, choose a clip first. Shorter videos are extracted from the beginning.";
@@ -631,7 +631,6 @@
 "全部" = "All";
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "Subscribe to GIFBloom Pro to remove export watermarks.";
-"免费版最长 5 秒；GIFBloom Pro 可选 15 秒。" = "Free: up to 5 sec; GIFBloom Pro: 15 sec.";
 "解锁更长片段" = "Unlock longer clips";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "Weekly and yearly plans auto-renew. Cancel at least 24 hours before the period ends. Manage your plan in Apple ID settings.";
 "AI 贴纸仅限 GIFBloom Pro 使用。" = "AI stickers are only available with GIFBloom Pro.";
@@ -640,7 +639,6 @@
 "解锁更长的素材提取时长。" = "Unlock longer clip extraction times.";
 "订阅去水印" = "Subscribe to remove watermark";
 "水果" = "Fruit";
-"最长片段" = "Max clip duration";
 "5 秒" = "5 seconds";
 
 "AI贴纸" = "AI Stickers";
@@ -897,3 +895,18 @@
 /* Classic sticker templates */
 "影视模板" = "Classic Templates";
 "带有透明头像孔的经典影视风格画面模板。" = "Classic film-inspired layouts with a small transparent circular portrait opening.";
+
+/* App Store rating and reviews */
+"在 App Store 评分与评价" = "Rate GIFBloom on the App Store";
+
+"15 秒" = "15 sec";
+
+"最长片段" = "Maximum clip length";
+
+"免费版最长 5 秒；GIFBloom Pro 可选 15 秒。" = "Free: up to 5 sec; GIFBloom Pro: up to 15 sec.";
+
+"重试保存到照片" = "Retry saving to Photos";
+
+"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Preserve image dimensions by default; GIFs may exceed 10 MB";
+
+"%lld seconds" = "%lld seconds";

@@ -32,6 +32,7 @@
 "导出成功" = "Esportazione riuscita";
 "存到相册" = "Salva in Foto";
 "已存入相册" = "Salvato in Foto";
+"已保存到相册" = "Salvato in Foto";
 "工程信息" = "Info progetto";
 "取消" = "Annulla";
 "说明" = "Info";
@@ -45,7 +46,7 @@
 "我的动态照片" = "La mia foto animata";
 "还没有可导出的工程" = "Niente da esportare per ora";
 "GIF（通用）" = "GIF";
-"透明视频（HEVC-alpha）" = "Video (HEVC)";
+"透明视频（HEVC-alpha）" = "Video trasparente (HEVC-alpha)";
 "普通视频（H.264）" = "Video (H.264)";
 "兼容性最广，适合分享，透明边缘为硬边" = "Massima compatibilità, ideale per la condivisione; bordi di trasparenza netti";
 "保留半透明边缘，体积小，适合再次合成" = "Mantiene bordi semitrasparenti, leggero, ideale per ricomporre";
@@ -176,6 +177,7 @@
 "添加素材" = "Aggiungi contenuti";
 "正在导入素材" = "Importazione dei contenuti";
 "选择视频 / Live Photo / 照片" = "Scegli video / Live Photo / foto";
+"选择视频或 Live Photo" = "Seleziona un video o Live Photo";
 "重做" = "Ripeti";
 "重置" = "Ripristina";
 "锯齿" = "Smerlato";
@@ -242,7 +244,6 @@
 "%1$lld 个素材" = "Materiali %1$lld";
 "%1$lld 张 / %2$.2f 秒" = "Fogli %1$lld / secondi %2$.2f";
 "%1$lld×%2$lld · %3$lld fps · %4$lld 帧" = "%1$lld×%2$lld · %3$lld fps · %4$lld fotogrammi";
-"15 秒" = "15 secondi";
 "10 秒" = "10 secondi";
 "16:9" = "16:9";
 "1:1" = "1:1";
@@ -573,7 +574,6 @@
 "黑色" = "nero";
 "默认帧率" = "Frequenza fotogrammi predefinita";
 "默认格式" = "Formato predefinito";
-"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Per impostazione predefinita viene mantenuta la risoluzione massima; il GIF può superare 10 MB.";
 
 /* Extraction duration helper */
 "超过单个素材最长时长的动态视频会先让你选择片段；未超出的默认从开头提取。" = "Se il video supera la durata massima per elemento, scegli prima un segmento. Altrimenti, l’estrazione partirà dall’inizio.";
@@ -603,7 +603,6 @@
 "全部" = "Tutti";
 
 "订阅 GIFBloom Pro 后可去除导出水印。" = "Abbonati a GIFBloom Pro per rimuovere la filigrana dalle esportazioni.";
-"免费版最长 5 秒；GIFBloom Pro 可选 15 秒。" = "Gratis fino a 5 s; GIFBloom Pro fino a 15 s.";
 "解锁更长片段" = "Sblocca clip più lunghi";
 "周订阅和年订阅会自动续订；如需取消，请在当前周期结束前至少 24 小时操作。可在 Apple ID 设置中管理。" = "I piani settimanali e annuali si rinnovano automaticamente. Annulla almeno 24 ore prima della fine del periodo. Gestisci il piano nelle impostazioni dell’Apple ID.";
 "AI 贴纸仅限 GIFBloom Pro 使用。" = "Gli adesivi IA sono disponibili solo con GIFBloom Pro.";
@@ -612,7 +611,6 @@
 "解锁更长的素材提取时长。" = "Sblocca l'estrazione di clip più lunghi.";
 "订阅去水印" = "Abbonati per rimuovere la filigrana";
 "水果" = "Frutta";
-"最长片段" = "Durata massima della clip";
 "5 秒" = "5 secondi";
 
 "AI贴纸" = "Adesivi IA";
@@ -672,34 +670,34 @@
 "试试其他名称或筛选条件" = "Prova un altro nome o filtro";
 "%1$lld items" = "%1$lld elementi";
 
-"从 GIF 或视频生成可长按播放的 Live Photo" = "Create Live Photos from GIFs or videos";
-"从 Live Photo 导出普通视频" = "Export a standard video from a Live Photo";
-"从视频、Live Photo 或照片提取透明剪影" = "Extract transparent cutouts from videos, Live Photos, or photos";
+"从 GIF 或视频生成可长按播放的 Live Photo" = "Crea Live Photo da GIF o video";
+"从 Live Photo 导出普通视频" = "Esporta un video standard da un Live Photo";
+"从视频、Live Photo 或照片提取透明剪影" = "Estrai ritagli trasparenti da video, Live Photo o foto";
 "取消转换" = "Annulla conversione";
-"已转换并保存 %1$lld 项素材到照片。" = "Converted and saved %1$lld item(s) to Photos.";
-"成功转换 %lld 项，%lld 项失败。%@" = "%lld converted successfully; %lld failed. %@";
-"截取首帧生成透明人物贴纸" = "Create a transparent sticker from the first frame";
-"提取可播放的透明人物素材" = "Create a playable transparent cutout";
+"已转换并保存 %1$lld 项素材到照片。" = "Elementi %1$lld convertiti e salvati in Foto.";
+"成功转换 %1$lld 项，%2$lld 项失败。%@" = "%1$lld convertito correttamente; %2$lld non riuscito. %@";
+"截取首帧生成透明人物贴纸" = "Crea un adesivo trasparente dal primo fotogramma";
+"提取可播放的透明人物素材" = "Crea un ritaglio trasparente riproducibile";
 "正在准备转换" = "Preparazione della conversione";
-"正在处理第 %1$lld/%2$lld 个素材" = "Processing item %1$lld of %2$lld";
-"正在转换为 Live Photo" = "Converting to Live Photo";
-"正在转换为视频" = "Converting to Video";
-"没有获得保存到照片的权限，请在系统设置中允许后重试。" = "Photo access is required to save the result. Allow it in Settings and retry.";
-"请重新选择素材后重试。" = "Choose media again and retry.";
+"正在处理第 %1$lld/%2$lld 个素材" = "Elaborazione dell'elemento %1$lld di %2$lld";
+"正在转换为 Live Photo" = "Conversione in Live Photo";
+"正在转换为视频" = "Conversione in video";
+"没有获得保存到照片的权限，请在系统设置中允许后重试。" = "Per salvare il risultato è necessario l'accesso alle foto. Consentilo in Impostazioni e riprova.";
+"请重新选择素材后重试。" = "Scegli di nuovo il supporto e riprova.";
 "转为 Live Photo" = "Converti in Live Photo";
-"转为 Live Photo 只支持 GIF 和视频；普通照片不会被处理。" = "Convert to Live Photo accepts GIFs and videos only; still photos are not processed.";
+"转为 Live Photo 只支持 GIF 和视频；普通照片不会被处理。" = "Converti in Live Photo accetta solo GIF e video; le foto fisse non vengono elaborate.";
 "转为视频" = "Converti in video";
-"转为视频只支持 Live Photo 和 GIF，请重新选择动态素材。" = "Convert to Video accepts Live Photos and GIFs. Choose dynamic media and try again.";
+"转为视频只支持 Live Photo 和 GIF，请重新选择动态素材。" = "Converti in video accetta Live Photo e GIF. Scegli il supporto dinamico e riprova.";
 "转换" = "Converti";
 "转换失败" = "Conversione non riuscita";
 "转换完成" = "Conversione completata";
-"转换素材暂时无法读取，请重新选择后重试。" = "The media could not be read. Choose it again and retry.";
-"这个素材格式不支持当前转换。请选择 GIF、视频或 Live Photo。" = "This media format is not supported for this conversion. Choose a GIF, video, or Live Photo.";
+"转换素材暂时无法读取，请重新选择后重试。" = "Non è stato possibile leggere i media. Sceglilo di nuovo e riprova.";
+"这个素材格式不支持当前转换。请选择 GIF、视频或 Live Photo。" = "Questo formato multimediale non è supportato per questa conversione. Scegli GIF, video o Live Photo.";
 "静态贴纸" = "Sticker statico";
-"选择视频、Live Photo 或照片" = "Select a video, Live Photo, or photo";
-"选择照片、Live Photo 或视频的首帧" = "Select a photo, Live Photo, or the first frame of a video";
-"相册中只处理 GIF 和视频" = "Only GIFs and videos are processed from Photos";
-"从相册选择 Live Photo 或 GIF" = "Choose a Live Photo or GIF from Photos";
+"选择视频、Live Photo 或照片" = "Seleziona un video, Live Photo o una foto";
+"选择照片、Live Photo 或视频的首帧" = "Seleziona una foto, Live Photo o il primo fotogramma di un video";
+"相册中只处理 GIF 和视频" = "Solo GIF e video vengono elaborati da Foto";
+"从相册选择 Live Photo 或 GIF" = "Scegli Live Photo o GIF da Foto";
 "保存贴纸失败" = "Impossibile salvare lo sticker";
 "贴纸效果" = "Effetto sticker";
 "贴纸已保存到相册。" = "Sticker salvato in Foto.";
@@ -894,3 +892,18 @@
 /* Classic sticker templates */
 "影视模板" = "Modelli classici";
 "带有透明头像孔的经典影视风格画面模板。" = "Composizioni ispirate al cinema classico con una piccola apertura circolare trasparente per il ritratto.";
+
+/* App Store rating and reviews */
+"在 App Store 评分与评价" = "Valuta GIFBloom su App Store";
+
+"15 秒" = "15 s";
+
+"最长片段" = "Durata massima della clip";
+
+"免费版最长 5 秒；GIFBloom Pro 可选 15 秒。" = "Gratis: fino a 5 s; GIFBloom Pro: fino a 15 s.";
+
+"重试保存到照片" = "Riprova a salvare in Foto";
+
+"默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Mantieni le dimensioni dell’immagine; i GIF possono superare 10 MB";
+
+"%lld seconds" = "%lld secondi";

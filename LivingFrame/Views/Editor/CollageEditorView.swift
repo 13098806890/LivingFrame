@@ -22,6 +22,9 @@ struct CollageEditorView: View {
     @State private var isDividerLayoutLocked = false
     @State private var didFinish = false
     @State private var showAssetPicker = false
+    @State private var collagePreviewFrames: [UUID: CGImage] = [:]
+    @State private var partitionActionFrame: CGImage?
+    @State private var partitionActionFrameMediaID: String?
 
     init(existingElementIDs: [UUID] = []) {
         self.existingElementIDs = existingElementIDs
@@ -99,6 +102,9 @@ struct CollageEditorView: View {
                     appState.clearElementSelection()
                 }
             }
+        }
+        .task(id: collagePreviewRequestKey) {
+            await loadCollagePreviewFrames()
         }
     }
 
@@ -180,16 +186,8 @@ struct CollageEditorView: View {
     private var collagePreviewItems: [BackgroundEditingPreviewItem] {
         let highestZIndex = collageElements.map(\.zIndex).max() ?? 0
         return collageElements.compactMap { element -> BackgroundEditingPreviewItem? in
-            guard case .background(let mediaID) = element.kind else { return nil }
-            let media = appState.backgroundMedia.first(where: { $0.id == mediaID })
-                ?? BackgroundStore.shared.media(named: mediaID)
-            let frameTime = previewFrameTime(for: element, media: media)
-            guard
-                  let frame = BackgroundStore.shared.loadPreviewFrame(
-                      named: mediaID,
-                      at: frameTime,
-                      maxPixelSize: 720
-                  ) else { return nil }
+            guard case .background = element.kind else { return nil }
+            guard let frame = collagePreviewFrames[element.id] else { return nil }
             return BackgroundEditingPreviewItem(
                 id: element.id,
                 frame: frame,
@@ -201,6 +199,38 @@ struct CollageEditorView: View {
                     : element.zIndex
             )
         }
+    }
+
+    private var collagePreviewRequestKey: String {
+        collageElements.compactMap { element -> String? in
+            guard case .background(let mediaID) = element.kind else { return nil }
+            let media = appState.backgroundMedia.first(where: { $0.id == mediaID })
+                ?? BackgroundStore.shared.media(named: mediaID)
+            let timeBucket = Int((previewFrameTime(for: element, media: media) * 60).rounded(.down))
+            return "\(element.id.uuidString):\(mediaID):\(timeBucket)"
+        }.joined(separator: "|")
+    }
+
+    @MainActor
+    private func loadCollagePreviewFrames() async {
+        var frames: [UUID: CGImage] = [:]
+        for element in collageElements {
+            guard !Task.isCancelled,
+                  case .background(let mediaID) = element.kind else { continue }
+            let media = appState.backgroundMedia.first(where: { $0.id == mediaID })
+                ?? BackgroundStore.shared.media(named: mediaID)
+            let time = previewFrameTime(for: element, media: media)
+            if let frame = await BackgroundStore.shared.loadPreviewFrameAsync(
+                named: mediaID,
+                at: time,
+                maxPixelSize: 720
+            ) {
+                frames[element.id] = frame
+                collagePreviewFrames[element.id] = frame
+            }
+        }
+        guard !Task.isCancelled else { return }
+        collagePreviewFrames = frames
     }
 
     private func previewFrameTime(
@@ -371,7 +401,7 @@ struct CollageEditorView: View {
                     .font(.caption)
                     .foregroundStyle(LF.textSecondary)
                 Spacer()
-                Text(String(format: "%.1f×", settings.cropScale))
+                Text(String.localizedStringWithFormat("%.1f×", settings.cropScale))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(LF.textSecondary)
             }
@@ -518,13 +548,12 @@ struct CollageEditorView: View {
     private func partitionActionBar(for partition: Int) -> some View {
         if let activeElement {
             let isAssigned = activeElement.backgroundSettings?.resolvedAssignedPartitions.contains(partition) == true
+            let mediaID: String? = {
+                guard case .background(let id) = activeElement.kind else { return nil }
+                return id
+            }()
             HStack(spacing: 8) {
-                if case .background(let mediaID) = activeElement.kind,
-                   let frame = BackgroundStore.shared.loadPreviewFrame(
-                       named: mediaID,
-                       at: 0,
-                       maxPixelSize: 220
-                   ) {
+                if let mediaID, partitionActionFrameMediaID == mediaID, let frame = partitionActionFrame {
                     ZStack(alignment: .bottomTrailing) {
                         Image(decorative: frame, scale: 1)
                             .resizable()
@@ -570,6 +599,18 @@ struct CollageEditorView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(LF.surface2.opacity(0.62), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .task(id: mediaID) {
+                partitionActionFrameMediaID = mediaID
+                partitionActionFrame = nil
+                guard let mediaID else { return }
+                let frame = await BackgroundStore.shared.loadPreviewFrameAsync(
+                    named: mediaID,
+                    at: 0,
+                    maxPixelSize: 220
+                )
+                guard !Task.isCancelled else { return }
+                partitionActionFrame = frame
+            }
         } else {
             Text(String.localizedStringWithFormat(
                 NSLocalizedString("先选择一个拼接素材，再添加到区域 %1$lld。", comment: "Add collage media to region prompt"),
@@ -1294,7 +1335,7 @@ struct BackgroundDividerControls: View {
                                 .font(.caption2)
                                 .foregroundStyle(LF.textSecondary)
                             Spacer()
-                            Text(String(format: "%.0f°", divider.angle))
+                            Text(String.localizedStringWithFormat("%.0f°", divider.angle))
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(LF.textSecondary)
                                 .accessibilityIdentifier("collage-divider-angle-value-\(index)")
@@ -1409,6 +1450,7 @@ private struct CollageSourceChip: View {
     let onMoveDown: () -> Void
     let onDuplicate: () -> Void
     let onDelete: () -> Void
+    @State private var previewFrame: CGImage?
 
     var body: some View {
         VStack(spacing: 4) {
@@ -1416,11 +1458,7 @@ private struct CollageSourceChip: View {
                 VStack(spacing: 5) {
                     ZStack(alignment: .topTrailing) {
                         Group {
-                            if let image = BackgroundStore.shared.loadPreviewFrame(
-                                named: item.id,
-                                at: 0,
-                                maxPixelSize: 220
-                            ) {
+                            if let image = previewFrame {
                                 Image(decorative: image, scale: 1)
                                     .resizable()
                                     .scaledToFill()
@@ -1533,6 +1571,13 @@ private struct CollageSourceChip: View {
                 .accessibilityLabel("删除拼接素材")
             }
             .foregroundStyle(LF.textSecondary)
+        }
+        .task(id: item.id) {
+            previewFrame = await BackgroundStore.shared.loadPreviewFrameAsync(
+                named: item.id,
+                at: 0,
+                maxPixelSize: 220
+            )
         }
         .padding(5)
         .frame(width: 112)

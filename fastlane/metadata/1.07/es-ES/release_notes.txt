@@ -1,3 +1,4 @@
 • Las vistas previas de recortes se mantienen nítidas con los estilos Contorno, Cómic y Suavizado; el borde Cómic es más fino.
 • Al exportar GIF transparentes, se prioriza una mayor resolución cuando los efectos aumentan el tamaño del archivo.
-Las Live Photos y los vídeos convertidos aparecen ahora en «Añadidos recientemente» y se pueden filtrar, reproducir y eliminar en «Todos los elementos».
+• Las Live Photos y los vídeos convertidos aparecen ahora en «Añadidos recientemente» y se pueden filtrar, reproducir y eliminar en «Todos los elementos».
+• Convierte vídeos largos en Live Photos de hasta 15 s: 5 s gratis y 15 s con GIFBloom Pro.

@@ -12,9 +12,9 @@ Việc tạo phần cắt, ghép hình và xuất đều diễn ra trên thiết
 GIFBloom là công cụ sáng tạo để tạo và chỉnh sửa các dự án ảnh động cá nhân.
 
 
-Chọn một hoặc nhiều người muốn giữ lại, dùng vùng chọn tự do khi cần kiểm soát chính xác hơn và cắt khoảng nguồn trước khi tách. Sau đó, tinh chỉnh từng phần cắt chuyển động trên dòng thời gian: vị trí, kích thước, góc xoay, thứ tự lớp và thời lượng. GIFBloom Pro hỗ trợ tách tối đa 10 giây và có các lựa chọn mua theo tuần, theo năm hoặc trọn đời.
+Chọn một hoặc nhiều người muốn giữ lại, dùng vùng chọn tự do khi cần kiểm soát chính xác hơn và cắt khoảng nguồn trước khi tách. Sau đó, tinh chỉnh từng phần cắt chuyển động trên dòng thời gian: vị trí, kích thước, góc xoay, thứ tự lớp và thời lượng. GIFBloom Pro hỗ trợ tách tối đa 15 giây và có các lựa chọn mua theo tuần, theo năm hoặc trọn đời.
 
-Chuyển GIF và video thành Live Photo hoặc xuất Live Photo và GIF thành video thông thường. Tạo ảnh cắt chuyển động hoặc sticker tĩnh với viền kiểu truyện tranh, đồng thời chọn đoạn 3 giây khi tạo Live Photo từ video dài.
+Chuyển GIF và video thành Live Photo hoặc xuất Live Photo và GIF thành video thông thường. Tạo ảnh cắt chuyển động hoặc sticker tĩnh với viền truyện tranh. Chuyển video dài thành Live Photo tối đa 15 giây (miễn phí tối đa 5 giây; tối đa 15 giây với GIFBloom Pro).
 
 Điều khoản sử dụng: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 Chính sách quyền riêng tư: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=vi

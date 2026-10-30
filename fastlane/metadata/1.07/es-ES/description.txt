@@ -12,9 +12,9 @@ El recorte, la composición y la exportación se realizan en tu dispositivo. No 
 GIFBloom es una herramienta creativa para crear y editar proyectos personales de fotos animadas.
 
 
-Elige una persona o varias para conservar, dibuja una selección libre cuando necesites más control y recorta el fragmento de origen antes de extraerlo. Después, ajusta cada recorte animado en la línea de tiempo: posición, tamaño, rotación, orden de las capas y duración. GIFBloom Pro admite extracciones de hasta 10 segundos y ofrece opciones de compra semanal, anual o de por vida.
+Elige una persona o varias para conservar, dibuja una selección libre cuando necesites más control y recorta el fragmento de origen antes de extraerlo. Después, ajusta cada recorte animado en la línea de tiempo: posición, tamaño, rotación, orden de las capas y duración. GIFBloom Pro admite extracciones de hasta 15 segundos y ofrece opciones de compra semanal, anual o de por vida.
 
-Convierte GIF y vídeos en Live Photos, o exporta Live Photos y GIF como vídeos normales. Crea recortes animados o stickers estáticos con bordes de cómic y elige un segmento de 3 segundos al crear una Live Photo a partir de un vídeo largo.
+Convierte GIF y vídeos en Live Photos, o exporta Live Photos y GIF como vídeos normales. Crea recortes animados o stickers estáticos con bordes de cómic. Convierte vídeos largos en Live Photos de hasta 15 segundos (hasta 5 segundos gratis; hasta 15 segundos con GIFBloom Pro).
 
 Términos de uso: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 Política de privacidad: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=es

@@ -7,8 +7,8 @@ GIFBloom 是一款面向 iPhone 的动态影像创作工具：从视频、Live P
 ## 产品状态
 
 - 平台：iOS 18+
-- 当前 Xcode App target：Marketing Version `1.05` / Build `10`
-- App Store Connect 草稿：当前发布快照为 `1.05` / Build `10`，提交前仍需确认 App Store Connect 版本与 Build 对齐
+- 当前 Xcode App target：Marketing Version `1.07` / Build `17`
+- App Store Connect：最近一次记录的已发布基线为 `1.06` / Build `15`（2026-10-27）；提交前仍需核对实时状态
 - 主分类：Photo & Video
 - 处理方式：选中的媒体主要在设备端完成抠图、合成和导出；不需要账号，也没有应用自建后端、分析 SDK 或用户素材上传服务
 - 注意：Photos/iCloud 可能按照系统权限和用户选择下载原始媒体，这不等于应用拥有独立的云端素材服务
@@ -22,11 +22,11 @@ GIFBloom 是一款面向 iPhone 的动态影像创作工具：从视频、Live P
 - **画布与效果**：支持画布背景、画框、视觉效果和拼接/分区创作
 - **音轨**：从视频提取音频，在时间轴中调整起止时间、音量和淡入淡出；导出时进行离线混音
 - **导出**：支持 GIF、透明 HEVC-alpha、普通 H.264 视频和 Live Photo；可预览规格与预计文件大小，并保存到 Photos 或分享
-- **Pro 能力**：当前商店草稿描述为去除导出水印、将最长提取时长从 5 秒扩展至 10 秒；周订阅、年订阅和永久买断的最终文案需以提交 Build 为准
+- **Pro 能力**：当前本地设置允许 Pro 用户将最长提取时长设为 15 秒；商店文案和订阅权益需与 1.07 提交 Build 对齐
 
 ## 本地化
 
-App 当前包含 17 个 App Store 本地化：
+App 当前包含 19 种界面语言：
 
 | Locale | 语言 | Locale | 语言 |
 |---|---|---|---|
@@ -38,9 +38,10 @@ App 当前包含 17 个 App Store 本地化：
 | `id` | 印尼语 | `ru` | 俄语 |
 | `th` | 泰语 | `tr` | 土耳其语 |
 | `vi` | 越南语 | `hi` | 印地语 |
-| `ar` | 阿拉伯语 |  |  |
+| `ar` | 阿拉伯语 | `af` | 南非荷兰语 |
+| `sw` | 斯瓦希里语 |  |  |
 
-本地化文件位于 `LivingFrame/Localization/<locale>.lproj/`，包括 `Localizable.strings` 和 `InfoPlist.strings`。未覆盖的系统语言回退到开发语言 `zh-Hans`。
+本地化文件位于 `LivingFrame/Localization/<locale>.lproj/`，包括 `Localizable.strings` 和 `InfoPlist.strings`。新增斯瓦希里语（东非）和南非荷兰语（南非）；未覆盖的系统语言回退到英语。日期使用系统地区格式，订阅价格由 StoreKit 按 App Store storefront 本地化。
 
 ## 架构
 
@@ -71,7 +72,7 @@ Packages/LivingFrameCore/    Swift Package（核心业务逻辑）
     FaceTracking/            贴纸面部跟踪
     Storage/                 作品持久化与素材文件存储
 LivingFrame/                 SwiftUI 页面与服务层
-  Localization/             17 个本地化目录
+  Localization/             19 个本地化目录
 LivingFrameUITests/          UI 审计和回归测试
 ```
 
@@ -110,6 +111,8 @@ Fastlane 目录包含本地化 metadata、截图和版本化 App Store Connect �
 - `fastlane/screenshots/<version>/<locale>/`：商店截图
 - `fastlane/data/<version>/`：价格、可用地区、订阅和 App Store Connect 基线快照
 - `fastlane/APP_STORE_REVIEW.md`：当前发布阻塞项与待确认事项
+
+`fastlane/metadata/1.07/` 与 `fastlane/screenshots/1.07/` 是当前本地候选。当前仓库尚无 `fastlane/data/1.07/`；该目录用于记录 App Store Connect 状态，不影响本地构建和候选素材准备，需在确认线上 1.07 记录后再生成。
 
 当前 ASO 工作重点是验证真实关键词搜索排名，而不是只检查字段长度。未上架前不能产生真实的 App Store 自然排名；可以先用竞品和关键词工具建立基线，上架后再用同一 storefront、locale、关键词集合和时间窗口追踪排名变化。
 

@@ -54,7 +54,7 @@ final class CompositeFrameCache: ObservableObject {
             let renderer = CompositionRenderer(frameMaxPixelSize: thumbSize)
             for i in 0..<count {
                 guard !Task.isCancelled else { return }
-                let image = renderer.render(comp, at: Double(i) / fps)
+                let image = await renderer.renderAsync(comp, at: Double(i) / fps)
                 await MainActor.run {
                     guard self.version == currentVersion else { return }
                     if let image { self.frames[i] = image }
@@ -491,7 +491,7 @@ struct FrameDetailView: View {
         } else if let composition, composition.fps > 0 {
             let time = Double(index) / composition.fps
             rendered = await Task.detached(priority: .userInitiated) {
-                CompositionRenderer(frameMaxPixelSize: 800).render(composition, at: time)
+                await CompositionRenderer(frameMaxPixelSize: 800).renderAsync(composition, at: time)
             }.value
         } else {
             return

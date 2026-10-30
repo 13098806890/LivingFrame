@@ -38,7 +38,7 @@ private struct ElementSourceRangeEditor: View {
                                     .lineLimit(1)
                             }
                             Spacer()
-                            Text(String(format: "%.2f s", source.duration))
+                            Text(String.localizedStringWithFormat("%.2f s", source.duration))
                                 .font(.caption.monospacedDigit().weight(.medium))
                                 .foregroundStyle(LF.textSecondary)
                         }
@@ -55,7 +55,7 @@ private struct ElementSourceRangeEditor: View {
                         HStack(spacing: 8) {
                             Image(systemName: "play.fill")
                                 .font(.caption2.weight(.bold))
-                            Text(String(format: "%.2f–%.2f s", start, end))
+                            Text(String.localizedStringWithFormat("%.2f–%.2f s", start, end))
                                 .font(.subheadline.monospacedDigit().weight(.semibold))
                             Spacer()
                             Text(String.localizedStringWithFormat(
@@ -177,7 +177,7 @@ private struct ElementSourceRangeEditor: View {
                         .foregroundStyle(LF.textSecondary)
                 }
                 Spacer()
-                Text(String(format: "%.2f s", value.wrappedValue))
+                Text(String.localizedStringWithFormat("%.2f s", value.wrappedValue))
                     .font(.subheadline.monospacedDigit().weight(.semibold))
                     .foregroundStyle(LF.selectionText)
             }
@@ -186,7 +186,7 @@ private struct ElementSourceRangeEditor: View {
             HStack {
                 Text("0.00 s")
                 Spacer()
-                Text(String(format: "%.2f s", source.duration))
+                Text(String.localizedStringWithFormat("%.2f s", source.duration))
             }
             .font(.caption2.monospacedDigit())
             .foregroundStyle(LF.textSecondary)
@@ -208,7 +208,7 @@ private struct ElementSourceRangeEditor: View {
         HStack {
             Text(title)
             Spacer()
-            Text(String(format: "%.2f s", time)).monospacedDigit()
+            Text(String.localizedStringWithFormat("%.2f s", time)).monospacedDigit()
         }
         .font(.subheadline)
     }
@@ -284,9 +284,7 @@ private struct SourceRangeFilmstrip: View {
                 for index in 0..<12 {
                     guard !Task.isCancelled else { return result }
                     let time = duration * (Double(index) + 0.5) / 12
-                    result.append(autoreleasepool {
-                        Self.thumbnail(kind: kind, clip: clip, time: time)
-                    })
+                    result.append(await Self.thumbnail(kind: kind, clip: clip, time: time))
                 }
                 return result
             }
@@ -304,7 +302,7 @@ private struct SourceRangeFilmstrip: View {
         kind: ElementKind,
         clip: SegmentedClip?,
         time: TimeInterval
-    ) -> CGImage? {
+    ) async -> CGImage? {
         switch kind {
         case .clip:
             guard let clip, clip.fps.isFinite, !clip.playbackFrameIndices.isEmpty else { return nil }
@@ -316,7 +314,11 @@ private struct SourceRangeFilmstrip: View {
                 maxPixelSize: 160
             )
         case .background(let id):
-            guard let image = BackgroundStore.shared.loadFrame(named: id, at: time) else { return nil }
+            guard let image = await BackgroundStore.shared.loadPreviewFrameAsync(
+                named: id,
+                at: time,
+                maxPixelSize: 160
+            ) else { return nil }
             return resizedThumbnail(image)
         case .decoration(let id), .effect(let id):
             return DecorationRenderer.previewThumbnail(for: id, at: time)
@@ -402,7 +404,7 @@ struct ElementPlaybackControls: View {
                             .foregroundStyle(LF.textSecondary)
                     }
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
+                    Image(systemName: "chevron.forward")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(LF.textSecondary)
                 }

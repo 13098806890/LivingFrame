@@ -1,1 +1,1 @@
-GIFBloom
+GIFBloom: Tạo ảnh GIF

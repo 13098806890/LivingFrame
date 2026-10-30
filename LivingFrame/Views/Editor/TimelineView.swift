@@ -433,7 +433,7 @@ struct TimelineView: View {
                     .stroke(LF.header.opacity(0.12), lineWidth: 1)
             }
 
-            Text(String(format: "%.2f / %.1f s", appState.currentTime, appState.composition?.duration ?? 0.0))
+            Text(String.localizedStringWithFormat("%.2f / %.1f s", appState.currentTime, appState.composition?.duration ?? 0.0))
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(Color.black)
 
@@ -544,7 +544,7 @@ struct TimelineView: View {
         if abs(seconds.rounded() - seconds) < 0.001 {
             return "\(Int(seconds.rounded()))s"
         }
-        return String(format: "%.1fs", Double(seconds))
+        return String.localizedStringWithFormat("%.1fs", Double(seconds))
     }
 
     private func trackGutter(_ comp: Composition) -> some View {
@@ -1156,7 +1156,7 @@ struct TimelineView: View {
                 }
             HStack(spacing: 3) {
                 Image(systemName: "waveform")
-                Text(String(format: "%.1f", clip.volume))
+                Text(String.localizedStringWithFormat("%.1f", clip.volume))
             }
             .font(.system(size: 10, weight: .semibold).monospacedDigit())
             .foregroundStyle(.white.opacity(0.9))
@@ -1254,7 +1254,7 @@ struct TimelineView: View {
                     Rectangle()
                         .fill(LF.header.opacity(0.9))
                         .frame(width: 1.5, height: height + rulerHeight)
-                    Text(String(format: "%.2fs", snapTime))
+                    Text(String.localizedStringWithFormat("%.2fs", snapTime))
                         .font(.system(size: 10, weight: .bold).monospacedDigit())
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5)
@@ -2119,10 +2119,15 @@ private struct BackgroundTimelineStrip: View {
             let isAnimated = media.isAnimated
             let loaded = await Task.detached(priority: .utility) {
                 let sampleCount = isAnimated ? count : 1
-                return (0..<sampleCount).compactMap { index in
+                var frames: [CGImage] = []
+                frames.reserveCapacity(sampleCount)
+                for index in 0..<sampleCount {
                     let time = duration * Double(index) / Double(max(sampleCount - 1, 1))
-                    return BackgroundStore.shared.loadFrame(named: id, at: time)
+                    if let frame = await BackgroundStore.shared.loadFrameAsync(named: id, at: time) {
+                        frames.append(frame)
+                    }
                 }
+                return frames
             }.value
             guard !Task.isCancelled else { return }
             frames = loaded

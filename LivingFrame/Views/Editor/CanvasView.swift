@@ -50,12 +50,6 @@ struct CanvasView: View {
     @State private var isRenderInFlight = false
     /// 背景分区预览直接采用导出的最终输出路径，避免降采样阶段混合透明遮罩。
     @State private var usesExactBackgroundPreview = false
-    /// CI 渲染串行执行，避免多个元素同时渲染造成任务积压和结果互相覆盖。
-    private static let renderQueue = DispatchQueue(
-        label: "com.livingframe.canvas-render",
-        qos: .userInteractive
-    )
-
     private enum TransformGestureMode: Equatable {
         case scaling
         case rotating
@@ -654,12 +648,12 @@ struct CanvasView: View {
             frameMaxPixelSize: 720,
             isPlaybackReversed: appState.isReversed
         )
-        Self.renderQueue.async { [baseComposition, selectionComposition, previewRenderer, time] in
-            let baseCG = previewRenderer.render(baseComposition, at: time)
-            let selectionCG = previewRenderer.render(selectionComposition, at: time)
+        Task.detached(priority: .userInitiated) { [baseComposition, selectionComposition, previewRenderer, time] in
+            let baseCG = await previewRenderer.renderAsync(baseComposition, at: time)
+            let selectionCG = await previewRenderer.renderAsync(selectionComposition, at: time)
             let baseImage = baseCG.map(UIImage.init(cgImage:))
             let selectionImage = selectionCG.map(UIImage.init(cgImage:))
-            DispatchQueue.main.async {
+            await MainActor.run {
                 guard self.interactivePreviewToken == token,
                       self.isLiveDragPreview else { return }
                 self.interactiveBaseImage = baseImage
@@ -853,7 +847,7 @@ struct CanvasView: View {
                             Text(verbatim: backgroundGestureKind?.title ?? NSLocalizedString("背景取景", comment: "Canvas background framing"))
                             Text("· 拖动移动 · 双指缩放")
                                 .foregroundStyle(.white.opacity(0.78))
-                            Text(String(format: "%.1f×", settings.cropScale))
+                            Text(String.localizedStringWithFormat("%.1f×", settings.cropScale))
                                 .monospacedDigit()
                                 .foregroundStyle(LF.gold)
                         }
@@ -976,10 +970,10 @@ struct CanvasView: View {
             frameMaxPixelSize: 720,
             isPlaybackReversed: appState.isReversed
         )
-        Self.renderQueue.async { [baseComposition, previewRenderer, time, backgroundID] in
-            let frame = BackgroundStore.shared.loadFrame(named: backgroundID, at: time)
-            let baseImage = previewRenderer.render(baseComposition, at: time).map(UIImage.init(cgImage:))
-            DispatchQueue.main.async {
+        Task.detached(priority: .userInitiated) { [baseComposition, previewRenderer, time, backgroundID] in
+            let frame = await BackgroundStore.shared.loadFrameAsync(named: backgroundID, at: time)
+            let baseImage = await previewRenderer.renderAsync(baseComposition, at: time).map(UIImage.init(cgImage:))
+            await MainActor.run {
                 guard self.backgroundPreviewToken == token,
                       self.isBackgroundInteracting else { return }
                 self.interactiveBackgroundFrame = frame
@@ -1201,11 +1195,14 @@ struct CanvasView: View {
         let time = composition.map { min(appState.currentTime, $0.duration) } ?? 0
         let renderer = renderer
         let renderStartedAt = Date()
-        Self.renderQueue.async { [renderer, composition, time, renderStartedAt] in
-            let cg = composition.flatMap {
-                renderer.render($0, at: time)
+        Task.detached(priority: .userInitiated) { [renderer, composition, time, renderStartedAt] in
+            let cg: CGImage?
+            if let composition {
+                cg = await renderer.renderAsync(composition, at: time)
+            } else {
+                cg = nil
             }
-            DispatchQueue.main.async {
+            await MainActor.run {
                 self.isRenderInFlight = false
 
                 let isCurrentVersion = version == self.renderVersion

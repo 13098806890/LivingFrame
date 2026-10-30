@@ -81,6 +81,47 @@ public struct CompositionRenderer {
         return context.createCGImage(ci, from: rect)
     }
 
+    /// Asynchronously loads animated background frames before using the shared
+    /// synchronous compositing path. This keeps AVFoundation decoding off any
+    /// thread that would otherwise block on a frame-generation callback.
+    public func renderAsync(
+        _ composition: Composition,
+        at time: TimeInterval
+    ) async -> CGImage? {
+        guard let ci = await renderCIImageAsync(composition, at: time) else { return nil }
+        return autoreleasepool {
+            let rect = composition.renderRect
+            if let frameMaxPixelSize {
+                let size = rect.size
+                let scale = min(1, frameMaxPixelSize / max(size.width, size.height))
+                if scale < 1 {
+                    let cropped = ci.cropped(to: rect)
+                    let normalized = cropped.transformed(by: CGAffineTransform(
+                        translationX: -rect.minX,
+                        y: -rect.minY
+                    ))
+                    let scaled = normalized.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                    let scaledSize = CGSize(width: size.width * scale, height: size.height * scale)
+                    return context.createCGImage(scaled, from: CGRect(origin: .zero, size: scaledSize))
+                }
+            }
+            return context.createCGImage(ci, from: rect)
+        }
+    }
+
+    public func renderCIImageAsync(
+        _ composition: Composition,
+        at time: TimeInterval
+    ) async -> CIImage? {
+        await prepareBackgroundFrames(in: composition, at: time)
+        return autoreleasepool {
+            renderCIImage(composition, at: composition.compositionPlaybackTime(
+                for: time,
+                reversed: isPlaybackReversed
+            ))
+        }
+    }
+
     public func render(
         _ composition: Composition,
         at time: TimeInterval,
@@ -111,6 +152,67 @@ public struct CompositionRenderer {
             context.render(ci, to: pixelBuffer, bounds: sourceRect, colorSpace: nil)
         }
         return true
+    }
+
+    public func renderAsync(
+        _ composition: Composition,
+        at time: TimeInterval,
+        into pixelBuffer: CVPixelBuffer,
+        outputSize: CGSize? = nil
+    ) async -> Bool {
+        guard let ci = await renderCIImageAsync(composition, at: time) else { return false }
+        return autoreleasepool {
+            let sourceRect = composition.renderRect
+            let targetSize = outputSize ?? sourceRect.size
+            if targetSize != sourceRect.size {
+                let normalized = ci.cropped(to: sourceRect).transformed(by: CGAffineTransform(
+                    translationX: -sourceRect.minX,
+                    y: -sourceRect.minY
+                ))
+                let scaled = normalized.transformed(by: CGAffineTransform(
+                    scaleX: targetSize.width / sourceRect.width,
+                    y: targetSize.height / sourceRect.height
+                ))
+                context.render(scaled, to: pixelBuffer,
+                               bounds: CGRect(origin: .zero, size: targetSize), colorSpace: nil)
+            } else {
+                context.render(ci, to: pixelBuffer, bounds: sourceRect, colorSpace: nil)
+            }
+            return true
+        }
+    }
+
+    private func prepareBackgroundFrames(in composition: Composition, at time: TimeInterval) async {
+        let playbackTime = composition.compositionPlaybackTime(
+            for: time,
+            reversed: isPlaybackReversed
+        )
+        let visibleCollageGroups = Set(composition.elements.compactMap { element -> UUID? in
+            guard element.isVisible(at: playbackTime),
+                  case .collage(let groupID) = element.kind else { return nil }
+            return groupID
+        })
+        let collageGroupIDs = Set(composition.elements.compactMap { element -> UUID? in
+            guard case .collage(let groupID) = element.kind else { return nil }
+            return groupID
+        })
+
+        for element in composition.elements where element.isVisible(at: playbackTime) {
+            guard case .background(let backgroundID) = element.kind else { continue }
+            if let groupID = element.collageGroupID,
+               collageGroupIDs.contains(groupID),
+               !visibleCollageGroups.contains(groupID) {
+                continue
+            }
+            guard let media = await backgroundMediaProvider.mediaAsync(named: backgroundID),
+                  media.mediaType == .video else { continue }
+            let sourceTime = backgroundSourceTime(
+                for: element,
+                at: playbackTime,
+                duration: media.duration
+            )
+            _ = await backgroundMediaProvider.loadFrameAsync(named: backgroundID, at: sourceTime)
+        }
     }
 
     /// Renders a small style-option sample using the same clip-effect pipeline as
@@ -694,6 +796,23 @@ public struct CompositionRenderer {
         return transform
     }
 
+    private func backgroundSourceTime(
+        for element: CompositionElement,
+        at time: TimeInterval,
+        duration: TimeInterval
+    ) -> TimeInterval {
+        let sourceRange = SourcePlaybackRange(
+            duration: max(duration, 0.1),
+            start: element.sourceStartTime,
+            end: element.sourceEndTime
+        )
+        return sourceRange.sourceTime(
+            at: max(0, time - element.startTime),
+            phase: element.sourcePlaybackOffset ?? 0,
+            looping: element.shouldLoop(cycleDuration: sourceRange.span)
+        )
+    }
+
     private func placedImage(
         for element: CompositionElement,
         at time: TimeInterval,
@@ -711,17 +830,7 @@ public struct CompositionRenderer {
                 backgroundMediaProvider.media(named: backgroundID)?.duration ?? 0.1,
                 0.1
             )
-            let sourceRange = SourcePlaybackRange(
-                duration: sourceDuration,
-                start: element.sourceStartTime,
-                end: element.sourceEndTime
-            )
-            let elapsed = max(0, time - element.startTime)
-            let sourceTime = sourceRange.sourceTime(
-                at: elapsed,
-                phase: element.sourcePlaybackOffset ?? 0,
-                looping: element.shouldLoop(cycleDuration: sourceRange.span)
-            )
+            let sourceTime = backgroundSourceTime(for: element, at: time, duration: sourceDuration)
             if let frame = backgroundMediaProvider.loadFrame(
                 named: backgroundID,
                 at: sourceTime

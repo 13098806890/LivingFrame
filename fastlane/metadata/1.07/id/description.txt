@@ -12,9 +12,9 @@ Pembuatan potongan, komposisi, dan ekspor berlangsung di perangkat Anda. Akun ti
 GIFBloom adalah alat kreatif untuk membuat dan mengedit proyek foto animasi pribadi.
 
 
-Pilih satu atau beberapa orang yang ingin dipertahankan, gunakan seleksi bebas saat membutuhkan kontrol lebih, lalu potong rentang sumber sebelum membuat potongan. Setelah itu, sesuaikan setiap potongan bergerak di linimasa, termasuk posisi, ukuran, rotasi, urutan lapisan, dan waktunya. GIFBloom Pro mendukung ekstraksi hingga 10 detik dan tersedia dengan opsi pembelian mingguan, tahunan, atau seumur hidup.
+Pilih satu atau beberapa orang yang ingin dipertahankan, gunakan seleksi bebas saat membutuhkan kontrol lebih, lalu potong rentang sumber sebelum membuat potongan. Setelah itu, sesuaikan setiap potongan bergerak di linimasa, termasuk posisi, ukuran, rotasi, urutan lapisan, dan waktunya. GIFBloom Pro mendukung ekstraksi hingga 15 detik dan tersedia dengan opsi pembelian mingguan, tahunan, atau seumur hidup.
 
-Ubah GIF dan video menjadi Live Photo, atau ekspor Live Photo dan GIF sebagai video biasa. Buat potongan animasi atau stiker statis dengan garis tepi komik, lalu pilih bagian berdurasi 3 detik saat membuat Live Photo dari video panjang.
+Ubah GIF dan video menjadi Live Photo, atau ekspor Live Photo dan GIF sebagai video biasa. Buat potongan animasi atau stiker statis dengan bingkai komik. Ubah video panjang menjadi Live Photo hingga 15 detik (gratis hingga 5 detik; hingga 15 detik dengan GIFBloom Pro).
 
 Ketentuan Penggunaan: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 Kebijakan Privasi: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=id

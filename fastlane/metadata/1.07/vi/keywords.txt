@@ -1,1 +1,1 @@
-ảnh động,Live Photo,chỉnh sửa video,video trong suốt,tách nền,ghép ảnh,hoạt ảnh
+chuyển đổi định dạng,GIF,ghép ảnh,hoạt hình,khung hình,ảnh động,nhãn dán

@@ -1,1 +1,1 @@
-GIFBloom
+GIFBloom: Creador de GIF

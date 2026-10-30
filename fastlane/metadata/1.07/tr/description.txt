@@ -12,9 +12,9 @@ Kesit oluşturma, birleştirme ve dışa aktarma cihazında yapılır. Hesap ger
 GIFBloom, kişisel animasyonlu fotoğraf projeleri oluşturup düzenlemek için yaratıcı bir araçtır.
 
 
-Tutmak istediğin bir kişiyi veya birkaç kişiyi seç, daha fazla kontrol gerektiğinde serbest seçim çiz ve çıkarma işleminden önce kaynak aralığını kırp. Ardından her hareketli kesitin konumunu, boyutunu, dönüşünü, katman sırasını ve süresini zaman çizelgesinde ayarla. GIFBloom Pro, 10 saniyeye kadar çıkarma işlemini destekler ve haftalık, yıllık veya ömür boyu satın alma seçenekleri sunar.
+Tutmak istediğin bir kişiyi veya birkaç kişiyi seç, daha fazla kontrol gerektiğinde serbest seçim çiz ve çıkarma işleminden önce kaynak aralığını kırp. Ardından her hareketli kesitin konumunu, boyutunu, dönüşünü, katman sırasını ve süresini zaman çizelgesinde ayarla. GIFBloom Pro, 15 saniyeye kadar çıkarma işlemini destekler ve haftalık, yıllık veya ömür boyu satın alma seçenekleri sunar.
 
-GIF ve videoları Live Photo’ya dönüştürün veya Live Photo ve GIF’leri standart video olarak dışa aktarın. Çizgi roman kenarlıklarıyla hareketli kesitler ya da statik çıkartmalar oluşturun; uzun bir videodan Live Photo oluştururken 3 saniyelik bir bölüm seçin.
+GIF ve videoları Live Photo’ya dönüştürün veya Live Photo ve GIF’leri standart videolar olarak dışa aktarın. Çizgi roman kenarlıklı hareketli kesitler ya da statik çıkartmalar oluşturun. Uzun videolardan 15 saniyeye kadar Live Photo oluşturun (ücretsiz en çok 5 saniye; GIFBloom Pro ile en çok 15 saniye).
 
 Kullanım Koşulları: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 Gizlilik Politikası: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=tr

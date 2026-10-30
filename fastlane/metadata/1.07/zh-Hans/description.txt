@@ -12,9 +12,9 @@ GIFBloom 是一款用于制作 GIF 动态表情和视频抠图的工具。将视
 用自己的素材制作动态照片、分层 GIF 和透明视频，然后保存到“照片”或分享。
 
 
-你可以选择保留一个或多个主体；需要更精确时，用自由圈选限定大致范围，再在提取前裁剪素材片段。提取后，可在时间轴上分别调整每个动态剪影的位置、大小、旋转、层级和播放时长。GIFBloom Pro 支持最长 10 秒的提取，并提供周订阅、年订阅和永久买断选项。
+你可以选择保留一个或多个主体；需要更精确时，用自由圈选限定大致范围，再在提取前裁剪素材片段。提取后，可在时间轴上分别调整每个动态剪影的位置、大小、旋转、层级和播放时长。GIFBloom Pro 支持最长 15 秒的提取，并提供周订阅、年订阅和永久买断选项。
 
-支持将 GIF 和视频转换为 Live Photo，也可以将 Live Photo 和 GIF 导出为普通视频。你可以制作带漫画边缘效果的动态剪影或静态贴纸；从较长视频创建 Live Photo 时，还可以选择 3 秒片段。
+支持将 GIF 和视频转换为 Live Photo，也可将 Live Photo 和 GIF 导出为普通视频。还可制作带漫画边缘效果的动态剪影或静态贴纸。长视频可生成最长 15 秒的 Live Photo（免费版最长 5 秒，GIFBloom Pro 最长 15 秒）。
 
 使用条款: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 隐私政策: https://13098806890.github.io/App-Store-pages/GIFBloom/privacy-policy.html?lang=zh-Hans

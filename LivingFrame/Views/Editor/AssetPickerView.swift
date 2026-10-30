@@ -377,7 +377,7 @@ struct AssetPickerView: View {
                             .foregroundStyle(LF.textSecondary)
                     }
                     Spacer()
-                    Image(systemName: "chevron.right")
+                    Image(systemName: "chevron.forward")
                         .foregroundStyle(LF.textSecondary)
                 }
                 .padding(12)
@@ -872,7 +872,7 @@ struct AnimatedClipPreview: View {
                                 return (position, nil)
                             }
                             let renderer = CompositionRenderer(frameMaxPixelSize: maxPixelSize)
-                            let image = renderer.render(
+                            let image = await renderer.renderAsync(
                                 composition,
                                 at: Double(sourceIndices[position]) / fps
                             )
@@ -1041,7 +1041,7 @@ private struct CoreStickerStylePreviewFrame: View {
             let compositionValue = composition
             let rendered = await Task.detached(priority: .userInitiated) {
                 let fps = max(clipValue.fps, 1)
-                return CompositionRenderer(frameMaxPixelSize: pixelSize).render(
+                return await CompositionRenderer(frameMaxPixelSize: pixelSize).renderAsync(
                     compositionValue,
                     at: Double(frameIndexValue) / fps
                 )

@@ -5,6 +5,8 @@ import UIKit
 /// 检查器：按选中类型分派（视频元素 / 音频段）
 struct ElementInspectorView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var inspectorBackgroundFrame: CGImage?
+    @State private var inspectorBackgroundFrameKey: String?
 
     var body: some View {
         // 直接使用 popover 的主题背景，不再套一层大卡片，避免与 NavigationBar
@@ -145,10 +147,12 @@ struct ElementInspectorView: View {
     private func backgroundElementInspector(_ element: CompositionElement) -> some View {
         let settings = element.backgroundSettings ?? BackgroundElementSettings()
         let isCollageElement = element.collageGroupID != nil
+        let frameKey = backgroundElementFrameKey(for: element)
         return VStack(alignment: .leading, spacing: 10) {
             if let comp = appState.composition,
-               case .background(let backgroundID) = element.kind,
-               let frame = BackgroundStore.shared.loadFrame(named: backgroundID, at: appState.currentTime) {
+               case .background = element.kind,
+               inspectorBackgroundFrameKey == frameKey,
+               let frame = inspectorBackgroundFrame {
                 BackgroundEditingPreview(
                     items: [BackgroundEditingPreviewItem(
                         id: element.id,
@@ -230,7 +234,7 @@ struct ElementInspectorView: View {
                         in: Double(BackgroundElementSettings.minimumCropScale)...Double(BackgroundElementSettings.maximumCropScale)
                     )
                     .tint(LF.header)
-                    Text(String(format: "%.1f×", settings.cropScale))
+                    Text(String.localizedStringWithFormat("%.1f×", settings.cropScale))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(LF.textSecondary)
                         .frame(width: 34, alignment: .trailing)
@@ -257,6 +261,18 @@ struct ElementInspectorView: View {
             }
 
             inspectorFooter("点击画布空白处可返回画布背景设置")
+        }
+        .task(id: frameKey) {
+            inspectorBackgroundFrame = nil
+            inspectorBackgroundFrameKey = nil
+            guard case .background(let backgroundID) = element.kind else { return }
+            let frame = await BackgroundStore.shared.loadFrameAsync(
+                named: backgroundID,
+                at: appState.currentTime
+            )
+            guard !Task.isCancelled else { return }
+            inspectorBackgroundFrame = frame
+            inspectorBackgroundFrameKey = frameKey
         }
     }
 
@@ -331,6 +347,12 @@ struct ElementInspectorView: View {
                 }
             }
         }
+    }
+
+    private func backgroundElementFrameKey(for element: CompositionElement) -> String? {
+        guard case .background(let backgroundID) = element.kind else { return nil }
+        let timeBucket = Int((max(appState.currentTime, 0) * 30).rounded(.down))
+        return "\(backgroundID)-\(timeBucket)"
     }
 
     private func partitionChoiceRow(
@@ -451,7 +473,7 @@ struct ElementInspectorView: View {
                 ForEach(speedOptions, id: \.self) { speed in
                     let isCurrent = abs(clip.playbackSpeed - speed) < 0.001
                     EditorOptionChip(
-                        title: "\(speed == speed.rounded() ? String(Int(speed)) : String(format: "%.1f", speed))x",
+                        title: "\(speed == speed.rounded() ? String(Int(speed)) : String.localizedStringWithFormat("%.1f", speed))x",
                         isSelected: isCurrent
                     ) {
                         appState.setClipPlaybackSpeed(clip.id, speed)
@@ -497,7 +519,7 @@ struct ElementInspectorView: View {
                         }
                     ),
                     range: 0...2,
-                    text: String(format: "%.1f s", clip.fadeIn)
+                    text: String.localizedStringWithFormat("%.1f s", clip.fadeIn)
                 )
                 slider(
                     label: "淡出",
@@ -508,7 +530,7 @@ struct ElementInspectorView: View {
                         }
                     ),
                     range: 0...2,
-                    text: String(format: "%.1f s", clip.fadeOut)
+                    text: String.localizedStringWithFormat("%.1f s", clip.fadeOut)
                 )
             }
         }
