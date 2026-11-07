@@ -890,7 +890,7 @@
 "已保存到照片。" = "Fotoğraflar'a kaydedildi.";
 
 /* Classic sticker templates */
-"影视模板" = "Klasik Şablonlar";
+"蒙版" = "Maskeler";
 "带有透明头像孔的经典影视风格画面模板。" = "Portre için küçük, şeffaf ve dairesel bir boşluğu olan klasik film tarzı tasarımlar.";
 
 /* App Store rating and reviews */
@@ -907,3 +907,45 @@
 "默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Görüntü boyutu varsayılan olarak korunur; GIF’ler 10 MB’ı aşabilir";
 
 "%lld seconds" = "%lld saniye";
+
+/* Travel doodle stickers */
+"旅行涂鸦" = "Seyahat karalamaları";
+"以蜡笔手绘风格记录旅途和日常片刻。" = "Gezilerden ve günlük anlardan ilham alan pastel çizimler.";
+"旅途相机" = "Seyahat kamerası";
+"地图标记" = "Harita iğnesi";
+"阳光明信片" = "Güneşli kartpostal";
+"贝壳" = "Deniz kabuğu";
+"笑脸太阳" = "Gülümseyen güneş";
+"海浪" = "Mavi dalga";
+"小螃蟹" = "Küçük yengeç";
+"海鸥" = "Martı";
+"星光弧线" = "Yıldız kıvrımı";
+"星星箭头" = "Yıldız oku";
+"星星轨迹" = "Yıldız izi";
+"取景框涂鸦" = "Odak çerçevesi";
+
+/* Christmas doodle stickers */
+"圣诞涂鸦" = "Yılbaşı Karalamaları";
+"以蜡笔动态涂鸦风格绘制的圣诞贴纸。" = "Noel sezonu için neşeli pastel boya karalamaları.";
+"圣诞树" = "Yılbaşı Ağacı";
+"雪人" = "Kardan Adam";
+"拐杖糖" = "Şeker Bastonu";
+"圣诞礼物" = "Yılbaşı Hediyesi";
+"圣诞袜" = "Yılbaşı Çorabı";
+"圣诞铃铛" = "Yılbaşı Çanı";
+"冬青果" = "Çobanpüskülü";
+"圣诞帽" = "Noel Baba Şapkası";
+
+/* Lunar New Year doodle stickers */
+"羊年小羊" = "Keçi Yılı Keçisi";
+"新春灯笼" = "Yeni Yıl Feneri";
+"新春红包" = "Yeni Yıl Kırmızı Zarfı";
+"喜庆鞭炮" = "Kutlama Havai Fişekleri";
+"梅花" = "Erik Çiçeği";
+"金元宝" = "Altın Yuanbao";
+"吉祥橘子" = "Şans Mandalinaları";
+"中国结" = "Çin Düğümü";
+
+/* Lunar New Year sticker category */
+"新春涂鸦" = "Ay Yeni Yılı Karalamaları";
+"以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Ay Yeni Yılı için neşeli pastel boya karalamaları.";

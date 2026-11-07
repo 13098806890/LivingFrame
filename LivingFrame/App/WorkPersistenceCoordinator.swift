@@ -43,7 +43,9 @@ actor WorkPersistenceCoordinator {
             candidates.insert(work, at: 0)
         }
 
-        let normalized = WorkItem.retainingOnlyLatestDraft(in: candidates)
+        let normalized = normalizedVisibleWorks(from: candidates)
+        let normalizedIDs = Set(normalized.map(\.id))
+        let orphaned = candidates.filter { !normalizedIDs.contains($0.id) }
         let changed = normalized.filter { normalizedWork in
             candidates.first(where: { $0.id == normalizedWork.id }) != normalizedWork
         }
@@ -59,6 +61,9 @@ actor WorkPersistenceCoordinator {
             for item in toPersist {
                 try store.save(item)
             }
+            for item in orphaned {
+                store.delete(item)
+            }
             return (true, store.loadWorks())
         } catch {
             LogStore.log("work.draftPolicySave failed: \(error)")
@@ -66,8 +71,38 @@ actor WorkPersistenceCoordinator {
         }
     }
 
+    /// Normalize legacy draft records at launch and remove draft-only containers
+    /// whose draft was already discarded or superseded.
+    func loadAndNormalize() -> [WorkItem] {
+        let loaded = store.loadWorks()
+        let normalized = normalizedVisibleWorks(from: loaded)
+        let normalizedIDs = Set(normalized.map(\.id))
+        let orphaned = loaded.filter { !normalizedIDs.contains($0.id) }
+        let changed = normalized.filter { normalizedWork in
+            loaded.first(where: { $0.id == normalizedWork.id }) != normalizedWork
+        }
+
+        do {
+            for item in changed {
+                try store.save(item)
+            }
+            for item in orphaned {
+                store.delete(item)
+            }
+            return store.loadWorks()
+        } catch {
+            LogStore.log("work.loadNormalization failed: \(error)")
+            return loaded
+        }
+    }
+
     func load() -> [WorkItem] {
         store.loadWorks()
+    }
+
+    private func normalizedVisibleWorks(from works: [WorkItem]) -> [WorkItem] {
+        WorkItem.retainingOnlyLatestDraft(in: works)
+            .filter { $0.hasSavedVersion || $0.draft != nil }
     }
 
     func storageSizeBytes(for workID: UUID) -> Int64 {

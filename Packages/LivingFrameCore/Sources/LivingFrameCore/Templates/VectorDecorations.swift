@@ -22,6 +22,9 @@ private final class StickerFrameBox: NSObject {
 
 public enum StickerCategory: String, CaseIterable, Equatable, Sendable {
     case doodle
+    case travelDoodle
+    case christmasDoodle
+    case lunarNewYear
     case emoji
     case fruit
     case classicTemplate
@@ -31,15 +34,18 @@ public enum StickerCategory: String, CaseIterable, Equatable, Sendable {
     /// AI face stickers remain readable for existing saved compositions, but
     /// are not exposed to new users while the feature is hidden.
     public static let allCases: [StickerCategory] = [
-        .doodle, .emoji, .fruit, .classicTemplate, .logo
+        .doodle, .travelDoodle, .christmasDoodle, .lunarNewYear, .emoji, .fruit, .classicTemplate, .logo
     ]
 
     public var title: String {
         switch self {
         case .doodle: NSLocalizedString("涂鸦", comment: "Sticker category")
+        case .travelDoodle: NSLocalizedString("旅行涂鸦", comment: "Sticker category")
+        case .christmasDoodle: NSLocalizedString("圣诞涂鸦", comment: "Sticker category")
+        case .lunarNewYear: NSLocalizedString("新春涂鸦", comment: "Sticker category")
         case .emoji: NSLocalizedString("emoji", comment: "Sticker category")
         case .fruit: NSLocalizedString("水果", comment: "Sticker category")
-        case .classicTemplate: NSLocalizedString("影视模板", comment: "Sticker category")
+        case .classicTemplate: NSLocalizedString("蒙版", comment: "Sticker category")
         case .aiSticker: NSLocalizedString("AI贴纸", comment: "Sticker category")
         case .logo: NSLocalizedString("logo", comment: "Sticker category")
         }
@@ -118,6 +124,12 @@ public struct StickerDefinition: Identifiable, Equatable, Sendable {
         switch category {
         case .doodle:
             key = "为画面增添趣味的动态涂鸦装饰。"
+        case .travelDoodle:
+            key = "以蜡笔手绘风格记录旅途和日常片刻。"
+        case .christmasDoodle:
+            key = "以蜡笔动态涂鸦风格绘制的圣诞贴纸。"
+        case .lunarNewYear:
+            key = "以蜡笔动态涂鸦风格绘制的新春贴纸。"
         case .emoji:
             key = "使用系统的 Apple Color Emoji 风格表情。"
         case .fruit:
@@ -373,6 +385,146 @@ public struct DecorationRenderer {
     }
 
     public static let stickerCatalog: [StickerDefinition] = [
+        StickerDefinition(
+            id: "sticker-travel-camera", name: NSLocalizedString("旅途相机", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "travel-camera", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-map-pin", name: NSLocalizedString("地图标记", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "travel-map-pin", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-postcard", name: NSLocalizedString("阳光明信片", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "travel-postcard", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-shell", name: NSLocalizedString("贝壳", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "travel-shell", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-smiling-sun", name: NSLocalizedString("笑脸太阳", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "beach-sun", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-blue-wave", name: NSLocalizedString("海浪", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "beach-wave", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-crab", name: NSLocalizedString("小螃蟹", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "beach-crab", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-seagull", name: NSLocalizedString("海鸥", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "beach-seagull", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-star-swoosh", name: NSLocalizedString("星光弧线", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "doodle-swoosh", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-star-arrow", name: NSLocalizedString("星星箭头", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "doodle-arrow-star", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-star-trail", name: NSLocalizedString("星星轨迹", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "doodle-looping-path", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-travel-focus-frame", name: NSLocalizedString("取景框涂鸦", comment: "Sticker name"), category: .travelDoodle,
+            resourceName: "doodle-focus-frame", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-lunar-goat", name: NSLocalizedString("羊年小羊", comment: "Sticker name"), category: .lunarNewYear,
+            resourceName: "lunar-goat", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-lunar-lantern", name: NSLocalizedString("新春灯笼", comment: "Sticker name"), category: .lunarNewYear,
+            resourceName: "lunar-lantern", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-lunar-red-envelope", name: NSLocalizedString("新春红包", comment: "Sticker name"), category: .lunarNewYear,
+            resourceName: "lunar-red-envelope", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-lunar-firecrackers", name: NSLocalizedString("喜庆鞭炮", comment: "Sticker name"), category: .lunarNewYear,
+            resourceName: "lunar-firecrackers", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-lunar-plum-blossom", name: NSLocalizedString("梅花", comment: "Sticker name"), category: .lunarNewYear,
+            resourceName: "lunar-plum-blossom", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-lunar-gold-ingot", name: NSLocalizedString("金元宝", comment: "Sticker name"), category: .lunarNewYear,
+            resourceName: "lunar-gold-ingot", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-lunar-mandarins", name: NSLocalizedString("吉祥橘子", comment: "Sticker name"), category: .lunarNewYear,
+            resourceName: "lunar-mandarins", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-lunar-chinese-knot", name: NSLocalizedString("中国结", comment: "Sticker name"), category: .lunarNewYear,
+            resourceName: "lunar-chinese-knot", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-christmas-tree", name: NSLocalizedString("圣诞树", comment: "Sticker name"), category: .christmasDoodle,
+            resourceName: "christmas-tree", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-christmas-snowman", name: NSLocalizedString("雪人", comment: "Sticker name"), category: .christmasDoodle,
+            resourceName: "christmas-snowman", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-christmas-candy-cane", name: NSLocalizedString("拐杖糖", comment: "Sticker name"), category: .christmasDoodle,
+            resourceName: "christmas-candy-cane", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-christmas-gift-box", name: NSLocalizedString("圣诞礼物", comment: "Sticker name"), category: .christmasDoodle,
+            resourceName: "christmas-gift-box", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-christmas-stocking", name: NSLocalizedString("圣诞袜", comment: "Sticker name"), category: .christmasDoodle,
+            resourceName: "christmas-stocking", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-christmas-bell", name: NSLocalizedString("圣诞铃铛", comment: "Sticker name"), category: .christmasDoodle,
+            resourceName: "christmas-bell", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-christmas-holly", name: NSLocalizedString("冬青果", comment: "Sticker name"), category: .christmasDoodle,
+            resourceName: "christmas-holly", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-christmas-santa-hat", name: NSLocalizedString("圣诞帽", comment: "Sticker name"), category: .christmasDoodle,
+            resourceName: "christmas-santa-hat", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
         StickerDefinition(
             id: "sticker-firework", name: "烟花", category: .doodle,
             resourceName: "firework-frame-%02d", resourceExtension: "png",
@@ -710,6 +862,26 @@ public struct DecorationRenderer {
         StickerDefinition(
             id: "sticker-template-wizarding-academy-3x4", name: "Wizarding Academy · 3:4", category: .classicTemplate,
             resourceName: "wizarding-academy-3x4", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-halloween-ghost-parade-1x1", name: "Ghost Parade · 1:1", category: .classicTemplate,
+            resourceName: "halloween-ghost-parade", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-halloween-black-cat-moonlight-1x1", name: "Black Cat Moonlight · 1:1", category: .classicTemplate,
+            resourceName: "halloween-black-cat-moonlight", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-halloween-candy-web-1x1", name: "Candy Web · 1:1", category: .classicTemplate,
+            resourceName: "halloween-candy-web", resourceExtension: "png",
+            isFrameSequence: false, frameCount: 1
+        ),
+        StickerDefinition(
+            id: "sticker-template-halloween-little-witch-cauldron-1x1", name: "Little Witch Cauldron · 1:1", category: .classicTemplate,
+            resourceName: "halloween-little-witch-cauldron", resourceExtension: "png",
             isFrameSequence: false, frameCount: 1
         ),
         StickerDefinition(
@@ -1345,6 +1517,27 @@ public struct DecorationRenderer {
                 forResource: resourceName,
                 withExtension: resourceExtension,
                 subdirectory: "GeneratedStickers/Templates"
+            ) {
+                return url
+            }
+            if let url = bundle.url(
+                forResource: resourceName,
+                withExtension: resourceExtension,
+                subdirectory: "GeneratedStickers/旅行涂鸦"
+            ) {
+                return url
+            }
+            if let url = bundle.url(
+                forResource: resourceName,
+                withExtension: resourceExtension,
+                subdirectory: "GeneratedStickers/圣诞涂鸦"
+            ) {
+                return url
+            }
+            if let url = bundle.url(
+                forResource: resourceName,
+                withExtension: resourceExtension,
+                subdirectory: "GeneratedStickers/春节涂鸦"
             ) {
                 return url
             }

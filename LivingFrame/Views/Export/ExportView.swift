@@ -46,166 +46,194 @@ struct ExportView: View {
     @State private var previewWatermark: ExportWatermark?
     @State private var reviewPromptTask: Task<Void, Never>?
 
+    private var isShowingExportProgress: Bool {
+        appState.isExporting || isSavingToLibrary || isPreparingExport
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    if appState.isExporting || isSavingToLibrary || isPreparingExport {
-                        exportProgressBanner
-                    } else if let exportedURL {
-                        exportResultBanner(url: exportedURL)
-                    } else if let exportError {
-                        exportErrorBanner(message: exportError)
-                    }
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        Color.clear
+                            .frame(height: 1)
+                            .id("export-content-top")
 
-                    if let comp = appState.composition {
-                        exportContext(comp)
-                    }
-
-                    if !purchaseManager.hasPro {
-                        WatermarkNoticeCard {
-                            showProStore = true
-                        }
-                    }
-
-                    SectionCard(title: "导出格式") {
-                        exportFormatPicker
-
-                        Text(hasSelectedFormat ? format.subtitle : "请选择导出格式")
-                            .font(.caption)
-                            .foregroundStyle(LF.textSecondary)
-
-                        if let comp = appState.composition,
-                           hasSelectedFormat,
-                           exportedURL == nil,
-                           exportError == nil {
-                            exportNotes(comp)
+                        if !isShowingExportProgress {
+                            if let exportedURL {
+                                exportResultBanner(url: exportedURL)
+                            } else if let exportError {
+                                exportErrorBanner(message: exportError)
+                            }
                         }
 
-                        if hasSelectedFormat {
-                            if format == .gif {
-                                Toggle("微信 GIF 优化", isOn: $chatSticker)
-                                    .tint(LF.actionPrimary)
-                                if chatSticker {
-                                    Picker("GIF 预设", selection: $weChatGIFPreset) {
-                                        ForEach(WeChatGIFPreset.allCases) { preset in
-                                            Text(preset.title).tag(preset)
+                        if let comp = appState.composition {
+                            exportContext(comp)
+                        }
+
+                        if !purchaseManager.hasPro {
+                            WatermarkNoticeCard {
+                                showProStore = true
+                            }
+                        }
+
+                        SectionCard(title: "导出格式") {
+                            exportFormatPicker
+
+                            Text(hasSelectedFormat ? format.subtitle : "请选择导出格式")
+                                .font(.caption)
+                                .foregroundStyle(LF.textSecondary)
+
+                            if let comp = appState.composition,
+                               hasSelectedFormat,
+                               exportedURL == nil,
+                               exportError == nil {
+                                exportNotes(comp)
+                            }
+
+                            if hasSelectedFormat {
+                                if format == .gif {
+                                    Toggle("微信 GIF 优化", isOn: $chatSticker)
+                                        .tint(LF.actionPrimary)
+                                    if chatSticker {
+                                        Picker("GIF 预设", selection: $weChatGIFPreset) {
+                                            ForEach(WeChatGIFPreset.allCases) { preset in
+                                                Text(preset.title).tag(preset)
+                                            }
+                                        }
+                                        .pickerStyle(.segmented)
+                                        Text(NSLocalizedString(
+                                            " 超过 10 MB 时会均匀抽帧，最低 6 fps；不会缩小画面。建议使用 1:1 画布让主体显示更大。半透明阴影会转为硬边。",
+                                            comment: "WeChat GIF export note"
+                                        ).trimmingCharacters(in: .whitespacesAndNewlines))
+                                            .font(.caption)
+                                            .foregroundStyle(LF.textSecondary)
+                                    }
+                            }
+
+                                if format != .livePhoto && !(format == .gif && chatSticker) {
+                                    Picker("分辨率", selection: $resolution) {
+                                        ForEach(availableResolutionOptions) { option in
+                                            Text(option.title).tag(option)
                                         }
                                     }
                                     .pickerStyle(.segmented)
-                                    Text(NSLocalizedString(
-                                        " 超过 10 MB 时会均匀抽帧，最低 6 fps；不会缩小画面。建议使用 1:1 画布让主体显示更大。半透明阴影会转为硬边。",
-                                        comment: "WeChat GIF export note"
-                                    ).trimmingCharacters(in: .whitespacesAndNewlines))
+                                    Picker("帧率", selection: $fps) {
+                                        ForEach(availableFPSOptions, id: \.self) { option in
+                                            Text("\(fpsTitle(option)) fps").tag(option)
+                                        }
+                                    }
+                                    .pickerStyle(.segmented)
+                                    Text(String.localizedStringWithFormat(
+                                        NSLocalizedString("当前工程动态素材最高：%1$@ fps", comment: "Highest source frame rate in project"),
+                                        fpsTitle(appState.maximumSourceFPS) as NSString
+                                    ))
+                                        .font(.caption)
+                                        .foregroundStyle(LF.textSecondary)
+                                } else if format == .livePhoto {
+                                    Label("Live Photo 使用原始画布与工程帧率", systemImage: "lock.fill")
                                         .font(.caption)
                                         .foregroundStyle(LF.textSecondary)
                                 }
-                        }
-
-                            if format != .livePhoto && !(format == .gif && chatSticker) {
-                                Picker("分辨率", selection: $resolution) {
-                                    ForEach(availableResolutionOptions) { option in
-                                        Text(option.title).tag(option)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                                Picker("帧率", selection: $fps) {
-                                    ForEach(availableFPSOptions, id: \.self) { option in
-                                        Text("\(fpsTitle(option)) fps").tag(option)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                                Text(String.localizedStringWithFormat(
-                                    NSLocalizedString("当前工程动态素材最高：%1$@ fps", comment: "Highest source frame rate in project"),
-                                    fpsTitle(appState.maximumSourceFPS) as NSString
-                                ))
-                                    .font(.caption)
-                                    .foregroundStyle(LF.textSecondary)
-                            } else if format == .livePhoto {
-                                Label("Live Photo 使用原始画布与工程帧率", systemImage: "lock.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(LF.textSecondary)
                             }
                         }
-                    }
-                    .disabled(appState.isExporting)
+                        .disabled(appState.isExporting)
 
-                    if let composition = appState.composition {
-                        ExportFramePreview(
-                            composition: composition,
-                            time: previewTime,
-                            outputSize: previewOutputSize(for: composition),
-                            maximumRenderSize: previewMaximumRenderSize,
-                            fps: previewFPS(for: composition),
-                            watermark: previewWatermark
-                        )
-                    }
+                        if let composition = appState.composition {
+                            ExportFramePreview(
+                                composition: composition,
+                                time: previewTime,
+                                outputSize: previewOutputSize(for: composition),
+                                maximumRenderSize: previewMaximumRenderSize,
+                                fps: previewFPS(for: composition),
+                                watermark: previewWatermark
+                            )
+                        }
 
-                    VStack(spacing: 6) {
-                        HStack(spacing: 8) {
-                            Label("预计文件大小", systemImage: "internaldrive")
-                                .font(.caption.weight(.medium))
+                        VStack(spacing: 6) {
+                            HStack(spacing: 8) {
+                                Label("预计文件大小", systemImage: "internaldrive")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(LF.textSecondary)
+                                Spacer()
+                                if isEstimatingSize {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else if let estimatedSizeBytes {
+                                    Text(String.localizedStringWithFormat(
+                                        NSLocalizedString("约 %1$@", comment: "Estimated export size"),
+                                        FileSizeText.string(fromByteCount: estimatedSizeBytes) as NSString
+                                    ))
+                                    .font(.caption.monospacedDigit().weight(.semibold))
+                                    .foregroundStyle(LF.textPrimary)
+                                } else {
+                                    Text("—")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(LF.textSecondary)
+                                }
+                            }
+                            Text(hasSelectedFormat && format == .gif && chatSticker
+                                ? NSLocalizedString("微信 GIF 预估值按 15 fps 计算；超过 10 MB 会自动降低帧率。", comment: "WeChat GIF estimate FPS note")
+                                : NSLocalizedString("文件体积会随画面细节、透明区域和编码器变化；导出完成后会显示准确结果。", comment: "Estimated file size note"))
+                                .font(.caption2)
                                 .foregroundStyle(LF.textSecondary)
-                            Spacer()
-                            if isEstimatingSize {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else if let estimatedSizeBytes {
-                                Text(String.localizedStringWithFormat(
-                                    NSLocalizedString("约 %1$@", comment: "Estimated export size"),
-                                    FileSizeText.string(fromByteCount: estimatedSizeBytes) as NSString
-                                ))
-                                .font(.caption.monospacedDigit().weight(.semibold))
-                                .foregroundStyle(LF.textPrimary)
-                            } else {
-                                Text("—")
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(LF.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.top, 2)
+                    }
+                    .padding()
+                }
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if isShowingExportProgress {
+                        exportProgressBanner
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
+                            .background(LF.background)
+                    }
+                }
+                .scrollIndicators(.hidden)
+                .lfNavigationTitle("导出")
+                .navigationBarTitleDisplayMode(.inline)
+                .magicBackground()
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            if appState.isExporting {
+                                exportTask?.cancel()
+                            } else if !isSavingToLibrary && !isPreparingExport {
+                                dismiss()
                             }
+                        } label: {
+                            Image(systemName: "xmark")
                         }
-                        Text(hasSelectedFormat && format == .gif && chatSticker
-                            ? NSLocalizedString("微信 GIF 预估值按 15 fps 计算；超过 10 MB 会自动降低帧率。", comment: "WeChat GIF estimate FPS note")
-                            : NSLocalizedString("文件体积会随画面细节、透明区域和编码器变化；导出完成后会显示准确结果。", comment: "Estimated file size note"))
-                            .font(.caption2)
-                            .foregroundStyle(LF.textSecondary)
-                            .multilineTextAlignment(.center)
+                        .accessibilityLabel(NSLocalizedString(
+                            appState.isExporting ? "取消导出" : (isSavingToLibrary || isPreparingExport ? "处理中…" : "取消"),
+                            comment: "Export navigation action"
+                        ))
+                        .accessibilityIdentifier("export-cancel")
+                        .disabled(isSavingToLibrary || isPreparingExport)
                     }
-                    .padding(.top, 2)
-                }
-                .padding()
-            }
-            .scrollIndicators(.hidden)
-            .lfNavigationTitle("导出")
-            .navigationBarTitleDisplayMode(.inline)
-            .magicBackground()
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        if appState.isExporting {
-                            exportTask?.cancel()
-                        } else if !isSavingToLibrary && !isPreparingExport {
-                            dismiss()
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button {
+                            export()
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
                         }
-                    } label: {
-                        Image(systemName: "xmark")
+                        .accessibilityLabel("导出")
+                        .accessibilityIdentifier("export-start")
+                        .tint(LF.actionPrimary)
+                        .disabled(!hasSelectedFormat || appState.isExporting || isSavingToLibrary || isPreparingExport || isEstimatingSize || appState.isSavingWork)
                     }
-                    .accessibilityLabel(NSLocalizedString(
-                        appState.isExporting ? "取消导出" : (isSavingToLibrary || isPreparingExport ? "处理中…" : "取消"),
-                        comment: "Export navigation action"
-                    ))
-                    .accessibilityIdentifier("export-cancel")
-                    .disabled(isSavingToLibrary || isPreparingExport)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        export()
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
+                .onChange(of: isShowingExportProgress) { _, isShowingProgress in
+                    guard !isShowingProgress else { return }
+                    Task { @MainActor in
+                        await Task.yield()
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            scrollProxy.scrollTo("export-content-top", anchor: .top)
+                        }
                     }
-                    .accessibilityLabel("导出")
-                    .accessibilityIdentifier("export-start")
-                    .tint(LF.actionPrimary)
-                    .disabled(!hasSelectedFormat || appState.isExporting || isSavingToLibrary || isPreparingExport || isEstimatingSize || appState.isSavingWork)
                 }
             }
         }

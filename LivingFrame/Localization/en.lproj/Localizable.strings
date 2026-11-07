@@ -893,7 +893,7 @@
 "已保存到照片。" = "Saved to Photos.";
 
 /* Classic sticker templates */
-"影视模板" = "Classic Templates";
+"蒙版" = "Masks";
 "带有透明头像孔的经典影视风格画面模板。" = "Classic film-inspired layouts with a small transparent circular portrait opening.";
 
 /* App Store rating and reviews */
@@ -910,3 +910,45 @@
 "默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Preserve image dimensions by default; GIFs may exceed 10 MB";
 
 "%lld seconds" = "%lld seconds";
+
+/* Travel doodle stickers */
+"旅行涂鸦" = "Travel Doodles";
+"以蜡笔手绘风格记录旅途和日常片刻。" = "Crayon doodles inspired by trips and everyday moments.";
+"旅途相机" = "Travel Camera";
+"地图标记" = "Map Pin";
+"阳光明信片" = "Sunny Postcard";
+"贝壳" = "Seashell";
+"笑脸太阳" = "Smiling Sun";
+"海浪" = "Blue Wave";
+"小螃蟹" = "Little Crab";
+"海鸥" = "Seagull";
+"星光弧线" = "Star Swoosh";
+"星星箭头" = "Star Arrow";
+"星星轨迹" = "Star Trail";
+"取景框涂鸦" = "Focus Frame";
+
+/* Christmas doodle stickers */
+"圣诞涂鸦" = "Christmas Doodles";
+"以蜡笔动态涂鸦风格绘制的圣诞贴纸。" = "Cheerful crayon doodles for the Christmas season.";
+"圣诞树" = "Christmas Tree";
+"雪人" = "Snowman";
+"拐杖糖" = "Candy Cane";
+"圣诞礼物" = "Christmas Present";
+"圣诞袜" = "Christmas Stocking";
+"圣诞铃铛" = "Jingle Bell";
+"冬青果" = "Holly";
+"圣诞帽" = "Santa Hat";
+
+/* Lunar New Year doodle stickers */
+"羊年小羊" = "Year of the Goat";
+"新春灯笼" = "New Year Lantern";
+"新春红包" = "New Year Red Envelope";
+"喜庆鞭炮" = "Festive Firecrackers";
+"梅花" = "Plum Blossom";
+"金元宝" = "Gold Yuanbao";
+"吉祥橘子" = "Lucky Mandarins";
+"中国结" = "Chinese Knot";
+
+/* Lunar New Year sticker category */
+"新春涂鸦" = "Lunar New Year Doodles";
+"以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Cheerful crayon doodles for Lunar New Year.";

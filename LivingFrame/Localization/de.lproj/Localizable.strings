@@ -890,7 +890,7 @@
 "已保存到照片。" = "In Fotos gespeichert.";
 
 /* Classic sticker templates */
-"影视模板" = "Filmvorlagen";
+"蒙版" = "Masken";
 "带有透明头像孔的经典影视风格画面模板。" = "Klassische Filmvorlagen mit einer transparenten runden Öffnung für ein Porträt.";
 
 /* App Store rating and reviews */
@@ -907,3 +907,45 @@
 "默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Bildgröße standardmäßig beibehalten; GIFs können 10 MB überschreiten";
 
 "%lld seconds" = "%lld Sekunden";
+
+/* Travel doodle stickers */
+"旅行涂鸦" = "Reisekritzeleien";
+"以蜡笔手绘风格记录旅途和日常片刻。" = "Kreidekritzeleien für Reisen und Alltagsmomente.";
+"旅途相机" = "Reisekamera";
+"地图标记" = "Karten-Pin";
+"阳光明信片" = "Sonnenpostkarte";
+"贝壳" = "Muschel";
+"笑脸太阳" = "Lächelnde Sonne";
+"海浪" = "Blaue Welle";
+"小螃蟹" = "Krabbe";
+"海鸥" = "Möwe";
+"星光弧线" = "Sternenschwung";
+"星星箭头" = "Sternpfeil";
+"星星轨迹" = "Sternenspur";
+"取景框涂鸦" = "Fokusecke";
+
+/* Christmas doodle stickers */
+"圣诞涂鸦" = "Weihnachtskritzeleien";
+"以蜡笔动态涂鸦风格绘制的圣诞贴纸。" = "Fröhliche Wachsmal-Kritzeleien für die Weihnachtszeit.";
+"圣诞树" = "Weihnachtsbaum";
+"雪人" = "Schneemann";
+"拐杖糖" = "Zuckerstange";
+"圣诞礼物" = "Weihnachtsgeschenk";
+"圣诞袜" = "Weihnachtsstrumpf";
+"圣诞铃铛" = "Weihnachtsglöckchen";
+"冬青果" = "Stechpalme";
+"圣诞帽" = "Weihnachtsmütze";
+
+/* Lunar New Year doodle stickers */
+"羊年小羊" = "Ziege des Jahres";
+"新春灯笼" = "Neujahrslaterne";
+"新春红包" = "Roter Neujahrsumschlag";
+"喜庆鞭炮" = "Festliche Knallkörper";
+"梅花" = "Pflaumenblüte";
+"金元宝" = "Goldener Yuanbao";
+"吉祥橘子" = "Glücksmandarinen";
+"中国结" = "Chinesischer Knoten";
+
+/* Lunar New Year sticker category */
+"新春涂鸦" = "Neujahrskritzeleien";
+"以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Fröhliche Wachsmal-Kritzeleien zum Mondneujahr.";

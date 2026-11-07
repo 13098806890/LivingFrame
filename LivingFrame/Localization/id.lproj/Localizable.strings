@@ -890,7 +890,7 @@
 "已保存到照片。" = "Disimpan ke Foto.";
 
 /* Classic sticker templates */
-"影视模板" = "Template klasik";
+"蒙版" = "Masker";
 "带有透明头像孔的经典影视风格画面模板。" = "Tata letak bergaya film klasik dengan lubang potret kecil berbentuk lingkaran transparan.";
 
 /* App Store rating and reviews */
@@ -907,3 +907,45 @@
 "默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Pertahankan ukuran gambar secara default; GIF dapat melebihi 10 MB";
 
 "%lld seconds" = "%lld detik";
+
+/* Travel doodle stickers */
+"旅行涂鸦" = "Doodle Perjalanan";
+"以蜡笔手绘风格记录旅途和日常片刻。" = "Coretan krayon terinspirasi perjalanan dan momen sehari-hari.";
+"旅途相机" = "Kamera perjalanan";
+"地图标记" = "Pin peta";
+"阳光明信片" = "Kartu pos cerah";
+"贝壳" = "Kerang";
+"笑脸太阳" = "Matahari tersenyum";
+"海浪" = "Ombak biru";
+"小螃蟹" = "Kepiting kecil";
+"海鸥" = "Camar";
+"星光弧线" = "Sapuan bintang";
+"星星箭头" = "Panah bintang";
+"星星轨迹" = "Jejak bintang";
+"取景框涂鸦" = "Bingkai fokus";
+
+/* Christmas doodle stickers */
+"圣诞涂鸦" = "Coretan Natal";
+"以蜡笔动态涂鸦风格绘制的圣诞贴纸。" = "Coretan krayon ceria untuk musim Natal.";
+"圣诞树" = "Pohon Natal";
+"雪人" = "Manusia Salju";
+"拐杖糖" = "Permen Tongkat";
+"圣诞礼物" = "Hadiah Natal";
+"圣诞袜" = "Kaus Kaki Natal";
+"圣诞铃铛" = "Lonceng Natal";
+"冬青果" = "Holly";
+"圣诞帽" = "Topi Santa";
+
+/* Lunar New Year doodle stickers */
+"羊年小羊" = "Kambing Tahun Kambing";
+"新春灯笼" = "Lentera Tahun Baru";
+"新春红包" = "Angpao Tahun Baru";
+"喜庆鞭炮" = "Petasan Perayaan";
+"梅花" = "Bunga Plum";
+"金元宝" = "Yuanbao Emas";
+"吉祥橘子" = "Jeruk Keberuntungan";
+"中国结" = "Simpul Tiongkok";
+
+/* Lunar New Year sticker category */
+"新春涂鸦" = "Coretan Tahun Baru Imlek";
+"以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Coretan krayon ceria untuk Tahun Baru Imlek.";

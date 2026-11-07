@@ -120,7 +120,7 @@ struct CanvasView: View {
                         .interpolation(.high)
                         .scaledToFit()
                 } else {
-                    Color.black
+                    Color.clear
                 }
                 if allowsInteraction {
                     if appState.isCropping {

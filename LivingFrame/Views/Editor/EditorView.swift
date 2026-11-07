@@ -108,6 +108,19 @@ struct EditorView: View {
     @State private var showRenameWorkEditor = false
     @State private var workNameDraft = ""
 
+    private static let regionsWithoutChristmasStickers: Set<String> = [
+        "DZ", "BH", "KM", "DJ", "EG", "IQ", "JO", "KW", "LB", "LY", "MR",
+        "MA", "OM", "PS", "QA", "SA", "SO", "SD", "SY", "TN", "AE", "YE"
+    ]
+
+    private var visibleStickerCategories: [StickerCategory] {
+        let regionCode = Locale.current.region?.identifier.uppercased() ?? ""
+        guard Self.regionsWithoutChristmasStickers.contains(regionCode) else {
+            return StickerCategory.allCases
+        }
+        return StickerCategory.allCases.filter { $0 != .christmasDoodle }
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let workspaceWidth = max(proxy.size.width - 24, 1)
@@ -1104,8 +1117,12 @@ struct EditorView: View {
     }
 
     private var stickerPanel: some View {
+        let categories = visibleStickerCategories
+        let displayedCategory = categories.contains(selectedStickerCategory)
+            ? selectedStickerCategory
+            : (categories.first ?? .doodle)
         let stickers = DecorationRenderer.availableStickerCatalog.filter { sticker in
-            sticker.category == selectedStickerCategory
+            sticker.category == displayedCategory
         }
 
         return VStack(alignment: .leading, spacing: 8) {
@@ -1114,17 +1131,17 @@ struct EditorView: View {
                 .foregroundStyle(LF.textSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(StickerCategory.allCases, id: \.self) { category in
+                    ForEach(categories, id: \.self) { category in
                         EditorOptionChip(
                             title: category.title,
-                            isSelected: selectedStickerCategory == category
+                            isSelected: displayedCategory == category
                         ) {
                             selectedStickerCategory = category
                         }
                     }
                 }
             }
-            if selectedStickerCategory.requiresPro, purchaseManager.hasPro {
+            if displayedCategory.requiresPro, purchaseManager.hasPro {
                 HStack(spacing: 7) {
                     if appState.isAddingFaceSticker {
                         ProgressView()
@@ -1138,7 +1155,7 @@ struct EditorView: View {
                         .foregroundStyle(appState.faceStickerStatus == nil ? LF.textSecondary : LF.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-            } else if selectedStickerCategory.requiresPro {
+            } else if displayedCategory.requiresPro {
                 HStack(spacing: 10) {
                     Label("AI 贴纸仅限 GIFBloom Pro 使用。", systemImage: "lock.fill")
                         .font(.caption2)
@@ -1160,7 +1177,7 @@ struct EditorView: View {
                     .foregroundStyle(LF.textSecondary)
             }
 
-            if selectedStickerCategory == .emoji {
+            if displayedCategory == .emoji {
                 Text("使用设备内置的 Apple Color Emoji 渲染，不额外打包表情图片。")
                     .font(.caption2)
                     .foregroundStyle(LF.textSecondary)

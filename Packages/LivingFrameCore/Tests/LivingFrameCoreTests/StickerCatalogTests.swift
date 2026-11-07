@@ -4,7 +4,7 @@ import XCTest
 
 final class StickerCatalogTests: XCTestCase {
     func testEmojiStickersRenderFromTheSystemEmojiFont() throws {
-        XCTAssertEqual(StickerCategory.allCases, [.doodle, .emoji, .fruit, .classicTemplate, .logo])
+        XCTAssertEqual(StickerCategory.allCases, [.doodle, .travelDoodle, .christmasDoodle, .lunarNewYear, .emoji, .fruit, .classicTemplate, .logo])
 
         let emojiStickers = DecorationRenderer.stickerCatalog.filter { $0.category == .emoji }
         XCTAssertEqual(Set(emojiStickers.map(\.id)).count, emojiStickers.count)
@@ -31,7 +31,7 @@ final class StickerCatalogTests: XCTestCase {
     }
 
     func testGIFBloomLogoStickersAreRegisteredAndLoadAllFrames() {
-        XCTAssertEqual(StickerCategory.allCases, [.doodle, .emoji, .fruit, .classicTemplate, .logo])
+        XCTAssertEqual(StickerCategory.allCases, [.doodle, .travelDoodle, .christmasDoodle, .lunarNewYear, .emoji, .fruit, .classicTemplate, .logo])
 
         let logoStickers = DecorationRenderer.stickerCatalog.filter { $0.category == .logo }
 

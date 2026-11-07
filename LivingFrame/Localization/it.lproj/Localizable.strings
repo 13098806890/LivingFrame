@@ -890,7 +890,7 @@
 "已保存到照片。" = "Salvato in Foto.";
 
 /* Classic sticker templates */
-"影视模板" = "Modelli classici";
+"蒙版" = "Maschere";
 "带有透明头像孔的经典影视风格画面模板。" = "Composizioni ispirate al cinema classico con una piccola apertura circolare trasparente per il ritratto.";
 
 /* App Store rating and reviews */
@@ -907,3 +907,45 @@
 "默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Mantieni le dimensioni dell’immagine; i GIF possono superare 10 MB";
 
 "%lld seconds" = "%lld secondi";
+
+/* Travel doodle stickers */
+"旅行涂鸦" = "Scarabocchi di viaggio";
+"以蜡笔手绘风格记录旅途和日常片刻。" = "Disegni a pastello ispirati ai viaggi e ai momenti quotidiani.";
+"旅途相机" = "Fotocamera da viaggio";
+"地图标记" = "Segnaposto";
+"阳光明信片" = "Cartolina soleggiata";
+"贝壳" = "Conchiglia";
+"笑脸太阳" = "Sole sorridente";
+"海浪" = "Onda blu";
+"小螃蟹" = "Granchietto";
+"海鸥" = "Gabbiano";
+"星光弧线" = "Scia di stelle";
+"星星箭头" = "Freccia stellata";
+"星星轨迹" = "Percorso stellato";
+"取景框涂鸦" = "Cornice di messa a fuoco";
+
+/* Christmas doodle stickers */
+"圣诞涂鸦" = "Scarabocchi natalizi";
+"以蜡笔动态涂鸦风格绘制的圣诞贴纸。" = "Allegri scarabocchi a pastello per il periodo natalizio.";
+"圣诞树" = "Albero di Natale";
+"雪人" = "Pupazzo di neve";
+"拐杖糖" = "Bastoncino di zucchero";
+"圣诞礼物" = "Regalo di Natale";
+"圣诞袜" = "Calza della Befana";
+"圣诞铃铛" = "Campanella di Natale";
+"冬青果" = "Agrifoglio";
+"圣诞帽" = "Cappello di Babbo Natale";
+
+/* Lunar New Year doodle stickers */
+"羊年小羊" = "Capretta dell’Anno della Capra";
+"新春灯笼" = "Lanterna di Capodanno";
+"新春红包" = "Busta rossa di Capodanno";
+"喜庆鞭炮" = "Petardi festivi";
+"梅花" = "Fiore di pruno";
+"金元宝" = "Lingotto yuanbao d’oro";
+"吉祥橘子" = "Mandarini portafortuna";
+"中国结" = "Nodo cinese";
+
+/* Lunar New Year sticker category */
+"新春涂鸦" = "Scarabocchi del Capodanno lunare";
+"以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Allegri scarabocchi a pastello per il Capodanno lunare.";

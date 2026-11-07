@@ -848,7 +848,7 @@
 "上一项" = "Vorige item";
 "下一项" = "Volgende item";
 "已保存到照片。" = "Gestoor in Foto's.";
-"影视模板" = "Klassieke sjablone";
+"蒙版" = "Maskers";
 "带有透明头像孔的经典影视风格画面模板。" = "Klassieke film-geïnspireerde uitlegte met 'n klein deursigtige sirkelvormige portretopening.";
 
 /* App Store rating and reviews */
@@ -865,3 +865,45 @@
 "默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Behou beeldafmetings by verstek; GIF’s kan 10 MB oorskry";
 
 "%lld seconds" = "%lld sekondes";
+
+/* Travel doodle stickers */
+"旅行涂鸦" = "Reiskrabbelwerk";
+"以蜡笔手绘风格记录旅途和日常片刻。" = "Krytaggies vir reise en alledaagse oomblikke.";
+"旅途相机" = "Reiskamera";
+"地图标记" = "Kaartpen";
+"阳光明信片" = "Sonposkaart";
+"贝壳" = "Seeskulp";
+"笑脸太阳" = "Glimlagson";
+"海浪" = "Blou golf";
+"小螃蟹" = "Krap";
+"海鸥" = "Seemeeu";
+"星光弧线" = "Sterstreep";
+"星星箭头" = "Sterpyltjie";
+"星星轨迹" = "Sterrespoor";
+"取景框涂鸦" = "Fokusraam";
+
+/* Christmas doodle stickers */
+"圣诞涂鸦" = "Kersfees-krabbels";
+"以蜡笔动态涂鸦风格绘制的圣诞贴纸。" = "Kleurvolle krytkrabbels vir die Kersseisoen.";
+"圣诞树" = "Kersboom";
+"雪人" = "Sneeuman";
+"拐杖糖" = "Suikerstaf";
+"圣诞礼物" = "Kersgeskenk";
+"圣诞袜" = "Kerskous";
+"圣诞铃铛" = "Kersklokkie";
+"冬青果" = "Hulst";
+"圣诞帽" = "Kershoed";
+
+/* Lunar New Year doodle stickers */
+"羊年小羊" = "Gelukkige jaarbok";
+"新春灯笼" = "Nuwejaarslantern";
+"新春红包" = "Nuwejaarsrooi koevert";
+"喜庆鞭炮" = "Feesvuurwerke";
+"梅花" = "Pruimbloeisel";
+"金元宝" = "Goue yuanbao";
+"吉祥橘子" = "Geluksmandaryne";
+"中国结" = "Chinese knoop";
+
+/* Lunar New Year sticker category */
+"新春涂鸦" = "Nuwejaarskrabbels";
+"以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Krytkrabbels vir die nuwejaarsfees.";

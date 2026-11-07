@@ -890,7 +890,7 @@
 "已保存到照片。" = "Đã lưu vào Ảnh.";
 
 /* Classic sticker templates */
-"影视模板" = "Mẫu cổ điển";
+"蒙版" = "Mặt nạ";
 "带有透明头像孔的经典影视风格画面模板。" = "Bố cục phong cách phim kinh điển với một lỗ tròn nhỏ trong suốt để đặt ảnh chân dung.";
 
 /* App Store rating and reviews */
@@ -907,3 +907,45 @@
 "默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Mặc định giữ nguyên kích thước ảnh; GIF có thể vượt quá 10 MB";
 
 "%lld seconds" = "%lld giây";
+
+/* Travel doodle stickers */
+"旅行涂鸦" = "Nét vẽ du lịch";
+"以蜡笔手绘风格记录旅途和日常片刻。" = "Hình vẽ sáp màu lấy cảm hứng từ chuyến đi và khoảnh khắc thường ngày.";
+"旅途相机" = "Máy ảnh du lịch";
+"地图标记" = "Ghim bản đồ";
+"阳光明信片" = "Bưu thiếp nắng";
+"贝壳" = "Vỏ sò";
+"笑脸太阳" = "Mặt trời cười";
+"海浪" = "Sóng xanh";
+"小螃蟹" = "Cua nhỏ";
+"海鸥" = "Hải âu";
+"星光弧线" = "Vệt sao";
+"星星箭头" = "Mũi tên sao";
+"星星轨迹" = "Đường sao";
+"取景框涂鸦" = "Khung lấy nét";
+
+/* Christmas doodle stickers */
+"圣诞涂鸦" = "Nét vẽ Giáng sinh";
+"以蜡笔动态涂鸦风格绘制的圣诞贴纸。" = "Nét vẽ sáp màu vui tươi cho mùa Giáng sinh.";
+"圣诞树" = "Cây thông Noel";
+"雪人" = "Người tuyết";
+"拐杖糖" = "Kẹo gậy";
+"圣诞礼物" = "Quà Giáng sinh";
+"圣诞袜" = "Tất Giáng sinh";
+"圣诞铃铛" = "Chuông Giáng sinh";
+"冬青果" = "Nhựa ruồi";
+"圣诞帽" = "Mũ ông già Noel";
+
+/* Lunar New Year doodle stickers */
+"羊年小羊" = "Dê con năm Mùi";
+"新春灯笼" = "Đèn lồng năm mới";
+"新春红包" = "Bao lì xì năm mới";
+"喜庆鞭炮" = "Pháo mừng lễ";
+"梅花" = "Hoa mai";
+"金元宝" = "Thỏi vàng yuanbao";
+"吉祥橘子" = "Quýt may mắn";
+"中国结" = "Nút thắt Trung Hoa";
+
+/* Lunar New Year sticker category */
+"新春涂鸦" = "Nét vẽ Tết";
+"以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Nét vẽ sáp màu vui tươi cho dịp Tết.";

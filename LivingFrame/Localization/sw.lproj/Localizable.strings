@@ -848,7 +848,7 @@
 "上一项" = "Kipengee kilichotangulia";
 "下一项" = "Kipengee kinachofuata";
 "已保存到照片。" = "Imehifadhiwa kwa Picha.";
-"影视模板" = "Violezo vya Kawaida";
+"蒙版" = "Vinyago";
 "带有透明头像孔的经典影视风格画面模板。" = "Mipangilio ya kawaida iliyoongozwa na filamu na ufunguzi mdogo wa uwazi wa picha ya mviringo.";
 
 /* App Store rating and reviews */
@@ -865,3 +865,45 @@
 "默认优先保留画面尺寸；GIF 可能超过 10 MB" = "Hifadhi ukubwa wa picha kwa chaguomsingi; GIF inaweza kuzidi MB 10";
 
 "%lld seconds" = "sekunde %lld";
+
+/* Travel doodle stickers */
+"旅行涂鸦" = "Michoro ya safari";
+"以蜡笔手绘风格记录旅途和日常片刻。" = "Michoro ya krayoni ya safari na nyakati za kila siku.";
+"旅途相机" = "Kamera ya safari";
+"地图标记" = "Alama ya ramani";
+"阳光明信片" = "Kadi ya posta ya jua";
+"贝壳" = "Gamba la bahari";
+"笑脸太阳" = "Jua lenye tabasamu";
+"海浪" = "Wimbi la bluu";
+"小螃蟹" = "Kaa mdogo";
+"海鸥" = "Shomoro wa bahari";
+"星光弧线" = "Mstari wa nyota";
+"星星箭头" = "Mshale wa nyota";
+"星星轨迹" = "Njia ya nyota";
+"取景框涂鸦" = "Fremu ya kulenga";
+
+/* Christmas doodle stickers */
+"圣诞涂鸦" = "Michoro ya Krismasi";
+"以蜡笔动态涂鸦风格绘制的圣诞贴纸。" = "Michoro ya krayoni yenye furaha kwa msimu wa Krismasi.";
+"圣诞树" = "Mti wa Krismasi";
+"雪人" = "Mtu wa theluji";
+"拐杖糖" = "Pipi ya fimbo";
+"圣诞礼物" = "Zawadi ya Krismasi";
+"圣诞袜" = "Soksi ya Krismasi";
+"圣诞铃铛" = "Kengele ya Krismasi";
+"冬青果" = "Holly";
+"圣诞帽" = "Kofia ya Santa";
+
+/* Lunar New Year doodle stickers */
+"羊年小羊" = "Mbuzi wa Mwaka wa Mbuzi";
+"新春灯笼" = "Taa ya Mwaka Mpya";
+"新春红包" = "Bahasha nyekundu ya Mwaka Mpya";
+"喜庆鞭炮" = "Fataki za sherehe";
+"梅花" = "Ua la plum";
+"金元宝" = "Yuanbao ya dhahabu";
+"吉祥橘子" = "Machungwa ya bahati";
+"中国结" = "Fundo la Kichina";
+
+/* Lunar New Year sticker category */
+"新春涂鸦" = "Michoro ya Mwaka Mpya wa Mwezi";
+"以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Michoro ya krayoni yenye furaha kwa Mwaka Mpya wa Mwezi.";

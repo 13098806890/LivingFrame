@@ -408,19 +408,9 @@ final class AppState: ObservableObject {
         workPersistence = WorkPersistenceCoordinator(store: worksStore)
         let persistence = workPersistence
         Task { [weak self] in
-            let loaded = await persistence.load()
+            let loaded = await persistence.loadAndNormalize()
             guard let self, !Task.isCancelled else { return }
-            let normalized = WorkItem.retainingOnlyLatestDraft(in: loaded)
-            if normalized != loaded {
-                let changed = normalized.filter { normalizedWork in
-                    loaded.first(where: { $0.id == normalizedWork.id }) != normalizedWork
-                }
-                let cleaned = await persistence.saveAndLoad(changed)
-                self.works = cleaned.0 ? cleaned.1 : normalized
-                LogStore.log("work.draft normalized latestOnly=\(cleaned.0)")
-            } else {
-                self.works = loaded
-            }
+            self.works = loaded
             self.isLoadingWorks = false
         }
         // 恢复持久化的素材与文件夹
@@ -798,15 +788,22 @@ final class AppState: ObservableObject {
         if changed { composition = comp }
     }
 
-    /// 返回仍引用指定素材的已保存作品，用于删除前的轻量保护提示。
+    /// 返回正式版本或草稿仍引用指定素材的作品，用于删除前的保护提示。
     func worksReferencingClip(_ clipID: String) -> [WorkItem] {
         works.filter { work in
-            work.composition.elements.contains { element in
+            let savedVersionUsesClip = work.hasSavedVersion && work.composition.elements.contains { element in
                 if case .clip(let referencedID) = element.kind {
                     return referencedID == clipID
                 }
                 return false
             }
+            let draftUsesClip = work.draft?.composition.elements.contains { element in
+                if case .clip(let referencedID) = element.kind {
+                    return referencedID == clipID
+                }
+                return false
+            } ?? false
+            return savedVersionUsesClip || draftUsesClip
         }
     }
 

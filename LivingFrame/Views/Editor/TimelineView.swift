@@ -23,7 +23,7 @@ struct TimelineView: View {
     private static let contentCoordinateSpace = "living-frame.timeline-content"
     private static let layerGutterCoordinateSpace = "living-frame.timeline-layer-gutter"
 
-    private let trackGutterWidth: CGFloat = 38
+    private let trackGutterWidth: CGFloat = 44
     private let rowHeight: CGFloat = 42
     /// 轨道之间保持极紧凑的分隔，避免素材较多时浪费垂直空间。
     private let rowSpacing: CGFloat = 1
@@ -569,25 +569,20 @@ struct TimelineView: View {
 
     private func layerTrackBadge(_ element: CompositionElement) -> some View {
         let isDragging = layerReorderSession?.id == element.id
-        return HStack(spacing: 2) {
-            Image(systemName: elementSymbol(element))
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(LF.textSecondary)
-        }
-        .font(.system(size: 12, weight: .semibold))
-        .foregroundStyle(isDragging ? LF.selectionText : Color.black.opacity(0.78))
-        .frame(width: 36, height: 30)
-        .background(isDragging ? LF.selectionFill : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-        .contentShape(Rectangle())
-        .onTapGesture {
-            appState.selectElement(element.id)
-        }
-        .highPriorityGesture(layerReorderGesture(element))
-        .accessibilityLabel(String.localizedStringWithFormat(
-            NSLocalizedString("%1$@，上下拖动调整图层", comment: "Reorder timeline layer accessibility label"),
-            displayName(for: element) as NSString
-        ))
+        return Image(systemName: "line.3.horizontal")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(isDragging ? LF.selectionText : Color.black.opacity(0.78))
+            .frame(width: trackGutterWidth, height: rowHeight)
+            .background(isDragging ? LF.selectionFill : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                appState.selectElement(element.id)
+            }
+            .highPriorityGesture(layerReorderGesture(element))
+            .accessibilityLabel(String.localizedStringWithFormat(
+                NSLocalizedString("%1$@，上下拖动调整图层", comment: "Reorder timeline layer accessibility label"),
+                displayName(for: element) as NSString
+            ))
     }
 
     private func trackBadge(symbol: String) -> some View {
@@ -599,7 +594,7 @@ struct TimelineView: View {
 
     /// 左侧轨道手柄只处理垂直层级调整，不与素材条的水平移动/裁剪手势竞争。
     private func layerReorderGesture(_ element: CompositionElement) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.35, maximumDistance: 10)
+        LongPressGesture(minimumDuration: 0.22, maximumDistance: 18)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.layerGutterCoordinateSpace)))
             .onChanged { value in
                 guard case let .second(true, dragValue?) = value else { return }

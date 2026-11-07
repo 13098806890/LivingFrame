@@ -952,14 +952,14 @@ public struct VideoSegmentationPipeline {
                         LogStore.log("xdz.subject.render.frame=\(index) maskEmpty=true fallback=none")
                     }
                 }
-                // 时域补全：与上一帧原始分割结果做并集（通道取最大）。
-                // 逐帧独立分割会偶发漏检（如腿部某帧缺失），并集让漏检帧用上一帧补全。
-                // 只与上一帧并集，不累计，避免人物移动产生拖影。
+                // 前景路径必须只输出当前帧：把上一帧做最大值合成会在人物移动时
+                // 同时留下新旧位置，形成明显残影。识别失败时仍由上面的 fallback
+                // 暂用上一帧，避免偶发漏帧变成透明闪烁。
                 let compositeStartedAt = ProcessInfo.processInfo.systemUptime
                 let output: CIImage
-                if hasExplicitSubjectSelection {
+                if hasExplicitSubjectSelection || algorithm == .foreground {
                     // Vision 已选择主体时 current 是 person mask，不能再和
-                    // 上一帧做并集，否则会把旧帧的错误主体拖回当前帧。
+                    // 上一帧做并集；默认前景路径同样只显示当前帧，避免运动残影。
                     output = current
                 } else if let prev = prevMaskedImage {
                     output = current.applyingFilter("CIMaximumCompositing", parameters: [

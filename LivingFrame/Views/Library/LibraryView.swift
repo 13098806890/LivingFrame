@@ -5,6 +5,7 @@ import CoreImage
 import LivingFrameCore
 import PhotosUI
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 private struct VideoRangeSelection {
@@ -73,6 +74,7 @@ struct LibraryView: View {
     @State private var staticStickerSymbolAnimation = 0
     @State private var liveConversionSymbolAnimation = 0
     @State private var videoConversionSymbolAnimation = 0
+    @State private var pickerAvailableWidth: CGFloat = 0
     /// 超过单个素材最长时长的视频，在动态提取前选择源视频范围。
     @State private var pendingVideoRange: PendingVideoRange?
     /// 动态素材完成主体分析后，等待用户选择需要保留的主体。
@@ -632,10 +634,7 @@ struct LibraryView: View {
     private var pickerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 12),
-                    GridItem(.flexible(), spacing: 12)
-                ],
+                columns: pickerColumns,
                 spacing: 12
             ) {
                 extractionPickerControl(kind: .live)
@@ -643,6 +642,28 @@ struct LibraryView: View {
                 liveConversionPickerControl
                 videoConversionPickerControl
             }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            pickerAvailableWidth = width
+        }
+    }
+
+    private var usesDuoNarrowPickerLayout: Bool {
+        UIScreen.main.bounds.width >= 450
+            && UIScreen.main.bounds.width < 500
+            && pickerAvailableWidth < 400
+    }
+
+    private var pickerColumns: [GridItem] {
+        if usesDuoNarrowPickerLayout {
+            [GridItem(.flexible())]
+        } else {
+            [
+                GridItem(.flexible(), spacing: 12),
+                GridItem(.flexible(), spacing: 12)
+            ]
         }
     }
 
@@ -663,7 +684,7 @@ struct LibraryView: View {
                 title: title,
                 subtitle: nil,
                 systemImage: isDynamic ? "scissors" : "wand.and.outline",
-                compact: true,
+                compact: !usesDuoNarrowPickerLayout,
                 symbolAnimation: isDynamic
                     ? dynamicCutoutSymbolAnimation
                     : staticStickerSymbolAnimation
@@ -691,7 +712,7 @@ struct LibraryView: View {
                 title: "转为 Live Photo",
                 subtitle: nil,
                 systemImage: "livephoto",
-                compact: true,
+                compact: !usesDuoNarrowPickerLayout,
                 symbolAnimation: liveConversionSymbolAnimation
             )
         }
@@ -711,7 +732,7 @@ struct LibraryView: View {
                 title: "转为视频",
                 subtitle: nil,
                 systemImage: "video",
-                compact: true,
+                compact: !usesDuoNarrowPickerLayout,
                 symbolAnimation: videoConversionSymbolAnimation
             )
         }
@@ -757,7 +778,7 @@ struct LibraryView: View {
                     .foregroundStyle(LF.textSecondary)
             }
             .padding(.vertical, compact ? 0 : 2)
-            .frame(maxWidth: .infinity, minHeight: compact ? 64 : 0, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: compact ? 64 : 50, alignment: .leading)
             .contentShape(Rectangle())
         }
     }
@@ -3205,7 +3226,7 @@ private struct VideoRangePickerView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(LF.textSecondary)
 
-                    ZStack {
+                    ZStack(alignment: .bottomLeading) {
                         VideoPlayer(player: previewController.player)
                             .aspectRatio(videoAspectRatio, contentMode: .fit)
                             .frame(maxWidth: .infinity)
@@ -3219,14 +3240,15 @@ private struct VideoRangePickerView: View {
                                 previewController.preview(start: startTime, end: endTime)
                             }
                         } label: {
-                            Image(systemName: previewController.isPlaying ? "stop.fill" : "play.fill")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 64, height: 64)
-                                .background(.black.opacity(0.62), in: Circle())
-                                .contentShape(Circle())
+                            ClipPreviewBadgeIcon(
+                                systemName: previewController.isPlaying ? "stop.fill" : "play.fill",
+                                backgroundStyle: .black.opacity(0.56)
+                            )
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .padding(8)
                         .accessibilityLabel(NSLocalizedString(
                             previewController.isPlaying ? "停止预览" : "预览选中片段",
                             comment: "Preview selected video segment"
