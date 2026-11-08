@@ -2,3 +2,4 @@
 • Converti facilmente GIF, video e Live Photo tra i formati.
 • Scopri nuovi adesivi a tema viaggio, Natale e Capodanno lunare, oltre a modelli di Halloween.
 • Abbiamo migliorato anteprime, salvataggio delle bozze ed esportazioni.
+• Il riquadro di selezione dell’editor resta abbastanza grande da mantenere facilmente accessibili i quattro controlli agli angoli quando riduci un elemento.

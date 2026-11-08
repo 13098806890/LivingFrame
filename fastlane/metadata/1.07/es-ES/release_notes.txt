@@ -2,3 +2,4 @@
 • Convierte fácilmente GIF, vídeos y Live Photos entre formatos.
 • Descubre nuevos stickers de viajes, Navidad y Año Nuevo Lunar, además de plantillas de Halloween.
 • Mejoramos las vistas previas, el guardado de borradores y la exportación.
+• Mejoramos el marco de selección del editor para que los cuatro controles de las esquinas sigan siendo fáciles de usar al reducir un elemento.

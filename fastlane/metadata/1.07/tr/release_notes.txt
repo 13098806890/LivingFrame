@@ -2,3 +2,4 @@
 • GIF, video ve Live Photo biçimlerini kolayca dönüştürün.
 • Seyahat, Noel ve Ay Yeni Yılı temalı yeni çıkartmaların yanı sıra Cadılar Bayramı şablonlarını keşfedin.
 • Medya önizlemeleri, taslak kaydetme ve dışa aktarma iyileştirildi.
+• Bir öğeyi küçülttüğünüzde dört köşe denetiminin kolayca kullanılabilmesi için düzenleyicideki seçim çerçevesini iyileştirdik.

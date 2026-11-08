@@ -2,3 +2,4 @@
 • Ubah format GIF, video, dan Live Photo dengan mudah.
 • Jelajahi stiker baru bertema perjalanan, Natal, dan Tahun Baru Imlek, serta template Halloween.
 • Pratinjau media, penyimpanan draf, dan ekspor kini lebih baik.
+• Bingkai pilihan editor kini tetap cukup besar agar keempat tombol sudut mudah digunakan saat item diperkecil.

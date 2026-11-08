@@ -2,3 +2,4 @@
 • Convertissez facilement GIF, vidéos et Live Photos entre formats.
 • Découvrez de nouveaux autocollants de voyage, de Noël et du Nouvel An lunaire, ainsi que des modèles d’Halloween.
 • Aperçus, enregistrement des brouillons et exportations améliorés.
+• Le cadre de sélection de l’éditeur reste assez grand pour garder les quatre commandes d’angle faciles à utiliser lorsque vous réduisez un élément.

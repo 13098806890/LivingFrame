@@ -2,3 +2,4 @@
 • Dễ dàng chuyển đổi định dạng GIF, video và Live Photo.
 • Khám phá nhãn dán mới về du lịch, Giáng sinh và Tết Âm lịch, cùng các mẫu Halloween.
 • Cải thiện phần xem trước, lưu bản nháp và xuất nội dung.
+• Cải thiện khung chọn trong trình chỉnh sửa để bốn nút ở góc vẫn dễ thao tác khi thu nhỏ đối tượng.

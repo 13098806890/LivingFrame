@@ -2,3 +2,4 @@
 • Converta GIFs, vídeos e Live Photos entre formatos com facilidade.
 • Conheça novos adesivos de viagem, Natal e Ano-Novo Lunar, além de modelos de Halloween.
 • Melhoramos as prévias de mídia, o salvamento de rascunhos e a exportação.
+• Melhoramos a moldura de seleção do editor para manter os quatro controles dos cantos fáceis de usar ao reduzir um item.

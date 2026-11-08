@@ -61,6 +61,8 @@ struct CanvasView: View {
 
     private let magnificationIntentThreshold: CGFloat = 0.02
     private let rotationIntentThreshold: CGFloat = 0.08
+    /// 选中框是视口坐标；即使素材缩得很小，也要给四角的 26pt 操作按钮留出间距。
+    private let minimumSelectionFrameDimension: CGFloat = 56
 
     /// 双击画布素材时由编辑页打开检查器；全屏预览不传回调，因此保持只读预览。
     private let onRequestInspector: () -> Void
@@ -689,20 +691,28 @@ struct CanvasView: View {
                     if case .canvasEdge = element.kind { return false }
                     return true
                 }) { element in
-                    let frame = elementFrame(
+                    let contentFrame = elementFrame(
                         element,
                         in: appState.composition,
                         geometry: geometry,
                         at: appState.currentTime,
                         usesVisibleStickerBounds: true
                     )
+                    let showsActions = selectedElements.count == 1
+                        && !isCollageBackgroundElement(element)
+                        && allowsInteraction
+                        && !appState.isCropping
+                    // 只扩展屏幕上的选中框，不改变素材 transform 或导出尺寸。
+                    // 素材小于下限时，缩放仍作用于素材；超过下限后选中框自然随素材一起缩放。
+                    let frame = showsActions
+                        ? selectionOverlayFrame(for: contentFrame)
+                        : contentFrame
                     let center = CGPoint(x: frame.midX, y: frame.midY)
                     // 画布 rotation 正值=逆时针；SwiftUI rotationEffect 屏幕坐标系正值=顺时针，需取反
                     let effectiveTransform = appState.composition.map {
                         renderer.resolvedTransform(for: element, in: $0, at: appState.currentTime)
                     } ?? element.transform
                     let rotation = -effectiveTransform.rotation
-                    let isBackground = isCollageBackgroundElement(element)
                     ZStack {
                         SelectionBorderShape(cornerGap: 26)
                             .stroke(
@@ -712,10 +722,7 @@ struct CanvasView: View {
                             .shadow(color: LF.header.opacity(0.12), radius: 2)
                             .allowsHitTesting(false)
 
-                        if selectedElements.count == 1,
-                           !isBackground,
-                           allowsInteraction,
-                           !appState.isCropping {
+                        if showsActions {
                             selectionActionButtons(for: element)
                         }
                     }
@@ -725,6 +732,18 @@ struct CanvasView: View {
                 }
             }
         }
+    }
+
+    /// 将极小素材的选中框扩展到足以区分四个角按钮的尺寸，保持素材中心不变。
+    private func selectionOverlayFrame(for contentFrame: CGRect) -> CGRect {
+        let width = max(contentFrame.width, minimumSelectionFrameDimension)
+        let height = max(contentFrame.height, minimumSelectionFrameDimension)
+        return CGRect(
+            x: contentFrame.midX - width / 2,
+            y: contentFrame.midY - height / 2,
+            width: width,
+            height: height
+        )
     }
 
     /// 单选素材的操作按钮跟随选中外框定位，避免按钮与画布固定角落脱节。

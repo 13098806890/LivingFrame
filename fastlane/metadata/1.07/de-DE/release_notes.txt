@@ -2,3 +2,4 @@
 • Wandle GIFs, Videos und Live Photos ganz einfach in andere Formate um.
 • Entdecke neue Sticker zu Reisen, Weihnachten und Mondneujahr sowie Halloween-Vorlagen.
 • Medienvorschauen, Entwurfsspeicherung und Export wurden verbessert.
+• Der Auswahlrahmen im Editor bleibt beim Verkleinern eines Elements groß genug, damit die vier Eckaktionen gut erreichbar sind.

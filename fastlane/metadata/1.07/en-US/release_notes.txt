@@ -2,3 +2,4 @@
 • Easily convert between GIFs, videos, and Live Photos.
 • Discover new travel, Christmas, and Lunar New Year stickers, plus Halloween templates.
 • Enjoy improved media previews, draft saving, and exports.
+• Improved the editor selection frame so all four corner controls stay easy to use when an item is scaled down.
