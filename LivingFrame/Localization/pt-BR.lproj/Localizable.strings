@@ -949,3 +949,28 @@
 /* Lunar New Year sticker category */
 "新春涂鸦" = "Rabiscos de Ano-Novo Lunar";
 "以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Rabiscos alegres de giz de cera para o Ano-Novo Lunar.";
+
+"这些字体随 GIFBloom App 一并提供，均采用 SIL Open Font License 1.1。字体文件不可单独出售。" = "Estas fontes são distribuídas com o GIFBloom sob a SIL Open Font License 1.1. Os arquivos não podem ser vendidos separadamente.";
+"厚重的毛笔字风格，有传统书法气势，适合节庆和国风标题。" = "Estilo de pincel marcante com caráter caligráfico tradicional, ideal para títulos festivos e culturais.";
+"活泼圆润、俏皮轻松，适合可爱风格和短标题。" = "Alegre, arredondada e divertida, ideal para designs fofos e títulos curtos.";
+"手写书法风格，笔画有自然纹理，适合短句和标题。" = "Caligrafia manuscrita com traços de textura natural, ideal para frases curtas e títulos.";
+"清秀的衬线字，偏文艺复古，适合生活方式类标题。" = "Serif delicada com um toque literário e vintage, ideal para títulos de estilo de vida.";
+"查看官方字体仓库" = "Ver repositório oficial de fontes";
+"完整字体许可" = "Licença completa das fontes";
+"查看 SIL Open Font License 1.1 全文" = "Ver o texto completo da SIL Open Font License 1.1";
+"许可证文件暂不可用。" = "O arquivo de licença está temporariamente indisponível.";
+
+"马善政体" = "Ma Shan Zheng";
+"站酷快乐体" = "ZCOOL KuaiLe";
+"龙苍" = "Long Cang";
+"站酷小薇体" = "ZCOOL XiaoWei";
+
+"上下拖动可交换图层" = "Arraste para cima ou para baixo para reordenar as camadas"; /* Timeline layer reorder hint */
+
+"字体版权与许可" = "Direitos autorais e licenças de fontes";
+
+"请选择导出格式" = "Escolha um formato de exportação";
+
+"编辑素材" = "Editar item";
+
+"你好" = "Olá";

@@ -949,3 +949,28 @@
 /* Lunar New Year sticker category */
 "新春涂鸦" = "Gribouillis du Nouvel An lunaire";
 "以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Des gribouillis joyeux au crayon pour le Nouvel An lunaire.";
+
+"这些字体随 GIFBloom App 一并提供，均采用 SIL Open Font License 1.1。字体文件不可单独出售。" = "Ces polices sont distribuées avec GIFBloom sous la SIL Open Font License 1.1. Les fichiers ne peuvent pas être vendus séparément.";
+"厚重的毛笔字风格，有传统书法气势，适合节庆和国风标题。" = "Style pinceau marqué et calligraphique, idéal pour les titres festifs et culturels.";
+"活泼圆润、俏皮轻松，适合可爱风格和短标题。" = "Ludique, arrondie et vive, idéale pour les designs mignons et les titres courts.";
+"手写书法风格，笔画有自然纹理，适合短句和标题。" = "Calligraphie manuscrite aux traits texturés, idéale pour les phrases courtes et les titres.";
+"清秀的衬线字，偏文艺复古，适合生活方式类标题。" = "Sérif délicate au style littéraire et rétro, idéale pour les titres lifestyle.";
+"查看官方字体仓库" = "Voir le dépôt officiel des polices";
+"完整字体许可" = "Licence complète des polices";
+"查看 SIL Open Font License 1.1 全文" = "Voir le texte intégral de la SIL Open Font License 1.1";
+"许可证文件暂不可用。" = "Le fichier de licence est temporairement indisponible.";
+
+"马善政体" = "Ma Shan Zheng";
+"站酷快乐体" = "ZCOOL KuaiLe";
+"龙苍" = "Long Cang";
+"站酷小薇体" = "ZCOOL XiaoWei";
+
+"上下拖动可交换图层" = "Glissez vers le haut ou le bas pour réorganiser les calques"; /* Timeline layer reorder hint */
+
+"字体版权与许可" = "Droits et licences des polices";
+
+"请选择导出格式" = "Choisissez un format d’exportation";
+
+"编辑素材" = "Modifier l’élément";
+
+"你好" = "Bonjour";

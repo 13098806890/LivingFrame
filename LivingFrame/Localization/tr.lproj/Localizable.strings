@@ -949,3 +949,28 @@
 /* Lunar New Year sticker category */
 "新春涂鸦" = "Ay Yeni Yılı Karalamaları";
 "以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Ay Yeni Yılı için neşeli pastel boya karalamaları.";
+
+"这些字体随 GIFBloom App 一并提供，均采用 SIL Open Font License 1.1。字体文件不可单独出售。" = "Bu yazı tipleri SIL Open Font License 1.1 kapsamında GIFBloom ile dağıtılır. Yazı tipi dosyaları tek başına satılamaz.";
+"厚重的毛笔字风格，有传统书法气势，适合节庆和国风标题。" = "Geleneksel kaligrafi havası taşıyan güçlü fırça stili; kutlama ve kültürel başlıklar için uygun.";
+"活泼圆润、俏皮轻松，适合可爱风格和短标题。" = "Canlı, yuvarlak ve eğlenceli; sevimli tasarımlar ve kısa başlıklar için uygun.";
+"手写书法风格，笔画有自然纹理，适合短句和标题。" = "Doğal dokulu vuruşlara sahip el yazısı kaligrafi; kısa ifadeler ve başlıklar için uygun.";
+"清秀的衬线字，偏文艺复古，适合生活方式类标题。" = "Edebi ve nostaljik hisli zarif serif; yaşam tarzı başlıkları için uygun.";
+"查看官方字体仓库" = "Resmî yazı tipi deposunu görüntüle";
+"完整字体许可" = "Tam yazı tipi lisansı";
+"查看 SIL Open Font License 1.1 全文" = "SIL Open Font License 1.1 metninin tamamını görüntüle";
+"许可证文件暂不可用。" = "Lisans dosyası şu anda kullanılamıyor.";
+
+"马善政体" = "Ma Shan Zheng";
+"站酷快乐体" = "ZCOOL KuaiLe";
+"龙苍" = "Long Cang";
+"站酷小薇体" = "ZCOOL XiaoWei";
+
+"上下拖动可交换图层" = "Katmanları yeniden sıralamak için yukarı veya aşağı sürükleyin"; /* Timeline layer reorder hint */
+
+"字体版权与许可" = "Yazı Tipi Telif Hakları ve Lisansları";
+
+"请选择导出格式" = "Lütfen dışa aktarma biçimini seçin";
+
+"编辑素材" = "Öğeyi düzenle";
+
+"你好" = "Merhaba";

@@ -15,73 +15,33 @@ struct TextFormattingControls: View {
     ]
 
     private let fonts: [(name: String, value: String)] = [
-        ("系统粗体", "HelveticaNeue-Bold"),
+        ("马善政体", "MaShanZheng-Regular"),
+        ("站酷快乐体", "ZCOOLKuaiLe-Regular"),
+        ("龙苍", "LongCang-Regular"),
+        ("站酷小薇体", "ZCOOLXiaoWei-Regular"),
         ("Avenir Next", "AvenirNext-Bold"),
         ("Futura", "Futura-Bold"),
         ("Georgia", "Georgia-Bold"),
         ("Courier", "Courier-Bold"),
-        ("Marker Felt", "MarkerFelt-Wide"),
-        ("思源黑体", "NotoSansSC-Regular"),
-        ("Inter", "Inter-Regular")
+        ("Marker Felt", "MarkerFelt-Wide")
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TextControlSection(title: "内容", subtitle: "文字会即时显示在画布上") {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: EditorTool.textIcon)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(LF.actionPrimary)
-                        .frame(width: 26, height: 26)
-                        .background(LF.selectionFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        TextField("输入文字", text: Binding(
-                            get: { text.text },
-                            set: { value in appState.updateText(text.id) { $0.text = value } }
-                        ), axis: .vertical)
-                        .focused($isTextFieldFocused)
-                        .lineLimit(1...3)
-                        .font(.body)
-                        .foregroundStyle(LF.textPrimary)
-
-                        if isTextFieldFocused {
-                            HStack {
-                                Spacer()
-                                Button {
-                                    isTextFieldFocused = false
-                                } label: {
-                                    Label("收起", systemImage: "keyboard.chevron.compact.down")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(LF.actionPrimary)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 5)
-                                        .background(LF.selectionFill, in: Capsule())
-                                }
-                                .lfAnimatedPlainButtonStyle()
-                                .accessibilityLabel("收起键盘")
-                            }
-                        }
-                    }
-                }
-                .padding(12)
-                .background(LF.surface2.opacity(0.52), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-
             TextControlSection(title: "预览", subtitle: "点击字体直接选择") {
-                Group {
-                    if text.text.isEmpty {
-                        Text("输入文字")
-                    } else {
-                        Text(verbatim: text.text)
-                    }
-                }
+                TextField("输入文字", text: Binding(
+                    get: { text.text },
+                    set: { value in appState.updateText(text.id) { $0.text = value } }
+                ), axis: .vertical)
+                .focused($isTextFieldFocused)
                 .font(previewFont)
-                .foregroundStyle(LF.textPrimary)
-                .lineLimit(1)
+                .foregroundStyle(Color(hex: text.colorHex))
+                .lineLimit(1...3)
                 .minimumScaleFactor(0.25)
                 .allowsTightening(true)
-                .frame(maxWidth: .infinity, minHeight: 54)
+                .multilineTextAlignment(.center)
+                .tint(LF.actionPrimary)
+                .frame(maxWidth: .infinity, minHeight: 54, alignment: .center)
                 .padding(.horizontal, 12)
                 .background(
                     LinearGradient(
@@ -96,6 +56,24 @@ struct TextFormattingControls: View {
                             .stroke(LF.brandTint.opacity(0.24), lineWidth: 1)
                     }
 
+                if isTextFieldFocused {
+                    HStack {
+                        Spacer()
+                        Button {
+                            isTextFieldFocused = false
+                        } label: {
+                            Label("完成", systemImage: "keyboard.chevron.compact.down")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(LF.actionPrimary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(LF.selectionFill, in: Capsule())
+                        }
+                        .lfAnimatedPlainButtonStyle()
+                        .accessibilityLabel("收起键盘")
+                    }
+                }
+
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(fontOptions, id: \.value) { font in
@@ -103,9 +81,12 @@ struct TextFormattingControls: View {
                                 appState.updateText(text.id) { $0.fontName = font.value.isEmpty ? nil : font.value }
                             } label: {
                                 VStack(spacing: 3) {
-                                    Text("Aa")
+                                    Text(verbatim: text.text.isEmpty
+                                        ? NSLocalizedString("你好", comment: "Sample text shown in font previews")
+                                        : text.text
+                                    )
                                         .font(fontPreview(for: font))
-                                        .foregroundStyle(LF.textPrimary)
+                                        .foregroundStyle(Color(hex: text.colorHex))
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.55)
                                     Text(NSLocalizedString(font.name, comment: "Font name"))
@@ -197,8 +178,10 @@ struct TextFormattingControls: View {
 
     private var availableFonts: [(name: String, value: String)] {
         let bundledNames = Set([
-            "NotoSansSC-Regular",
-            "Inter-Regular"
+            "MaShanZheng-Regular",
+            "ZCOOLKuaiLe-Regular",
+            "LongCang-Regular",
+            "ZCOOLXiaoWei-Regular"
         ])
         return fonts.filter { bundledNames.contains($0.value) || UIFont(name: $0.value, size: 16) != nil }
     }

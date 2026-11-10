@@ -12,7 +12,27 @@ Inter
 Copyright 2020 The Inter Project Authors.
 Source: https://github.com/google/fonts/tree/main/ofl/inter
 
-Both font files are licensed under the SIL Open Font License, Version 1.1.
+Ma Shan Zheng
+------------
+Copyright 2018 The Ma Shan Zheng Project Authors.
+Source: https://github.com/googlefonts/mashanzheng
+
+ZCOOL KuaiLe
+------------
+Copyright 2018 The ZCOOL KuaiLe Project Authors.
+Source: https://github.com/googlefonts/zcool-kuaile
+
+Long Cang
+---------
+Copyright 2018 The Long Cang Project Authors.
+Source: https://github.com/google/fonts/tree/main/ofl/longcang
+
+ZCOOL XiaoWei
+-------------
+Copyright 2018 The ZCOOL XiaoWei Project Authors.
+Source: https://github.com/google/fonts/tree/main/ofl/zcoolxiaowei
+
+All font files listed above are licensed under the SIL Open Font License, Version 1.1.
 The complete license is reproduced below.
 
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007

@@ -1070,11 +1070,6 @@ struct EditorView: View {
     private var textPanel: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
-                EditorPanelHeader(
-                    icon: EditorTool.textIcon,
-                    title: "文字",
-                    subtitle: "输入内容并调整文字的视觉样式"
-                )
                 if let element = appState.primarySelectedElement,
                    case .text(let textID) = element.kind,
                    let text = appState.composition?.texts.first(where: { $0.id.uuidString == textID }) {

@@ -251,6 +251,23 @@ struct SettingsView: View {
                                 settingsDivider
                                 aboutLink("支持", icon: "questionmark.circle", destination: GIFBloomStoreLinks.support)
                                 settingsDivider
+                                NavigationLink {
+                                    FontLicensesView()
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Label("字体版权与许可", systemImage: "waveform.path.ecg.text.clipboard")
+                                            .foregroundStyle(LF.textPrimary)
+                                        Spacer()
+                                        Image(systemName: "chevron.forward")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(LF.textSecondary)
+                                    }
+                                    .padding(.vertical, 9)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("settings-font-licenses")
+                                settingsDivider
                                 aboutLink("使用条款", icon: "doc.text", destination: GIFBloomStoreLinks.termsOfUse)
                             }
 

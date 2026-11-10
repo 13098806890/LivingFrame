@@ -6,7 +6,11 @@ import Foundation
 enum BundledFontManager {
     private static let bundledFonts = [
         (name: "NotoSansSC-Variable", postScriptName: "NotoSansSC-Regular"),
-        (name: "Inter-Variable", postScriptName: "Inter-Regular")
+        (name: "Inter-Variable", postScriptName: "Inter-Regular"),
+        (name: "MaShanZheng-Regular", postScriptName: "MaShanZheng-Regular"),
+        (name: "ZCOOLKuaiLe-Regular", postScriptName: "ZCOOLKuaiLe-Regular"),
+        (name: "LongCang-Regular", postScriptName: "LongCang-Regular"),
+        (name: "ZCOOLXiaoWei-Regular", postScriptName: "ZCOOLXiaoWei-Regular")
     ]
 
     static func registerFonts() {

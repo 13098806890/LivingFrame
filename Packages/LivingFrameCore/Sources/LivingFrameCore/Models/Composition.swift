@@ -537,7 +537,7 @@ public struct TextElement: Identifiable, Codable, Equatable {
         id: UUID = UUID(),
         text: String = "双击编辑文字",
         fontSize: CGFloat = 96,
-        colorHex: String = "FFFFFF",
+        colorHex: String = "000000",
         fontName: String? = nil
     ) {
         self.id = id

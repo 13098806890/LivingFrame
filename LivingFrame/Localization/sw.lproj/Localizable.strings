@@ -907,3 +907,28 @@
 /* Lunar New Year sticker category */
 "新春涂鸦" = "Michoro ya Mwaka Mpya wa Mwezi";
 "以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Michoro ya krayoni yenye furaha kwa Mwaka Mpya wa Mwezi.";
+
+"这些字体随 GIFBloom App 一并提供，均采用 SIL Open Font License 1.1。字体文件不可单独出售。" = "Fonti hizi husambazwa pamoja na GIFBloom chini ya SIL Open Font License 1.1. Faili za fonti haziwezi kuuzwa pekee.";
+"厚重的毛笔字风格，有传统书法气势，适合节庆和国风标题。" = "Mtindo mzito wa brashi wenye mwonekano wa kaligrafia ya jadi, unaofaa kwa vichwa vya sherehe na utamaduni.";
+"活泼圆润、俏皮轻松，适合可爱风格和短标题。" = "Mchangamfu, wa mviringo na wa kuchekesha; unafaa kwa miundo ya kupendeza na vichwa vifupi.";
+"手写书法风格，笔画有自然纹理，适合短句和标题。" = "Kaligrafia ya mkono yenye mistari yenye umbile la asili, inayofaa kwa misemo mifupi na vichwa.";
+"清秀的衬线字，偏文艺复古，适合生活方式类标题。" = "Fonti nyembamba ya serif yenye hisia za fasihi na zamani, inayofaa kwa vichwa vya mtindo wa maisha.";
+"查看官方字体仓库" = "Angalia hazina rasmi ya fonti";
+"完整字体许可" = "Leseni kamili ya fonti";
+"查看 SIL Open Font License 1.1 全文" = "Angalia maandishi kamili ya SIL Open Font License 1.1";
+"许可证文件暂不可用。" = "Faili ya leseni haipatikani kwa sasa.";
+
+"马善政体" = "Ma Shan Zheng";
+"站酷快乐体" = "ZCOOL KuaiLe";
+"龙苍" = "Long Cang";
+"站酷小薇体" = "ZCOOL XiaoWei";
+
+"上下拖动可交换图层" = "Buruta juu au chini ili kupanga upya tabaka"; /* Timeline layer reorder hint */
+
+"字体版权与许可" = "Hakimiliki na leseni za fonti";
+
+"请选择导出格式" = "Chagua umbizo la kuhamisha";
+
+"编辑素材" = "Hariri kipengee";
+
+"你好" = "Hujambo";

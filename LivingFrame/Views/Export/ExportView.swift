@@ -80,7 +80,10 @@ struct ExportView: View {
                         SectionCard(title: "导出格式") {
                             exportFormatPicker
 
-                            Text(hasSelectedFormat ? format.subtitle : "请选择导出格式")
+                            Text(hasSelectedFormat ? format.subtitle : NSLocalizedString(
+                                "请选择导出格式",
+                                comment: "Prompt to choose an export format"
+                            ))
                                 .font(.caption)
                                 .foregroundStyle(LF.textSecondary)
 

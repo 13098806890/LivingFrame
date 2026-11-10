@@ -10,6 +10,7 @@ import UIKit
 /// - 拖动整体移动（就近磁吸对齐），左右边缘手柄分别裁剪源入点/源出点
 struct TimelineView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     /// 选中轨道后由外层展示属性检查器；时间轴本身不持有 sheet 状态。
     let onRequestInspector: () -> Void
 
@@ -304,10 +305,14 @@ struct TimelineView: View {
 
                                 ForEach(Array(orderedElements.enumerated()), id: \.element.id) { i, element in
                                     let displayElement = elementWithTimelinePreview(element)
+                                    let isLayerReorderHint = layerReorderSession.map {
+                                        abs($0.currentIndex - i) <= 1
+                                    } ?? false
                                     elementRow(
                                         element,
                                         spp: spp,
-                                        isLayerDropTarget: layerReorderSession?.currentIndex == i
+                                        isLayerDropTarget: layerReorderSession?.currentIndex == i,
+                                        isLayerReorderHint: isLayerReorderHint
                                     )
                                         .position(x: rowX(displayElement, spp: spp), y: rulerHeight + rowCenterY(i))
                                 }
@@ -386,7 +391,18 @@ struct TimelineView: View {
 
     private var timelineHeader: some View {
         HStack(spacing: 8) {
-            if hasSelection {
+            if layerReorderSession != nil {
+                Label {
+                    Text(NSLocalizedString("上下拖动可交换图层", comment: "Timeline layer reorder hint"))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                } icon: {
+                    Image(systemName: "arrow.up.arrow.down")
+                }
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(LF.gold)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            } else if hasSelection {
                 Image(systemName: "film.stack")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(LF.textPrimary)
@@ -597,13 +613,13 @@ struct TimelineView: View {
         LongPressGesture(minimumDuration: 0.22, maximumDistance: 18)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.layerGutterCoordinateSpace)))
             .onChanged { value in
-                guard case let .second(true, dragValue?) = value else { return }
+                guard case let .second(true, dragValue) = value else { return }
 
                 if layerReorderSession == nil {
                     guard let comp = appState.composition else { return }
                     let order = timelineElements(comp).map(\.id)
                     guard let startIndex = order.firstIndex(of: element.id) else { return }
-                    layerReorderSession = LayerReorderSession(
+                    let newSession = LayerReorderSession(
                         id: element.id,
                         initialOrder: order,
                         startIndex: startIndex,
@@ -612,10 +628,18 @@ struct TimelineView: View {
                     appState.selectElement(element.id)
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isTimelineManipulating = true
+                    if accessibilityReduceMotion {
+                        layerReorderSession = newSession
+                    } else {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            layerReorderSession = newSession
+                        }
+                    }
                 }
 
                 guard var session = layerReorderSession,
-                      session.id == element.id else { return }
+                      session.id == element.id,
+                      let dragValue else { return }
                 let rowStep = rowHeight + rowSpacing
                 let offset = Int((dragValue.translation.height / rowStep).rounded())
                 let targetIndex = min(
@@ -635,7 +659,13 @@ struct TimelineView: View {
                 layerReorderSession = session
             }
             .onEnded { _ in
-                layerReorderSession = nil
+                if accessibilityReduceMotion {
+                    layerReorderSession = nil
+                } else {
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        layerReorderSession = nil
+                    }
+                }
                 isTimelineManipulating = false
             }
     }
@@ -722,7 +752,8 @@ struct TimelineView: View {
     private func elementRow(
         _ element: CompositionElement,
         spp: CGFloat,
-        isLayerDropTarget: Bool = false
+        isLayerDropTarget: Bool = false,
+        isLayerReorderHint: Bool = false
     ) -> some View {
         let displayElement = elementWithTimelinePreview(element)
         let metrics = elementMetrics(displayElement, spp: spp)
@@ -735,7 +766,8 @@ struct TimelineView: View {
         let isLayerDragging = layerReorderSession?.id == element.id
         let layerFeedback = layerInteractionFeedback(
             isDragging: isLayerDragging,
-            isDropTarget: isLayerDropTarget
+            isDropTarget: isLayerDropTarget,
+            isReorderHint: isLayerReorderHint
         )
         let isSelected = appState.isElementSelected(element.id)
         let repeatCount = playbackCount(for: displayElement)
@@ -985,9 +1017,13 @@ struct TimelineView: View {
         }
         .frame(width: barWidth, height: barHeight)
         .contentShape(Rectangle())
+        let motionContent = layerReorderMotion(
+            content,
+            isActive: isLayerReorderHint && !accessibilityReduceMotion
+        )
 
         if isCanvasEdge {
-            content
+            motionContent
                 .onTapGesture { appState.selectElement(element.id) }
                 .simultaneousGesture(
                     TapGesture(count: 2).onEnded {
@@ -996,9 +1032,9 @@ struct TimelineView: View {
                     }
                 )
                 .overlay(layerFeedback)
-                .scaleEffect(isLayerDragging ? 1.035 : 1)
+                .scaleEffect(isLayerDragging && !accessibilityReduceMotion ? 1.035 : 1)
         } else {
-            content
+            motionContent
                 // 素材条中部只负责整体移动；两端由上面的专用热区负责裁剪。
                 .simultaneousGesture(elementDragGesture(element, spp: spp, fixedMode: .move))
                 .onTapGesture { appState.selectElement(element.id) }
@@ -1009,23 +1045,34 @@ struct TimelineView: View {
                     }
                 )
                 .overlay(layerFeedback)
-                .scaleEffect(isLayerDragging ? 1.035 : 1)
+                .scaleEffect(isLayerDragging && !accessibilityReduceMotion ? 1.035 : 1)
         }
     }
 
     private func layerInteractionFeedback(
         isDragging: Bool,
-        isDropTarget: Bool
+        isDropTarget: Bool,
+        isReorderHint: Bool
     ) -> some View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(isDragging ? LF.selectionFill.opacity(0.28) : Color.clear)
+            .fill(
+                isDragging
+                    ? LF.selectionFill.opacity(0.28)
+                    : (isReorderHint && accessibilityReduceMotion
+                        ? LF.selectionFill.opacity(0.14)
+                        : Color.clear)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(
-                        isDragging ? LF.gold : (isDropTarget ? LF.selectionStroke : .clear),
+                        isDragging
+                            ? LF.gold
+                            : (isDropTarget || (isReorderHint && accessibilityReduceMotion)
+                                ? LF.selectionStroke
+                                : .clear),
                         style: StrokeStyle(
                             lineWidth: isDragging ? 2.5 : 2,
-                            dash: isDropTarget && !isDragging ? [6, 4] : []
+                            dash: (isDropTarget || isReorderHint) && !isDragging ? [6, 4] : []
                         )
                     )
             }
@@ -1035,6 +1082,23 @@ struct TimelineView: View {
                 y: isDragging ? 3 : 0
             )
             .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func layerReorderMotion<Content: View>(
+        _ content: Content,
+        isActive: Bool
+    ) -> some View {
+        if isActive {
+            content
+                .phaseAnimator([-1.0, 1.0, -1.0, 1.0]) { view, phase in
+                    view.offset(x: CGFloat(phase) * 1.25)
+                } animation: { _ in
+                    .linear(duration: 0.11)
+                }
+        } else {
+            content
+        }
     }
 
     @ViewBuilder

@@ -949,3 +949,28 @@
 /* Lunar New Year sticker category */
 "新春涂鸦" = "Nét vẽ Tết";
 "以蜡笔动态涂鸦风格绘制的新春贴纸。" = "Nét vẽ sáp màu vui tươi cho dịp Tết.";
+
+"这些字体随 GIFBloom App 一并提供，均采用 SIL Open Font License 1.1。字体文件不可单独出售。" = "Các phông chữ này được phân phối cùng GIFBloom theo SIL Open Font License 1.1. Không được bán riêng tệp phông chữ.";
+"厚重的毛笔字风格，有传统书法气势，适合节庆和国风标题。" = "Nét bút lông đậm, mang khí chất thư pháp truyền thống, phù hợp với tiêu đề lễ hội và văn hóa.";
+"活泼圆润、俏皮轻松，适合可爱风格和短标题。" = "Tươi vui, bo tròn và tinh nghịch, phù hợp với thiết kế dễ thương và tiêu đề ngắn.";
+"手写书法风格，笔画有自然纹理，适合短句和标题。" = "Thư pháp viết tay với nét chữ có kết cấu tự nhiên, phù hợp với câu ngắn và tiêu đề.";
+"清秀的衬线字，偏文艺复古，适合生活方式类标题。" = "Serif thanh mảnh, mang nét văn chương cổ điển, phù hợp với tiêu đề phong cách sống.";
+"查看官方字体仓库" = "Xem kho phông chữ chính thức";
+"完整字体许可" = "Giấy phép phông chữ đầy đủ";
+"查看 SIL Open Font License 1.1 全文" = "Xem toàn văn SIL Open Font License 1.1";
+"许可证文件暂不可用。" = "Tệp giấy phép hiện tạm thời không khả dụng.";
+
+"马善政体" = "Ma Shan Zheng";
+"站酷快乐体" = "ZCOOL KuaiLe";
+"龙苍" = "Long Cang";
+"站酷小薇体" = "ZCOOL XiaoWei";
+
+"上下拖动可交换图层" = "Kéo lên hoặc xuống để sắp xếp lại lớp"; /* Timeline layer reorder hint */
+
+"字体版权与许可" = "Bản quyền và giấy phép phông chữ";
+
+"请选择导出格式" = "Vui lòng chọn định dạng xuất";
+
+"编辑素材" = "Chỉnh sửa mục";
+
+"你好" = "Xin chào";
