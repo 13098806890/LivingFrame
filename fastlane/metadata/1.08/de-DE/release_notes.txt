@@ -1,0 +1,4 @@
+• Vier neue ausdrucksstarke Schriftarten und Textbearbeitung direkt auf der Leinwand.
+• Ebenen in der Zeitleiste per langem Drücken und Ziehen neu anordnen.
+• Auswahlrahmen und Eckaktionen bleiben beim Verkleinern gut bedienbar.
+• Verbesserte Textfarbvorschau und Unterstützung für „Bewegung reduzieren“.

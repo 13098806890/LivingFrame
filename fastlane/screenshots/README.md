@@ -7,7 +7,7 @@ Store screenshots belong under `fastlane/screenshots/<store-version>/<App Store 
 - `1.03/` contains five iPhone screenshots in each of 17 App Store locale folders. The `zh-Hans` and `zh-Hant` images use Chinese artwork. The other 15 folders reuse English artwork, including English marketing headlines and English app UI; they are not localized screenshot sets.
 - `1.03/en-US/` also contains iPad screenshots. They are English-only.
 - `1.06/` contains six 6.9-inch iPhone screenshots for each of the same 17 App Store locales (102 PNGs total, 1320×2868 px). The app screens are captured from the localized app with representative demo media, then framed with localized feature headlines. This set does not add iPad screenshots.
-- `1.07/` is the current release candidate and mirrors the optimized 1.06 local set: six localized iPhone screenshots for each of 17 locales (102 PNGs total). The original `1.06/` directory remains as a local snapshot; neither set has been uploaded by this task.
+- `1.07/` is the latest existing screenshot snapshot and mirrors the optimized 1.06 set: six localized iPhone screenshots for each of 17 locales (102 PNGs total). It is not yet a reviewed 1.08 screenshot set. The original `1.06/` directory remains as a local snapshot; neither set has been uploaded by this task.
 
 The 1.03 artwork files are flattened PNGs. The original editable source path previously documented as `/Users/doxie/Desktop/GIFBloom/app-store-drafts` is not present in this workspace. Do not make translated duplicates of these images and label them as localized: the app UI remains English and the source has no editable text layers.
 

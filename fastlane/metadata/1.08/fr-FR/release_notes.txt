@@ -1,0 +1,4 @@
+• Quatre nouvelles polices expressives et édition du texte directement sur le canevas.
+• Réorganisez les calques de la timeline par appui prolongé et glissement.
+• Commandes de sélection améliorées lors de la réduction des éléments.
+• Aperçu des couleurs du texte amélioré et prise en charge de Réduire les animations.

@@ -1,0 +1,4 @@
+• Añadimos cuatro fuentes decorativas y edición de texto directamente en el lienzo.
+• Reordena las capas de la línea de tiempo manteniendo pulsado y arrastrando.
+• Mejoramos los controles de selección al reducir elementos.
+• Mejoramos la vista previa del color del texto y la compatibilidad con Reducir movimiento.

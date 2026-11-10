@@ -1,0 +1,4 @@
+• Added four expressive fonts and text editing directly on the canvas.
+• Reorder timeline layers with a long press and drag.
+• Improved selection controls when scaling items down.
+• Improved text color previews and Reduce Motion support.

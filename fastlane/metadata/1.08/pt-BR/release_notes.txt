@@ -1,0 +1,4 @@
+• Quatro novas fontes expressivas e edição de texto diretamente na tela.
+• Reordene as camadas da linha do tempo mantendo o toque e arrastando.
+• Melhoramos os controles de seleção ao reduzir itens.
+• Melhoramos a prévia da cor do texto e o suporte a Reduzir Movimento.

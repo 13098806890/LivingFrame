@@ -1,39 +1,21 @@
-# App Store release review — 1.07
+# App Store release review — 1.08
 
-## Release baseline
+## Live release state — 2026-11-10
 
-- **Local release candidate:** `1.07` / build `17` in the Xcode project.
-- **Last documented App Store Connect baseline:** published `1.06` / build `15`, checked on 2026-10-27. Recheck the live version, build, and status before submitting 1.07.
-- **Localized metadata:** `fastlane/metadata/1.07/<locale>/` contains all 17 App Store locales. What's New and promotional text were uploaded to App Store Connect on 2026-10-30; this metadata-only upload did not include screenshots or a build and did not submit the version for review.
-- **Local screenshot candidate:** `fastlane/screenshots/1.07/<locale>/` contains six screenshots per locale (102 PNGs total). The 1.07 files currently mirror the 1.06 set; review the actual 1.07 set before upload.
-- **Fastlane data snapshot:** `fastlane/data/1.07/` has not been generated. This is an App Store Connect state/pricing snapshot, not a prerequisite for the local app build or review of metadata and screenshots. Generate it after confirming the live 1.07 record; do not infer live state from local files.
-- **Historical data snapshot:** `fastlane/data/1.0/` was captured on 2026-09-17. It is not evidence of the current release version.
+- **App Store version:** `1.08` is in `PREPARE_FOR_SUBMISSION`; it has no build attached.
+- **Candidate build:** App Store Connect contains build `18` for app version `1.08`; its processing state is `VALID` and it is not expired. It must still be selected for version `1.08`. A separate build numbered `18` is associated with version `2.07`, so verify the app version when selecting a build.
+- **Source revision:** pushed `main` is `9999367a`. The checked-out project file locally sets the app to `1.08` / build `18`, but those version changes are uncommitted; the pushed project still says `1.07` / build `17`. App Store Connect does not show a source commit for build `18`, so its correspondence to the pushed source has not been verified.
+- **Localized metadata:** What's New and Promotional Text are present for all 17 locales in App Store Connect. The `upload_metadata` lane succeeded on 2026-11-10 and its precheck reported no placeholder text or broken URLs. The lane uploaded metadata only; it did not upload a build or submit the version.
+- **Screenshots:** App Store Connect has screenshot assets attached in all 17 locales: five images per locale; `en-US` has three sets (15 images) for iPhone 6.5-inch, iPad 11-inch, and iPad 12.9-inch. The local repository has no reviewed 1.08 screenshot set, so verify the current images still represent the 1.08 UI before submission.
+- **App Review details:** contact name, phone, and email are set; review notes are present; a demo account is not required.
+- **Age rating:** the 1.08 App Info record has a 4+ rating.
+- **China mainland availability:** App Store Connect currently reports China mainland as `AVAILABLE`. This shows no current territory availability block, but does not by itself document the basis of any ICP filing exemption.
 
-## Latest metadata upload
+## Release blockers and final checks
 
-- **Date:** 2026-10-30.
-- **Result:** Fastlane `upload_metadata` completed successfully for version 1.07 after updating localized What's New and promotional text.
-- **Precheck note:** The first upload attempt reported the Turkish privacy policy URL as unreachable; the final successful retry passed the URL check. No broken-URL warning remained in the completed run.
-- **Scope:** No build or screenshots were uploaded, and 1.07 was not submitted for review or released.
+1. Attach the valid build `18` for app version `1.08`. Apple requires a selected build and complete required metadata before a version can be submitted for review: [Submit an app](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-app).
+2. Confirm the selected binary contains the intended source, including the removal of the temporary Pro override. The build predates the `9999367a` push, and no source-to-build link was available in the inspected App Store Connect record.
+3. Review the attached screenshots against the current app UI. Apple’s current accepted screenshot sizes and fallback rules are listed in [Screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/).
+4. Reconfirm App Privacy answers and content-rights declarations against the selected binary and current SDK/data flows. These were not independently verified in this review; Apple requires privacy disclosures to cover the app and third-party partners: [Manage app privacy](https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy/).
 
-## 1.07 review items
-
-### Localized product screenshots
-
-Review all six locale-specific screenshots in `fastlane/screenshots/1.07/<locale>/`, including the two Chinese sets and RTL layout for `ar-SA`. The set uses localized app screens and fictional adult demo media. The files are flattened composites; if text or layout needs correction, regenerate them from the capture and composition workflow rather than editing the flattened image as if it were source artwork.
-
-The screenshot upload lane is intentionally not run during local preparation. Upload only after the 1.07 screenshots and metadata have been reviewed.
-
-### App Store Connect reconciliation
-
-Read the live App Store Connect record before upload. Confirm the editable 1.07 version, build `17` attachment, metadata, screenshots, and review submission state. Then capture the confirmed state in `fastlane/data/1.07/` using the Fastlane snapshot workflow and update this checklist with the observation date. The missing snapshot does not block local development or candidate review.
-
-## Other submission checks
-
-- App Review contact information, age-rating answers, and content-rights answers are complete.
-- App Privacy answers match the submitted build, privacy manifest, SDKs, and current data flows.
-- Pro benefit wording matches the submitted build, including watermark behavior and the maximum extraction duration.
-- Subscription products and available purchase flows match the submitted build and App Store Connect state.
-- Store descriptions, localized metadata, support/privacy/marketing URLs, and review notes are current.
-
-No App Store Connect upload, metadata mutation, binary upload, review submission, or release was performed during local preparation.
+The version is **not ready to submit yet** because no build is attached. No build upload, review submission, or release action was performed during this review.

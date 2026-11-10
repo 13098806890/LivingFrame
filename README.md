@@ -112,7 +112,7 @@ Fastlane 目录包含本地化 metadata、截图和版本化 App Store Connect �
 - `fastlane/data/<version>/`：价格、可用地区、订阅和 App Store Connect 基线快照
 - `fastlane/APP_STORE_REVIEW.md`：当前发布阻塞项与待确认事项
 
-`fastlane/metadata/1.07/` 与 `fastlane/screenshots/1.07/` 是当前本地候选。当前仓库尚无 `fastlane/data/1.07/`；该目录用于记录 App Store Connect 状态，不影响本地构建和候选素材准备，需在确认线上 1.07 记录后再生成。
+`fastlane/metadata/1.08/` 是当前版本的本地化商店元数据。截图目前仍是 `fastlane/screenshots/1.07/` 的旧候选，尚未准备 1.08 截图；仓库也尚无 `fastlane/data/1.08/` 状态快照。上传前需核对 1.08 的截图和 App Store Connect 记录。
 
 当前 ASO 工作重点是验证真实关键词搜索排名，而不是只检查字段长度。未上架前不能产生真实的 App Store 自然排名；可以先用竞品和关键词工具建立基线，上架后再用同一 storefront、locale、关键词集合和时间窗口追踪排名变化。
 

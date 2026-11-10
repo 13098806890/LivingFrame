@@ -1,0 +1,4 @@
+• Thêm bốn phông chữ biểu cảm và chỉnh sửa văn bản ngay trên canvas.
+• Sắp xếp lại lớp trên dòng thời gian bằng cách nhấn giữ và kéo.
+• Cải thiện thao tác chọn khi thu nhỏ đối tượng.
+• Cải thiện xem trước màu chữ và hỗ trợ Giảm chuyển động.

@@ -1,0 +1,4 @@
+• Quattro nuovi font espressivi e modifica del testo direttamente sulla tela.
+• Riordina i livelli della timeline tenendo premuto e trascinando.
+• Controlli di selezione migliorati quando riduci gli elementi.
+• Anteprima del colore del testo migliorata e supporto a Riduci movimento.

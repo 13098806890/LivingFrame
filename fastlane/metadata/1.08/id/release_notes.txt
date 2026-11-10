@@ -1,0 +1,4 @@
+• Empat font ekspresif baru dan edit teks langsung di kanvas.
+• Susun ulang layer timeline dengan tekan lama lalu seret.
+• Kontrol pilihan lebih mudah digunakan saat item diperkecil.
+• Pratinjau warna teks dan dukungan Reduce Motion ditingkatkan.

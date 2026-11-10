@@ -1,0 +1,1 @@
+Thêm cá tính cho tác phẩm với bốn phông chữ mới. Thêm và chỉnh sửa văn bản ngay trên canvas.

@@ -1,0 +1,4 @@
+• Dört yeni dekoratif yazı tipi ve tuval üzerinde doğrudan metin düzenleme.
+• Zaman çizelgesi katmanlarını basılı tutup sürükleyerek sıralayın.
+• Öğeleri küçültürken seçim denetimlerini iyileştirdik.
+• Metin rengi önizlemesini ve Hareketi Azalt desteğini geliştirdik.
